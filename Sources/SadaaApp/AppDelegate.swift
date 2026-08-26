@@ -91,7 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "Quit Sadaa",
+        appMenu.addItem(withTitle: "Quit Useful Voice",
                         action: #selector(NSApplication.terminate(_:)),
                         keyEquivalent: "q")
         appItem.submenu = appMenu
@@ -465,7 +465,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // Not Accessibility-trusted yet. Poll until the user grants it, then
         // start the tap without requiring a relaunch.
-        hud.show(.error("Enable Accessibility for Sadaa in System Settings to use the hotkey."))
+        hud.show(.error("Enable Accessibility for Useful Voice in System Settings to use the hotkey."))
         hud.hide(after: 6)
         axPollTimer?.invalidate()
         axPollTimer = Timer.scheduledTimer(withTimeInterval: 2.0,
@@ -567,10 +567,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let item = NSStatusBar.system.statusItem(
             withLength: NSStatusItem.squareLength)
         item.button?.image = NSImage(systemSymbolName: "waveform",
-                                     accessibilityDescription: "Sadaa")
+                                     accessibilityDescription: "Useful Voice")
         let menu = NSMenu()
 
-        let openItem = NSMenuItem(title: "Open Sadaa",
+        let openItem = NSMenuItem(title: "Open Useful Voice",
                                   action: #selector(openMainWindow),
                                   keyEquivalent: "")
         openItem.target = self
@@ -619,7 +619,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settingsItem.target = self
         menu.addItem(settingsItem)
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit Sadaa",
+        menu.addItem(NSMenuItem(title: "Quit Useful Voice",
                                 action: #selector(NSApplication.terminate(_:)),
                                 keyEquivalent: "q"))
         menu.delegate = self
@@ -667,7 +667,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if !granted {
                 DispatchQueue.main.async { [weak self] in
                     self?.hud.show(.error(
-                        "Enable Microphone for Sadaa in System Settings."))
+                        "Enable Microphone for Useful Voice in System Settings."))
                     self?.hud.hide(after: 6)
                 }
             }

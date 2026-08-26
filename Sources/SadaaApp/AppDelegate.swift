@@ -555,7 +555,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func setIcon(_ symbol: String, tint: NSColor?) {
         let image = NSImage(systemSymbolName: symbol,
-                            accessibilityDescription: "Sadaa")
+                            accessibilityDescription: "Useful Voice")
         image?.isTemplate = (tint == nil)
         statusItem?.button?.image = image
         statusItem?.button?.contentTintColor = tint

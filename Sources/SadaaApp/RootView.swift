@@ -49,7 +49,7 @@ struct RootView: View {
                 .overlay { PremiumToastHost() }
         }
         .environmentObject(toasts)
-        // Sadaa wears a fixed light cream/navy brand. Pin the window to the
+        // Useful Voice wears a fixed light cream/navy brand. Pin the window to the
         // light scheme so default text resolves dark and stays readable on
         // cream even when macOS is in Dark Mode.
         .preferredColorScheme(.light)
@@ -99,10 +99,10 @@ struct RootView: View {
         HStack(spacing: 10) {
             BrandMark()
             VStack(alignment: .leading, spacing: 1) {
-                Text("Useful Voice")
+                Text("U")
                     .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(Theme.white)
-                Text("Voice dictation")
+                Text("Useful Voice")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(Theme.white.opacity(0.58))
             }

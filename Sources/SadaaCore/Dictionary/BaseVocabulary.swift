@@ -8,7 +8,7 @@ public enum BaseVocabulary {
         "Deepgram", "Nova-3",
         "MCP", "LLM", "RAG", "agent", "token", "repo", "PR", "Supabase",
         "Next.js", "Vercel", "Stripe", "Bedrock", "Tailwind", "TypeScript",
-        "Karko AI", "Sadaa", "SwiftUI", "Xcode", "GitHub", "API", "JSON",
+        "Karko AI", "Useful Voice", "SwiftUI", "Xcode", "GitHub", "API", "JSON",
         "endpoint", "deployment", "Azure", "prompt", "embeddings", "fine-tune",
         "webhook", "Postgres", "Redis", "Docker", "Kubernetes",
     ]

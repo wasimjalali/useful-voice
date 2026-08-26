@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Role-based light palette for the Sadaa desktop app.
+/// Role-based light palette for the Useful Voice desktop app.
 enum Theme {
     static func rgb(_ r: Int, _ g: Int, _ b: Int) -> Color {
         Color(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255)

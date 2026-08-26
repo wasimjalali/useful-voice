@@ -39,7 +39,7 @@ struct LanguageMemoryPage: View {
     private var header: some View {
         CommandPageHeader(
             title: "Dictionary",
-            subtitle: "Teach names once. Sadaa biases recognition and fixes the same mistakes next time."
+            subtitle: "Teach names once. Useful Voice biases recognition and fixes the same mistakes next time."
         ) {
             BrandedMenuButton(help: "Import and export") {
                 Button("Copy full backup") {
@@ -129,7 +129,7 @@ struct LanguageMemoryPage: View {
 
     private var teachCard: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Teach Sadaa")
+            Text("Teach Useful Voice")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Theme.ink)
 
@@ -155,7 +155,7 @@ struct LanguageMemoryPage: View {
         VStack(alignment: .leading, spacing: 10) {
             label("Add a word")
             HStack(spacing: 8) {
-                TextField("Claude Code, Sadaa, Kubernetes", text: $word)
+                TextField("Claude Code, Useful Voice, Kubernetes", text: $word)
                     .premiumInputChrome()
                     .onSubmit { addWord() }
                 Button("Add") { addWord() }
@@ -242,7 +242,7 @@ struct LanguageMemoryPage: View {
             case .corrections:
                 entriesList(
                     emptyTitle: "No auto-corrections yet",
-                    emptyDetail: "Teach a mistake once. Sadaa fixes it on every future dictation."
+                    emptyDetail: "Teach a mistake once. Useful Voice fixes it on every future dictation."
                 ) {
                     ForEach(viewModel.filteredReplacements) { rule in
                         ReplacementRuleRow(

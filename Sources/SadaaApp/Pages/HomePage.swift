@@ -46,7 +46,7 @@ struct HomePage: View {
     private var header: some View {
         CommandPageHeader(
             title: "Dictate",
-            subtitle: "Press your hotkey or use the microphone. Sadaa inserts clean text wherever you are typing."
+            subtitle: "Press your hotkey or use the microphone. Useful Voice inserts clean text wherever you are typing."
         ) {
             HStack(spacing: 8) {
                 quietStatus(
@@ -157,7 +157,7 @@ struct HomePage: View {
                 CommandEmptyState(
                     icon: "waveform",
                     title: "Your transcripts will appear here",
-                    detail: "Start a dictation and Sadaa will keep a private local copy."
+                    detail: "Start a dictation and Useful Voice will keep a private local copy."
                 )
             } else {
                 VStack(spacing: 0) {
@@ -210,7 +210,7 @@ struct HomePage: View {
             return "Tap \(HotkeyOption.label(for: viewModel.hotkeyKeycode)) once to start and again to stop."
         case .recording: return "Speak naturally. Press Esc to cancel."
         case .transcribing: return "Your recording is being transcribed."
-        case .delivering: return "Sadaa is placing the transcript at your cursor."
+        case .delivering: return "Useful Voice is placing the transcript at your cursor."
         case .error(let message): return message
         }
     }

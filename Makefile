@@ -1,4 +1,4 @@
-APP = dist/Sadaa.app
+APP = dist/UsefulVoice.app
 
 # Sign with the stable self-signed identity if it exists (set up once via
 # scripts/setup-signing.sh), otherwise fall back to ad-hoc. Ad-hoc signing
@@ -47,9 +47,9 @@ run: bundle
 # Install into /Applications and (re)launch so it appears in Finder.
 install: bundle
 	pkill -x Sadaa || true
-	rm -rf /Applications/Sadaa.app
-	cp -R $(APP) /Applications/Sadaa.app
-	open /Applications/Sadaa.app
+	rm -rf "/Applications/Useful Voice.app"
+	cp -R $(APP) "/Applications/Useful Voice.app"
+	open "/Applications/Useful Voice.app"
 
 clean:
 	rm -rf .build dist

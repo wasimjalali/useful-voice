@@ -13,8 +13,8 @@ Useful Voice records, transcribes, applies your personal dictionary and inserts 
 ## Build and run
 
 ```bash
-make bundle      # builds dist/Sadaa.app (ad-hoc signed)
-open dist/Sadaa.app
+make bundle      # builds dist/UsefulVoice.app (ad-hoc signed)
+open dist/UsefulVoice.app
 ```
 
 A waveform icon appears in the menu bar. No Dock icon.

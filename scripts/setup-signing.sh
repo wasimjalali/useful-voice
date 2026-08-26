@@ -1,5 +1,5 @@
 #!/bin/bash
-# One-time setup: create a stable self-signed code-signing identity so Sadaa
+# One-time setup: create a stable self-signed code-signing identity so Useful Voice
 # keeps its Accessibility (hotkey) and Microphone grants across reinstalls.
 #
 # Why: `make install` re-signs the app. With ad-hoc signing (codesign --sign -)
@@ -55,5 +55,5 @@ security import "$TMP/cert.p12" -k "$KEYCHAIN" -P sadaa \
 echo ""
 echo "Done. '$IDENTITY' is installed."
 echo "Next: run 'make install'. On the first sign you'll get one macOS prompt"
-echo "to use the key - click 'Always Allow'. After that, grant Sadaa"
+echo "to use the key - click 'Always Allow'. After that, grant Useful Voice"
 echo "Accessibility once and the hotkey will keep working across future updates."

@@ -36,7 +36,7 @@ bundle: build
 	rm -rf $(APP)
 	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources
 	cp bundle/Info.plist $(APP)/Contents/Info.plist
-	cp .build/release/SadaaApp $(APP)/Contents/MacOS/Sadaa
+	cp .build/release/UsefulVoiceApp $(APP)/Contents/MacOS/Sadaa
 	cp assets/branding/Sadaa.icns $(APP)/Contents/Resources/Sadaa.icns
 	cp assets/branding/sadaa-icon-b-navy-on-cream.svg.png $(APP)/Contents/Resources/SadaaLogo.png
 	codesign --force --deep --sign "$(SIGN_IDENTITY)" $(APP)

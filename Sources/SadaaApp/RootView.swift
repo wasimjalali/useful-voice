@@ -99,7 +99,7 @@ struct RootView: View {
         HStack(spacing: 10) {
             BrandMark()
             VStack(alignment: .leading, spacing: 1) {
-                Text("Sadaa")
+                Text("Useful Voice")
                     .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(Theme.white)
                 Text("Voice dictation")

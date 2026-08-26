@@ -3,8 +3,8 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key><string>ai.karko.sadaa</string>
-    <key>CFBundleName</key><string>Sadaa</string>
-    <key>CFBundleDisplayName</key><string>Sadaa</string>
+    <key>CFBundleName</key><string>Useful Voice</string>
+    <key>CFBundleDisplayName</key><string>Useful Voice</string>
     <key>CFBundleExecutable</key><string>Sadaa</string>
     <key>CFBundleIconFile</key><string>Sadaa</string>
     <key>CFBundlePackageType</key><string>APPL</string>
@@ -14,6 +14,6 @@
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Sadaa records your voice while dictating so it can be transcribed.</string>
+    <string>Useful Voice records your voice while dictating so it can be transcribed.</string>
 </dict>
 </plist>

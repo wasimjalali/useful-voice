@@ -60,8 +60,8 @@ Tests run under Command Line Tools; the Makefile injects the framework paths Swi
 
 ## Layout
 
-- `Sources/SadaaCore` - testable core: settings, keychain, providers, audio writer/recorder, recording store, hotkey recognizer, Language Memory, Scratchpad, history, and the `DictationController` pipeline.
-- `Sources/SadaaApp` - macOS glue: AppDelegate, menu bar, HUD, hotkey tap, text insertion, premium pages, and settings window.
+- `Sources/UsefulVoiceCore` - testable core: settings, keychain, providers, audio writer/recorder, recording store, hotkey recognizer, Language Memory, Scratchpad, history, and the `DictationController` pipeline.
+- `Sources/UsefulVoiceApp` - macOS glue: AppDelegate, menu bar, HUD, hotkey tap, text insertion, premium pages, and settings window.
 - `docs/superpowers/specs` - the design spec. `docs/superpowers/plans` - the implementation plan.
 - `assets/branding` - the app icon (navy-on-cream 3D sound wave, Karko palette).
 

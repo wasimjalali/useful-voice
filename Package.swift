@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "Sadaa",
+    name: "UsefulVoice",
     platforms: [.macOS(.v14)],
     targets: [
-        .target(name: "SadaaCore"),
-        .executableTarget(name: "SadaaApp", dependencies: ["SadaaCore"]),
-        .testTarget(name: "SadaaCoreTests", dependencies: ["SadaaCore"]),
+        .target(name: "UsefulVoiceCore"),
+        .executableTarget(name: "UsefulVoiceApp", dependencies: ["UsefulVoiceCore"]),
+        .testTarget(name: "UsefulVoiceCoreTests", dependencies: ["UsefulVoiceCore"]),
     ]
 )

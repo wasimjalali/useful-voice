@@ -14,7 +14,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             let hosting = NSHostingController(
                 rootView: RootView(viewModel: viewModel, settings: settings))
             let window = NSWindow(contentViewController: hosting)
-            window.title = "Sadaa"
+            window.title = "Useful Voice"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.setContentSize(NSSize(width: 1040, height: 700))
             window.minSize = NSSize(width: 840, height: 580)

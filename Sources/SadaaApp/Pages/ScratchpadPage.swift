@@ -278,7 +278,7 @@ struct ScratchpadPage: View {
             Text("Import notes")
                 .font(.system(size: 22, weight: .bold))
                 .foregroundStyle(Theme.ink)
-            Text("Paste a Sadaa JSON backup. Existing note IDs are updated and new notes are added.")
+            Text("Paste a Useful Voice JSON backup. Existing note IDs are updated and new notes are added.")
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.muted)
 

@@ -274,13 +274,13 @@ struct HistoryPage: View {
             Text("Teach the dictionary")
                 .font(.system(size: 22, weight: .bold))
                 .foregroundStyle(Theme.ink)
-            Text("Edit the mistake and the spelling you want. Sadaa learns auto-corrections so the same error is fixed next time.")
+            Text("Edit the mistake and the spelling you want. Useful Voice learns auto-corrections so the same error is fixed next time.")
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.muted)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Heard").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
-                TextField("What Sadaa heard", text: $correctionObserved).premiumInputChrome()
+                TextField("What Useful Voice heard", text: $correctionObserved).premiumInputChrome()
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text("Write instead").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)

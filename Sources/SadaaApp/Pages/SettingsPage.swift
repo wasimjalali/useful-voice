@@ -43,7 +43,7 @@ struct SettingsPage: View {
     private var header: some View {
         CommandPageHeader(
             title: "Settings",
-            subtitle: "Choose how Sadaa listens, writes and stores your local data."
+            subtitle: "Choose how Useful Voice listens, writes and stores your local data."
         ) {
             WrappingHStack(horizontalSpacing: 10, verticalSpacing: 8) {
                 Button(isTesting ? "Testing" : "Test connection") { testConnection() }
@@ -123,7 +123,7 @@ struct SettingsPage: View {
 
                 Divider().overlay(Theme.line)
 
-                settingsRow("Start at login", detail: "Keep Sadaa ready in the menu bar") {
+                settingsRow("Start at login", detail: "Keep Useful Voice ready in the menu bar") {
                     Toggle("", isOn: launchBinding).labelsHidden()
                 }
                 settingsRow("Sound cues", detail: "Play a quiet tone when recording starts and stops") {
@@ -146,7 +146,7 @@ struct SettingsPage: View {
     private var speechSection: some View {
         settingsSection(
             title: "Speech",
-            detail: "Sadaa transcribes with Deepgram Nova-3. Your key is stored in the macOS Keychain."
+            detail: "Useful Voice transcribes with Deepgram Nova-3. Your key is stored in the macOS Keychain."
         ) {
             VStack(alignment: .leading, spacing: 16) {
                 secretField(

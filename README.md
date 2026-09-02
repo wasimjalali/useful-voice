@@ -63,7 +63,7 @@ Tests run under Command Line Tools; the Makefile injects the framework paths Swi
 - `Sources/UsefulVoiceCore` - testable core: settings, keychain, providers, audio writer/recorder, recording store, hotkey recognizer, Language Memory, Scratchpad, history, and the `DictationController` pipeline.
 - `Sources/UsefulVoiceApp` - macOS glue: AppDelegate, menu bar, HUD, hotkey tap, text insertion, premium pages, and settings window.
 - `docs/superpowers/specs` - the design spec. `docs/superpowers/plans` - the implementation plan.
-- `assets/branding` - the waveform mark in light and dark Useful Brain tokens.
+- `assets/branding` - the app icon: `useful-voice-mark-dark.svg` and the generated `.icns`.
 
 ## License
 

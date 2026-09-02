@@ -69,19 +69,7 @@ struct RootView: View {
 
     private var brand: some View {
         HStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Theme.ink)
-                UsefulVoiceWaveBars(
-                    style: .still,
-                    barHeight: 16,
-                    barWidth: 3,
-                    spacing: 2.5,
-                    fill: Theme.brandInk,
-                    peakFill: Theme.hudMark
-                )
-            }
-            .frame(width: 28, height: 28)
+            AppIconMark()
             Text("Useful Voice")
                 .font(.system(size: 14, weight: .bold))
                 .tracking(-0.4)
@@ -159,4 +147,38 @@ struct RootView: View {
             SettingsPage(settings: settings, viewModel: viewModel)
         }
     }
+}
+
+/// The same dark waveform tile as the macOS app icon.
+private struct AppIconMark: View {
+    var body: some View {
+        Group {
+            if let image = Self.image {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+            } else {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Theme.ink)
+            }
+        }
+        .frame(width: 28, height: 28)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private static let image: NSImage? = {
+        if let url = Bundle.main.url(forResource: "SadaaLogo", withExtension: "png"),
+           let image = NSImage(contentsOf: url) {
+            return image
+        }
+        if let url = Bundle.main.url(forResource: "Sadaa", withExtension: "icns"),
+           let image = NSImage(contentsOf: url) {
+            return image
+        }
+        if let appIcon = NSApplication.shared.applicationIconImage, appIcon.isValid {
+            return appIcon
+        }
+        return nil
+    }()
 }

@@ -36,17 +36,18 @@ struct HomePage: View {
                 latestTranscript
                 recentTranscripts
             }
-            .padding(32)
+            .padding(.horizontal, 32)
+            .padding(.top, 20)
+            .padding(.bottom, 32)
             .frame(maxWidth: 980, alignment: .topLeading)
-            .frame(maxWidth: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .background(Theme.surface)
     }
 
     private var header: some View {
         CommandPageHeader(
-            title: "Dictate",
-            subtitle: "Press your hotkey or use the microphone. Useful Voice inserts clean text wherever you are typing."
+            title: "Dictate"
         ) {
             HStack(spacing: 8) {
                 quietStatus(
@@ -68,21 +69,16 @@ struct HomePage: View {
             Circle()
                 .fill(viewModel.providerConfigured ? Theme.success : Theme.warning)
                 .frame(width: 8, height: 8)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(viewModel.providerConfigured ? "Ready to dictate" : "Connect a speech provider")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-                Text(viewModel.providerConfigured
-                     ? "\(viewModel.providerName) is connected"
-                     : "Open Settings and add your Deepgram API key.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.muted)
-            }
+            Text(viewModel.providerConfigured
+                 ? "\(viewModel.providerName) is ready"
+                 : "Add your Deepgram key in Settings")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Theme.ink)
             Spacer()
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 13)
-        .background(Theme.surfaceSubtle, in: RoundedRectangle(cornerRadius: 10))
+        .padding(.vertical, 14)
+        .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var dictateStage: some View {
@@ -91,7 +87,7 @@ struct HomePage: View {
 
             VStack(spacing: 5) {
                 Text(stageTitle)
-                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                    .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                 Text(stageDetail)
                     .font(.system(size: 13))
@@ -111,7 +107,7 @@ struct HomePage: View {
         .padding(.vertical, 42)
         .padding(.horizontal, 24)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.line, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.lineStrong, lineWidth: 1))
     }
 
     @ViewBuilder
@@ -156,8 +152,8 @@ struct HomePage: View {
             if viewModel.recent.isEmpty {
                 CommandEmptyState(
                     icon: "waveform",
-                    title: "Your transcripts will appear here",
-                    detail: "Start a dictation and Useful Voice will keep a private local copy."
+                    title: "No transcripts yet",
+                    detail: "Start a dictation to keep a local copy here."
                 )
             } else {
                 VStack(spacing: 0) {
@@ -229,7 +225,7 @@ struct HomePage: View {
         .foregroundStyle(color)
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
-        .background(Theme.surfaceSubtle, in: RoundedRectangle(cornerRadius: 7))
+        .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 8))
     }
 
     private func copy(_ text: String) {

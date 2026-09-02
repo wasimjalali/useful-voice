@@ -15,9 +15,14 @@ final class MainWindowController: NSObject, NSWindowDelegate {
                 rootView: RootView(viewModel: viewModel, settings: settings))
             let window = NSWindow(contentViewController: hosting)
             window.title = "Useful Voice"
-            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-            window.setContentSize(NSSize(width: 1040, height: 700))
-            window.minSize = NSSize(width: 840, height: 580)
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.titlebarSeparatorStyle = .none
+            window.backgroundColor = Theme.canvasNSColor
+            window.isMovableByWindowBackground = true
+            window.setContentSize(Self.defaultContentSize(on: NSScreen.main))
+            window.minSize = NSSize(width: 960, height: 640)
             window.isReleasedWhenClosed = false
             window.delegate = self
             window.center()
@@ -32,5 +37,13 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         // Back to menu-bar-only. Window is kept (isReleasedWhenClosed=false) for reopen.
         NSApp.setActivationPolicy(.accessory)
+    }
+
+    /// A standard document-sized window, clamped to the visible screen.
+    private static func defaultContentSize(on screen: NSScreen?) -> NSSize {
+        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let width = min(1280, max(1080, visible.width * 0.62))
+        let height = min(860, max(720, visible.height * 0.76))
+        return NSSize(width: width.rounded(), height: height.rounded())
     }
 }

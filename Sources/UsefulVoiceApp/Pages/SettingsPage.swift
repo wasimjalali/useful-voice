@@ -32,9 +32,11 @@ struct SettingsPage: View {
                 speechSection
                 dataSection
             }
-            .padding(32)
+            .padding(.horizontal, 32)
+            .padding(.top, 20)
+            .padding(.bottom, 32)
             .frame(maxWidth: 920, alignment: .topLeading)
-            .frame(maxWidth: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .background(Theme.surface)
         .onAppear(perform: load)
@@ -42,8 +44,7 @@ struct SettingsPage: View {
 
     private var header: some View {
         CommandPageHeader(
-            title: "Settings",
-            subtitle: "Choose how Useful Voice listens, writes and stores your local data."
+            title: "Settings"
         ) {
             WrappingHStack(horizontalSpacing: 10, verticalSpacing: 8) {
                 Button(isTesting ? "Testing" : "Test connection") { testConnection() }
@@ -89,14 +90,11 @@ struct SettingsPage: View {
             }
         }
         .padding(14)
-        .background(Theme.surfaceSubtle, in: RoundedRectangle(cornerRadius: 10))
+        .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var generalSection: some View {
-        settingsSection(
-            title: "General",
-            detail: "Language, shortcuts and app behavior."
-        ) {
+        settingsSection(title: "General") {
             VStack(spacing: 16) {
                 settingsRow("Language", detail: "Auto-detect, English or German") {
                     BrandedMenuPicker(
@@ -144,10 +142,7 @@ struct SettingsPage: View {
     }
 
     private var speechSection: some View {
-        settingsSection(
-            title: "Speech",
-            detail: "Useful Voice transcribes with Deepgram Nova-3. Your key is stored in the macOS Keychain."
-        ) {
+        settingsSection(title: "Speech") {
             VStack(alignment: .leading, spacing: 16) {
                 secretField(
                     title: "Deepgram API key",
@@ -176,10 +171,7 @@ struct SettingsPage: View {
     }
 
     private var dataSection: some View {
-        settingsSection(
-            title: "Data and recording",
-            detail: "Control local retention and silence detection."
-        ) {
+        settingsSection(title: "Data and recording") {
             VStack(spacing: 16) {
                 settingsRow("Stop after silence", detail: "Automatically finish a recording after this many seconds") {
                     HStack(spacing: 8) {
@@ -201,23 +193,17 @@ struct SettingsPage: View {
 
     private func settingsSection<Content: View>(
         title: String,
-        detail: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-                Text(detail)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.muted)
-            }
+        VStack(alignment: .leading, spacing: 16) {
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.ink)
             content()
         }
         .padding(20)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.line, lineWidth: 1))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
     }
 
     private func settingsRow<Accessory: View>(

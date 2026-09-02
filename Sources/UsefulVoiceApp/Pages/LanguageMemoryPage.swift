@@ -26,9 +26,11 @@ struct LanguageMemoryPage: View {
                 teachCard
                 libraryCard
             }
-            .padding(32)
+            .padding(.horizontal, 32)
+            .padding(.top, 20)
+            .padding(.bottom, 32)
             .frame(maxWidth: 920, alignment: .topLeading)
-            .frame(maxWidth: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .background(Theme.surface)
         .sheet(isPresented: $showImport) { importSheet }
@@ -38,8 +40,7 @@ struct LanguageMemoryPage: View {
 
     private var header: some View {
         CommandPageHeader(
-            title: "Dictionary",
-            subtitle: "Teach names once. Useful Voice biases recognition and fixes the same mistakes next time."
+            title: "Dictionary"
         ) {
             BrandedMenuButton(help: "Import and export") {
                 Button("Copy full backup") {
@@ -98,8 +99,7 @@ struct LanguageMemoryPage: View {
             }
         }
         .padding(16)
-        .background(Theme.surfaceSubtle, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.line, lineWidth: 1))
+        .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     @ViewBuilder
@@ -128,27 +128,21 @@ struct LanguageMemoryPage: View {
     // MARK: - Teach
 
     private var teachCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Teach Useful Voice")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Theme.ink)
-
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 14) {
-                    addWordBlock.frame(maxWidth: .infinity, alignment: .topLeading)
-                    Divider().overlay(Theme.line)
-                    fixMistakeBlock.frame(maxWidth: .infinity, alignment: .topLeading)
-                }
-                VStack(alignment: .leading, spacing: 16) {
-                    addWordBlock
-                    Divider().overlay(Theme.line)
-                    fixMistakeBlock
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 18) {
+                addWordBlock.frame(maxWidth: .infinity, alignment: .topLeading)
+                Divider().overlay(Theme.line)
+                fixMistakeBlock.frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            VStack(alignment: .leading, spacing: 18) {
+                addWordBlock
+                Divider().overlay(Theme.line)
+                fixMistakeBlock
             }
         }
-        .padding(18)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.line, lineWidth: 1))
+        .padding(20)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
     }
 
     private var addWordBlock: some View {
@@ -167,9 +161,6 @@ struct LanguageMemoryPage: View {
             TextField("Sounds like (optional)", text: $soundsLike)
                 .premiumInputChrome()
                 .onSubmit { addWord() }
-            Text("Biases recognition and fixes casing locally.")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.muted)
         }
     }
 
@@ -186,9 +177,6 @@ struct LanguageMemoryPage: View {
                     .premiumInputChrome()
             }
             HStack {
-                Text("Learns an auto-correction for next time.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.muted)
                 Spacer()
                 Button("Learn") { addCorrection() }
                     .buttonStyle(.borderedProminent)
@@ -223,7 +211,7 @@ struct LanguageMemoryPage: View {
                     .foregroundStyle(Theme.muted)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Theme.surfaceSubtle, in: Capsule())
+                    .background(Theme.sunken, in: Capsule())
             }
 
             switch section {
@@ -263,9 +251,9 @@ struct LanguageMemoryPage: View {
                 shortcutsContent
             }
         }
-        .padding(18)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.line, lineWidth: 1))
+        .padding(20)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
     }
 
     private var entryCount: Int {
@@ -298,18 +286,13 @@ struct LanguageMemoryPage: View {
             VStack(spacing: 0) {
                 content()
             }
-            .background(Theme.surfaceSubtle.opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.line, lineWidth: 1))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
     }
 
     private var shortcutsContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Say a short trigger to expand reusable text.")
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.muted)
-
             HStack(spacing: 8) {
                 TextField("Trigger", text: $snippetTrigger).premiumInputChrome()
                 TextField("Expanded text", text: $snippetExpansion).premiumInputChrome()
@@ -349,8 +332,7 @@ struct LanguageMemoryPage: View {
                         .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
                     }
                 }
-                .background(Theme.surfaceSubtle.opacity(0.55), in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.line, lineWidth: 1))
+                .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
         }
     }
@@ -361,6 +343,7 @@ struct LanguageMemoryPage: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Import dictionary")
                 .font(.system(size: 22, weight: .bold))
+                .tracking(-0.3)
                 .foregroundStyle(Theme.ink)
 
             BrandedSegmentedControl(
@@ -372,7 +355,7 @@ struct LanguageMemoryPage: View {
                 .font(.system(size: 12, design: .monospaced))
                 .scrollContentBackground(.hidden)
                 .padding(10)
-                .background(Theme.surfaceSubtle, in: RoundedRectangle(cornerRadius: 10))
+                .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.line, lineWidth: 1))
                 .frame(minHeight: 230)
 
@@ -402,8 +385,8 @@ struct LanguageMemoryPage: View {
 
     private func label(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(Theme.muted)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Theme.ink)
     }
 
     private func addWord() {

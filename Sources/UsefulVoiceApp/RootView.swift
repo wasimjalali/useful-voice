@@ -3,7 +3,7 @@ import SwiftUI
 import UsefulVoiceCore
 
 /// Sections in the main window sidebar. String-raw + Identifiable makes it
-/// usable directly as the selection value for `List(selection:)`.
+/// usable directly as the selection value for `ForEach`.
 enum SidebarSection: String, CaseIterable, Identifiable {
     case home, languageMemory, scratchpad, history, settings
 
@@ -30,8 +30,7 @@ enum SidebarSection: String, CaseIterable, Identifiable {
     }
 }
 
-/// The windowed shell: a fixed navy sidebar and a white working canvas. Each section
-/// resolves to a dedicated page composed from the shared view model.
+/// Light rail plus a white stage, matching the Useful Brain workspace shell.
 struct RootView: View {
     @ObservedObject var viewModel: UsefulVoiceViewModel
     let settings: AppSettings
@@ -40,32 +39,49 @@ struct RootView: View {
     @StateObject private var toasts = AppToastCenter()
 
     var body: some View {
-        NavigationSplitView {
+        HStack(spacing: 0) {
             sidebar
-        } detail: {
-            detail
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Theme.surface)
-                .overlay { PremiumToastHost() }
+            stage
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.canvas)
         .environmentObject(toasts)
-        // Useful Voice wears a fixed light cream/navy brand. Pin the window to the
-        // light scheme so default text resolves dark and stays readable on
-        // cream even when macOS is in Dark Mode.
+        .tint(Theme.ink)
         .preferredColorScheme(.light)
     }
 
     // MARK: - Sidebar
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 18) {
             brand
-            Text("Workspace")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Theme.white.opacity(0.46))
-                .padding(.horizontal, 18)
-                .padding(.top, 14)
-                .padding(.bottom, 2)
+            nav
+            Spacer(minLength: 0)
+            footer
+        }
+        .padding(.top, 44)
+        .padding(.bottom, 12)
+        .padding(.horizontal, 12)
+        .frame(width: 232)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(Theme.rail)
+    }
+
+    private var brand: some View {
+        HStack(spacing: 10) {
+            AppIconMark()
+            Text("Useful Voice")
+                .font(.system(size: 14, weight: .bold))
+                .tracking(-0.4)
+                .foregroundStyle(Theme.ink)
+        }
+        .padding(.horizontal, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Useful Voice")
+    }
+
+    private var nav: some View {
+        VStack(alignment: .leading, spacing: 2) {
             ForEach(SidebarSection.allCases) { section in
                 Button {
                     selection = section
@@ -78,61 +94,43 @@ struct RootView: View {
                 }
                 .buttonStyle(.plain)
                 .clickableCursor()
-                .padding(.horizontal, 10)
-            }
-            Spacer(minLength: 0)
-            footer
-        }
-        .frame(minWidth: 196, maxWidth: 196, maxHeight: .infinity, alignment: .top)
-        .background(
-            Rectangle()
-                .fill(Theme.navy800)
-                .overlay(alignment: .trailing) {
-                    Rectangle()
-                        .fill(Theme.white.opacity(0.08))
-                        .frame(width: 1)
-                }
-        )
-    }
-
-    private var brand: some View {
-        HStack(spacing: 10) {
-            BrandMark()
-            VStack(alignment: .leading, spacing: 1) {
-                Text("U")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(Theme.white)
-                Text("Useful Voice")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Theme.white.opacity(0.58))
+                .accessibilityLabel(section.title)
+                .accessibilityAddTraits(selection == section ? [.isSelected] : [])
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 18)
-        .padding(.bottom, 12)
     }
 
     private var footer: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(viewModel.hotkeyActive ? Theme.success : Theme.accent)
-                    .frame(width: 7, height: 7)
-                Text(viewModel.hotkeyActive ? "Hotkeys active" : "Needs access")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Theme.white.opacity(0.78))
-            }
-            Text(viewModel.providerName)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(Theme.white.opacity(0.45))
+        HStack(spacing: 8) {
+            Circle()
+                .fill(viewModel.hotkeyActive ? Theme.success : Theme.inkFaint)
+                .frame(width: 7, height: 7)
+            Text(viewModel.hotkeyActive ? "Hotkeys active" : "Needs access")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Theme.ink)
+                .lineLimit(1)
+            Spacer(minLength: 0)
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 10))
-        .padding(12)
+        .padding(.horizontal, 8)
+        .padding(.top, 12)
+        .overlay(alignment: .top) {
+            Rectangle().fill(Theme.line).frame(height: 1)
+        }
     }
 
-    // MARK: - Detail
+    // MARK: - Stage
+
+    private var stage: some View {
+        detail
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay { PremiumToastHost() }
+            .shadow(color: Theme.ink.opacity(0.06), radius: 18, y: 8)
+            .padding(.top, 6)
+            .padding(.trailing, 10)
+            .padding(.bottom, 10)
+    }
 
     @ViewBuilder
     private var detail: some View {
@@ -151,30 +149,25 @@ struct RootView: View {
     }
 }
 
-private struct BrandMark: View {
+/// The same dark waveform tile as the macOS app icon.
+private struct AppIconMark: View {
     var body: some View {
         Group {
-            if let logo = Self.logoImage {
-                Image(nsImage: logo)
+            if let image = Self.image {
+                Image(nsImage: image)
                     .resizable()
+                    .interpolation(.high)
                     .scaledToFit()
             } else {
-                Image(systemName: "waveform")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Theme.navy800)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Theme.cream)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Theme.ink)
             }
         }
-        .frame(width: 34, height: 34)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(Theme.gold.opacity(0.22), lineWidth: 1)
-        )
+        .frame(width: 28, height: 28)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
-    private static let logoImage: NSImage? = {
+    private static let image: NSImage? = {
         if let url = Bundle.main.url(forResource: "SadaaLogo", withExtension: "png"),
            let image = NSImage(contentsOf: url) {
             return image

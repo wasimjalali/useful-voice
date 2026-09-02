@@ -91,15 +91,15 @@ private struct PremiumIconButtonBody: View {
     var body: some View {
         configuration.label
             .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(Theme.navy)
+            .foregroundStyle(Theme.ink)
             .frame(width: 28, height: 28)
             .background(
                 RoundedRectangle(cornerRadius: 7)
-                    .fill(Theme.navy.opacity(hovering ? 0.10 : 0.04))
+                    .fill(Theme.ink.opacity(hovering ? 0.08 : 0.04))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 7)
-                    .strokeBorder(Theme.navy.opacity(hovering ? 0.35 : 0.16), lineWidth: 1)
+                    .strokeBorder(Theme.lineStrong, lineWidth: 1)
             )
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .onHover { hovering = $0 }
@@ -118,7 +118,7 @@ struct PremiumSearchField: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(focused ? Theme.gold : Theme.charcoal.opacity(0.45))
+                .foregroundStyle(focused ? Theme.ink : Theme.inkFaint)
             TextField(placeholder, text: $text)
                 .textFieldStyle(.plain)
                 .focused($focused)
@@ -127,7 +127,7 @@ struct PremiumSearchField: View {
                     text = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(Theme.charcoal.opacity(0.35))
+                        .foregroundStyle(Theme.inkFaint)
                 }
                 .buttonStyle(.plain)
                 .clickableCursor()
@@ -137,11 +137,9 @@ struct PremiumSearchField: View {
         .padding(.vertical, 8)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 9))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(focused ? Theme.accent : Theme.line,
-                              lineWidth: 1)
+            RoundedRectangle(cornerRadius: 9)
+                .strokeBorder(focused ? Theme.ink : Theme.lineStrong, lineWidth: 1)
         )
-        .shadow(color: focused ? Theme.accent.opacity(0.12) : .clear, radius: 0, x: 0, y: 0)
         .animation(.easeOut(duration: 0.16), value: focused)
     }
 }
@@ -176,7 +174,7 @@ struct BrandedMenuPicker<Value: Hashable>: View {
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(Theme.brand.opacity(0.55))
+                    .foregroundStyle(Theme.inkMuted)
             }
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(Theme.ink)
@@ -191,7 +189,7 @@ struct BrandedMenuPicker<Value: Hashable>: View {
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 9))
         .overlay(
             RoundedRectangle(cornerRadius: 9)
-                .strokeBorder(Theme.brand.opacity(0.22), lineWidth: 1)
+                .strokeBorder(Theme.lineStrong, lineWidth: 1)
         )
         .fixedSize(horizontal: false, vertical: true)
         .help(title)
@@ -213,15 +211,15 @@ struct BrandedMenuButton<Content: View>: View {
         Menu(content: content) {
             Image(systemName: systemImage)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Theme.brand)
+                .foregroundStyle(Theme.ink)
                 .frame(width: 32, height: 32)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Theme.brand.opacity(hovering ? 0.10 : 0.05))
+                        .fill(hovering ? Theme.sunken : Theme.surface)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(Theme.brand.opacity(hovering ? 0.32 : 0.18), lineWidth: 1)
+                        .strokeBorder(Theme.lineStrong, lineWidth: 1)
                 )
                 .contentShape(Rectangle())
         }
@@ -251,7 +249,7 @@ struct BrandedSegmentedControl<Value: Hashable>: View {
                 } label: {
                     Text(option.label)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(selected ? Theme.surface : Theme.ink.opacity(0.72))
+                        .foregroundStyle(selected ? Theme.accentInk : Theme.ink)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
                         .frame(maxWidth: .infinity)
@@ -289,11 +287,11 @@ struct PremiumSection<Content: View>: View {
             HStack(spacing: 8) {
                 if let icon {
                     Image(systemName: icon)
-                        .foregroundStyle(Theme.gold)
+                        .foregroundStyle(Theme.inkMuted)
                 }
                 Text(title)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Theme.navy)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
                 Spacer(minLength: 0)
             }
             content
@@ -590,18 +588,12 @@ private struct CommandPageHeaderLayout: Layout {
 }
 
 struct CommandPageHeader<Accessory: View>: View {
-    let eyebrow: String?
     let title: String
-    let subtitle: String
     let accessory: Accessory
 
-    init(eyebrow: String? = nil,
-         title: String,
-         subtitle: String,
+    init(title: String,
          @ViewBuilder accessory: () -> Accessory) {
-        self.eyebrow = eyebrow
         self.title = title
-        self.subtitle = subtitle
         self.accessory = accessory()
     }
 
@@ -609,31 +601,22 @@ struct CommandPageHeader<Accessory: View>: View {
         CommandPageHeaderLayout(
             horizontalSpacing: 18,
             verticalSpacing: 14,
-            minimumTitleWidth: 340
+            minimumTitleWidth: 280
         ) {
-            titleBlock
+            Text(title)
+                .font(.system(size: 28, weight: .bold))
+                .tracking(-0.4)
+                .foregroundStyle(Theme.ink)
             accessory
                 .fixedSize(horizontal: true, vertical: false)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-
-    private var titleBlock: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.system(size: 28, weight: .bold))
-                .foregroundStyle(Theme.ink)
-            Text(subtitle)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Theme.muted)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
 }
 
 extension CommandPageHeader where Accessory == EmptyView {
-    init(eyebrow: String? = nil, title: String, subtitle: String) {
-        self.init(eyebrow: eyebrow, title: title, subtitle: subtitle) {
+    init(title: String) {
+        self.init(title: title) {
             EmptyView()
         }
     }
@@ -659,12 +642,12 @@ struct CommandPanel<Content: View>: View {
                     if let icon {
                         Image(systemName: icon)
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Theme.gold)
+                            .foregroundStyle(Theme.inkMuted)
                     }
                     if let title {
                         Text(title)
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(Theme.navy)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
                     }
                     Spacer(minLength: 0)
                 }
@@ -684,7 +667,7 @@ struct CommandMetric: View {
     let icon: String
     let value: String
     let label: String
-    var tint: Color = Theme.navy
+    var tint: Color = Theme.ink
 
     var body: some View {
         HStack(spacing: 10) {
@@ -719,7 +702,7 @@ struct CommandMetric: View {
 struct CommandToolbarButton: View {
     let systemImage: String
     let title: String
-    var tint: Color = Theme.navy
+    var tint: Color = Theme.ink
     let action: () -> Void
 
     var body: some View {
@@ -731,7 +714,7 @@ struct CommandToolbarButton: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(tint)
-        .background(Theme.white, in: RoundedRectangle(cornerRadius: 7))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 7))
         .overlay(
             RoundedRectangle(cornerRadius: 7)
                 .strokeBorder(tint.opacity(0.24), lineWidth: 1)
@@ -749,13 +732,13 @@ struct CommandEmptyState: View {
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 34, weight: .light))
-                .foregroundStyle(Theme.gold)
+                .font(.system(size: 28, weight: .light))
+                .foregroundStyle(Theme.inkFaint)
             Text(title)
-                .font(.system(size: 15, weight: .bold))
+                .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(Theme.ink)
             Text(detail)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 13))
                 .foregroundStyle(Theme.muted)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)

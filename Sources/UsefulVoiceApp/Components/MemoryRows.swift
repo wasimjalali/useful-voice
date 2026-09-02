@@ -15,12 +15,14 @@ struct MemoryTermRow: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(term.phrase)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.ink)
-                Text(metadata(for: term))
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.muted)
-                    .lineLimit(2)
+                if !metadata(for: term).isEmpty {
+                    Text(metadata(for: term))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.muted)
+                        .lineLimit(2)
+                }
                 if !term.notes.isEmpty {
                     Text(term.notes)
                         .font(.system(size: 12))
@@ -48,7 +50,6 @@ struct MemoryTermRow: View {
         if !hints.isEmpty {
             parts.append("also fixes: " + hints.joined(separator: ", "))
         }
-        if parts.isEmpty { parts.append("Biases recognition and fixes casing") }
         return parts.joined(separator: " · ")
     }
 }

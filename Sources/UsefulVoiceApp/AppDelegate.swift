@@ -65,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        ThinScrollbar.install()
         installMainMenu()
         chimes.isEnabled = { [settings] in settings.soundEffectsEnabled }
         setUpStatusItem()

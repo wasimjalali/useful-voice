@@ -85,6 +85,7 @@ private var uvApplyingThinChrome: UInt8 = 0
 private var uvScrollObserver: UInt8 = 0
 private var uvHideWork: UInt8 = 0
 private var uvLastOrigin: UInt8 = 0
+private var uvRevealed: UInt8 = 0
 
 extension NSScrollView {
     @objc fileprivate func uv_tile() {
@@ -104,16 +105,15 @@ extension NSScrollView {
         }
         autohidesScrollers = true
         if !(verticalScroller is ThinScroller) {
-            let scroller = ThinScroller(frame: verticalScroller?.frame ?? .zero)
-            scroller.alphaValue = 0
-            verticalScroller = scroller
+            verticalScroller = ThinScroller(frame: verticalScroller?.frame ?? .zero)
         }
         if !(horizontalScroller is ThinScroller) {
-            let scroller = ThinScroller(frame: horizontalScroller?.frame ?? .zero)
-            scroller.alphaValue = 0
-            horizontalScroller = scroller
+            horizontalScroller = ThinScroller(frame: horizontalScroller?.frame ?? .zero)
         }
         uv_installScrollFade()
+        if objc_getAssociatedObject(self, &uvRevealed) as? Bool != true {
+            uv_setScrollersHidden(true)
+        }
     }
 
     fileprivate func uv_installScrollFade() {
@@ -126,8 +126,7 @@ extension NSScrollView {
             name: NSView.boundsDidChangeNotification,
             object: contentView
         )
-        verticalScroller?.alphaValue = 0
-        horizontalScroller?.alphaValue = 0
+        uv_setScrollersHidden(true)
     }
 
     @objc fileprivate func uv_contentBoundsDidChange() {
@@ -144,22 +143,34 @@ extension NSScrollView {
             return
         }
         objc_setAssociatedObject(self, &uvLastOrigin, boxed, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-
-        verticalScroller?.alphaValue = 1
-        horizontalScroller?.alphaValue = 1
+        objc_setAssociatedObject(self, &uvRevealed, true, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        uv_setScrollersHidden(false)
 
         if let previous = objc_getAssociatedObject(self, &uvHideWork) as? DispatchWorkItem {
             previous.cancel()
         }
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
+            objc_setAssociatedObject(self, &uvRevealed, false, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.22
                 self.verticalScroller?.animator().alphaValue = 0
                 self.horizontalScroller?.animator().alphaValue = 0
+            } completionHandler: {
+                if objc_getAssociatedObject(self, &uvRevealed) as? Bool != true {
+                    self.uv_setScrollersHidden(true)
+                }
             }
         }
         objc_setAssociatedObject(self, &uvHideWork, work, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.85, execute: work)
+    }
+
+    fileprivate func uv_setScrollersHidden(_ hidden: Bool) {
+        for scroller in [verticalScroller, horizontalScroller] {
+            guard let scroller else { continue }
+            scroller.isHidden = hidden
+            scroller.alphaValue = hidden ? 0 : 1
+        }
     }
 }

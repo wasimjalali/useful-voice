@@ -32,7 +32,9 @@ struct SettingsPage: View {
                 speechSection
                 dataSection
             }
-            .padding(32)
+            .padding(.horizontal, 32)
+            .padding(.top, 20)
+            .padding(.bottom, 32)
             .frame(maxWidth: 920, alignment: .topLeading)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }

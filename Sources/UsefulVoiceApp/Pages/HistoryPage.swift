@@ -30,7 +30,9 @@ struct HistoryPage: View {
             header
             workspace
         }
-        .padding(32)
+        .padding(.horizontal, 32)
+        .padding(.top, 20)
+        .padding(.bottom, 32)
         .frame(maxWidth: 1180, maxHeight: .infinity, alignment: .topLeading)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Theme.surface)

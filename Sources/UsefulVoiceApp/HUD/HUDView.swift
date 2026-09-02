@@ -193,6 +193,7 @@ struct UsefulVoiceWaveBars: View {
     var barWidth: CGFloat = 4
     var spacing: CGFloat = 3
     var fill: Color = Theme.ink
+    var peakFill: Color? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -233,7 +234,7 @@ struct UsefulVoiceWaveBars: View {
         HStack(spacing: spacing) {
             ForEach(weights.indices, id: \.self) { index in
                 Capsule()
-                    .fill(fill)
+                    .fill(index == 2 ? (peakFill ?? fill) : fill)
                     .frame(width: barWidth, height: pixels(heightFraction(index)))
             }
         }

@@ -69,7 +69,19 @@ struct RootView: View {
 
     private var brand: some View {
         HStack(spacing: 10) {
-            UsefulVoiceWaveBars(style: .still, barHeight: 22, barWidth: 4, spacing: 3)
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Theme.ink)
+                UsefulVoiceWaveBars(
+                    style: .still,
+                    barHeight: 16,
+                    barWidth: 3,
+                    spacing: 2.5,
+                    fill: Theme.brandInk,
+                    peakFill: Theme.hudMark
+                )
+            }
+            .frame(width: 28, height: 28)
             Text("Useful Voice")
                 .font(.system(size: 14, weight: .bold))
                 .tracking(-0.4)
@@ -127,7 +139,7 @@ struct RootView: View {
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
             .overlay { PremiumToastHost() }
             .shadow(color: Theme.ink.opacity(0.06), radius: 18, y: 8)
-            .padding(.top, 10)
+            .padding(.top, 6)
             .padding(.trailing, 10)
             .padding(.bottom, 10)
     }

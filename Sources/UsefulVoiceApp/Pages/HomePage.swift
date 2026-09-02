@@ -36,7 +36,9 @@ struct HomePage: View {
                 latestTranscript
                 recentTranscripts
             }
-            .padding(32)
+            .padding(.horizontal, 32)
+            .padding(.top, 20)
+            .padding(.bottom, 32)
             .frame(maxWidth: 980, alignment: .topLeading)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }

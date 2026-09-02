@@ -10,6 +10,14 @@ A fast, personal voice-dictation app for macOS. Tap a hotkey anywhere, speak in 
 
 Useful Voice records, transcribes, applies your personal dictionary and inserts the result at your cursor with a clipboard backup. The main window focuses on five clear areas: Dictate, Library, Dictionary, Notes and Settings.
 
+![Useful Voice Dictate page with the microphone ready.](docs/images/dictate.png)
+
+![Useful Voice Notes with a note open in the editor.](docs/images/notes.png)
+
+![Useful Voice Dictionary with taught words and a fix-a-mistake form.](docs/images/dictionary.png)
+
+![Useful Voice Settings with language, hotkeys and Deepgram ready.](docs/images/settings.png)
+
 ## Build and run
 
 ```bash

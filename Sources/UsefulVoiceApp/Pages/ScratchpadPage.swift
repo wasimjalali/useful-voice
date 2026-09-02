@@ -23,7 +23,7 @@ struct ScratchpadPage: View {
         }
         .padding(32)
         .frame(maxWidth: 1180, maxHeight: .infinity, alignment: .topLeading)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Theme.surface)
         .sheet(isPresented: $showImport) { importSheet }
         .onDisappear { scratchpad.commitDraft() }
@@ -33,8 +33,7 @@ struct ScratchpadPage: View {
 
     private var header: some View {
         CommandPageHeader(
-            title: "Notes",
-            subtitle: "Private scratch space for dictated ideas. Everything saves as you type."
+            title: "Notes"
         ) {
             HStack(spacing: 8) {
                 BrandedMenuButton(help: "Import and export") {
@@ -90,6 +89,7 @@ struct ScratchpadPage: View {
                     .padding(.horizontal, 7)
                     .padding(.vertical, 4)
                     .background(Theme.surface, in: Capsule())
+                    .overlay(Capsule().strokeBorder(Theme.line, lineWidth: 1))
             }
 
             if scratchpad.filteredNotes.isEmpty {
@@ -97,8 +97,8 @@ struct ScratchpadPage: View {
                     icon: scratchpad.notes.isEmpty ? "note.text" : "magnifyingglass",
                     title: scratchpad.notes.isEmpty ? "No notes yet" : "No matching notes",
                     detail: scratchpad.notes.isEmpty
-                        ? "Create a note or send a transcript here from Library."
-                        : "Try a shorter search or a tag."
+                        ? "Create a note or send a transcript from Library."
+                        : "Try a shorter search."
                 )
             } else {
                 ScrollView {
@@ -115,8 +115,7 @@ struct ScratchpadPage: View {
             }
         }
         .padding(14)
-        .background(Theme.surfaceSubtle, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.line, lineWidth: 1))
+        .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .frame(maxHeight: .infinity)
     }
 
@@ -135,7 +134,8 @@ struct ScratchpadPage: View {
                         )
                     )
                     .textFieldStyle(.plain)
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.system(size: 26, weight: .bold))
+                    .tracking(-0.3)
                     .foregroundStyle(Theme.ink)
                     .padding(.bottom, 10)
 
@@ -145,8 +145,9 @@ struct ScratchpadPage: View {
                             set: { scratchpad.updateDraftBody($0) }
                         )
                     )
-                    .font(.system(size: 15))
+                    .font(.system(size: 16))
                     .foregroundStyle(Theme.ink)
+                    .lineSpacing(4)
                     .scrollContentBackground(.hidden)
                     .padding(2)
                     .frame(minHeight: 120, maxHeight: .infinity)
@@ -167,7 +168,7 @@ struct ScratchpadPage: View {
                         Text("\(ScratchpadNote.wordCount(in: scratchpad.draftBody)) words")
                             .font(.system(size: 11, weight: .medium).monospacedDigit())
                             .foregroundStyle(Theme.muted)
-                        Text("Auto-saved")
+                        Text("Saved")
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(Theme.success)
                     }
@@ -186,13 +187,13 @@ struct ScratchpadPage: View {
                 CommandEmptyState(
                     icon: "note.text",
                     title: "Select or create a note",
-                    detail: "Notes save automatically as you type."
+                    detail: "Choose a note from the list, or create one."
                 )
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.line, lineWidth: 1))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
     }
 
     private func editorToolbar(_ selected: ScratchpadNote) -> some View {
@@ -254,16 +255,16 @@ struct ScratchpadPage: View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(active ? Theme.brand : Theme.ink.opacity(0.82))
+                .foregroundStyle(active ? Theme.ink : Theme.inkMuted)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(active ? Theme.brand.opacity(0.10) : Theme.surfaceSubtle)
+                        .fill(active ? Theme.sunken : Theme.surface)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(active ? Theme.brand.opacity(0.28) : Theme.line, lineWidth: 1)
+                        .strokeBorder(Theme.lineStrong, lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
@@ -277,16 +278,14 @@ struct ScratchpadPage: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Import notes")
                 .font(.system(size: 22, weight: .bold))
+                .tracking(-0.3)
                 .foregroundStyle(Theme.ink)
-            Text("Paste a Useful Voice JSON backup. Existing note IDs are updated and new notes are added.")
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.muted)
 
             TextEditor(text: $importText)
                 .font(.system(size: 12, design: .monospaced))
                 .scrollContentBackground(.hidden)
                 .padding(10)
-                .background(Theme.surfaceSubtle, in: RoundedRectangle(cornerRadius: 10))
+                .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.line, lineWidth: 1))
                 .frame(minHeight: 230)
 

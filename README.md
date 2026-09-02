@@ -34,7 +34,7 @@ Use **Test connection** in Settings to run a tiny redacted transcription probe b
 
 ## Using it
 
-- **Tap your dictation key** to start recording (Right Command by default; a gold pill appears at the bottom of the screen). Tap again to stop, transcribe and insert.
+- **Tap your dictation key** to start recording (Right Command by default; an ink pill appears at the bottom of the screen). Tap again to stop, transcribe and insert.
 - **Esc** while recording cancels.
 - Recording auto-stops after 60s of silence or 10 minutes total.
 - Pick **Auto-detect / English / German** in the menu bar.
@@ -63,7 +63,7 @@ Tests run under Command Line Tools; the Makefile injects the framework paths Swi
 - `Sources/UsefulVoiceCore` - testable core: settings, keychain, providers, audio writer/recorder, recording store, hotkey recognizer, Language Memory, Scratchpad, history, and the `DictationController` pipeline.
 - `Sources/UsefulVoiceApp` - macOS glue: AppDelegate, menu bar, HUD, hotkey tap, text insertion, premium pages, and settings window.
 - `docs/superpowers/specs` - the design spec. `docs/superpowers/plans` - the implementation plan.
-- `assets/branding` - the app icon (navy-on-cream 3D sound wave, Karko palette).
+- `assets/branding` - the waveform mark in light and dark Useful Brain tokens.
 
 ## License
 

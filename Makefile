@@ -38,7 +38,7 @@ bundle: build
 	cp bundle/Info.plist $(APP)/Contents/Info.plist
 	cp .build/release/UsefulVoiceApp $(APP)/Contents/MacOS/Sadaa
 	cp assets/branding/Sadaa.icns $(APP)/Contents/Resources/Sadaa.icns
-	cp assets/branding/sadaa-icon-b-navy-on-cream.svg.png $(APP)/Contents/Resources/SadaaLogo.png
+	cp assets/branding/useful-voice-mark-light.png $(APP)/Contents/Resources/SadaaLogo.png
 	codesign --force --deep --sign "$(SIGN_IDENTITY)" $(APP)
 
 run: bundle

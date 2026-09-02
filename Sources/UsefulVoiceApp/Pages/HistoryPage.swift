@@ -32,7 +32,7 @@ struct HistoryPage: View {
         }
         .padding(32)
         .frame(maxWidth: 1180, maxHeight: .infinity, alignment: .topLeading)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Theme.surface)
         .confirmationDialog(
             "Delete all transcripts? This cannot be undone.",
@@ -52,8 +52,7 @@ struct HistoryPage: View {
 
     private var header: some View {
         CommandPageHeader(
-            title: "Library",
-            subtitle: "Search, copy and improve your previous dictations. Everything stays local on this Mac."
+            title: "Library"
         ) {
             BrandedMenuButton(help: "Library options") {
                 Button("Delete all transcripts", role: .destructive) { showClearConfirm = true }
@@ -104,7 +103,7 @@ struct HistoryPage: View {
             }
         }
         .padding(14)
-        .background(Theme.surfaceSubtle, in: RoundedRectangle(cornerRadius: 12))
+        .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .frame(maxHeight: .infinity)
     }
 
@@ -162,9 +161,9 @@ struct HistoryPage: View {
                     VStack(alignment: .leading, spacing: 18) {
                         detailHeader(record)
                         Text(record.text)
-                            .font(.system(size: 16))
+                            .font(.system(size: 17))
                             .foregroundStyle(Theme.ink)
-                            .lineSpacing(5)
+                            .lineSpacing(6)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -183,15 +182,16 @@ struct HistoryPage: View {
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.line, lineWidth: 1))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
     }
 
     private func detailHeader(_ record: DictationRecord) -> some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(fullDate(record.createdAt))
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 20, weight: .semibold))
+                    .tracking(-0.2)
                     .foregroundStyle(Theme.ink)
                 Text([record.language, record.durationSeconds.map(durationText)].compactMap { $0 }.joined(separator: " · "))
                     .font(.system(size: 11))
@@ -273,10 +273,8 @@ struct HistoryPage: View {
         return VStack(alignment: .leading, spacing: 18) {
             Text("Teach the dictionary")
                 .font(.system(size: 22, weight: .bold))
+                .tracking(-0.3)
                 .foregroundStyle(Theme.ink)
-            Text("Edit the mistake and the spelling you want. Useful Voice learns auto-corrections so the same error is fixed next time.")
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.muted)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Heard").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
@@ -308,7 +306,7 @@ struct HistoryPage: View {
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.surfaceSubtle, in: RoundedRectangle(cornerRadius: 10))
+                .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 10))
             }
 
             HStack {

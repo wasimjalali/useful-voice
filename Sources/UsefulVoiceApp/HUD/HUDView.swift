@@ -16,9 +16,9 @@ enum HUDDisplay: Equatable {
     case language(LanguagePin)
 }
 
-/// The floating pill. A premium, glanceable status badge: navy surface, gold
-/// mark, cream text. Every state is one clear line so it reads from across the
-/// screen without stealing focus from the app you're dictating into.
+/// The floating pill. Ink surface, light mark, matching the dark-theme logo.
+/// Every state is one clear line so it reads from across the screen without
+/// stealing focus from the app you're dictating into.
 struct HUDView: View {
     let display: HUDDisplay
 
@@ -34,11 +34,8 @@ struct HUDView: View {
         // guarantees a non-zero size even if a child (the live waveform's
         // TimelineView) hasn't resolved its own layout yet.
         .frame(minHeight: 40)
-        // The pill is the logo's colorway: deep navy surface, gold mark. A thin
-        // gold hairline ties it to the icon; a soft shadow lifts it off the
-        // screen so it never blends into whatever is behind it.
-        .background(Capsule(style: .continuous).fill(Theme.navy800))
-        .overlay(Capsule(style: .continuous).strokeBorder(Theme.gold.opacity(0.20), lineWidth: 1))
+        .background(Capsule(style: .continuous).fill(Theme.hudSurface))
+        .overlay(Capsule(style: .continuous).strokeBorder(Theme.hudMark.opacity(0.28), lineWidth: 1))
         .clipShape(Capsule(style: .continuous))
         .shadow(color: Color.black.opacity(0.32), radius: 14, x: 0, y: 7)
         // The hosting panel is sized to this view's fittingSize, so the soft
@@ -73,10 +70,10 @@ struct HUDView: View {
             // running time, and a quiet hint that Esc cancels: everything a
             // dictation app like WhisperFlow shows while you speak.
             RecordingDot(reduceMotion: reduceMotion)
-            UsefulVoiceWaveBars(style: .live(level: level))
+            UsefulVoiceWaveBars(style: .live(level: level), fill: Theme.hudMark)
             Text(Self.timecode(seconds))
                 .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
-                .foregroundStyle(Theme.cream)
+                .foregroundStyle(Theme.hudInk)
             KeyHint(label: "esc")
         case .transcribing:
             status("Transcribing")
@@ -86,49 +83,47 @@ struct HUDView: View {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.gold)
+                    .foregroundStyle(Theme.hudMark)
                 Text("Done")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Theme.cream)
+                    .foregroundStyle(Theme.hudInk)
             }
         case .error(let message):
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 12))
-                    .foregroundStyle(Theme.gold)
+                    .foregroundStyle(Theme.hudMark)
                 Text(message)
                     .font(.system(size: 12))
-                    .foregroundStyle(Theme.cream)
+                    .foregroundStyle(Theme.hudInk)
                     .lineLimit(2)
             }
         case .language(let pin):
             // A clear, glanceable confirmation of the language you just switched
-            // to: a gold globe and the language name, larger than the working
+            // to: a globe and the language name, larger than the working
             // labels so it reads at a glance from across the screen.
             HStack(spacing: 8) {
                 Image(systemName: "globe")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.gold)
+                    .foregroundStyle(Theme.hudMark)
                 Text(PageFormat.languageLabel(pin))
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.cream)
+                    .foregroundStyle(Theme.hudInk)
             }
         }
     }
 
     /// A working state: a spinner plus a quiet label. The recording state shows
-    /// the full waveform, so these brief states stay minimal. The spinner is
-    /// cream, not gold: dark gold on the near-black navy pill was effectively
-    /// invisible, so the ring never read as "working". Cream matches the label.
+    /// the full waveform, so these brief states stay minimal.
     private func status(_ label: String) -> some View {
         HStack(spacing: 8) {
             ProgressView()
                 .progressViewStyle(.circular)
                 .controlSize(.small)
-                .tint(Theme.cream)
+                .tint(Theme.hudInk)
             Text(label)
                 .font(.system(size: 12))
-                .foregroundStyle(Theme.cream)
+                .foregroundStyle(Theme.hudInk)
         }
     }
 
@@ -140,8 +135,7 @@ struct HUDView: View {
     }
 }
 
-/// A small gold record dot that breathes while recording, so the pill reads as
-/// live even at a glance. Static under reduced motion.
+/// A record dot that breathes while recording. Static under reduced motion.
 private struct RecordingDot: View {
     let reduceMotion: Bool
 
@@ -160,7 +154,7 @@ private struct RecordingDot: View {
 
     private func dot(opacity: Double) -> some View {
         Circle()
-            .fill(Theme.gold)
+            .fill(Theme.danger)
             .frame(width: 8, height: 8)
             .opacity(opacity)
     }
@@ -174,16 +168,16 @@ private struct KeyHint: View {
     var body: some View {
         Text(label)
             .font(.system(size: 10, weight: .semibold, design: .rounded))
-            .foregroundStyle(Theme.cream.opacity(0.65))
+            .foregroundStyle(Theme.hudInk.opacity(0.65))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(Theme.cream.opacity(0.10))
+                    .fill(Theme.hudInk.opacity(0.10))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .strokeBorder(Theme.cream.opacity(0.16), lineWidth: 1)
+                    .strokeBorder(Theme.hudInk.opacity(0.16), lineWidth: 1)
             )
     }
 }
@@ -198,6 +192,7 @@ struct UsefulVoiceWaveBars: View {
     var barHeight: CGFloat = 22
     var barWidth: CGFloat = 4
     var spacing: CGFloat = 3
+    var fill: Color = Theme.ink
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -238,7 +233,7 @@ struct UsefulVoiceWaveBars: View {
         HStack(spacing: spacing) {
             ForEach(weights.indices, id: \.self) { index in
                 Capsule()
-                    .fill(Theme.accent)
+                    .fill(fill)
                     .frame(width: barWidth, height: pixels(heightFraction(index)))
             }
         }

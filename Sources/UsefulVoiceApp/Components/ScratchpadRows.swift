@@ -13,7 +13,7 @@ struct ScratchpadNoteRow: View {
                     if note.isPinned {
                         Image(systemName: "pin.fill")
                             .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(Theme.gold)
+                            .foregroundStyle(Theme.inkMuted)
                     }
                     Text(note.title)
                         .font(.system(size: 13, weight: .semibold))
@@ -43,7 +43,7 @@ struct ScratchpadNoteRow: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 9)
-                    .strokeBorder(isSelected ? Theme.brand.opacity(0.22) : Color.clear,
+                    .strokeBorder(isSelected ? Theme.lineStrong : Color.clear,
                                   lineWidth: 1)
             )
         }

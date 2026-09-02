@@ -15,7 +15,12 @@ final class MainWindowController: NSObject, NSWindowDelegate {
                 rootView: RootView(viewModel: viewModel, settings: settings))
             let window = NSWindow(contentViewController: hosting)
             window.title = "Useful Voice"
-            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.titlebarSeparatorStyle = .none
+            window.backgroundColor = Theme.canvasNSColor
+            window.isMovableByWindowBackground = true
             window.setContentSize(NSSize(width: 1040, height: 700))
             window.minSize = NSSize(width: 840, height: 580)
             window.isReleasedWhenClosed = false

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A single navigation row for the navy sidebar. Pure presentation: the parent
+/// A single navigation row for the light rail. Pure presentation: the parent
 /// owns selection and tap handling.
 struct SidebarItem: View {
     let title: String
@@ -16,14 +16,14 @@ struct SidebarItem: View {
                 .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
             Spacer(minLength: 0)
         }
-        .foregroundStyle(isSelected ? Theme.brandStrong : Theme.white.opacity(0.68))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .foregroundStyle(Theme.ink)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(isSelected ? Theme.surface : Color.clear)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isSelected ? Theme.sunken : Color.clear)
         )
-        .contentShape(RoundedRectangle(cornerRadius: 8))
+        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }

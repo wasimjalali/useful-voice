@@ -44,6 +44,9 @@ enum Theme {
     static let hudMark = accentOnDark
 
     static let canvasNSColor = NSColor(srgbRed: 248 / 255, green: 248 / 255, blue: 248 / 255, alpha: 1)
+    /// Overlay scrollbar knob. Soft gray so it sits on white and sunken surfaces.
+    static let scrollKnobNSColor = NSColor(srgbRed: 216 / 255, green: 216 / 255, blue: 216 / 255, alpha: 1)
+    static let scrollKnobActiveNSColor = NSColor(srgbRed: 176 / 255, green: 176 / 255, blue: 176 / 255, alpha: 1)
 
     // Compatibility aliases while pages finish migrating to role names.
     static let navy = brand

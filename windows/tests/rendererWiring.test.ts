@@ -140,7 +140,7 @@ describe('page transitions', () => {
 
   it('defines the animation in CSS and applies it only to page switches', () => {
     const styles = readSource('../src/renderer/styles.css');
-    expect(styles).toMatch(/\.page-enter\s*{[^}]*page-in\s+220ms\s+var\(--ease-out\)/);
+    expect(styles).toMatch(/\.page-enter\s*{[^}]*page-in\s+300ms\s+var\(--ease-out\)/);
     expect(styles).toMatch(/@keyframes\s+page-in\s*{/);
     // The shared reduced-motion kill switch must still cover it.
     expect(styles).toContain('prefers-reduced-motion: reduce');

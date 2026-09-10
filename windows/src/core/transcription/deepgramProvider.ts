@@ -6,6 +6,11 @@
  * https://developers.deepgram.com/reference/speech-to-text/listen-pre-recorded
  */
 
+import {
+  DETECTION_CODES,
+  supportsSpokenPunctuation as supportsSpokenPunctuationCode,
+} from './languages.js';
+
 export interface DeepgramConfig {
   apiKey: string;
   smartFormat: boolean;
@@ -100,7 +105,7 @@ export const DEFAULT_ENDPOINT = 'https://api.deepgram.com/v1/listen';
  * request off Nova-3 and silently drop `keyterm` support.
  * https://developers.deepgram.com/docs/language-detection
  */
-export const AUTO_DETECT_LANGUAGES = ['en', 'de'] as const;
+export const AUTO_DETECT_LANGUAGES = DETECTION_CODES;
 
 /**
  * Whether spoken punctuation applies to a language.
@@ -109,7 +114,10 @@ export const AUTO_DETECT_LANGUAGES = ['en', 'de'] as const;
  * is suppressed for German rather than sent and ignored.
  */
 export function supportsSpokenPunctuation(language: string): boolean {
-  return language !== 'de';
+  // Modes cannot promise English-only dictation: auto has not identified a
+  // language yet, and code-switching may include non-English.
+  if (language === 'auto' || language === 'multi') return false;
+  return supportsSpokenPunctuationCode(language);
 }
 
 /**
@@ -189,8 +197,8 @@ export function buildRequest({ audioBytes, hint, config }: BuildRequestOptions):
   // Detection is the documented mechanism, and it can be restricted.
   // https://developers.deepgram.com/docs/language-detection
   if (hint.language === 'auto') {
-    // Restricted to the languages this app offers. Both are native Nova-3
-    // languages, which matters: an unsupported detected language makes Deepgram
+    // Restricted to the languages this app offers. Every code is native to
+    // Nova-3, which matters: an unsupported detected language makes Deepgram
     // fall back to a lower model, and that would drop `keyterm` — the whole
     // dictionary feature, which is Nova-3 only.
     for (const language of AUTO_DETECT_LANGUAGES) {

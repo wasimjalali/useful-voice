@@ -1,0 +1,25 @@
+# Normalise line endings in the repository.
+#
+# Without this, `core.autocrlf` on Windows checks source files out with CRLF, and
+# several tests read source files as text and search them for exact strings — for
+# example `windows/tests/rendererWiring.test.ts` looks for a declaration ending in
+# "\n}\n", and `windows/tests/languageCatalog.test.ts` parses the macOS Swift
+# catalogue with regular expressions. Those searches silently miss under CRLF: the
+# renderer-wiring test threw "could not find the end of: function mountMain(" on
+# windows-latest while passing on macOS, so it had never actually run on the platform
+# it was written for.
+#
+# Forcing LF makes a checkout identical everywhere and removes the whole class of
+# problem rather than one instance of it.
+* text=auto eol=lf
+
+# Binary assets must never be line-ending converted.
+*.png binary
+*.ico binary
+*.icns binary
+*.jpg binary
+*.woff2 binary
+*.zip binary
+
+# Keep generated and vendored trees out of language statistics and diffs.
+package-lock.json -diff linguist-generated

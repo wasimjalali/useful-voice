@@ -158,11 +158,7 @@ struct MemorySuggestionRow: View {
 }
 
 private func languageTitle(_ language: MemoryLanguage) -> String {
-    switch language {
-    case .auto: return "Any language"
-    case .en: return "English"
-    case .de: return "German"
-    }
+    language.rawValue == "auto" ? "Any language" : language.displayName
 }
 
 private func priorityTitle(_ priority: MemoryPriority) -> String {

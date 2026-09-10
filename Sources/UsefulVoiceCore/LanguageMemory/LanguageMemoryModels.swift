@@ -1,15 +1,56 @@
 import Foundation
 
-public enum MemoryLanguage: String, Codable, CaseIterable, Sendable {
-    case auto, en, de
+/// The language a dictionary term or replacement is scoped to.
+///
+/// This is **persisted** in `language-memory.json`, so it is deliberately more
+/// permissive than `LanguagePin`: an unknown code decodes to a usable value
+/// instead of throwing and taking the whole store down with it. A store that
+/// fails to decode is refused for writing (see `StoreLoadOutcome`), so throwing
+/// here would turn one unrecognised language into an unwritable dictionary.
+public struct MemoryLanguage: RawRepresentable, Codable, Hashable, Sendable {
+    public let rawValue: String
+
+    public static let auto = MemoryLanguage(rawValue: "auto")
+    public static let en = MemoryLanguage(rawValue: "en")
+    public static let de = MemoryLanguage(rawValue: "de")
+
+    public init(rawValue: String) {
+        self.rawValue = rawValue
+    }
 
     public init(languagePin: LanguagePin) {
-        switch languagePin {
-        case .auto: self = .auto
-        case .en: self = .en
-        case .de: self = .de
-        }
+        self = MemoryLanguage(rawValue: languagePin.rawValue)
     }
+
+    /// A language for an imported value, falling back to auto when unknown.
+    ///
+    /// The fallback is not cosmetic. A term scoped to a language the model cannot
+    /// transcribe would be sent to the provider and either error or trigger the
+    /// documented fallback to a lower model — which does not support `keyterm`, so
+    /// the dictionary stops working. Auto keeps such a term usable instead.
+    public static func validated(_ raw: String) -> MemoryLanguage {
+        MemoryLanguage(languagePin: LanguagePin(code: raw))
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.init(rawValue: (try? container.decode(String.self)) ?? "auto")
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
+    /// Every language a term can be scoped to: auto first, then the catalogue.
+    public static var allCases: [MemoryLanguage] {
+        LanguagePin.allCases.map(MemoryLanguage.init(languagePin:))
+    }
+
+    /// The pin this language corresponds to.
+    public var pin: LanguagePin { LanguagePin(code: rawValue) }
+
+    public var displayName: String { pin.displayName }
 }
 
 public enum MemoryPriority: String, Codable, CaseIterable, Sendable {

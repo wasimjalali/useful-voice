@@ -1,4 +1,5 @@
 import { startCapture, stopCapture, cancelCapture, isCapturing } from './capture.js';
+import { languagePicker } from './languagePicker.js';
 import type {
   DictationStateEvent,
   HistoryEntryDTO,
@@ -257,6 +258,16 @@ let noticeTimer = 0;
  * exists, so nothing can call render before there is anything to render into.
  */
 let render: () => void = () => {};
+
+/**
+ * The language picker currently on screen, if Settings is open.
+ *
+ * A single mutable reference rather than a captured one: `renderSettings` runs on
+ * every render and builds a fresh picker, so a listener holding the first instance
+ * would be opening a detached element — silently doing nothing, which is the worst
+ * way for a hotkey to fail.
+ */
+let activeLanguagePicker: { open: () => void } | null = null;
 
 function setNotice(kind: 'success' | 'warning' | 'danger', message: string): void {
   state.notice = { kind, message };
@@ -1410,19 +1421,20 @@ function mountMain(): void {
     dictationCard.append(el('p', { class: 'section-label' }, 'Dictation'));
     const rows = el('div', { class: 'rows', style: 'margin-top:12px' as never });
 
+    // Registered below, once the row is in the page: the language hotkey is global,
+    // so it has to be able to open the picker from outside the widget.
+    const languagePickerControl = languagePicker({
+      value: settings.languagePin,
+      onChange: (value) => void saveSettings({ languagePin: value }),
+    });
+    activeLanguagePicker = languagePickerControl;
+
     rows.append(
-      selectRow('Spoken language', settings.languagePin, [
-        ['en', 'English'],
-        ['de', 'German'],
-        ['es', 'Spanish'],
-        ['fr', 'French'],
-        ['it', 'Italian'],
-        ['pt', 'Portuguese'],
-        ['nl', 'Dutch'],
-        ['ja', 'Japanese'],
-        ['zh', 'Chinese'],
-        ['multi', 'Detect automatically'],
-      ], (value) => void saveSettings({ languagePin: value })),
+      // Replaces a native <select> that (a) could not be searched and (b) offered
+      // `multi` — code-switching — labelled "Detect automatically". A user choosing
+      // what they were told was detection was silently sent the wrong mode.
+      settingRow('Spoken language', 'Detects the language as you speak, or pin one.',
+        languagePickerControl.element),
     );
 
     rows.append(
@@ -1431,6 +1443,16 @@ function mountMain(): void {
 
     rows.append(
       switchRow('Speak punctuation', settings.spokenPunctuationEnabled, 'Say \u201cperiod\u201d, \u201ccomma\u201d or \u201cnew line\u201d to insert it. English only.', (value) => void saveSettings({ spokenPunctuationEnabled: value })),
+    );
+
+    // Disclosed because it is charged and was previously invisible: the app sends
+    // `keyterm` for every dictionary term on every request, and Deepgram bills
+    // Keyterm Prompting separately. https://deepgram.com/pricing
+    rows.append(
+      el('p', { class: 'note' },
+        'Deepgram bills Keyterm Prompting separately from transcription \u2014 $0.0013 per minute '
+        + 'on pay-as-you-go, on top of $0.0043 per minute for Nova-3. That is about 30% more per '
+        + 'minute while your dictionary is in use. Smart formatting and language detection are included.'),
     );
 
     rows.append(
@@ -1459,6 +1481,19 @@ function mountMain(): void {
       textRow('Hotkey', settings.hotkey.accelerator, (value) => void saveSettings({
         hotkey: { ...settings.hotkey, accelerator: value },
       })),
+    );
+
+    // macOS has had this from the start; Windows did not, so changing language meant
+    // leaving the app you were typing into. An empty value disables it.
+    rows.append(
+      textRow(
+        'Language hotkey',
+        settings.languageSwitchHotkey?.accelerator ?? '',
+        (value) => void saveSettings({
+          languageSwitchHotkey: { accelerator: value.trim(), pushToTalk: false },
+        }),
+        'Opens the language picker while you dictate. Leave empty to disable.',
+      ),
     );
 
     dictationCard.append(rows);
@@ -1560,6 +1595,26 @@ function mountMain(): void {
     );
   }
 
+  /**
+   * A settings row whose control is a custom element rather than a native input.
+   *
+   * Mirrors `switchRow`'s label-and-hint markup so the language picker lines up with
+   * the switches above and below it.
+   */
+  function settingRow(label: string, hint: string, control: Node): Node {
+    return el(
+      'div',
+      { class: 'row' },
+      el(
+        'div',
+        {},
+        el('div', { class: 'row-label' }, label),
+        el('div', { class: 'tiny faint', style: 'margin-top:3px;line-height:1.5' as never }, hint),
+      ),
+      el('div', { class: 'row-value' }, control),
+    );
+  }
+
   function selectRow(
     label: string,
     value: string,
@@ -1576,10 +1631,25 @@ function mountMain(): void {
     return el('div', { class: 'row' }, el('div', { class: 'row-label' }, label), el('div', { class: 'row-value' }, select));
   }
 
-  function textRow(label: string, value: string, onChange: (value: string) => void): Node {
+  function textRow(
+    label: string,
+    value: string,
+    onChange: (value: string) => void,
+    hint?: string,
+  ): Node {
     const input = el('input', { class: 'field-input', value, 'aria-label': label } as never);
     input.addEventListener('change', () => onChange(input.value));
-    return el('div', { class: 'row' }, el('div', { class: 'row-label' }, label), el('div', { class: 'row-value' }, input));
+    return el(
+      'div',
+      { class: 'row' },
+      el(
+        'div',
+        {},
+        el('div', { class: 'row-label' }, label),
+        hint ? el('div', { class: 'tiny faint', style: 'margin-top:3px;line-height:1.5' as never }, hint) : null,
+      ),
+      el('div', { class: 'row-value' }, input),
+    );
   }
 
   // ---- Actions ----------------------------------------------------------
@@ -1824,6 +1894,17 @@ function mountMain(): void {
   }
 
   // ---- Boot and subscriptions ------------------------------------------
+
+  // The language hotkey is global, so it can fire from any page. The picker lives in
+  // Settings, so navigate there first when it is not already showing.
+  api.onOpenLanguagePicker(() => {
+    if (state.page !== 'settings') {
+      state.page = 'settings';
+      render();
+    }
+    // After render(), so this opens the instance that is actually in the document.
+    activeLanguagePicker?.open();
+  });
 
   api.onNavigate((page) => {
     if (PAGES.some((entry) => entry.id === page)) {

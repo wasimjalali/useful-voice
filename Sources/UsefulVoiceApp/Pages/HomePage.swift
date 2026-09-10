@@ -14,11 +14,8 @@ enum PageFormat {
     }
 
     static func languageLabel(_ pin: LanguagePin) -> String {
-        switch pin {
-        case .auto: return "Auto"
-        case .en: return "English"
-        case .de: return "German"
-        }
+        // "Auto" for the compact badge; the pickers use the full label.
+        pin.isAuto ? "Auto" : pin.displayName
     }
 
 }

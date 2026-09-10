@@ -79,23 +79,27 @@ public final class DeepgramProvider: TranscriptionProvider, @unchecked Sendable 
         return min(maximumDeadline, max(minimumDeadline, total))
     }
 
-    /// The languages this app offers, used to restrict auto-detection.
+    /// The languages auto-detection is restricted to.
     ///
-    /// Both are natively supported by Nova-3, which matters: the docs say an
-    /// unsupported detected language makes Deepgram "automatically select the
-    /// next highest model", and that fallback would drop Nova-3 — the only model
-    /// that supports `keyterm`, which is the whole dictionary feature. Restricting
-    /// detection to these two makes that fallback unreachable.
-    static let autoDetectLanguages = ["en", "de"]
+    /// `detect_language` supports **35 codes**, a smaller set than Nova-3's 63
+    /// languages, so this is deliberately not the catalogue. It is also not the
+    /// bare boolean `detect_language=true`: the docs say an unsupported detected
+    /// language makes Deepgram "automatically select the next highest model", and
+    /// `keyterm` is "Only compatible with Nova-3", so an unrestricted detection
+    /// could silently drop the user's dictionary. Every code here is both
+    /// detection-capable and natively a Nova-3 language, which makes that fallback
+    /// unreachable on a request the app itself constructed.
+    static var autoDetectLanguages: [String] { DeepgramLanguageCatalog.detectionCodes }
 
-    /// The `language` value for a pinned language. Auto has no value here: it is
-    /// expressed with `detect_language` instead. See `appendLanguageParameters`.
+    /// The `language` value for a pin. Auto has no value here: it is expressed with
+    /// `detect_language` instead. See `appendLanguageParameters`.
+    ///
+    /// Returns nil for auto *and* for a code outside the catalogue, so an
+    /// unusable language degrades to detection rather than being sent and failing
+    /// at the provider.
     static func languageParameter(for pin: LanguagePin) -> String? {
-        switch pin {
-        case .en: return "en"
-        case .de: return "de"
-        case .auto: return nil
-        }
+        guard !pin.isAuto else { return nil }
+        return DeepgramLanguageCatalog.isSupported(pin.rawValue) ? pin.rawValue : nil
     }
 
     /// Append the language parameters for a pin.
@@ -123,10 +127,13 @@ public final class DeepgramProvider: TranscriptionProvider, @unchecked Sendable 
     /// Whether the Dictation feature applies to this pin.
     ///
     /// Deepgram documents spoken punctuation as "English (all available regions)"
-    /// only, so it is suppressed for German rather than sent and ignored.
+    /// only, so it is suppressed for every other language rather than sent and
+    /// ignored. Auto is excluded too: the language is not known until the response
+    /// comes back, and asking for English-only dictation while detecting the
+    /// language would contradict itself.
     /// https://developers.deepgram.com/docs/dictation
     static func supportsSpokenPunctuation(_ pin: LanguagePin) -> Bool {
-        pin != .de
+        pin.supportsSpokenPunctuation
     }
 
     public func makeRequest(audio: Data, hint: TranscriptionHint) throws -> URLRequest {

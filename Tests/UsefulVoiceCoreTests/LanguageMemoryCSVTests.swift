@@ -61,4 +61,40 @@ import Foundation
         #expect(imported.replacements.isEmpty)
         #expect(imported.invalid.count == 2)
     }
+
+    /// An imported language column used to be coerced with `?? .auto`, which was
+    /// correct while `MemoryLanguage` was a failable enum. It is a struct over a
+    /// string now, so that initialiser never returns nil and the coercion became
+    /// dead — meaning an unrecognised cell would be stored verbatim and sent to the
+    /// provider. Validation has to be explicit.
+    @Test func testImportRejectsAnUnknownLanguageCode() throws {
+        let csv = """
+        phrase,pronunciations,aliases,language,priority
+        Kubernetes,kubernetes,,klingon,high
+        """
+        let imported = LanguageMemoryCSV.importTerms(csv, now: Date())
+        #expect(imported.terms.count == 1)
+        #expect(imported.terms.first?.language == .auto)
+    }
+
+    @Test func testImportKeepsAKnownLanguageCode() throws {
+        let csv = """
+        phrase,pronunciations,aliases,language,priority
+        Kubernetes,kubernetes,,ja,high
+        """
+        let imported = LanguageMemoryCSV.importTerms(csv, now: Date())
+        #expect(imported.terms.first?.language.rawValue == "ja")
+    }
+
+    /// Codes with a meaningful uppercase region subtag must survive import. A
+    /// case-folding normaliser turned `zh-HK` into `zh-hk`, matched nothing, and
+    /// silently demoted it to auto.
+    @Test func testImportPreservesRegionCasing() throws {
+        let csv = """
+        phrase,pronunciations,aliases,language,priority
+        Foo,foo,,zh-HK,high
+        """
+        let imported = LanguageMemoryCSV.importTerms(csv, now: Date())
+        #expect(imported.terms.first?.language.rawValue == "zh-HK")
+    }
 }

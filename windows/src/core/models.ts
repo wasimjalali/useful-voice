@@ -6,12 +6,54 @@
  * pure TypeScript and fully covered by unit tests that run anywhere.
  */
 
-/** BCP-47-ish language selection plus `auto` for provider-side detection. */
-export type MemoryLanguage = 'auto' | 'en' | 'de' | 'es' | 'fr' | 'it' | 'pt' | 'nl' | 'ja' | 'zh';
+import { DEEPGRAM_LANGUAGES, normaliseLanguageCode } from './transcription/languages.js';
 
+/**
+ * The language a setting, term or replacement is scoped to.
+ *
+ * A plain string rather than a closed union, matching macOS. The offered set is the
+ * *provider's* catalogue (`DEEPGRAM_LANGUAGES`), not an app concern: a union listing
+ * ten languages silently withheld the other fifty-odd Nova-3 supports, and widening
+ * it is a source change in every place that switches on it. `'auto'` and `'multi'`
+ * are modes carried in the same field.
+ */
+export type MemoryLanguage = string;
+
+/** Every value the language pickers offer: the modes, then the languages. */
 export const MEMORY_LANGUAGES: readonly MemoryLanguage[] = [
-  'auto', 'en', 'de', 'es', 'fr', 'it', 'pt', 'nl', 'ja', 'zh',
+  'auto',
+  'multi',
+  ...DEEPGRAM_LANGUAGES.map((language) => language.code),
 ];
+
+/** The modes, which the pickers show above the languages. */
+export const LANGUAGE_MODES: readonly MemoryLanguage[] = ['auto', 'multi'];
+
+/**
+ * Normalise a stored language value to something sendable.
+ *
+ * A thin wrapper over `normaliseLanguageCode` rather than a second implementation.
+ * There were briefly two copies of this rule — one here and one in `languages.ts` —
+ * which is how a stored-language rule drifts: the settings path and the picker path
+ * would have answered differently for the same input.
+ *
+ * Two things the rule has to get right, both learned the hard way:
+ *
+ * 1. **`'multi'` is not `'auto'`.** An earlier build offered `'multi'` in the picker
+ *    labelled "Detect automatically". `multi` is code-switching — for audio where the
+ *    speaker changes language mid-sentence — while auto-detection is
+ *    `detect_language`. A user who chose what they were told was auto-detection was
+ *    silently transcribing in the wrong mode. The value survives as a real choice, but
+ *    it no longer claims to be detection.
+ * 2. **An unknown code must never be sent.** The provider would error, or fall back to
+ *    a weaker model that does not support `keyterm` — silently dropping the dictionary
+ *    feature.
+ *
+ * Accepts `unknown` because the value comes from a JSON file a user can edit.
+ */
+export function normaliseMemoryLanguage(value: unknown): MemoryLanguage {
+  return typeof value === 'string' ? normaliseLanguageCode(value) : 'auto';
+}
 
 /**
  * How strongly a term should bias transcription.
@@ -151,6 +193,15 @@ export interface AppSettings {
   soundEffectsEnabled: boolean;
   launchAtLogin: boolean;
   hotkey: HotkeyBinding;
+  /**
+   * Opens the language picker while dictating.
+   *
+   * macOS has had this from the start; Windows did not, so a Windows user had to
+   * open Settings and leave the app they were typing into in order to change
+   * language. Optional because it is a convenience, and an empty accelerator means
+   * disabled rather than an error.
+   */
+  languageSwitchHotkey?: HotkeyBinding;
   /** Terms sent as keyterms on top of the dictionary, capped by KeytermBudget. */
   dictionaryBiasBudget: number;
 }
@@ -178,5 +229,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   soundEffectsEnabled: true,
   launchAtLogin: false,
   hotkey: { accelerator: 'Control+Alt+Space', pushToTalk: false },
+  languageSwitchHotkey: { accelerator: 'Control+Alt+L', pushToTalk: false },
   dictionaryBiasBudget: 100,
 };

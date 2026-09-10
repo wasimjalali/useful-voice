@@ -105,4 +105,33 @@ describe('normaliseSettings', () => {
   it('defaults spoken punctuation to off', () => {
     expect(DEFAULT_SETTINGS.spokenPunctuationEnabled).toBe(false);
   });
+
+  it('forces push-to-talk off on the language hotkey', () => {
+    // The picker is a discrete action, so push-to-talk is meaningless. A shared
+    // settings shape should not let a stale true leak in and make the hotkey
+    // behave as hold-to-show.
+    const result = normaliseSettings({
+      ...DEFAULT_SETTINGS,
+      languageSwitchHotkey: { accelerator: 'Control+Alt+L', pushToTalk: true },
+    });
+    expect(result.languageSwitchHotkey).toEqual({
+      accelerator: 'Control+Alt+L',
+      pushToTalk: false,
+    });
+  });
+
+  it('leaves the language hotkey unset when it is absent', () => {
+    const { languageSwitchHotkey: _omitted, ...withoutHotkey } = DEFAULT_SETTINGS;
+    const result = normaliseSettings(withoutHotkey as typeof DEFAULT_SETTINGS);
+    expect(result.languageSwitchHotkey).toBeUndefined();
+  });
+
+  it('tolerates a non-string accelerator', () => {
+    // The value comes from a JSON file a user can edit, so it may not be a string.
+    const result = normaliseSettings({
+      ...DEFAULT_SETTINGS,
+      languageSwitchHotkey: { accelerator: 42 as unknown as string, pushToTalk: false },
+    });
+    expect(result.languageSwitchHotkey?.accelerator).toBe('42');
+  });
 });

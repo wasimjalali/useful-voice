@@ -111,20 +111,23 @@ struct SettingsPage: View {
         .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 12))
     }
 
+    /// Says what the current selection actually does. The old copy hardcoded
+    /// "Auto-detect, English or German", which became wrong the moment the
+    /// catalogue grew.
+    private var languageDetail: String {
+        let pin = viewModel.languagePin
+        if pin.isAuto {
+            return "Detects the language as you speak, from \(DeepgramLanguageCatalog.all.count) supported languages"
+        }
+        return "Transcribing \(pin.displayName) — say the language hotkey to change"
+    }
+
     private var generalSection: some View {
         settingsSection(title: "General") {
             VStack(spacing: 16) {
-                settingsRow("Language", detail: "Auto-detect, English or German") {
-                    BrandedMenuPicker(
-                        title: "Language",
-                        selection: languageBinding,
-                        options: [
-                            ("Auto-detect", LanguagePin.auto),
-                            ("English", LanguagePin.en),
-                            ("German", LanguagePin.de),
-                        ]
-                    )
-                    .frame(width: 170)
+                settingsRow("Language", detail: languageDetail) {
+                    LanguagePickerButton(selection: languageBinding)
+                        .frame(width: 190)
                 }
 
                 Divider().overlay(Theme.line)
@@ -133,7 +136,7 @@ struct SettingsPage: View {
                     hotkeyPicker(selection: hotkeyBinding)
                 }
 
-                settingsRow("Language hotkey", detail: "Quickly switch between English and German") {
+                settingsRow("Language hotkey", detail: "Opens the language picker while you dictate") {
                     hotkeyPicker(selection: languageSwitchBinding)
                 }
 
@@ -193,6 +196,19 @@ struct SettingsPage: View {
                 ) {
                     Toggle("", isOn: $spokenPunctuationEnabled).labelsHidden()
                 }
+
+                Divider().overlay(Theme.line)
+
+                // Disclosed because it is charged and was previously invisible:
+                // the app sends `keyterm` for every dictionary term, on every
+                // request, and Deepgram bills Keyterm Prompting separately.
+                // https://deepgram.com/pricing
+                InlineNote(
+                    text: "Deepgram bills Keyterm Prompting separately from transcription — "
+                        + "$0.0013 per minute on pay-as-you-go, on top of $0.0043 per minute "
+                        + "for Nova-3. That is about 30% more per minute while your dictionary "
+                        + "is in use. Smart formatting and language detection are included."
+                )
             }
         }
     }

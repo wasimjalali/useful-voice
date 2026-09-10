@@ -1,16 +1,131 @@
 import Foundation
 
-public enum LanguagePin: String, CaseIterable, Sendable {
-    case auto, en, de
+/// The language the app is transcribing in: a specific language, or `.auto`.
+///
+/// A struct around a string rather than an enum with three cases. The offered set
+/// is the *provider's* catalogue (`DeepgramLanguageCatalog`), not a fixed app
+/// concern, and an enum meant adding a language was a source change in five files.
+/// The special value is still `auto`, which is a detection mode rather than a
+/// language, so the picker presents it separately and first.
+///
+/// `rawValue` stays a plain string, so the value already in `UserDefaults` keeps
+/// working and no settings migration is needed.
+public struct LanguagePin: RawRepresentable, Hashable, Sendable, Codable {
+    public let rawValue: String
 
-    /// The next language for the quick-switch key: a straight English<->German
-    /// flip. From `.auto`, the first tap lands on English, then it alternates.
-    public var quickToggled: LanguagePin {
-        switch self {
-        case .en: return .de
-        case .de: return .en
-        case .auto: return .en
+    /// Offered in this order by every picker: the modes first, then languages.
+    public static let auto = LanguagePin(rawValue: "auto")
+    public static let en = LanguagePin(rawValue: "en")
+    public static let de = LanguagePin(rawValue: "de")
+    /// Multilingual code-switching. A mode rather than a language: it is for audio
+    /// where the speaker changes language mid-sentence. Distinct from auto, which
+    /// detects a single dominant language.
+    public static let multilingual = LanguagePin(rawValue: "multi")
+
+    public init(rawValue: String) {
+        self.rawValue = rawValue
+    }
+
+    /// The non-language modes, in picker order: detection first, then
+    /// code-switching.
+    public static var modes: [LanguagePin] { [.auto, .multilingual] }
+
+    /// Every value the pickers offer: the modes, then the languages.
+    public static var allCases: [LanguagePin] {
+        modes + DeepgramLanguageCatalog.all.map { LanguagePin(rawValue: $0.code) }
+    }
+
+    /// A pin for a language code, falling back to auto for anything unknown.
+    ///
+    /// Falling back rather than storing an unusable value matters: a pin naming a
+    /// language the model cannot transcribe would fail silently at the provider.
+    ///
+    /// Matching is **case-sensitive against the catalogue**. Lowercasing the input
+    /// looks harmless and is not: `zh-HK`, `zh-TW`, `de-CH` and `nl-BE` carry
+    /// meaningful uppercase region subtags, and folding them to `zh-hk` matched
+    /// nothing — so picking Cantonese stored `auto` and silently transcribed with
+    /// detection instead. A case-insensitive retry is kept as a convenience, but it
+    /// resolves to the catalogue's own spelling.
+    public init(code: String) {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed.lowercased() == "auto" {
+            self = .auto
+            return
         }
+        if DeepgramLanguageCatalog.isSupported(trimmed) {
+            self = LanguagePin(rawValue: trimmed)
+            return
+        }
+        // Accept a differently-cased spelling of a real code, but resolve it to the
+        // catalogue's own casing so the stored value is always canonical.
+        if let match = DeepgramLanguageCatalog.all.first(where: {
+            $0.code.lowercased() == trimmed.lowercased()
+        }) {
+            self = LanguagePin(rawValue: match.code)
+            return
+        }
+        // A stored code the catalogue no longer offers falls back to detection
+        // rather than being sent and failing at the provider.
+        self = .auto
+    }
+
+    /// Whether the stored value names something this build still recognises.
+    ///
+    /// Distinguishes "detection" from "a language this build dropped", which are
+    /// otherwise both just a string in `UserDefaults`.
+    public var isRecognised: Bool {
+        isAuto || DeepgramLanguageCatalog.isSupported(rawValue)
+    }
+
+    public var isAuto: Bool { rawValue == "auto" }
+
+    /// Multilingual code-switching, which is a mode rather than a language.
+    public var isMultilingual: Bool { rawValue == "multi" }
+
+    /// The catalogue entry, or nil for auto and for codes outside the catalogue.
+    public var language: DeepgramLanguage? {
+        DeepgramLanguageCatalog.language(for: rawValue)
+    }
+
+    /// What to show the user. Never returns a bare code: an unlisted language
+    /// still has to be describable in a menu, and a raw BCP-47 tag is not copy.
+    public var displayName: String {
+        if isAuto { return "Detect automatically" }
+        if isMultilingual { return "Multiple languages" }
+        if let language { return language.name }
+        return rawValue.uppercased()
+    }
+
+    /// The name in the language's own script, for the picker's subtitle.
+    public var nativeName: String? {
+        language.map(\.nativeName)
+    }
+
+    /// Whether spoken punctuation applies to this pin.
+    ///
+    /// False for the modes: auto has not identified a language yet, and
+    /// code-switching can include non-English. Asking for English-only dictation
+    /// in either case would contradict the request.
+    public var supportsSpokenPunctuation: Bool {
+        (isAuto || isMultilingual) ? false
+            : DeepgramLanguageCatalog.supportsSpokenPunctuation(rawValue)
+    }
+
+    /// Whether this pin sends `detect_language` rather than `language`.
+    public var usesDetection: Bool { isAuto }
+
+    /// Whether this pin is sent as `language=<code>`.
+    public var sendsLanguageParameter: Bool { !isAuto }
+
+    /// The next language for the quick-switch key.
+    ///
+    /// Kept for the keyboard path, but the hotkey no longer cycles: it opens the
+    /// picker, because cycling cannot reach ten languages. This is retained so the
+    /// cycle order is still defined for anything that needs a "next" value.
+    public var quickToggled: LanguagePin {
+        if self == .en { return .de }
+        if self == .de { return .en }
+        return .en
     }
 }
 
@@ -61,7 +176,11 @@ public final class AppSettings {
     }
 
     public var languagePin: LanguagePin {
-        get { LanguagePin(rawValue: defaults.string(forKey: Keys.languagePin) ?? "") ?? .auto }
+        // `init(code:)` rather than `init(rawValue:)`: it normalises an unset or
+        // unrecognised stored value to auto. The raw initialiser is non-failable
+        // now that the type is a struct over a string, so an empty default would
+        // have produced a pin naming no language at all.
+        get { LanguagePin(code: defaults.string(forKey: Keys.languagePin) ?? "") }
         set { defaults.set(newValue.rawValue, forKey: Keys.languagePin) }
     }
 

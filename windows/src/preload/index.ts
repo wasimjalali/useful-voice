@@ -80,6 +80,19 @@ const api = {
   },
 
   /**
+   * Fires when the language-picker hotkey is pressed.
+   *
+   * The hotkey is global, so it can arrive while the user is in another
+   * application; the main process brings the window forward and this tells the
+   * renderer to open its picker.
+   */
+  onOpenLanguagePicker: (handler: () => void): (() => void) => {
+    const listener = (): void => handler();
+    ipcRenderer.on('app:openLanguagePicker', listener);
+    return () => ipcRenderer.removeListener('app:openLanguagePicker', listener);
+  },
+
+  /**
    * Data changed somewhere the renderer did not initiate.
    *
    * These three exist because the main process broadcasts them — `history:changed`

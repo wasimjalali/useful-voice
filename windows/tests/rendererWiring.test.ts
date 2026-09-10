@@ -25,7 +25,23 @@ import { describe, expect, it } from 'vitest';
  */
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const rendererSource = readFileSync(path.resolve(here, '../src/renderer/renderer.ts'), 'utf8');
+
+/**
+ * Read as text with line endings normalised to LF.
+ *
+ * Not cosmetic. This file searches the source for exact strings such as `"\n}\n"`,
+ * which can never match a CRLF checkout — and a Windows runner checks out with CRLF
+ * unless `.gitattributes` says otherwise. That is exactly what happened: this test
+ * threw `could not find the end of: function mountMain(` on windows-latest and
+ * reported zero tests, while passing on macOS. `.gitattributes` now forces LF, and
+ * normalising here means the test also survives anyone reading the file through
+ * tooling that reintroduces CRLF.
+ */
+function readSource(relativePath: string): string {
+  return readFileSync(path.resolve(here, relativePath), 'utf8').replace(/\r\n/g, '\n');
+}
+
+const rendererSource = readSource('../src/renderer/renderer.ts');
 
 /**
  * The text of a top-level declaration, up to the first closing brace in column 0.

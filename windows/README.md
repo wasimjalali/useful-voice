@@ -22,7 +22,7 @@ is split by what is actually provable on each platform.
 | All platform-free logic | `npm test` — **258 tests, 9 files**, run on macOS |
 | Type safety | `npm run typecheck` — clean |
 | Build | `npm run build` — main, preload and renderer all emitted |
-| Preload↔renderer contract | `npm run self-test` — API exposed, 50 channels, no Node leak |
+| Preload↔renderer contract | `npm run self-test` — API exposed, 51 channels, no Node leak |
 | Renderer loads under CSP | `npm run self-test` — shell paints, 5 nav items |
 | Audio-capable recorder window | `npm run self-test` — `getUserMedia` and `AudioContext` present |
 | Keyterm ceiling | `npm run self-test` — 400 terms compressed to 400 tokens, 384 dropped |
@@ -121,7 +121,7 @@ that it did.
 
 ### Where the security boundary is
 
-The renderer can call 50 named IPC channels and nothing else. It cannot read the
+The renderer can call 51 named IPC channels and nothing else. It cannot read the
 filesystem, and it can never read the API key — it can only ask whether one is
 configured. The key is encrypted with DPAPI via Electron's `safeStorage`, so it is
 unreadable from another Windows account or from a copy of the file on another

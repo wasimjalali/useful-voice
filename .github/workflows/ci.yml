@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-test:
+  macos:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -26,3 +26,39 @@ jobs:
         # CI (the Makefile's framework copy is only needed on the Command Line
         # Tools-only dev machine).
         run: swift test
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+        # The whole repo, not just `windows/`, because
+        # `tests/languageCatalog.test.ts` compares the Windows catalog against the
+        # macOS one and skips silently if the Swift source is absent. Without a full
+        # checkout that check would pass by doing nothing.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: windows/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: |
+          npx tsc --noEmit
+          npx tsc --noEmit -p tsconfig.main.json
+
+      - name: Unit tests
+        run: npx vitest run
+
+      # The icon is a gitignored build artifact, so packaging fails on a fresh clone
+      # without this. It also proves the generator still works from nothing.
+      - name: Generate icon
+        run: npm run build:icon
+
+      - name: Package
+        run: npx electron-builder --win --publish never

@@ -10,7 +10,8 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
 
     func show(viewModel: UsefulVoiceViewModel, settings: AppSettings) {
-        if window == nil {
+        let isFirstShow = window == nil
+        if isFirstShow {
             let hosting = NSHostingController(
                 rootView: RootView(viewModel: viewModel, settings: settings))
             let window = NSWindow(contentViewController: hosting)
@@ -24,12 +25,18 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             window.setContentSize(Self.defaultContentSize(on: NSScreen.main))
             window.minSize = NSSize(width: 960, height: 640)
             window.isReleasedWhenClosed = false
+            // The window manages its own placement (and remembers the user's
+            // choice), so AppKit's restorable-state machinery must not fight it.
+            window.isRestorable = false
             window.delegate = self
             window.center()
             self.window = window
         }
         NSApp.setActivationPolicy(.regular)
-        window?.center()
+        // Centre only on the first show. Re-centring on every open undid the
+        // user's move/resize and forced the window back to the main screen, so
+        // anyone working on a second display found it jumping back each time.
+        if isFirstShow { window?.center() }
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }

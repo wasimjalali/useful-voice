@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Entitlements for a hardened-runtime (distributable) build.
+
+      The hardened runtime denies microphone access unless the app asks for it,
+      so without com.apple.security.device.audio-input a notarized build would
+      install cleanly and then fail to record any audio. This file is only used
+      by `make bundle-release`; the local self-signed build does not use the
+      hardened runtime because the runtime is what requires a provisioning
+      entitlement to keep working.
+
+      Deliberately absent:
+        com.apple.security.app-sandbox
+          Useful Voice is distributed outside the App Store and needs
+          Accessibility (to post Cmd-V), a session-wide event tap for the
+          hotkey, and read access to the user's Application Support folder.
+          The sandbox would block all three.
+        com.apple.security.cs.disable-library-validation
+          Not needed: no third-party plug-ins are loaded.
+    -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+    <!-- Apple Events are never sent, but AppKit may query the frontmost app for
+         activation; declaring nothing keeps the surface minimal. -->
+</dict>
+</plist>

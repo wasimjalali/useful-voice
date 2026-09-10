@@ -58,17 +58,23 @@ final class UsefulVoiceViewModel: ObservableObject {
     func refreshRecent() { recent = history.recent(5) }
 
     func refreshConfig() {
-        // exists() not get(): refreshConfig runs on the main thread (init, and
-        // after every settings/language change), and get() can trigger a
-        // blocking keychain authorization prompt that freezes the app, and with
-        // it the HUD. An existence check is all "configured?" needs and never
-        // prompts. See Keychain.exists.
+        // Reads the in-memory cache rather than the Keychain. Calling get() here
+        // would run on the main thread (refreshConfig is called from init and
+        // after every settings/language change) and can block on a keychain
+        // authorization prompt, freezing the app and, with it, the HUD and the
+        // event tap. DeepgramKeyStore is primed off-main at launch.
         providerName = "Deepgram"
-        providerConfigured = Keychain.exists(account: "deepgram-key")
+        providerConfigured = DeepgramKeyStore.shared.current != nil
+            || DeepgramKeyStore.shared.isConfigured()
         languagePin = settings.languagePin
         hotkeyKeycode = settings.hotkeyKeycode
         languageSwitchKeycode = settings.languageSwitchKeycode
         onRecordingSettingsChange?(settings.silenceTimeout, settings.recordingsToKeep)
+    }
+
+    /// Commits any debounced editor work before the process exits.
+    func flushPendingEdits() {
+        scratchpad.commitDraft()
     }
 
     /// Sets the dictation key and swaps the language key when they collide.

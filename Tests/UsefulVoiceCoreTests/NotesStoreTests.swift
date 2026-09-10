@@ -64,6 +64,39 @@ import Foundation
         #expect(store.all().first?.text == "keep me")
     }
 
+    @Test func testSaveFailureIsReportedInsteadOfSwallowed() throws {
+        // A regular file where the store needs a directory: the write cannot
+        // succeed here on any account, root included.
+        let blocker = FileManager.default.temporaryDirectory
+            .appendingPathComponent("notes-blocked-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: blocker) }
+        try Data("not a directory".utf8).write(to: blocker)
+        let fileURL = blocker.appendingPathComponent("notes.json")
+
+        let store = NotesStore(fileURL: fileURL)
+        var reported: [Error] = []
+        store.onSaveFailure = { reported.append($0) }
+
+        store.add(text: "Doomed", createdAt: Date())
+
+        // Skip cleanly if the environment somehow allows the write.
+        guard store.lastSaveError != nil else { return }
+
+        #expect(reported.count == 1)
+        #expect(!FileManager.default.fileExists(atPath: fileURL.path))
+
+        store.clearSaveError()
+        #expect(store.lastSaveError == nil)
+    }
+
+    @Test func testSuccessfulSaveReportsNoError() {
+        let url = tempFile()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = NotesStore(fileURL: url)
+        store.add(text: "Fine", createdAt: Date())
+        #expect(store.lastSaveError == nil)
+    }
+
     @Test func testCorruptRecoversWithBackup() throws {
         let url = tempFile()
         defer {

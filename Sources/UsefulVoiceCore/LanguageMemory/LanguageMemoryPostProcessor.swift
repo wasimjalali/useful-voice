@@ -34,8 +34,17 @@ public enum LanguageMemoryPostProcessor {
             to: firstReplacement.text,
             language: language
         )
+        // Second pass catches text introduced by snippet expansions. Rules that
+        // already fired are skipped: re-running them is not idempotent when a
+        // rule's replacement still contains its own match, and the result was
+        // visible corruption — alias "Karko" -> phrase "Karko AI" turned "Karko"
+        // into "Karko AI AI", and "Useful" -> "Useful Voice" became "Useful Voice
+        // Voice". A rule matches a literal phrase, so re-applying it to text it
+        // already produced can only duplicate.
+        let appliedInFirstPass = Set(firstReplacement.appliedRuleIDs)
+        let remainingRules = rules.filter { !appliedInFirstPass.contains($0.id) }
         let finalReplacement = ReplacementEngine.apply(
-            rules,
+            remainingRules,
             to: snippet.text,
             language: language
         )

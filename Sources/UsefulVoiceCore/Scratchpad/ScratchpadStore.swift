@@ -6,6 +6,20 @@ public final class ScratchpadStore {
     private let fileURL: URL
     private var notes: [ScratchpadNote]
 
+    /// The error from the most recent failed persist, or `nil` when the last
+    /// write succeeded. `save()` never discards its error: a full disk or an
+    /// unwritable directory must be reportable to the user instead of leaving
+    /// the UI claiming the note was saved.
+    public private(set) var lastSaveError: Error?
+
+    /// Called synchronously on the saving thread whenever a persist fails.
+    /// The app layer uses this to surface the failure.
+    public var onSaveFailure: ((Error) -> Void)?
+
+    public func clearSaveError() {
+        lastSaveError = nil
+    }
+
     public init(fileURL: URL) {
         self.fileURL = fileURL
         guard let data = try? Data(contentsOf: fileURL) else {
@@ -46,10 +60,10 @@ public final class ScratchpadStore {
 
     @discardableResult
     public func add(title: String, body: String, tags: [String], createdAt: Date) -> ScratchpadNote? {
-        let normalized = normalize(title: title, body: body, tags: tags)
+        let normalized = Self.normalize(title: title, body: body, tags: tags)
         guard !normalized.title.isEmpty || !normalized.body.isEmpty else { return nil }
         let note = ScratchpadNote(
-            title: normalized.title.isEmpty ? titleFromBody(normalized.body) : normalized.title,
+            title: normalized.title.isEmpty ? Self.titleFromBody(normalized.body) : normalized.title,
             body: normalized.body,
             tags: normalized.tags,
             createdAt: createdAt,
@@ -62,19 +76,37 @@ public final class ScratchpadStore {
 
     public func update(_ note: ScratchpadNote) {
         guard let index = notes.firstIndex(where: { $0.id == note.id }) else { return }
-        let normalized = normalize(title: note.title, body: note.body, tags: note.tags)
+        let normalized = Self.normalize(title: note.title, body: note.body, tags: note.tags)
         guard !normalized.title.isEmpty || !normalized.body.isEmpty else { return }
         var copy = note
-        copy.title = normalized.title.isEmpty ? titleFromBody(normalized.body) : normalized.title
+        copy.title = normalized.title.isEmpty ? Self.titleFromBody(normalized.body) : normalized.title
         copy.body = normalized.body
         copy.tags = normalized.tags
         notes[index] = copy
         save()
     }
 
-    public func delete(id: UUID) {
+    /// Removes a note and returns the removed note together with its index in
+    /// the visible (ordered) list, so the caller can offer an undo that puts it
+    /// back exactly where it was.
+    @discardableResult
+    public func delete(id: UUID) -> (note: ScratchpadNote, index: Int)? {
+        let ordered = all()
+        guard let index = ordered.firstIndex(where: { $0.id == id }) else { return nil }
+        let note = ordered[index]
         notes.removeAll { $0.id == id }
         save()
+        return (note, index)
+    }
+
+    /// Puts a deleted note back at `index` in the ordered list. Restoring an id
+    /// that is already present is a no-op and returns `false`.
+    @discardableResult
+    public func restore(_ note: ScratchpadNote, at index: Int) -> Bool {
+        guard !notes.contains(where: { $0.id == note.id }) else { return false }
+        notes.insert(note, at: min(max(index, 0), notes.count))
+        save()
+        return true
     }
 
     @discardableResult
@@ -129,27 +161,54 @@ public final class ScratchpadStore {
               let imported = Self.decodeImportedNotes(from: data)
         else { return nil }
 
+        let outcome = Self.merge(existing: notes, incoming: imported)
+        notes = outcome.notes
+        save()
+        return outcome.result
+    }
+
+    /// Pure merge of an imported backup into the local notes, extracted from
+    /// the import path so the non-destructive rule is directly testable.
+    ///
+    /// A record whose id already exists locally is only adopted when it is
+    /// strictly newer by `updatedAt`; otherwise the newer local edit is kept
+    /// and counted in `keptLocal`. Records with unknown ids are inserted, and
+    /// records that fail validation are reported in `invalid`.
+    public static func merge(existing: [ScratchpadNote],
+                             incoming: [ScratchpadNote]) -> ScratchpadMergeOutcome {
+        var merged = existing
         var inserted = 0
         var updated = 0
+        var keptLocal = 0
         var invalid: [String] = []
 
-        for note in imported {
-            guard let normalized = normalized(note) else {
+        for note in incoming {
+            guard let normalized = Self.normalized(note) else {
                 invalid.append(note.id.uuidString)
                 continue
             }
-            if let index = notes.firstIndex(where: { $0.id == normalized.id }) {
-                notes[index] = normalized
-                updated += 1
+            if let index = merged.firstIndex(where: { $0.id == normalized.id }) {
+                if normalized.updatedAt > merged[index].updatedAt {
+                    merged[index] = normalized
+                    updated += 1
+                } else {
+                    keptLocal += 1
+                }
             } else {
-                notes.append(normalized)
+                merged.append(normalized)
                 inserted += 1
             }
         }
 
-        notes = Self.sorted(notes)
-        save()
-        return ScratchpadImportResult(inserted: inserted, updated: updated, invalid: invalid)
+        return ScratchpadMergeOutcome(
+            notes: Self.sorted(merged),
+            result: ScratchpadImportResult(
+                inserted: inserted,
+                updated: updated,
+                keptLocal: keptLocal,
+                invalid: invalid
+            )
+        )
     }
 
     private func markdown(for note: ScratchpadNote) -> String {
@@ -171,15 +230,21 @@ public final class ScratchpadStore {
             version: ScratchpadPersisted.currentVersion,
             notes: notes
         )
-        guard let data = try? Self.encoder.encode(persisted) else { return }
-        try? FileManager.default.createDirectory(
-            at: fileURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try? data.write(to: fileURL, options: .atomic)
+        do {
+            let data = try Self.encoder.encode(persisted)
+            try FileManager.default.createDirectory(
+                at: fileURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try data.write(to: fileURL, options: .atomic)
+            lastSaveError = nil
+        } catch {
+            lastSaveError = error
+            onSaveFailure?(error)
+        }
     }
 
-    private func normalize(title: String, body: String, tags: [String])
+    private static func normalize(title: String, body: String, tags: [String])
         -> (title: String, body: String, tags: [String]) {
         var seen = Set<String>()
         let normalizedTags = tags.compactMap { tag -> String? in
@@ -197,17 +262,17 @@ public final class ScratchpadStore {
         )
     }
 
-    private func normalized(_ note: ScratchpadNote) -> ScratchpadNote? {
-        let normalized = normalize(title: note.title, body: note.body, tags: note.tags)
+    private static func normalized(_ note: ScratchpadNote) -> ScratchpadNote? {
+        let normalized = Self.normalize(title: note.title, body: note.body, tags: note.tags)
         guard !normalized.title.isEmpty || !normalized.body.isEmpty else { return nil }
         var copy = note
-        copy.title = normalized.title.isEmpty ? titleFromBody(normalized.body) : normalized.title
+        copy.title = normalized.title.isEmpty ? Self.titleFromBody(normalized.body) : normalized.title
         copy.body = normalized.body
         copy.tags = normalized.tags
         return copy
     }
 
-    private func titleFromBody(_ body: String) -> String {
+    private static func titleFromBody(_ body: String) -> String {
         let firstLine = body.split(whereSeparator: { $0.isNewline }).first.map(String.init) ?? ""
         let trimmed = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "Untitled" }

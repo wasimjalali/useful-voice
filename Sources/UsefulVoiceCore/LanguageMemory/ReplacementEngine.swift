@@ -32,7 +32,7 @@ public enum ReplacementEngine {
                     options: [.caseInsensitive]
                 )
             case .wordBoundaryPhrase:
-                let regex = LanguageMemoryMatcher.wordBoundaryRegex(for: match)
+                guard let regex = LanguageMemoryMatcher.wordBoundaryRegex(for: match) else { continue }
                 let range = NSRange(output.startIndex..<output.endIndex, in: output)
                 output = regex.stringByReplacingMatches(
                     in: output,

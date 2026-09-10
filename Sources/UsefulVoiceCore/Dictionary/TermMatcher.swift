@@ -72,7 +72,14 @@ public enum TermMatcher {
         // Trim any trailing separator that may have been appended.
         result = result.trimmingCharacters(in: .whitespaces)
 
-        return result.lowercased()
+        // Canonically compose before lowercasing. Identical words arrive from two
+        // different places in different normal forms: macOS text fields usually
+        // produce NFC ("ü" as one scalar) while STT output and file/clipboard
+        // round-trips frequently produce NFD ("u" + combining diaeresis). Without
+        // folding, one word has two canonical keys, so it is stored twice,
+        // de-duplicated wrongly, and two rules can end up rewriting each other.
+        // German is a first-class language here, so this is not hypothetical.
+        return result.precomposedStringWithCanonicalMapping.lowercased()
     }
 
     /// Returns `true` when `a` and `b` are considered the same term.

@@ -9,6 +9,10 @@ public final class WavWriter {
     public init(url: URL, sampleRate: Int = 16000) throws {
         self.sampleRate = UInt32(sampleRate)
         FileManager.default.createFile(atPath: url.path, contents: nil)
+        // `createFile` applies the process umask, leaving the audio at 0644 --
+        // readable by every other account on the machine. Restrict it at creation
+        // rather than at launch, so a recording is never briefly world-readable.
+        FileProtection.restrict(url, isDirectory: false)
         handle = try FileHandle(forWritingTo: url)
         try handle.write(contentsOf: Self.header(sampleRate: self.sampleRate,
                                                  dataBytes: 0))

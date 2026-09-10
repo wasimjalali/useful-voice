@@ -6,21 +6,57 @@ public final class LanguageMemoryStore {
     private let fileURL: URL
     private var state: LanguageMemorySnapshot
 
+    private let failures = StoreFailureReporter(label: "Language memory")
+    private let outcome: StoreLoadOutcome
+    private var isWritable: Bool
+
     public init(fileURL: URL) {
         self.fileURL = fileURL
-        guard let data = try? Data(contentsOf: fileURL) else {
-            state = LanguageMemorySnapshot()
-            return
+
+        let loaded = StoreFileReader.load(
+            from: fileURL,
+            version: { $0.version },
+            supportedVersion: LanguageMemoryPersisted.currentVersion
+        ) { data -> LoadedLanguageMemory in
+            // Current format first, then the legacy unversioned snapshot. Only when
+            // BOTH fail is the file genuinely undecodable — the previous code
+            // treated a decode failure as corruption and moved the file aside,
+            // which is worse than it sounds for a user who downgraded the app.
+            if let persisted = try? Self.decoder.decode(LanguageMemoryPersisted.self, from: data) {
+                return LoadedLanguageMemory(snapshot: persisted.snapshot, version: persisted.version)
+            }
+            let snapshot = try Self.decoder.decode(LanguageMemorySnapshot.self, from: data)
+            return LoadedLanguageMemory(snapshot: snapshot, version: nil)
         }
 
-        if let persisted = try? Self.decoder.decode(LanguageMemoryPersisted.self, from: data) {
-            state = persisted.snapshot
-        } else if let snapshot = try? Self.decoder.decode(LanguageMemorySnapshot.self, from: data) {
-            state = snapshot
-        } else {
-            Self.backUpCorruptFile(fileURL)
-            state = LanguageMemorySnapshot()
-        }
+        self.outcome = loaded.outcome
+        self.state = loaded.value?.snapshot ?? LanguageMemorySnapshot()
+
+        // A file from a newer build decodes but must not be written back: doing so
+        // would drop the fields this build does not know about. `StoreFileReader`
+        // reports `incompatible` for that case and withholds write permission.
+        self.isWritable = loaded.outcome.allowsWriting
+    }
+
+    /// Whether the file could be read at launch, and why not if it could not.
+    public var loadOutcome: StoreLoadOutcome { outcome }
+
+    /// The last write failure, or nil. Drives the UI's save indicator.
+    public var lastSaveError: String? { failures.lastSaveError }
+
+    /// Called on every write failure.
+    public func onSaveFailure(_ handler: @escaping (String) -> Void) {
+        failures.onSaveFailure(handler)
+    }
+
+    public func clearSaveError() {
+        failures.clearSaveError()
+    }
+
+    /// Allow writing again, after the user has resolved a launch-time read problem.
+    public func allowWritingAgain() {
+        isWritable = true
+        failures.clearSaveError()
     }
 
     public func snapshot() -> LanguageMemorySnapshot { state }
@@ -343,17 +379,37 @@ public final class LanguageMemoryStore {
         return rank(a) <= rank(b) ? a : b
     }
 
-    private func save() {
+    /// Persist the current state, reporting rather than swallowing any failure.
+    ///
+    /// Also refuses to write when the file was never successfully read: the
+    /// previous version wrote unconditionally, so a file that failed to load was
+    /// silently replaced by an empty snapshot on the next edit — destroying the
+    /// user's whole language memory (terms, replacements and snippets) because of
+    /// one transient read error.
+    @discardableResult
+    public func save() -> Bool {
+        guard isWritable else {
+            failures.reportSaveFailure(
+                "not saving: \(loadOutcome.userFacingMessage ?? "the existing file could not be read")")
+            return false
+        }
         let persisted = LanguageMemoryPersisted(
             version: LanguageMemoryPersisted.currentVersion,
             snapshot: state
         )
-        guard let data = try? Self.encoder.encode(persisted) else { return }
-        try? FileManager.default.createDirectory(
-            at: fileURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try? data.write(to: fileURL, options: .atomic)
+        do {
+            let data = try Self.encoder.encode(persisted)
+            try FileManager.default.createDirectory(
+                at: fileURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try data.write(to: fileURL, options: .atomic)
+            failures.reportSaveSuccess()
+            return true
+        } catch {
+            failures.reportSaveFailure(error)
+            return false
+        }
     }
 
     private static let encoder: JSONEncoder = {
@@ -368,9 +424,11 @@ public final class LanguageMemoryStore {
         return decoder
     }()
 
-    private static func backUpCorruptFile(_ url: URL) {
-        let backup = url.appendingPathExtension("bak")
-        try? FileManager.default.removeItem(at: backup)
-        try? FileManager.default.moveItem(at: url, to: backup)
-    }
+}
+
+/// A decoded language-memory file, plus the schema version it declared.
+private struct LoadedLanguageMemory {
+    var snapshot: LanguageMemorySnapshot
+    /// nil for the legacy unversioned format.
+    var version: Int?
 }

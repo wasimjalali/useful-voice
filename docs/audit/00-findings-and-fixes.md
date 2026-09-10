@@ -178,7 +178,7 @@ observed and a capture failure is now a reported error rather than silence.
 
 ### F-9 — The test script only worked by accident
 
-**What was wrong.** `Scripts/run-tests.sh` looked for `lib_TestingInterop.dylib`
+**What was wrong.** `scripts/run-tests.sh` looked for `lib_TestingInterop.dylib`
 next to `Testing.framework`. This Command Line Tools installation ships it in
 `Library/Developer/usr/lib/` instead. The script never found it, and the
 `[ -f "$INTEROP" ] && cp …` guard discarded the failure — so the suite passed only
@@ -929,3 +929,85 @@ dist\main\index.js ... does not exist"* — because `electron-builder` packages 
 as-is and compiles nothing, so tests must be followed by a build. Which is itself the
 point: **both failures were in the verification path, not the product, and neither
 could have been found on this Mac.**
+
+## 10. F-38 — One bad value in the detection list broke every auto-detect dictation
+
+**Reported live as "HTTP 400 error". Reproduced, root-caused, and caused by this
+work.**
+
+`detectionCodes` grew from 2 codes to Deepgram's full documented detection set, and
+the app sends them all as repeated `detect_language` parameters. The API then rejected
+**every** auto-detect request with:
+
+```
+{"err_code":"Bad Request","err_msg":"Bad Request: Failed to parse query string"}
+```
+
+The cause was a single value. Deepgram documents `nl-BE` among the 35 detection
+languages, and the endpoint refuses it:
+
+| Request | Result |
+|---|---|
+| `detect_language=nl-BE` | **400**, 8 attempts out of 8, on both a silent clip and a longer one |
+| `language=nl-BE` | 200, 4 attempts out of 4 |
+| `detect_language=de-CH` | 200 |
+| every other documented detection code | 200 |
+
+Because all codes travel in one request, that one rejected value failed the whole
+request — and since detection was on by default, the app could not transcribe at all
+in its default configuration.
+
+**The bisection was misleading and worth recording.** The count looked like the
+constraint at first: 22 codes passed and 23 failed. But 33 and 34 codes also passed
+when they avoided the bad value, and 11 codes *failed* when they included it. The
+number was never the limit; the specific value was. Three intermediate hypotheses —
+URL length, parameter count, hyphenated values in general — were each disproved by a
+direct request before the real cause surfaced.
+
+**What could not have caught this:** every unit test passed the whole time. They stub
+`URLSession`, so they assert the request's *shape* and are structurally incapable of
+knowing whether the service accepts it. A request can be perfectly well-formed and
+still be refused.
+
+Fixed by dropping `nl-BE` from the detection list, with a comment recording why it is
+absent despite being documented. It remains a selectable pinned language, where
+`language=nl-BE` works. Verified: the full 34-code request was accepted in ten
+consecutive attempts.
+
+### The guard that should have existed
+
+`scripts/check-deepgram-request.sh` now checks the app's real requests against the
+live endpoint: the whole auto-detection set in one request, every detection code
+individually, every code as a pinned `language=`, and the regional pins. It reads the
+detection codes out of `DeepgramLanguage.swift` rather than duplicating them, so it
+cannot drift from the app, and it exits non-zero so it can gate a release.
+
+Current status: **74 requests, all accepted.**
+
+This is the second finding in this document that only a live system could have found
+(the first was F-37, where the Windows tests had never run). Both are the same lesson:
+a local suite proves the code does what it was written to do, never that what it was
+written to do is correct.
+
+## 11. F-39 — `Scripts/` versus `scripts/`, and why it never showed
+
+The repository tracks the directory as lowercase `scripts/`, but the `Makefile`, the
+audit notes and `scripts/uninstall.sh` all referred to `./Scripts/`. Both spellings
+have always worked on this machine, because APFS is case-insensitive: the two paths
+resolve to the same directory, so `make test` and `make install` have run correctly
+for as long as they have existed.
+
+On a case-sensitive filesystem they would not. `./Scripts/run-tests.sh` from the
+`Makefile` fails on a Linux checkout. It has never bitten because the CI job does not
+use the `Makefile` — it runs `swift test` directly — and the only machine running
+`make` is this case-insensitive Mac. So the repository is one Linux contributor, or
+one `make`-based CI job, away from a confusing failure.
+
+Corrected to the spelling git actually stores, in the `Makefile`, the audit notes,
+`scripts/uninstall.sh` and the new check script.
+
+Worth noting because of how it was found: the case was invisible in `git ls-files`
+with `core.ignorecase = true`, and the file on disk had been created at the path the
+shell resolved, so nothing looked wrong. It only surfaced by comparing
+`git ls-tree main` against `git ls-tree HEAD` while checking whether a commit had
+accidentally renamed a directory.

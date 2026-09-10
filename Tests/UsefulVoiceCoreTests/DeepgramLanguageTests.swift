@@ -82,13 +82,35 @@ struct DeepgramLanguageCatalogTests {
 
     /// `detect_language` supports a smaller set than Nova-3 speaks, and mixing the
     /// two up is the documented route to a silent model downgrade.
-    @Test func testDetectionCodesAreExactlyTheDocumentedSet() {
-        #expect(DeepgramLanguageCatalog.detectionCodes.count == 35)
+    /// Every code here has been sent to the live endpoint and accepted. The docs list
+    /// 35 detection languages; `nl-BE` is excluded because the API rejects it (see the
+    /// catalogue's own note), so this set is 34 and is deliberately not a copy of the
+    /// documented list.
+    @Test func testDetectionCodesAreTheSetTheApiAccepts() {
+        #expect(DeepgramLanguageCatalog.detectionCodes.count == 34)
         let expected = Set(["bg", "ca", "cs", "da", "de", "de-CH", "el", "en", "es",
                             "et", "fi", "fr", "hi", "hu", "id", "it", "ja", "ko",
-                            "lt", "lv", "ms", "nl", "nl-BE", "no", "pl", "pt", "ro",
+                            "lt", "lv", "ms", "nl", "no", "pl", "pt", "ro",
                             "ru", "sk", "sv", "th", "tr", "uk", "vi", "zh"])
         #expect(Set(DeepgramLanguageCatalog.detectionCodes) == expected)
+    }
+
+    /// `nl-BE` is the regression that shipped. Deepgram documents it for detection but
+    /// the API answers `400 Bad Request: Failed to parse query string`, and because
+    /// every detection code is sent in ONE request, that single value made all
+    /// auto-detect dictation fail. It must not come back.
+    @Test func testTheRejectedDetectionCodeIsNotSent() {
+        #expect(!DeepgramLanguageCatalog.detectionCodes.contains("nl-BE"))
+        // It remains a valid *pinned* language, where the parameter is `language=`.
+        #expect(DeepgramLanguageCatalog.isSupported("nl-BE"))
+        #expect(DeepgramProvider.languageParameter(for: LanguagePin(code: "nl-BE")) == "nl-BE")
+    }
+
+    /// The count is not the constraint and must not be used as one: 34 repeated
+    /// parameters is ~745 characters and is accepted. Asserting a small cap here would
+    /// invite someone to "fix" a length problem that does not exist.
+    @Test func testDetectionSetIsNotArtificiallyCapped() {
+        #expect(DeepgramLanguageCatalog.detectionCodes.count > 30)
     }
 
     @Test func testDetectionCodesAreASubsetOfTheCatalogue() {

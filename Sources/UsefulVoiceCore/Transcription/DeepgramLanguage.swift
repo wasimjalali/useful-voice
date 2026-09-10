@@ -130,18 +130,31 @@ public enum DeepgramLanguageCatalog {
         nativeName: "Multilingual"
     )
 
-    /// The codes Deepgram documents as supported by `detect_language`.
+    /// The codes sent as repeated `detect_language` parameters.
     ///
-    /// **A different and smaller set than Nova-3's languages** — 35 codes against
-    /// 63. This matters beyond tidiness: the docs say that if a detected language
-    /// is unavailable on the requested model, Deepgram "will automatically select
-    /// the next highest model to complete the request", and `keyterm` is "Only
-    /// compatible with Nova-3". A detection restricted to codes Nova-3 already
-    /// supports natively cannot trigger that fallback, so the dictionary feature
-    /// cannot be silently dropped on a request the app itself made.
+    /// **A different and smaller set than Nova-3's languages.** The docs say that if a
+    /// detected language is unavailable on the requested model, Deepgram "will
+    /// automatically select the next highest model to complete the request", and
+    /// `keyterm` is "Only compatible with Nova-3" — so an unrestricted detection could
+    /// silently disable the entire dictionary. Restricting detection to codes Nova-3
+    /// already supports natively makes that fallback unreachable.
+    ///
+    /// **`nl-BE` is deliberately absent although Deepgram documents it.** The docs list
+    /// it among the 35 detection languages, but the API rejects
+    /// `detect_language=nl-BE` with `400 Bad Request: Failed to parse query string` —
+    /// verified by direct request, consistently, on both a silent clip and a longer
+    /// one, while `detect_language=de-CH` and every other documented code succeed. This
+    /// was shipped once: one bad code in this list made *every* auto-detect dictation
+    /// fail, because all 35 are sent together and one rejected value fails the whole
+    /// request. Flemish is still available as a pinned language, where
+    /// `language=nl-BE` is accepted.
+    ///
+    /// The length of this list is not the constraint — 34 repeated parameters is ~745
+    /// characters and was accepted in ten consecutive attempts. What breaks a request
+    /// is a single value the endpoint refuses.
     public static let detectionCodes: [String] = [
         "bg", "ca", "cs", "da", "de", "de-CH", "el", "en", "es", "et", "fi", "fr",
-        "hi", "hu", "id", "it", "ja", "ko", "lt", "lv", "ms", "nl", "nl-BE", "no",
+        "hi", "hu", "id", "it", "ja", "ko", "lt", "lv", "ms", "nl", "no",
         "pl", "pt", "ro", "ru", "sk", "sv", "th", "tr", "uk", "vi", "zh",
     ]
 

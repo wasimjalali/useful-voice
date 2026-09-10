@@ -40,7 +40,7 @@ else
 fi
 
 # 2. Quit every running copy.
-"$ROOT/Scripts/stop-instances.sh"
+"$ROOT/scripts/stop-instances.sh"
 
 # 3. Remove known install locations. Both are listed because a stale copy left
 #    behind keeps the same bundle id and would still answer the hotkey.

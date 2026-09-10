@@ -123,6 +123,29 @@ export const MULTILINGUAL_CODE_SWITCHING: DeepgramLanguage = {
  * makes that fallback unreachable, so the dictionary cannot be silently dropped on
  * a request the app itself constructed.
  */
+/**
+ * The codes sent as repeated `detect_language` parameters.
+ *
+ * A different and **smaller** set than Nova-3's languages. The docs say that when a
+ * detected language is unavailable on the requested model, Deepgram "will
+ * automatically select the next highest model", and `keyterm` is "Only compatible
+ * with Nova-3" — so an unrestricted detection could silently disable the entire
+ * dictionary. Restricting detection to codes Nova-3 supports natively makes that
+ * fallback unreachable.
+ *
+ * **`nl-BE` is deliberately absent although Deepgram documents it.** The docs list it
+ * among the 35 detection languages, but the API rejects `detect_language=nl-BE` with
+ * `400 Bad Request: Failed to parse query string` — verified by direct request,
+ * consistently, on both a silent clip and a longer one, while `detect_language=de-CH`
+ * and every other documented code succeed. This shipped once: one bad code in this
+ * list made *every* auto-detect dictation fail, because all of them are sent together
+ * and a single rejected value fails the whole request. Flemish is still available as a
+ * pinned language, where `language=nl-BE` is accepted.
+ *
+ * The list length is not the constraint — 34 repeated parameters is ~745 characters and
+ * was accepted in ten consecutive attempts. What breaks a request is one value the
+ * endpoint refuses.
+ */
 export const DETECTION_CODES: readonly string[] = [
   "bg",
   "ca",
@@ -146,7 +169,6 @@ export const DETECTION_CODES: readonly string[] = [
   "lv",
   "ms",
   "nl",
-  "nl-BE",
   "no",
   "pl",
   "pt",

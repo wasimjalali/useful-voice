@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The three Language submenu items, kept so a hotkey switch can refresh
     /// their checkmarks without rebuilding the menu.
     private var languageMenuItems: [NSMenuItem] = []
+    private let languagePicker = LanguagePickerPanel()
     private let settings = AppSettings()
     private let hotkeys = HotkeyManager()
     private let hud = HUDPanel()
@@ -45,14 +46,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Flips the dictation language between English and German and flashes the
     /// new language in the HUD. Ignored while dictation is in flight so the
     /// language never changes out from under an active recording.
+    /// Opens the language picker.
+    ///
+    /// This used to cycle English↔German in place. That cannot work once the
+    /// catalogue has ten languages: tapping a key repeatedly is a poor way to reach
+    /// the tenth, and it silently skipped the ones in between. The popup keeps the
+    /// shortcut useful while making the choice explicit, and cancelling leaves the
+    /// current language alone.
     private func switchLanguage() {
         guard !isDictationBusy else { return }
-        let next = settings.languagePin.quickToggled
-        settings.languagePin = next
-        viewModel?.refreshConfig()   // keep Home + Settings in sync
-        syncLanguageMenu()
-        hud.show(.language(next))
-        hud.hide(after: 1.3)
+        languagePicker.show(
+            selection: settings.languagePin,
+            onSelect: { [weak self] chosen in
+                guard let self else { return }
+                self.settings.languagePin = chosen
+                self.viewModel?.refreshConfig()   // keep Home + Settings in sync
+                self.syncLanguageMenu()
+                // Confirms the change in the same pill the cycle used to use, so
+                // the feedback is unchanged even though the interaction is new.
+                self.hud.show(.language(chosen))
+                self.hud.hide(after: 1.3)
+            }
+        )
     }
 
     /// Refreshes the Language submenu checkmarks to match the stored pin, used
@@ -745,12 +760,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(toggleItem)
         menu.addItem(.separator())
 
+        // Every language the catalogue offers, not the two the enum used to have.
+        // A menu bar menu scrolls natively, so unlike the settings popover it needs
+        // no height cap of its own.
         let languageMenu = NSMenu()
         languageMenuItems = []
         for pin in LanguagePin.allCases {
-            let title = ["auto": "Auto-detect", "en": "English",
-                         "de": "German"][pin.rawValue]!
-            let item = NSMenuItem(title: title,
+            let item = NSMenuItem(title: pin.displayName,
                                   action: #selector(setLanguage(_:)),
                                   keyEquivalent: "")
             item.target = self
@@ -807,8 +823,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func setLanguage(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let pin = LanguagePin(rawValue: raw) else { return }
+        guard let raw = sender.representedObject as? String else { return }
+        let pin = LanguagePin(code: raw)
         settings.languagePin = pin
         sender.menu?.items.forEach { $0.state = .off }
         sender.state = .on

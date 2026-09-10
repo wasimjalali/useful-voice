@@ -48,7 +48,12 @@ public enum LanguageMemoryCSV {
                 invalid.append(row.joined(separator: ","))
                 continue
             }
-            let language = MemoryLanguage(rawValue: value(row, 3)) ?? .auto
+            // Nothing to coalesce: `MemoryLanguage` is a struct over a string now,
+            // so `rawValue:` always succeeds. Validating explicitly matters more
+            // than the warning did — without it a CSV cell reading "klingon" would
+            // be stored as a term's language and sent to the provider, which either
+            // errors or falls back to a model that does not support the dictionary.
+            let language = MemoryLanguage.validated(value(row, 3))
             let priority = MemoryPriority(rawValue: value(row, 4)) ?? .high
             terms.append(MemoryTerm(
                 phrase: phrase,
@@ -85,7 +90,7 @@ public enum LanguageMemoryCSV {
                 match: match,
                 replacement: replacement,
                 matchMode: ReplacementMatchMode(rawValue: value(row, 2)) ?? .wordBoundaryPhrase,
-                language: MemoryLanguage(rawValue: value(row, 3)) ?? .auto,
+                language: MemoryLanguage.validated(value(row, 3)),
                 isEnabled: boolValue(value(row, 4), defaultValue: true),
                 createdAt: now,
                 updatedAt: now

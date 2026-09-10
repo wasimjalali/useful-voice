@@ -747,3 +747,32 @@ struct CommandEmptyState: View {
         .padding(.vertical, 34)
     }
 }
+
+/// A quiet inline note under a settings row.
+///
+/// For facts the user needs but did not ask for — a provider charge, a limit —
+/// where an alert would be alarming and silence would be dishonest. Deliberately
+/// low-contrast and sunken so it reads as a footnote rather than a call to action,
+/// and uses no new hue: the design system has exactly three status colours and this
+/// is not a status.
+struct InlineNote: View {
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "info.circle")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.inkFaint)
+                .padding(.top, 1)
+            Text(text)
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.inkMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+}

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { DETECTION_CODES } from '../src/core/transcription/languages.js';
 import {
   ASSUMED_UPLOAD_BYTES_PER_SECOND,
   AUTO_DETECT_LANGUAGES,
@@ -100,7 +101,11 @@ describe('buildRequest', () => {
     });
     const params = new URL(request.url).searchParams;
     expect(params.get('language')).toBeNull();
-    expect(params.getAll('detect_language')).toEqual(['en', 'de']);
+    // The documented `detect_language` set is 35 codes — a smaller set than
+    // Nova-3's languages — so this must not simply be the catalogue.
+    expect(params.getAll('detect_language')).toEqual([...DETECTION_CODES]);
+    expect(params.getAll('detect_language')).toHaveLength(35);
+    expect(params.getAll('detect_language')).not.toContain('true');
   });
 
   it('restricts detection to languages Nova-3 supports natively', () => {

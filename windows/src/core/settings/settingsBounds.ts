@@ -9,7 +9,7 @@
  * behaviour at each end of these ranges is worth being able to test directly.
  */
 
-import { type AppSettings } from '../models.js';
+import { normaliseMemoryLanguage, type AppSettings } from '../models.js';
 
 /**
  * Longest recording the user may choose.
@@ -59,5 +59,18 @@ export function normaliseSettings(settings: AppSettings): AppSettings {
       0,
       MAX_DICTIONARY_BIAS_BUDGET,
     ),
+    // A stored language has to be one the provider can actually be asked for.
+    // An unrecognised code would either error or, worse, make Deepgram fall back
+    // to a weaker model that does not support `keyterm` — silently dropping the
+    // dictionary feature on every request.
+    languagePin: normaliseMemoryLanguage(settings.languagePin),
+    languageSwitchHotkey: settings.languageSwitchHotkey
+      ? {
+          accelerator: String(settings.languageSwitchHotkey.accelerator ?? ''),
+          // The picker is a discrete action, so push-to-talk is meaningless here
+          // and is forced off rather than left to confuse a shared settings shape.
+          pushToTalk: false,
+        }
+      : undefined,
   };
 }

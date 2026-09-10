@@ -82,7 +82,8 @@ import Foundation
         #expect(!items.contains { $0.name == "language" && $0.value == "multi" })
         // Detection overrides `language`, so sending both would be misleading.
         #expect(!names(items).contains("language"))
-        #expect(items.filter { $0.name == "detect_language" }.compactMap(\.value) == ["en", "de"])
+        #expect(items.filter { $0.name == "detect_language" }.compactMap(\.value)
+                == DeepgramLanguageCatalog.detectionCodes)
     }
 
     @Test func testAutoDetectionIsRestrictedToSupportedLanguages() throws {
@@ -92,8 +93,16 @@ import Foundation
         // unreachable, so the unqualified boolean form must not be used.
         let values = try items(pin: .auto)
             .filter { $0.name == "detect_language" }.compactMap(\.value)
-        #expect(values == ["en", "de"])
+        // The documented detection set is 35 codes, smaller than Nova-3's language
+        // list, so this must NOT simply be the catalogue.
+        #expect(values == DeepgramLanguageCatalog.detectionCodes)
+        #expect(values.count == 35)
         #expect(!values.contains("true"))
+        // Every detection code must also be a language the app can pin, or the
+        // picker could offer something detection can never return.
+        for code in values {
+            #expect(DeepgramLanguageCatalog.isSupported(code), "detection code \(code) is not in the catalogue")
+        }
     }
 
     @Test func testPinnedLanguagesSendLanguageAndNotDetection() throws {

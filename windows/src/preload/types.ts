@@ -59,6 +59,8 @@ export interface SettingsDTO {
   soundEffectsEnabled: boolean;
   launchAtLogin: boolean;
   hotkey: { accelerator: string; pushToTalk: boolean };
+  /** Opens the language picker. Optional, and empty means disabled. */
+  languageSwitchHotkey?: { accelerator: string; pushToTalk: boolean };
   dictionaryBiasBudget: number;
   hasApiKey: boolean;
 }

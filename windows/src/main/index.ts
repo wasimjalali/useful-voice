@@ -8,7 +8,7 @@ import os from 'node:os';
 import { DataStore } from '../core/settings/dataStore.js';
 import { planLoginItem, wasAutoStarted } from '../core/settings/autostart.js';
 import { decideClipboardRestore, isProbablyVerifiable } from '../core/delivery/clipboardRestore.js';
-import type { AppSettings, Note } from '../core/models.js';
+import { normaliseMemoryLanguage, type AppSettings, type Note } from '../core/models.js';
 import { selectKeyterms } from '../core/memory/biasBuilder.js';
 import {
   transcribe as transcribeRequest,
@@ -329,6 +329,61 @@ class UsefulVoiceApp {
     } else {
       this.diagnostics.log('hotkey', `registered ${accelerator}`);
     }
+
+    this.registerLanguageHotkey();
+  }
+
+  /**
+   * Registers the language-picker hotkey, if one is set.
+   *
+   * Registered separately from the dictation hotkey and reported separately,
+   * because the two failures are independent: if this combination is taken the user
+   * can still dictate, and telling them dictation is broken would be wrong.
+   */
+  private registerLanguageHotkey(): void {
+    const binding = this.settings.all.languageSwitchHotkey;
+    const accelerator = binding?.accelerator?.trim() ?? '';
+    if (accelerator.length === 0) {
+      this.diagnostics.log('hotkey', 'no language-switch hotkey configured');
+      return;
+    }
+    if (accelerator === this.settings.all.hotkey.accelerator) {
+      // Two global shortcuts on one combination would have the second registration
+      // silently refused by Windows, with no way for the user to tell why.
+      this.diagnostics.log('hotkey', `language hotkey ${accelerator} duplicates the dictation hotkey`);
+      return;
+    }
+    const ok = globalShortcut.register(accelerator, () => this.openLanguagePicker());
+    this.diagnostics.log(
+      'hotkey',
+      ok ? `registered language switch ${accelerator}` : `could not register language switch ${accelerator}`,
+    );
+    if (!ok) {
+      this.broadcast('app:save-status', {
+        ok: false,
+        message: `The language hotkey ${accelerator} is already used by another app. Choose a different one in Settings.`,
+      });
+    }
+  }
+
+  /**
+   * Opens the language picker in the main window, bringing it forward.
+   *
+   * Unlike macOS — which floats a panel over the app being dictated into — the
+   * picker here needs a window that can hold focus for the search field, so the main
+   * window is shown. It is not possible to give a Chromium window a searchable
+   * popup without one, and a non-searchable overlay would defeat the point.
+   */
+  private openLanguagePicker(): void {
+    const window = this.mainWindow;
+    if (!window || window.isDestroyed()) {
+      this.diagnostics.log('hotkey', 'language picker requested with no main window');
+      return;
+    }
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+    window.webContents.send('app:openLanguagePicker');
   }
 
   // ---- dictation ---------------------------------------------------------
@@ -652,7 +707,7 @@ class UsefulVoiceApp {
         phrase: input.phrase,
         aliases: [input.alias].filter((value): value is string => Boolean(value)),
         pronunciations: [input.soundAlike].filter((value): value is string => Boolean(value)),
-        language: (input.language as never) ?? 'auto',
+        language: normaliseMemoryLanguage(input.language),
         priority: 'high',
         notes: '',
         usageCount: 0,
@@ -677,7 +732,7 @@ class UsefulVoiceApp {
         match: input.match,
         replacement: input.replacement,
         matchMode: 'wordBoundaryPhrase',
-        language: (input.language as never) ?? 'auto',
+        language: normaliseMemoryLanguage(input.language),
         isEnabled: true,
         usageCount: 0,
         createdAt: new Date().toISOString(),
@@ -698,7 +753,7 @@ class UsefulVoiceApp {
         id: randomUUID(),
         trigger: input.trigger,
         expansion: input.expansion,
-        language: (input.language as never) ?? 'auto',
+        language: normaliseMemoryLanguage(input.language),
         isEnabled: true,
         usageCount: 0,
         createdAt: new Date().toISOString(),
@@ -1229,7 +1284,9 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     // The count is checked against the documented boundary rather than a vague lower
     // bound: `tests/ipcContract.test.ts` pins this same number to the README, so a
     // channel added or lost anywhere fails one of the two.
-    const EXPECTED_API_METHODS = 50;
+    // 51 since the language picker hotkey added `onOpenLanguagePicker`. Kept in step
+    // with the README by the comment below.
+    const EXPECTED_API_METHODS = 51;
     record(
       'preload exposes API',
       preloadProbe.hasApi

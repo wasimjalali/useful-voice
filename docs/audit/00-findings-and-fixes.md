@@ -511,11 +511,11 @@ made the code worse.
 
 ## 6. Two claims worth distrusting
 
-- The macOS suite passing 313 tests does **not** cover rendering. The confirmation
+- The macOS suite passing 346 tests does **not** cover rendering. The confirmation
   dialog, the undo bar's spacing and the 8-second timer are not exercised by any
   automated test; they match the surrounding component idioms but have not been seen
   drawn.
-- The Windows suite passing 345 tests covers `src/core`, the dictation state machine,
+- The Windows suite passing 369 tests covers `src/core`, the dictation state machine,
   and the IPC/naming/identity contracts read out of the sources. It does **not** cover
   anything that needs Electron or Windows at runtime: the registry write behind
   launch-at-login, the `win32` guard, the login-item read-back, clipboard save/paste
@@ -664,3 +664,196 @@ whether Dictation works outside English; and any recommended sample rate for Nov
 pre-recorded audio. Two Deepgram pages also contradict each other on the concurrent
 request limit for Nova-3 pre-recorded (100 vs 50); this is immaterial for a
 single-user desktop app and was left alone.
+
+## 8. Language selection, model choice and cost (F-28 … F-33)
+
+Driven by the questions "when you choose auto, will it correctly auto-dictate?",
+"put Deepgram's supported languages in the dropdown", and "is Nova-3 the strongest
+model here, and how is it price-performance wise?". The provider-side research is
+in `docs/DEEPGRAM_MODELS_LANGUAGES.md`, which carries the verbatim quotes and URLs
+for everything asserted below.
+
+### F-28 — The language control offered three values out of sixty-three
+
+`LanguagePin` was an enum with `auto`, `en`, `de`. Deepgram documents **63 named
+languages** for Nova-3 on pre-recorded `/v1/listen`, so a Korean, Turkish or Polish
+speaker had no way to pin their language: the app would detect, and detection cannot
+return a code it does not support, so their pin silently stayed on detection.
+
+Converted to a struct over a string, backed by `DeepgramLanguageCatalog`. The stored
+value is still a plain `UserDefaults` string, so no migration was needed for the
+existing `auto`/`en`/`de` values. See F-31.
+
+Regional variants are collapsed only where the documentation says that is lossless.
+English variants collapse to `en` — "Transcription outputs from the English models
+are provided with standardized American spelling of words … 'color' will always be
+spelled as such with both `language=en-US` and `language=en-GB`" — so six English
+rows would have buried the list without changing output. `zh-HK` (Cantonese) is
+**not** collapsed into `zh` (Mandarin): a different spoken language.
+
+### F-29 — `detect_language` and the language list are different sets, and mixing them up is expensive
+
+They are not the same list, and the app previously treated detection as "whatever
+languages we offer":
+
+| | Count | Source |
+|---|---|---|
+| Nova-3 languages | 63 | `models-languages-overview` |
+| Codes `detect_language` supports | **35** | `language-detection` |
+
+This is not tidiness. The docs say that when a detected language is unavailable on
+the requested model, Deepgram "will automatically select the next highest model",
+with precedence `Nova-3 -> Nova-2 -> Nova-1 -> Enhanced -> Base`. `keyterm` is
+"Only compatible with Nova-3", so a silent model downgrade silently disables the
+entire dictionary feature — and **what happens to a `keyterm` parameter on a
+non-Nova-3 model is documented nowhere**. The visible symptom would be odd
+spellings of the user's own terminology, which reads as a dictionary bug.
+
+Detection is therefore restricted to the 35 documented codes, each of which is also
+a native Nova-3 language, which makes the fallback unreachable on a request the app
+itself built. Sending the bare `detect_language=true` would not have that property.
+
+**On the original question — yes, "auto" now dictates correctly.** It previously sent
+`language=multi`, which is code-switching, a different feature for audio where the
+speaker changes language mid-sentence; single-language dictation was transcribed in
+the wrong mode. It now sends repeated `detect_language` parameters. `multi` is
+offered as its own explicit choice, clearly labelled as code-switching. Both
+platforms are covered by tests asserting the parameter names, not substrings — an
+earlier assertion of `!query.contains("language=")` passed while `detect_language`
+was present, because it contains `language=`.
+
+### F-30 — The dropdowns were off-brand, unsearchable and unbounded, and the hotkey cycled
+
+macOS used a SwiftUI `Menu` and Windows a native `<select>`. Both are drawn by the
+OS, so they were the only controls on either settings page that did not follow the
+design system, and neither can be searched — with 60+ languages that is the slow
+path to every choice.
+
+Both are replaced by a searchable popup: fixed maximum height with internal
+scrolling so a long list never stretches the page or pushes later rows off-screen,
+left-aligned full-width rows, existing tokens only, and a search over the English
+name, the native name and the code, so "Deutsch" and "de" both find German.
+
+The macOS language hotkey **cycled English↔German**. That cannot work with a
+catalogue of this size — ten taps to reach the tenth language, silently skipping the
+rest — so it now opens the picker. Cancelling leaves the current language untouched.
+
+### F-31 — A case-folding normaliser silently demoted four languages to detection
+
+Found by the round-trip test written alongside the catalogue. `LanguagePin.init(code:)`
+lowercased its input before matching, which looked harmless and was not: `zh-HK`,
+`zh-TW`, `de-CH` and `nl-BE` carry meaningful uppercase region subtags, so folding
+them to `zh-hk` matched nothing, fell through to the `auto` fallback, and stored
+detection. The user picks Cantonese, and the app transcribes with detection and
+never says so.
+
+Matching is now case-sensitive against the catalogue, with a case-insensitive retry
+that **resolves to the catalogue's own spelling** rather than to the input. Breaking
+either half is caught: removing the canonicalising fallback fails
+`testCodesAreNormalised`, and a naive lowercase-first version fails
+`testKnownCodesRoundTrip` and `testImportPreservesRegionCasing`.
+
+### F-32 — Making `MemoryLanguage` non-failable turned two silent coercions into silent acceptances
+
+A consequence of F-28 that the compiler surfaced as warnings and that a warning-only
+read would have missed. `MemoryLanguage(rawValue:) ?? .auto` appeared in the CSV
+importer; once the type stopped being a failable enum, that initialiser always
+succeeded, so the coercion became dead code and **an unrecognised CSV cell would be
+stored verbatim** as a term's language. Such a term is then sent to the provider,
+which either errors or triggers the F-29 fallback and drops the dictionary.
+
+Both CSV sites now validate explicitly via `MemoryLanguage.validated(_:)`. The same
+pattern was found on Windows in three IPC handlers, where the language arrived from
+the renderer behind an `as never` cast that silenced the type checker rather than
+checking anything; those now run through `normaliseMemoryLanguage`.
+
+### F-33 — Keyterm Prompting is billed, and the app never said so
+
+**Deepgram charges for `keyterm` separately: $0.0013/min pay-as-you-go on top of
+Nova-3's $0.0043/min — about 30% more per minute.** The app sends a `keyterm`
+parameter for every dictionary term on every request when the dictionary is in use,
+so a user's cost was higher than the transcription line on the pricing page implies,
+and nothing in either app mentioned it.
+
+Now disclosed in Settings on both platforms. Verified separately: **smart formatting
+and language detection are included**, not charged (they appear in no add-on row;
+the pre-recorded add-on table has exactly five entries — Redaction, Keyterm
+Prompting, Smart Formatting "Included", Entity Detection, Speaker Diarization
+"Included").
+
+Cost at 1 hour of dictation per day, 30 days (1,800 minutes):
+
+| | Monthly |
+|---|---|
+| Nova-3, dictionary off | $7.74 |
+| Keyterm Prompting | $2.34 |
+| **Total, dictionary on** | **$10.08** |
+
+Deepgram bills per second with no minimum increment, so a 14-second utterance costs
+14 seconds — the short dictation this app is built for is not rounded up.
+
+### Model choice: Nova-3, unchanged, and why
+
+Confirmed as the right call rather than assumed:
+
+- Deepgram: "Our highest-performing general-purpose ASR (no turn detection).
+  Recommended for meetings, event captioning, multi-speaker, multilingual, noisy, or
+  far-field audio in batch or streaming."
+- **Flux is streaming-only and cannot be used here**: its own comparison table shows
+  pre-recorded audio unsupported, and "Flux requires the `/v2/listen` endpoint —
+  Using `/v1/listen` will not work with Flux."
+- **`keyterm` is effectively Nova-3-only on pre-recorded**, stated twice (OpenAPI
+  `/v1/listen` and the keyterm guide). Any model change trades away the dictionary.
+  The legacy `keywords` feature is a different mechanism with an intensifier syntax
+  and a 100-term cap.
+- No published pre-recorded latency figure exists at all, and **no Nova-3-vs-Nova-2
+  benchmark exists**; Deepgram's two accuracy figures (54.2% and 53.4% WER reduction)
+  contradict each other and are measured against competitors, not the previous model.
+
+Two things worth knowing that are not defects and were left alone: the documented
+**10-minute processing limit returns 504** for Nova/Base/Enhanced, and the app
+permits a 10-minute recording — sitting exactly on the boundary, so a long dictation
+can legitimately time out at the provider. And `mip_opt_out` pricing impact is
+referenced by the OpenAPI but stated nowhere, which matters for an app handling
+personal dictation.
+
+### F-34 — Windows had no language hotkey at all
+
+Parity gap found while changing the macOS one. macOS has had a language-switch
+hotkey since the beginning; Windows never had any, so a Windows user had to open
+Settings and leave the application they were typing into in order to change
+language. Added as an optional `languageSwitchHotkey` (default `Control+Alt+L`,
+empty disables it).
+
+Registered and reported **separately** from the dictation hotkey, because the
+failures are independent: if the combination is taken the user can still dictate,
+and telling them dictation is broken would be wrong. A combination equal to the
+dictation hotkey is refused with a log line rather than silently losing one of the
+two registrations.
+
+The picker on Windows needs a window that can hold focus for its search field, so
+the hotkey raises the main window. macOS instead floats a focusable panel over the
+application being dictated into — see `LanguagePickerPanel`, which is deliberately
+*not* built on `HUDPanel`, since a dictation HUD must never steal the caret from the
+target application and this one has to accept keystrokes.
+
+### What this work could not verify
+
+Stated plainly, because the parts that are verified are listed above and the gaps
+should not be inferred as covered:
+
+- **The SwiftUI picker and the new panel are not unit-tested.** Filtering, selection
+  and layout live in SwiftUI views, and this repo's test target covers
+  `UsefulVoiceCore` only; there is no view-testing harness. The equivalent logic
+  *is* tested on Windows, where the picker is plain DOM and therefore testable —
+  `filterLanguageOptions` has direct tests for matching English name, native name,
+  code and description. On macOS the same behaviour is unverified by machine.
+- **The language hotkey was not pressed on a live system.** Driving the UI needs
+  Accessibility permission for the invoking process, which the available shell did
+  not have. The picker's data and the request parameters it produces are covered by
+  tests; the interaction is not.
+- **The `keyterm`-on-a-downgraded-model behaviour remains unknown**, and it is the
+  highest-value unknown here. Deepgram documents the model fallback and documents
+  that `keyterm` is Nova-3-only, but documents nowhere what happens to a `keyterm`
+  parameter on the fallback model. The app's defence is to make the fallback
+  unreachable rather than to rely on knowing.

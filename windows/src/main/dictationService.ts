@@ -36,6 +36,8 @@ export interface TranscriptionRequest {
   language: MemoryLanguage;
   keyterms: string[];
   smartFormat: boolean;
+  /** Deepgram "Dictation": spoken punctuation commands become characters. */
+  spokenPunctuation: boolean;
 }
 
 export interface TranscriberPort {
@@ -304,6 +306,7 @@ export class DictationService {
           language: context.language,
           keyterms: selection.terms,
           smartFormat: settings.formattingEnabled,
+          spokenPunctuation: settings.spokenPunctuationEnabled,
         },
         this.abortController.signal,
       );

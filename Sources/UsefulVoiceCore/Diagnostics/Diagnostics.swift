@@ -42,7 +42,10 @@ public final class Diagnostics: @unchecked Sendable {
         }
     }
 
-    public static let shared = Diagnostics()
+    /// The process-wide sink. Under a test run this is memory-only; see
+    /// `isRunningTests`.
+    public static let shared = Diagnostics(
+        directory: isRunningTests ? nil : defaultDirectory())
 
     /// How many entries are kept in memory for the UI to display.
     public static let memoryLimit = 200
@@ -73,6 +76,45 @@ public final class Diagnostics: @unchecked Sendable {
             .first?
             .appendingPathComponent("Sadaa")
     }
+
+    /// Whether the process is a test run rather than the app.
+    ///
+    /// Detected so the shared sink cannot write into a real install's log during a
+    /// test run. It did: because every store routes through `Diagnostics.shared`,
+    /// any test that provoked a failed read appended its fixture to the
+    /// developer's own `~/Library/Application Support/Sadaa/diagnostics.log` —
+    /// 252 lines of `corrupt.json` and `unreadable.json` in a live install's log,
+    /// which would have made that log actively misleading to debug against.
+    ///
+    /// Injecting a silent sink per test fixed the sites that were patched and was
+    /// one forgotten call site away from recurring, so the guard lives here.
+    /// Detection is by process identity rather than environment, because this
+    /// toolchain sets no test environment variables at all: under `swift test`
+    /// the whole suite runs inside `swiftpm-testing-helper`, and
+    /// `Bundle.main.bundlePath` is SwiftPM's own directory — which is outside
+    /// `.build`, so a path-based check silently does nothing. That was the first
+    /// version of this guard, and it leaked exactly as before.
+    static var isRunningTests: Bool {
+        // SwiftPM's runner. This is how `swift test` executes the suite here.
+        if CommandLine.arguments.first?.contains("swiftpm-testing-helper") == true {
+            return true
+        }
+        let environment = ProcessInfo.processInfo.environment
+        // Xcode's test runner.
+        if environment["XCTestConfigurationFilePath"] != nil { return true }
+        if environment["XCTestBundlePath"] != nil { return true }
+        // Swift Testing markers, in case the runner changes.
+        if environment.keys.contains(where: { $0.hasPrefix("SWT_") }) { return true }
+        // Any test bundle, wherever it lives.
+        if Bundle.main.bundlePath.contains(".xctest") { return true }
+        return false
+    }
+
+    /// A sink that records in memory but never touches the filesystem.
+    ///
+    /// Used for the shared instance under test, and available to any test that
+    /// wants an explicit isolated sink.
+    public static let memoryOnly = Diagnostics(directory: nil)
 
     // MARK: - Recording
 

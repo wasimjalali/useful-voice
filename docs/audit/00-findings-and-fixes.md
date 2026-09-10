@@ -511,11 +511,11 @@ made the code worse.
 
 ## 6. Two claims worth distrusting
 
-- The macOS suite passing 290 tests does **not** cover rendering. The confirmation
+- The macOS suite passing 313 tests does **not** cover rendering. The confirmation
   dialog, the undo bar's spacing and the 8-second timer are not exercised by any
   automated test; they match the surrounding component idioms but have not been seen
   drawn.
-- The Windows suite passing 317 tests covers `src/core`, the dictation state machine,
+- The Windows suite passing 345 tests covers `src/core`, the dictation state machine,
   and the IPC/naming/identity contracts read out of the sources. It does **not** cover
   anything that needs Electron or Windows at runtime: the registry write behind
   launch-at-login, the `win32` guard, the login-item read-back, clipboard save/paste
@@ -524,3 +524,143 @@ made the code worse.
 
 Where a claim above says "checked by", it means an automated test exercises it.
 Where it says "not verified", it means exactly that.
+
+---
+
+## 7. Deepgram integration audit (F-19 … F-27)
+
+A separate pass against Deepgram's current published documentation — fetched, not
+recalled: the site's HTML is client-rendered, so every quote below comes from the
+`.md` variant each page exposes, plus the OpenAPI spec. The relevant files are
+`DeepgramProvider.swift` (macOS), `windows/src/core/transcription/deepgramProvider.ts`,
+and the two `KeytermBudget` implementations.
+
+The audit's most important result is that **the app was not using language detection
+at all** — it was using multilingual code-switching and calling it auto-detect. That
+is the likeliest single cause of the user's complaint that formatting "is not
+absolutely on point", because it puts the model in the wrong mode for the audio.
+
+### F-19 — "Auto" meant code-switching, not language detection
+
+`language=multi` and auto-detect are different features. `multi` is Multilingual
+Code-Switching, for "conversations where speakers switch between multiple languages";
+the auto-detect parameter is `detect_language`, which the app never sent. A user
+dictating in one language with the pin on auto was therefore asking Deepgram to
+expect language switching mid-sentence.
+
+Fixed: auto now sends `detect_language`, **restricted to the two languages the app
+offers** (`detect_language=en&detect_language=de`). The restriction is load-bearing.
+The docs say that when a detected language is unavailable on the requested model,
+Deepgram "will automatically select the next highest model" — and since `keyterm`
+works only on Nova-3, an unrestricted detection could silently drop the dictionary
+feature entirely. Both offered languages are native Nova-3 languages, so that
+fallback is unreachable.
+
+Consequence: the `detectedLanguage` plumbing, which the app has always stored and
+displayed, was previously **dead on both platforms** — macOS hardcoded `nil`, Windows
+parsed a field it never asked for. It now carries the provider's answer.
+
+### F-20 — Numerals were never requested
+
+`smart_format` guarantees punctuation and paragraphs; numerals are documented as
+available "for select languages" on non-English models. `numerals=true` now
+accompanies smart formatting, removing a language-dependent ambiguity instead of
+relying on a default.
+
+### F-21 — Formatting could not be switched off on Windows
+
+`deepgramProvider.ts` sent `punctuate=true` unconditionally, so turning formatting
+off still produced punctuation and capitalisation — while macOS sent nothing and
+produced fully raw text. The same setting had different meanings per platform.
+`punctuate` now follows the toggle, and is sent only when implied (see F-22).
+
+### F-22 — Spoken punctuation was missing entirely (new feature)
+
+Deepgram's Dictation feature converts spoken "period", "comma", "new line" into the
+characters themselves. It was not implemented on either platform. It is now an
+opt-in setting on both, **off by default** (it changes what the words mean, so it
+should be asked for), and suppressed for German because the docs scope Dictation to
+"English (all available regions)". The docs require punctuation to be enabled for it
+to work, so `dictate=true` is sent together with `punctuate=true`.
+
+### F-23 — The request deadline could not cover the app's own longest recording
+
+Both platforms' ceilings were below what their own formula requires. A ten-minute
+recording is 19.2 MB; at the documented-in-comment pessimistic rate of 100 kB/s that
+is 192 s of upload plus a 12 s allowance = **204 s**. The ceilings were 180 s (macOS)
+and 195 s (Windows), so the largest advertised dictation was guaranteed to fail on
+exactly the slow connections the pessimistic figure was chosen for. Both are now 210.
+
+### F-24 — Windows offered a recording longer than Deepgram will process
+
+The UI offered 15 minutes and the store clamped to 900 s. Deepgram documents that
+"Requests exceeding 10 minutes (Nova/Base/Enhanced) … return a `504: Gateway
+Timeout`" — so the option was a coin flip on failing *after* the user had spoken for
+a quarter of an hour. The option is gone and the clamp is 600 s, applied on load as
+well as update so a stored 900 from an older build is corrected at launch.
+
+### F-25 — Error classification lost the distinction and the reference
+
+HTTP 402 has its own documented code (`ASR_PAYMENT_REQUIRED`) and its own fix —
+topping up — but was reported as a generic bad request, sending the user to look for
+a fault in their audio. It is now its own error with its own message. HTTP 408 and
+422 are documented as *interrupted or slow uploads*, i.e. retryable in substance, and
+were classified as permanent; Windows now treats them as transient. Neither platform
+surfaced `metadata.request_id`, which is what the docs tell users to quote to
+support; it is now carried into the message.
+
+### F-26 — macOS had no retry at all
+
+Windows retried transient failures with backoff; macOS did not, so a single momentary
+429 during a dictation surfaced as a hard failure the user had to repeat by hand,
+against documented guidance that "an exponential-backoff retry strategy is
+recommended". macOS now makes three attempts with 0.5 s/1.5 s backoff, retrying 429,
+408 and 5xx only.
+
+### F-27 — Test-run diagnostics were written into the real install's log
+
+Found while verifying the fixes, and a defect in the diagnostics work from the
+previous round rather than in the app. Every store routes through
+`Diagnostics.shared`, so any test that provoked a failing read appended its fixture
+to the developer's own `~/Library/Application Support/Sadaa/diagnostics.log` — 285
+lines of `corrupt.json` and `unreadable.json` fixtures in a live install, which would
+have made that log actively misleading to debug a real problem against. The polluted
+log was removed after confirming it contained no real entries (zero `launch:`
+records).
+
+The first fix — injecting a silent sink per test — was one forgotten call site away
+from recurring, so the guard now lives in `Diagnostics`: the shared sink is
+memory-only under a test run. **The guard's own first implementation silently did
+nothing**, because it detected tests by looking for `.build` in `Bundle.main`'s path,
+and this toolchain runs the whole suite inside `swiftpm-testing-helper` where
+`Bundle.main` is SwiftPM's own directory and no XCTest environment variables are set.
+A guard that fails open is worse than no guard, so the detection is now pinned by
+test.
+
+### Confirmed correct, deliberately unchanged
+
+Verified against the docs and left alone: `Authorization: Token <key>`;
+`Content-Type: audio/wav`; omitting `encoding`/`sample_rate` for a container (which
+the docs require); 16 kHz mono 16-bit capture; `model=nova-3`; repeated `keyterm`
+rather than a joined string; the **500-token ceiling across all keyterms** and its
+verbatim error string; the 400-token budget as a deliberate margin ("stay well under
+the 500 token limit"); reading `results.channels[0].alternatives[0].transcript`; and
+**not** sending `utterances` or `paragraphs`, which `smart_format` already covers and
+which would only add response weight the app never reads.
+
+Two documentation inaccuracies were corrected in comments rather than in behaviour:
+the `maxTerms = 100` cap is a sensible self-imposed bound, not a documented API limit
+(the explicit "100 per request" limit belongs to `keywords`, which Nova-3 does not
+support), and the `Retry-After` header the code reads defensively is not documented
+for this endpoint anywhere.
+
+### Could not verify
+
+The docs are silent on: how Deepgram tokenises a keyterm (so the budget estimator's
+per-word inference cannot be validated); whether `detect_language` may be combined
+with `keyterm`; whether `smart_format=true` makes `numerals=true` redundant (it is
+not in the documented "not included" list, and setting it explicitly cannot hurt);
+whether Dictation works outside English; and any recommended sample rate for Nova-3
+pre-recorded audio. Two Deepgram pages also contradict each other on the concurrent
+request limit for Nova-3 pre-recorded (100 vs 50); this is immaterial for a
+single-user desktop app and was left alone.

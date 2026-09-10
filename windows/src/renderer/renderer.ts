@@ -1430,6 +1430,10 @@ function mountMain(): void {
     );
 
     rows.append(
+      switchRow('Speak punctuation', settings.spokenPunctuationEnabled, 'Say \u201cperiod\u201d, \u201ccomma\u201d or \u201cnew line\u201d to insert it. English only.', (value) => void saveSettings({ spokenPunctuationEnabled: value })),
+    );
+
+    rows.append(
       switchRow('Sound cues', settings.soundEffectsEnabled, 'A short tone when recording starts and stops.', (value) => void saveSettings({ soundEffectsEnabled: value })),
     );
 
@@ -1447,7 +1451,7 @@ function mountMain(): void {
     rows.append(
       selectRow('Maximum recording', String(settings.maxRecordingSeconds), [
         ['60', '1 minute'], ['180', '3 minutes'], ['300', '5 minutes'],
-        ['600', '10 minutes'], ['900', '15 minutes'],
+        ['600', '10 minutes'],
       ], (value) => void saveSettings({ maxRecordingSeconds: Number(value) })),
     );
 

@@ -14,9 +14,9 @@ public final class SnippetStore {
     private let outcome: StoreLoadOutcome
     private var isWritable: Bool
 
-    public init(fileURL: URL) {
+    public init(fileURL: URL, diagnostics: Diagnostics = .shared) {
         self.fileURL = fileURL
-        let loaded = StoreFileReader.load(from: fileURL) { data in
+        let loaded = StoreFileReader.load(from: fileURL, diagnostics: diagnostics) { data in
             try JSONDecoder().decode([Snippet].self, from: data)
         }
         self.outcome = loaded.outcome

@@ -137,6 +137,14 @@ export interface Note {
 export interface AppSettings {
   languagePin: MemoryLanguage;
   formattingEnabled: boolean;
+  /**
+   * Convert spoken punctuation commands ("period", "new line") into the
+   * characters themselves, via Deepgram's Dictation feature.
+   *
+   * Off by default: it changes what the words mean rather than how they are
+   * formatted, so it should be asked for. English only.
+   */
+  spokenPunctuationEnabled: boolean;
   silenceTimeoutSeconds: number;
   maxRecordingSeconds: number;
   recordingsToKeep: number;
@@ -163,6 +171,7 @@ export interface HotkeyBinding {
 export const DEFAULT_SETTINGS: AppSettings = {
   languagePin: 'auto',
   formattingEnabled: true,
+  spokenPunctuationEnabled: false,
   silenceTimeoutSeconds: 60,
   maxRecordingSeconds: 600,
   recordingsToKeep: 10,

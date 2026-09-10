@@ -70,10 +70,18 @@ public enum StoreFileReader {
     /// - Parameter decode: turns raw bytes into a value, or throws.
     /// - Parameter version: optional schema version reported by the file, used to
     ///   refuse files from a newer build.
+    /// - Parameter diagnostics: where failures are recorded. **Injectable on
+    ///   purpose.** Every store routes through this function, so hardcoding
+    ///   `Diagnostics.shared` here meant any test that exercised a failing read
+    ///   wrote into the developer's real `~/Library/Application Support/Sadaa/
+    ///   diagnostics.log` — 186 entries of test fixtures landed in a live install's
+    ///   log, which would have made that log actively misleading to debug against.
+    ///   Tests pass their own instance; production takes the shared one.
     public static func load<T>(
         from fileURL: URL,
         version: (T) -> Int? = { _ in nil },
         supportedVersion: Int? = nil,
+        diagnostics: Diagnostics = .shared,
         decode: (Data) throws -> T
     ) -> (outcome: StoreLoadOutcome, value: T?) {
         let data: Data
@@ -92,7 +100,7 @@ public enum StoreFileReader {
             // Recorded here rather than at each call site: every store routes
             // through this function, so this is the one place a read failure can
             // be logged without the risk of a store forgetting to.
-            Diagnostics.shared.failure(
+            diagnostics.failure(
                 "store",
                 error,
                 context: "reading \(fileURL.lastPathComponent)",
@@ -103,7 +111,7 @@ public enum StoreFileReader {
         do {
             let value = try decode(data)
             if let supportedVersion, let fileVersion = version(value), fileVersion > supportedVersion {
-                Diagnostics.shared.error(
+                diagnostics.error(
                     "store",
                     "\(fileURL.lastPathComponent) is version \(fileVersion), newer than the supported version \(supportedVersion); writing is refused to avoid discarding newer fields",
                 )
@@ -115,7 +123,7 @@ public enum StoreFileReader {
             // moving cannot fail for lack of space, and the original is no longer
             // usable in place.
             let backup = quarantine(fileURL)
-            Diagnostics.shared.error(
+            diagnostics.error(
                 "store",
                 "\(fileURL.lastPathComponent) could not be decoded (\(error.localizedDescription)); "
                     + (backup.map { "moved aside to \($0.lastPathComponent)" } ?? "could not be moved aside"),
@@ -183,9 +191,13 @@ public final class StoreFailureReporter {
     private var saveError: String?
     private var handlers: [(String) -> Void] = []
     private let label: String
+    /// Injectable for the same reason as `StoreFileReader.load`: otherwise tests
+    /// write their fixtures into the real install's log.
+    private let diagnostics: Diagnostics
 
-    public init(label: String) {
+    public init(label: String, diagnostics: Diagnostics = .shared) {
         self.label = label
+        self.diagnostics = diagnostics
     }
 
     public var lastSaveError: String? { saveError }
@@ -203,7 +215,7 @@ public final class StoreFailureReporter {
         // Logged as well as reported to the UI. The UI message is transient and
         // gone the moment the user dismisses it; the log is what answers "why did
         // my dictionary stop saving" days later.
-        Diagnostics.shared.failure("store", error, context: "\(label) could not be saved")
+        diagnostics.failure("store", error, context: "\(label) could not be saved")
         let message = "\(label) could not be saved: \(error.localizedDescription)"
         saveError = message
         for handler in handlers {
@@ -213,7 +225,7 @@ public final class StoreFailureReporter {
 
     /// Record a write failure described by a string.
     public func reportSaveFailure(_ message: String) {
-        Diagnostics.shared.error("store", "\(label) could not be saved: \(message)")
+        diagnostics.error("store", "\(label) could not be saved: \(message)")
         let text = "\(label) could not be saved: \(message)"
         saveError = text
         for handler in handlers {

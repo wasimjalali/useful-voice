@@ -351,6 +351,7 @@ class UsefulVoiceApp {
           const config: DeepgramConfig = {
             apiKey: this.settings.revealApiKey() ?? '',
             smartFormat: request.smartFormat,
+            spokenPunctuation: request.spokenPunctuation,
           };
           const hint: TranscriptionHint = {
             language: request.language,

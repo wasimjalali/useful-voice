@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   ASSUMED_UPLOAD_BYTES_PER_SECOND,
+  AUTO_DETECT_LANGUAGES,
   MAXIMUM_DEADLINE_SECONDS,
   MINIMUM_DEADLINE_SECONDS,
   ProviderError,
   buildRequest,
   classifyHttpError,
   deadlineForAudioBytes,
+  extractRequestId,
   describeErrorBody,
   parseResponse,
   parseRetryAfter,
@@ -35,6 +37,18 @@ describe('deadlineForAudioBytes', () => {
 
   it('never exceeds the ceiling', () => {
     expect(deadlineForAudioBytes(1_000_000_000)).toBe(MAXIMUM_DEADLINE_SECONDS);
+  });
+
+  it('has a ceiling above what the largest recording actually needs', () => {
+    // The ceiling must not be lower than the formula's own requirement, or it
+    // silently cancels the long dictation the formula exists to protect. Ten
+    // minutes is 19.2 MB; at the pessimistic rate that is 192 s of upload plus the
+    // processing allowance. The ceiling was 195 against a 204 s requirement.
+    const tenMinutes = 600 * 32_000;
+    const needed =
+      tenMinutes / ASSUMED_UPLOAD_BYTES_PER_SECOND + 12 /* PROCESSING_ALLOWANCE_SECONDS */;
+    expect(MAXIMUM_DEADLINE_SECONDS).toBeGreaterThanOrEqual(needed);
+    expect(deadlineForAudioBytes(tenMinutes)).toBeGreaterThanOrEqual(needed);
   });
 
   it('covers a realistic 10-minute recording at the assumed throughput', () => {
@@ -75,13 +89,116 @@ describe('buildRequest', () => {
     expect(url.searchParams.get('smart_format')).toBe('true');
   });
 
-  it('maps auto to the multi-language mode', () => {
+  // `multi` is Multilingual Code-Switching — for audio where the speaker switches
+  // languages mid-sentence — not auto-detection. Auto used to send it, so a user
+  // dictating in one language was transcribed in the wrong mode.
+  it('uses language detection for auto, not code-switching', () => {
     const request = buildRequest({
       audioBytes: 1000,
       hint: { language: 'auto', keyterms: [] },
       config: CONFIG,
     });
-    expect(new URL(request.url).searchParams.get('language')).toBe('multi');
+    const params = new URL(request.url).searchParams;
+    expect(params.get('language')).toBeNull();
+    expect(params.getAll('detect_language')).toEqual(['en', 'de']);
+  });
+
+  it('restricts detection to languages Nova-3 supports natively', () => {
+    // An unsupported detected language makes Deepgram fall back to a lower model,
+    // which would drop `keyterm` support — the whole dictionary feature.
+    const request = buildRequest({
+      audioBytes: 1000,
+      hint: { language: 'auto', keyterms: [] },
+      config: CONFIG,
+    });
+    const values = new URL(request.url).searchParams.getAll('detect_language');
+    expect(values).not.toContain('true');
+    expect(values.every((v) => (AUTO_DETECT_LANGUAGES as readonly string[]).includes(v))).toBe(true);
+  });
+
+  it('does not send detect_language for a pinned language', () => {
+    const request = buildRequest({
+      audioBytes: 1000,
+      hint: { language: 'de', keyterms: [] },
+      config: CONFIG,
+    });
+    const params = new URL(request.url).searchParams;
+    expect(params.get('language')).toBe('de');
+    expect(params.getAll('detect_language')).toEqual([]);
+  });
+
+  it('asks for numerals alongside smart format', () => {
+    // smart_format only guarantees punctuation and paragraphs; numerals are
+    // language-dependent, so they are requested explicitly.
+    const request = buildRequest({
+      audioBytes: 1000,
+      hint: { language: 'de', keyterms: [] },
+      config: { ...CONFIG, smartFormat: true },
+    });
+    expect(new URL(request.url).searchParams.get('numerals')).toBe('true');
+  });
+
+  it('sends no numerals when formatting is off', () => {
+    const request = buildRequest({
+      audioBytes: 1000,
+      hint: { language: 'de', keyterms: [] },
+      config: { ...CONFIG, smartFormat: false },
+    });
+    const params = new URL(request.url).searchParams;
+    expect(params.get('numerals')).toBeNull();
+    expect(params.get('smart_format')).toBe('false');
+  });
+
+  it('attributes requests with a tag', () => {
+    const request = buildRequest({
+      audioBytes: 1000,
+      hint: { language: 'en', keyterms: [] },
+      config: CONFIG,
+    });
+    expect(new URL(request.url).searchParams.get('tag')).toBe('useful-voice');
+  });
+
+  // Formatting off used to still send `punctuate=true`, so the toggle did not do
+  // what it said, and macOS behaved differently for the same setting.
+  it('does not force punctuation when formatting is off', () => {
+    const request = buildRequest({
+      audioBytes: 1000,
+      hint: { language: 'en', keyterms: [] },
+      config: { ...CONFIG, smartFormat: false },
+    });
+    expect(new URL(request.url).searchParams.get('punctuate')).toBeNull();
+  });
+
+  it('sends dictation and punctuate together when asked', () => {
+    const request = buildRequest({
+      audioBytes: 1000,
+      hint: { language: 'en', keyterms: [] },
+      config: { ...CONFIG, spokenPunctuation: true },
+    });
+    const params = new URL(request.url).searchParams;
+    expect(params.get('dictation')).toBe('true');
+    // "The Punctuation feature must be enabled for Dictation to work."
+    expect(params.get('punctuate')).toBe('true');
+  });
+
+  it('never sends dictation for German', () => {
+    const request = buildRequest({
+      audioBytes: 1000,
+      hint: { language: 'de', keyterms: [] },
+      config: { ...CONFIG, spokenPunctuation: true },
+    });
+    const params = new URL(request.url).searchParams;
+    expect(params.get('dictation')).toBeNull();
+    expect(params.get('punctuate')).toBeNull();
+  });
+
+  it('omits spoken punctuation by default', () => {
+    const request = buildRequest({
+      audioBytes: 1000,
+      hint: { language: 'en', keyterms: [] },
+      config: CONFIG,
+    });
+    expect(new URL(request.url).searchParams.get('dictation')).toBeNull();
   });
 
   it('repeats keyterm once per term', () => {
@@ -204,6 +321,52 @@ describe('classifyHttpError', () => {
   it('surfaces the documented keyterm ceiling message', () => {
     const body = 'Keyterm limit exceeded. The maximum number of tokens across all keyterms is 500.';
     expect(classifyHttpError(400, body).message).toContain('maximum number of tokens');
+  });
+
+  // 402 has its own documented code, ASR_PAYMENT_REQUIRED, and its own fix.
+  it('reports exhausted credits as their own error', () => {
+    const error = classifyHttpError(402, '{"err_code":"ASR_PAYMENT_REQUIRED"}');
+    expect(error.kind).toBe('outOfCredits');
+    expect(error.message.toLowerCase()).toContain('credits');
+    // Not worth retrying: the same request fails until the account is topped up.
+    expect(error.isTransient).toBe(false);
+  });
+
+  // "Deepgram was unable to process the request because the audio data was
+  // incomplete or interrupted… the connection was closed before the full audio
+  // payload was received, or upload speed is too slow."
+  it('treats an interrupted upload as retryable', () => {
+    expect(classifyHttpError(408, '').isTransient).toBe(true);
+    expect(classifyHttpError(422, '').isTransient).toBe(true);
+  });
+
+  it('carries the request id that support asks for', () => {
+    const error = classifyHttpError(500, '{"err_msg":"boom","request_id":"req-42"}');
+    expect(error.message).toContain('req-42');
+  });
+
+  it('does not lose the error when the body has no request id', () => {
+    const error = classifyHttpError(400, 'not json at all');
+    expect(error.kind).toBe('badRequest');
+    expect(error.message).toContain('HTTP 400');
+  });
+});
+
+describe('extractRequestId', () => {
+  it('reads a top-level request id', () => {
+    expect(extractRequestId('{"request_id":"top"}')).toBe('top');
+  });
+
+  it('reads a nested request id', () => {
+    expect(extractRequestId('{"metadata":{"request_id":"nested"}}')).toBe('nested');
+  });
+
+  it('returns null rather than throwing on junk', () => {
+    expect(extractRequestId('<html>502 Bad Gateway</html>')).toBeNull();
+    expect(extractRequestId('')).toBeNull();
+    expect(extractRequestId('{}')).toBeNull();
+    expect(extractRequestId('{"request_id":""}')).toBeNull();
+    expect(extractRequestId('null')).toBeNull();
   });
 });
 

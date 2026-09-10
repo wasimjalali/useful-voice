@@ -18,10 +18,10 @@ public final class DictationHistory {
         return decoder
     }
 
-    public init(fileURL: URL) {
+    public init(fileURL: URL, diagnostics: Diagnostics = .shared) {
         self.fileURL = fileURL
 
-        let loaded = StoreFileReader.load(from: fileURL) { data in
+        let loaded = StoreFileReader.load(from: fileURL, diagnostics: diagnostics) { data in
             try DictationHistory.makeDecoder().decode([DictationRecord].self, from: data)
         }
         self.records = loaded.value ?? []

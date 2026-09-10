@@ -10,13 +10,14 @@ public final class LanguageMemoryStore {
     private let outcome: StoreLoadOutcome
     private var isWritable: Bool
 
-    public init(fileURL: URL) {
+    public init(fileURL: URL, diagnostics: Diagnostics = .shared) {
         self.fileURL = fileURL
 
         let loaded = StoreFileReader.load(
             from: fileURL,
             version: { $0.version },
-            supportedVersion: LanguageMemoryPersisted.currentVersion
+            supportedVersion: LanguageMemoryPersisted.currentVersion,
+            diagnostics: diagnostics
         ) { data -> LoadedLanguageMemory in
             // Current format first, then the legacy unversioned snapshot. Only when
             // BOTH fail is the file genuinely undecodable — the previous code

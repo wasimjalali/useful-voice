@@ -72,6 +72,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // same bundle identifier and signature as the /Applications copy.
         if SingleInstance.yieldToExistingInstance() { return }
 
+        // Recorded before the key cache is primed, because priming can block
+        // indefinitely on a keychain authorization dialog. It previously ran only
+        // after the read returned, so a launch that hit a prompt produced no launch
+        // record at all — the one case where a launch record is most useful.
         recordLaunchDiagnostic()
         ThinScrollbar.install()
         installMainMenu()
@@ -100,15 +104,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// a usable timeline, and the file is capped, so this cannot grow without bound.
     ///
     /// Contains no user content: version, build, and two booleans.
+    /// Facts known immediately at launch. Deliberately says nothing about the key,
+    /// which is not known yet — see `recordKeyStateDiagnostic`.
     private func recordLaunchDiagnostic() {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
-        let keyState = DeepgramKeyStore.shared.current != nil ? "key cached" : "no key cached"
         let loginItem = LoginItem.isEnabled ? "starts at login" : "manual start"
         Diagnostics.shared.info(
             "launch",
-            "Useful Voice \(version) (\(build)) on macOS \(ProcessInfo.processInfo.operatingSystemVersionString); \(keyState), \(loginItem)",
+            "Useful Voice \(version) (\(build)) on macOS \(ProcessInfo.processInfo.operatingSystemVersionString); \(loginItem)",
         )
+    }
+
+    /// Recorded once the keychain read resolves, which may be never.
+    ///
+    /// A missing record is therefore itself the signal: it means the read never
+    /// returned, which in practice means a keychain authorization dialog is still
+    /// on screen. That is worth being able to see, because while that dialog is up
+    /// every dictation fails with "no transcription provider configured" and the
+    /// cause is invisible from inside the app.
+    private func recordKeyStateDiagnostic() {
+        // Distinguishes "no key stored" from "a key is stored but could not be
+        // read", which the pre-lookup API collapsed into one unhelpful value.
+        let store = DeepgramKeyStore.shared
+        if store.current != nil {
+            Diagnostics.shared.info("keychain", "Deepgram key loaded")
+        } else if let problem = store.lookupProblem {
+            Diagnostics.shared.warning(
+                "keychain",
+                "a Deepgram key is stored but could not be read (\(problem)); dictation will ask for a key until the keychain grants access",
+            )
+        } else {
+            Diagnostics.shared.info("keychain", "no Deepgram key configured")
+        }
     }
 
     /// Warms the Deepgram key cache off the main thread.
@@ -121,6 +149,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DeepgramKeyStore.shared.load()
             DispatchQueue.main.async { [weak self] in
                 self?.viewModel?.refreshConfig()
+                // The key state is recorded separately, once it is actually known.
+                // It cannot be part of the launch line: the read is asynchronous and
+                // can block on a keychain prompt, so reading it there reported
+                // "no key cached" on every launch — wrong every single time, which
+                // is worse than no line at all. And this callback never runs at all
+                // while a prompt is unanswered, which is why the key state is its
+                // own record rather than a field on the launch record.
+                self?.recordKeyStateDiagnostic()
             }
         }
     }
@@ -506,7 +542,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         return [DeepgramProvider(config: .init(
             apiKey: key,
-            smartFormat: settings.formattingEnabled))]
+            smartFormat: settings.formattingEnabled,
+            spokenPunctuation: settings.spokenPunctuationEnabled))]
     }
 
     private static func describeProviderError(_ error: ProviderError) -> String {
@@ -517,6 +554,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ).prefix(200)
             return detail.isEmpty ? "HTTP \(status) from provider"
                                   : "HTTP \(status): \(detail)"
+        case .outOfCredits:
+            return "Your Deepgram account is out of credits. Add credits, then try again."
         case .badResponse:
             return "unreadable provider response"
         case .notConfigured(let what):

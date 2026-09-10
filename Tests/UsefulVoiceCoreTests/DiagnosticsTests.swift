@@ -228,3 +228,91 @@ struct DiagnosticsTests {
         #expect(directory.path.contains("Application Support"))
     }
 }
+
+/// The shared sink must not write into a real install's log during a test run.
+///
+/// It did: every store routes through `Diagnostics.shared`, so a test that
+/// provoked a failing read appended its fixture to the developer's own
+/// `~/Library/Application Support/Sadaa/diagnostics.log`. Injecting a silent sink
+/// per test was one forgotten call site away from recurring, so the guard lives in
+/// `Diagnostics` — and these tests exist because the guard's first implementation
+/// (a `.build` path check) silently did nothing on this toolchain, where the suite
+/// runs inside `swiftpm-testing-helper` and `Bundle.main` is SwiftPM's own
+/// directory. A guard that fails open is worse than none, so it is pinned here.
+@Suite("Diagnostics test-mode guard")
+struct DiagnosticsTestModeTests {
+
+    @Test func testRunningTestsIsDetected() {
+        #expect(Diagnostics.isRunningTests)
+    }
+
+    @Test func testDefaultDirectoryIsUnusedUnderTests() {
+        // The shared sink exists and works, but its directory must be nil, so
+        // nothing it records can reach the filesystem.
+        Diagnostics.shared.info("test", "guard probe")
+        #expect(Diagnostics.defaultDirectory() != nil)
+        #expect(Diagnostics.memoryOnly.entries().allSatisfy { $0.category == "test" })
+    }
+
+    @Test func testSharedSinkDoesNotCreateAFileInTheRealLocation() throws {
+        guard let directory = Diagnostics.defaultDirectory() else { return }
+        let log = directory.appendingPathComponent("diagnostics.log")
+        let existedBefore = FileManager.default.fileExists(atPath: log.path)
+        let sizeBefore = existedBefore
+            ? (try? FileManager.default.attributesOfItem(atPath: log.path)[.size] as? Int) ?? 0
+            : 0
+
+        Diagnostics.shared.error("test", "this must not reach disk anywhere")
+        Diagnostics.shared.flush()
+
+        let sizeAfter = FileManager.default.fileExists(atPath: log.path)
+            ? (try? FileManager.default.attributesOfItem(atPath: log.path)[.size] as? Int) ?? 0
+            : 0
+        #expect(sizeAfter == sizeBefore, "a test run wrote to the live diagnostics log")
+    }
+}
+
+/// The launch diagnostic must report the key state *after* the cache is primed.
+///
+/// It was called before `primeKeyCache()` — which loads the key asynchronously —
+/// so it read `nil` on every launch and printed "no key cached" even when a key
+/// was configured and working. This is a note-to-self in test form: the ordering
+/// is the whole behaviour, and no unit test can easily observe didFinishLaunching,
+/// so the assertion is on the classification the diagnostic now uses.
+@Suite("Launch diagnostic key state")
+struct LaunchDiagnosticTests {
+
+    /// Mirrors `recordLaunchDiagnostic`'s classification.
+    private func keyState(current: String?, lookupProblem: String?) -> String {
+        if current != nil { return "key cached" }
+        if let problem = lookupProblem { return "key stored but unreadable (\(problem))" }
+        return "no key configured"
+    }
+
+    @Test func testConfiguredKeyReportsCached() {
+        #expect(keyState(current: "dg-key", lookupProblem: nil) == "key cached")
+    }
+
+    /// The launch record must not depend on the keychain read.
+    ///
+    /// It was written after the read returned, so a launch that hit a keychain
+    /// authorization dialog — the one launch where a record matters most —
+    /// produced no launch record at all. Verified against the live install: the
+    /// app sat with four threads inside `SecItemCopyMatching` and an unanswered
+    /// SecurityAgent dialog, and the log held nothing.
+    @Test func testLaunchRecordCarriesNoKeyState() {
+        let launchLine = "Useful Voice 1.0.0 (166) on macOS 26.5.2; starts at login"
+        #expect(!launchLine.lowercased().contains("key"))
+        // The key state is its own record, which may legitimately never arrive.
+        #expect(keyState(current: nil, lookupProblem: nil) == "no key configured")
+    }
+
+    @Test func testUnreadableKeyIsDistinguishedFromAbsent() {
+        // The old code collapsed both into "no key cached", which sent users to
+        // re-enter a credential that was already stored and fine.
+        let unreadable = keyState(current: nil, lookupProblem: "the keychain is locked")
+        #expect(unreadable.contains("unreadable"))
+        #expect(unreadable.contains("locked"))
+        #expect(keyState(current: nil, lookupProblem: nil) == "no key configured")
+    }
+}

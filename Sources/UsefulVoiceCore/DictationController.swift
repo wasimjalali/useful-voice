@@ -324,6 +324,8 @@ public final class DictationController {
                 body.trimmingCharacters(in: .whitespacesAndNewlines)).prefix(200)
             return detail.isEmpty ? "HTTP \(status) from provider"
                                   : "HTTP \(status): \(detail)"
+        case .outOfCredits:
+            return "Your Deepgram account is out of credits. Add credits, then try again."
         case .badResponse: return "unreadable provider response"
         case .notConfigured(let what): return what
         case .timedOut: return "timed out"

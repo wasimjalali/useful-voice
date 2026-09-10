@@ -9,6 +9,7 @@ struct SettingsPage: View {
     @State private var deepgramKey = ""
     @State private var hasDeepgramKey = false
     @State private var formattingEnabled = true
+    @State private var spokenPunctuationEnabled = false
 
     @State private var silenceTimeout = 60.0
     @State private var recordingsToKeep = 10
@@ -182,6 +183,15 @@ struct SettingsPage: View {
                     detail: "Adds punctuation, capitalization and formatted numbers"
                 ) {
                     Toggle("", isOn: $formattingEnabled).labelsHidden()
+                }
+
+                Divider().overlay(Theme.line)
+
+                settingsRow(
+                    "Speak punctuation",
+                    detail: "Say “period”, “comma” or “new line” to insert it. English only."
+                ) {
+                    Toggle("", isOn: $spokenPunctuationEnabled).labelsHidden()
                 }
             }
         }
@@ -429,6 +439,7 @@ struct SettingsPage: View {
         // block this main-thread SwiftUI update on an authorization prompt.
         hasDeepgramKey = DeepgramKeyStore.shared.isConfigured()
         formattingEnabled = settings.formattingEnabled
+        spokenPunctuationEnabled = settings.spokenPunctuationEnabled
         silenceTimeout = settings.silenceTimeout
         recordingsToKeep = settings.recordingsToKeep
         soundEffectsEnabled = settings.soundEffectsEnabled
@@ -440,6 +451,7 @@ struct SettingsPage: View {
         saveIsError = false
 
         settings.formattingEnabled = formattingEnabled
+        settings.spokenPunctuationEnabled = spokenPunctuationEnabled
         settings.silenceTimeout = silenceTimeout
         settings.recordingsToKeep = recordingsToKeep
         settings.soundEffectsEnabled = soundEffectsEnabled
@@ -469,11 +481,23 @@ struct SettingsPage: View {
             let typed = deepgramKey.trimmingCharacters(in: .whitespacesAndNewlines)
             // Read the stored key off the main actor: the keychain call can
             // block on securityd or on a user authorization prompt.
-            let storedKey: String = await Task.detached(priority: .userInitiated) {
-                Keychain.get(account: DeepgramKeyStore.account) ?? ""
+            //
+            // `lookup` rather than `get`, because a stored key that cannot be read
+            // is not the same as no key: reporting "Enter your Deepgram API key"
+            // when the truth is a locked keychain sends the user to re-enter a
+            // credential that is already there and fine.
+            let lookup = await Task.detached(priority: .userInitiated) {
+                Keychain.lookup(account: DeepgramKeyStore.account)
             }.value
-            let key = typed.isEmpty ? storedKey : typed
+            let key = typed.isEmpty ? (lookup.value ?? "") : typed
             guard !key.isEmpty else {
+                let message: String
+                switch lookup {
+                case .unavailable(let reason) where typed.isEmpty:
+                    message = "Your saved key could not be read (\(reason)). Unlock your login keychain and try again, or enter the key to replace it."
+                default:
+                    message = "Enter your Deepgram API key."
+                }
                 await MainActor.run {
                     testResult = ProviderHealthCheck.result(
                         providerName: "Deepgram",
@@ -481,13 +505,16 @@ struct SettingsPage: View {
                         ok: false,
                         startedAt: Date(),
                         finishedAt: Date(),
-                        message: "Enter your Deepgram API key."
+                        message: message
                     )
                     isTesting = false
                 }
                 return
             }
-            let provider = DeepgramProvider(config: .init(apiKey: key, smartFormat: formattingEnabled))
+            let provider = DeepgramProvider(config: .init(
+                apiKey: key,
+                smartFormat: formattingEnabled,
+                spokenPunctuation: spokenPunctuationEnabled))
             let result = await ProviderHealthCheck.check(
                 provider: provider,
                 endpoint: deepgramEndpoint,

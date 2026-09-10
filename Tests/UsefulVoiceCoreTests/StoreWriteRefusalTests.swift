@@ -17,6 +17,16 @@ import Testing
 @Suite("Store write refusal")
 struct StoreWriteRefusalTests {
 
+    /// A sink that records nothing to disk.
+    ///
+    /// These tests deliberately provoke failed reads and writes, and the stores used
+    /// to log those through `Diagnostics.shared` — so running the suite appended 186
+    /// lines of test fixtures to the developer's real
+    /// `~/Library/Application Support/Sadaa/diagnostics.log`, making that log
+    /// actively misleading to debug against. Passing a nil-directory instance keeps
+    /// the assertions (which read the in-memory buffer) working while writing nothing.
+    private let silent = Diagnostics(directory: nil)
+
     // MARK: - Helpers
 
     private func makeDirectory() throws -> URL {
@@ -45,7 +55,7 @@ struct StoreWriteRefusalTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = try makeUnreadablePath(in: directory)
 
-        let store = SnippetStore(fileURL: url)
+        let store = SnippetStore(fileURL: url, diagnostics: silent)
         #expect(store.all().isEmpty)
 
         // Attempt an edit, which triggers a write.
@@ -65,7 +75,7 @@ struct StoreWriteRefusalTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("snippets.json")
 
-        let store = SnippetStore(fileURL: url)
+        let store = SnippetStore(fileURL: url, diagnostics: silent)
         #expect(store.save())
         #expect(store.lastSaveError == nil)
         // Nothing was ever added, so a reload sees an empty list whether or not the
@@ -74,7 +84,7 @@ struct StoreWriteRefusalTests {
         store.add(trigger: "t", expansion: "e")
         #expect(store.lastSaveError == nil)
 
-        let reloaded = SnippetStore(fileURL: url)
+        let reloaded = SnippetStore(fileURL: url, diagnostics: silent)
         #expect(reloaded.all().count == 1)
         #expect(reloaded.lastSaveError == nil)
     }
@@ -85,7 +95,7 @@ struct StoreWriteRefusalTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = try makeUnreadablePath(in: directory)
 
-        let store = SnippetStore(fileURL: url)
+        let store = SnippetStore(fileURL: url, diagnostics: silent)
         var messages: [String] = []
         store.onSaveFailure { messages.append($0) }
 
@@ -100,11 +110,11 @@ struct StoreWriteRefusalTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("snippets.json")
 
-        let store = SnippetStore(fileURL: url)
+        let store = SnippetStore(fileURL: url, diagnostics: silent)
         store.add(trigger: "brb", expansion: "be right back")
         #expect(store.lastSaveError == nil)
 
-        let reloaded = SnippetStore(fileURL: url)
+        let reloaded = SnippetStore(fileURL: url, diagnostics: silent)
         #expect(reloaded.all().count == 1)
         #expect(reloaded.all().first?.trigger == "brb")
     }
@@ -117,7 +127,7 @@ struct StoreWriteRefusalTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = try makeUnreadablePath(in: directory)
 
-        let store = DictationHistory(fileURL: url)
+        let store = DictationHistory(fileURL: url, diagnostics: silent)
         #expect(store.all().isEmpty)
         #expect(store.persist() == false)
         #expect(store.lastSaveError != nil)
@@ -133,7 +143,7 @@ struct StoreWriteRefusalTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("history.json")
 
-        let store = DictationHistory(fileURL: url)
+        let store = DictationHistory(fileURL: url, diagnostics: silent)
         store.append(DictationRecord(
             text: "hello there",
             createdAt: Date(),
@@ -144,7 +154,7 @@ struct StoreWriteRefusalTests {
         ))
         #expect(store.lastSaveError == nil)
 
-        let reloaded = DictationHistory(fileURL: url)
+        let reloaded = DictationHistory(fileURL: url, diagnostics: silent)
         #expect(reloaded.all().count == 1)
         #expect(reloaded.all().first?.text == "hello there")
     }
@@ -160,12 +170,12 @@ struct StoreWriteRefusalTests {
 
         // First corruption.
         try Data("{ not json".utf8).write(to: url)
-        _ = DictationHistory(fileURL: url)
+        _ = DictationHistory(fileURL: url, diagnostics: silent)
         let firstBackupContents = try Data(contentsOf: firstBackup)
 
         // Second corruption.
         try Data("{ also not json".utf8).write(to: url)
-        let second = DictationHistory(fileURL: url)
+        let second = DictationHistory(fileURL: url, diagnostics: silent)
 
         // The first backup must still be the FIRST file, untouched.
         #expect(try Data(contentsOf: firstBackup) == firstBackupContents)
@@ -189,7 +199,7 @@ struct StoreWriteRefusalTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = try makeUnreadablePath(in: directory)
 
-        let store = DictionaryStore(fileURL: url)
+        let store = DictionaryStore(fileURL: url, diagnostics: silent)
         store.add(word: "Kubernetes")
 
         #expect(store.lastSaveError != nil)
@@ -204,11 +214,11 @@ struct StoreWriteRefusalTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("dictionary.json")
 
-        let store = DictionaryStore(fileURL: url)
+        let store = DictionaryStore(fileURL: url, diagnostics: silent)
         store.add(word: "Kubernetes", soundsLike: "kubernets")
         #expect(store.lastSaveError == nil)
 
-        let reloaded = DictionaryStore(fileURL: url)
+        let reloaded = DictionaryStore(fileURL: url, diagnostics: silent)
         #expect(reloaded.all().count == 1)
         #expect(reloaded.all().first?.word == "Kubernetes")
         #expect(reloaded.all().first?.soundsLike == "kubernets")
@@ -222,7 +232,7 @@ struct StoreWriteRefusalTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = try makeUnreadablePath(in: directory)
 
-        let store = LanguageMemoryStore(fileURL: url)
+        let store = LanguageMemoryStore(fileURL: url, diagnostics: silent)
         #expect(store.terms().isEmpty)
         #expect(store.save() == false)
         #expect(store.lastSaveError != nil)
@@ -238,11 +248,11 @@ struct StoreWriteRefusalTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("language-memory.json")
 
-        let store = LanguageMemoryStore(fileURL: url)
+        let store = LanguageMemoryStore(fileURL: url, diagnostics: silent)
         store.upsertTerm(MemoryTerm(phrase: "Kubernetes", language: .auto))
         #expect(store.lastSaveError == nil)
 
-        let reloaded = LanguageMemoryStore(fileURL: url)
+        let reloaded = LanguageMemoryStore(fileURL: url, diagnostics: silent)
         #expect(reloaded.terms().count == 1)
         #expect(reloaded.terms().first?.phrase == "Kubernetes")
     }
@@ -268,7 +278,7 @@ struct StoreWriteRefusalTests {
         let data = try JSONSerialization.data(withJSONObject: payload)
         try data.write(to: url)
 
-        let store = LanguageMemoryStore(fileURL: url)
+        let store = LanguageMemoryStore(fileURL: url, diagnostics: silent)
         #expect(store.loadOutcome.allowsWriting == false)
         #expect(store.save() == false)
 

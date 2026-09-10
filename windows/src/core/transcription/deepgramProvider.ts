@@ -9,6 +9,15 @@
 export interface DeepgramConfig {
   apiKey: string;
   smartFormat: boolean;
+  /**
+   * Convert spoken punctuation commands ("period", "new line") into the
+   * characters themselves, via Deepgram's Dictation feature.
+   *
+   * Off by default and never implied by `smartFormat`: it changes what the words
+   * mean rather than how they are formatted. English only.
+   * https://developers.deepgram.com/docs/dictation
+   */
+  spokenPunctuation?: boolean;
   /** Overrides the default endpoint; used by tests. */
   endpoint?: string;
 }
@@ -29,6 +38,16 @@ export interface Transcript {
 export type ProviderErrorKind =
   | 'unauthorized'
   | 'badRequest'
+  /**
+   * The Deepgram project is out of credits (HTTP 402).
+   *
+   * Separate from `badRequest` because it is the one failure the user can fix in
+   * a minute and the docs give it its own code, `ASR_PAYMENT_REQUIRED`: "Project
+   * does not have enough credits for an ASR request and does not have an overage
+   * agreement." Reported as a generic 400 it sends the user hunting for a problem
+   * with their audio instead of topping up.
+   */
+  | 'outOfCredits'
   | 'rateLimited'
   | 'serverError'
   | 'timedOut'
@@ -73,6 +92,27 @@ export class ProviderError extends Error {
 export const DEFAULT_ENDPOINT = 'https://api.deepgram.com/v1/listen';
 
 /**
+ * The languages this app offers, used to restrict auto-detection.
+ *
+ * Sending the bare boolean `detect_language=true` would let Deepgram pick any
+ * language it supports; restricting the list keeps detection inside languages
+ * Nova-3 handles natively, so the documented model fallback cannot take the
+ * request off Nova-3 and silently drop `keyterm` support.
+ * https://developers.deepgram.com/docs/language-detection
+ */
+export const AUTO_DETECT_LANGUAGES = ['en', 'de'] as const;
+
+/**
+ * Whether spoken punctuation applies to a language.
+ *
+ * Deepgram documents Dictation as "English (all available regions)" only, so it
+ * is suppressed for German rather than sent and ignored.
+ */
+export function supportsSpokenPunctuation(language: string): boolean {
+  return language !== 'de';
+}
+
+/**
  * Deadline components.
  *
  * A fixed total deadline cannot work for this app: recording is capped at 10
@@ -91,8 +131,12 @@ export const MINIMUM_DEADLINE_SECONDS = 15;
  * the processing allowance — is covered rather than cut off. A lower ceiling would
  * reintroduce exactly the bug this replaced: the advertised long-dictation
  * feature failing because the deadline assumed a fast connection.
+ *
+ * That worst case needs 19.2 MB / 100 kB/s + 12 s = **204 s**, so the ceiling must
+ * exceed 204. It was 195, which is below the requirement its own comment states:
+ * the ceiling silently cancelled the very recording it was written to protect.
  */
-export const MAXIMUM_DEADLINE_SECONDS = 195;
+export const MAXIMUM_DEADLINE_SECONDS = 210;
 /**
  * Upload throughput floor, in bytes per second, assumed when sizing the deadline.
  * ~100 KB/s is a pessimistic mobile/congested figure, so the deadline is generous
@@ -134,10 +178,43 @@ export function buildRequest({ audioBytes, hint, config }: BuildRequestOptions):
   const endpoint = config.endpoint ?? DEFAULT_ENDPOINT;
   const params = new URLSearchParams();
   params.set('model', 'nova-3');
-  // `multi` is the documented auto-detect mode for Nova-3.
-  params.set('language', hint.language === 'auto' ? 'multi' : hint.language);
+
+  // Language handling.
+  //
+  // Auto used to send `language=multi`, on the belief that `multi` was the
+  // auto-detect mode. It is not: `multi` is Multilingual Code-Switching, for
+  // audio where the speaker switches languages mid-sentence. A user dictating in
+  // one language with the pin on auto was transcribed in the wrong mode, which is
+  // the most likely cause of punctuation and capitalisation looking off.
+  // Detection is the documented mechanism, and it can be restricted.
+  // https://developers.deepgram.com/docs/language-detection
+  if (hint.language === 'auto') {
+    // Restricted to the languages this app offers. Both are native Nova-3
+    // languages, which matters: an unsupported detected language makes Deepgram
+    // fall back to a lower model, and that would drop `keyterm` — the whole
+    // dictionary feature, which is Nova-3 only.
+    for (const language of AUTO_DETECT_LANGUAGES) {
+      params.append('detect_language', language)
+    }
+  } else {
+    params.set('language', hint.language);
+  }
+
   params.set('smart_format', config.smartFormat ? 'true' : 'false');
-  params.set('punctuate', 'true');
+  if (config.smartFormat) {
+    // Smart Format only *guarantees* punctuation and paragraphs; numerals are
+    // documented as available "for select languages" on non-English models.
+    params.set('numerals', 'true');
+  }
+  if (config.spokenPunctuation && supportsSpokenPunctuation(hint.language)) {
+    // The docs are explicit that punctuation must also be enabled:
+    // "Be sure to add `dictation=true&punctuate=true`".
+    params.set('dictation', 'true');
+    params.set('punctuate', 'true');
+  }
+  // Usage attribution, so requests from this app are identifiable in Deepgram's
+  // usage reporting.
+  params.set('tag', 'useful-voice');
 
   // `keyterm` is Nova-3 only and repeats once per term. The list must already be
   // inside the token ceiling; this filter is a second line of defence so a
@@ -193,6 +270,35 @@ export function parseResponse(payload: unknown): Transcript {
 }
 
 /**
+ * Pull Deepgram's `request_id` out of an error body, when present.
+ *
+ * Worth keeping because it is the one thing support asks for — "contact support
+ * with the request ID and details about how the audio was uploaded" — and it is
+ * otherwise lost with the response. Parsed leniently, so a non-JSON body or a
+ * missing field yields null instead of masking the real error with a parse
+ * failure.
+ */
+export function extractRequestId(body: string): string | null {
+  if (!body) return null;
+  let payload: unknown;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  if (typeof payload !== 'object' || payload === null) return null;
+  const record = payload as Record<string, unknown>;
+  const direct = record.request_id;
+  if (typeof direct === 'string' && direct.length > 0) return direct;
+  const metadata = record.metadata;
+  if (typeof metadata === 'object' && metadata !== null) {
+    const nested = (metadata as Record<string, unknown>).request_id;
+    if (typeof nested === 'string' && nested.length > 0) return nested;
+  }
+  return null;
+}
+
+/**
  * Short, safe description of an error body.
  *
  * Response bodies can be large and can echo the request; only a bounded prefix is
@@ -215,16 +321,40 @@ export function describeErrorBody(body: string, apiKey?: string): string {
 export function classifyHttpError(status: number, body: string, apiKey?: string): ProviderError {
   const detail = describeErrorBody(body, apiKey);
   const suffix = detail.length > 0 ? `: ${detail}` : '';
+  // The docs tell users to quote the request id to support, so it is carried into
+  // every message rather than being dropped with the response body.
+  const reference = extractRequestId(body);
+  const ref = reference ? ` (reference ${reference})` : '';
+  if (status === 402) {
+    return new ProviderError(
+      'outOfCredits',
+      `Your Deepgram account is out of credits (HTTP 402)${suffix}${ref}`,
+      { status },
+    );
+  }
   if (status === 401 || status === 403) {
-    return new ProviderError('unauthorized', `The Deepgram API key was rejected${suffix}`, { status });
+    return new ProviderError('unauthorized', `The Deepgram API key was rejected${suffix}${ref}`, { status });
   }
   if (status === 429) {
-    return new ProviderError('rateLimited', `Deepgram rate limit reached${suffix}`, { status });
+    return new ProviderError('rateLimited', `Deepgram rate limit reached${suffix}${ref}`, { status });
   }
   if (status >= 500) {
-    return new ProviderError('serverError', `Deepgram is having trouble (HTTP ${status})${suffix}`, { status });
+    return new ProviderError('serverError', `Deepgram is having trouble (HTTP ${status})${suffix}${ref}`, { status });
   }
-  return new ProviderError('badRequest', `Transcription failed (HTTP ${status})${suffix}`, { status });
+  // 408 and 422 are documented as *retryable in substance*: "Deepgram was unable
+  // to process the request because the audio data was incomplete or interrupted.
+  // This typically occurs when the connection is closed before the full audio
+  // payload is received, or when upload speed is too slow and the upload times
+  // out." Classifying them as permanent refused to retry exactly the failures a
+  // retry fixes.
+  if (status === 408 || status === 422) {
+    return new ProviderError(
+      'transport',
+      `Deepgram could not read the whole upload (HTTP ${status})${suffix}${ref}`,
+      { status },
+    );
+  }
+  return new ProviderError('badRequest', `Transcription failed (HTTP ${status})${suffix}${ref}`, { status });
 }
 
 /** Parse a `Retry-After` header, which may be seconds or an HTTP date. */

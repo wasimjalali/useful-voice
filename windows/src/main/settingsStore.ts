@@ -1,6 +1,7 @@
 import { app, safeStorage } from 'electron';
 import path from 'node:path';
 import { DEFAULT_SETTINGS, type AppSettings } from '../core/models.js';
+import { normaliseSettings } from '../core/settings/settingsBounds.js';
 import { readJson, writeJsonAtomic } from '../core/settings/jsonStore.js';
 
 /**
@@ -59,6 +60,10 @@ export class SettingsStore {
       // produces a complete settings object rather than undefined fields.
       this.settings = { ...DEFAULT_SETTINGS, ...(incoming.settings ?? {}) };
       this.settings.hotkey = { ...DEFAULT_SETTINGS.hotkey, ...(incoming.settings?.hotkey ?? {}) };
+      // Correct out-of-range values on load as well as on update, so a file
+      // written by an older build (which offered a 900 s recording) is fixed at
+      // launch rather than honoured until the user next opens Settings.
+      this.settings = normaliseSettings(this.settings);
       this.plaintextKeyWarning = incoming.apiKeyPlaintextWarning === true;
       if (typeof incoming.apiKeyEncrypted === 'string' && incoming.apiKeyEncrypted.length > 0) {
         this.apiKey = this.decrypt(incoming.apiKeyEncrypted);
@@ -117,12 +122,11 @@ export class SettingsStore {
       ...patch,
       hotkey: { ...this.settings.hotkey, ...(patch.hotkey ?? {}) },
     };
-    // Clamp the values the UI can set, so a bad value cannot produce an
-    // unresponsive recorder (a zero-second silence timeout, or a 10-hour cap).
-    this.settings.silenceTimeoutSeconds = clamp(this.settings.silenceTimeoutSeconds, 15, 120);
-    this.settings.maxRecordingSeconds = clamp(this.settings.maxRecordingSeconds, 30, 900);
-    this.settings.recordingsToKeep = clamp(Math.round(this.settings.recordingsToKeep), 0, 200);
-    this.settings.dictionaryBiasBudget = clamp(Math.round(this.settings.dictionaryBiasBudget), 0, 100);
+    // Bring the values the UI can set back inside their supported ranges, so a
+    // bad value cannot produce an unresponsive recorder (a zero-second silence
+    // timeout, or a 15-hour cap). Shared with load, and pure, so the bounds
+    // themselves are unit-tested rather than assumed.
+    this.settings = normaliseSettings(this.settings);
     void this.save();
     return this.settings;
   }
@@ -209,11 +213,6 @@ export class SettingsStore {
       }
     }
   }
-}
-
-function clamp(value: number, minimum: number, maximum: number): number {
-  if (!Number.isFinite(value)) return minimum;
-  return Math.max(minimum, Math.min(maximum, value));
 }
 
 /** The directory user data lives in, for diagnostics and error messages. */

@@ -51,6 +51,8 @@ export interface MemorySnapshotDTO {
 export interface SettingsDTO {
   languagePin: string;
   formattingEnabled: boolean;
+  /** Deepgram "Dictation": spoken punctuation commands become characters. */
+  spokenPunctuationEnabled: boolean;
   silenceTimeoutSeconds: number;
   maxRecordingSeconds: number;
   recordingsToKeep: number;

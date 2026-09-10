@@ -101,10 +101,11 @@ describe('buildRequest', () => {
     });
     const params = new URL(request.url).searchParams;
     expect(params.get('language')).toBeNull();
-    // The documented `detect_language` set is 35 codes — a smaller set than
-    // Nova-3's languages — so this must not simply be the catalogue.
+    // The detection set is smaller than Nova-3's languages, so this must not simply be
+    // the catalogue. It is 34 rather than the documented 35 because the API rejects
+    // `detect_language=nl-BE`; see the catalogue's note.
     expect(params.getAll('detect_language')).toEqual([...DETECTION_CODES]);
-    expect(params.getAll('detect_language')).toHaveLength(35);
+    expect(params.getAll('detect_language')).toHaveLength(34);
     expect(params.getAll('detect_language')).not.toContain('true');
   });
 

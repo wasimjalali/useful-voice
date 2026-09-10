@@ -80,13 +80,36 @@ describe('Deepgram language catalogue', () => {
  * the entire dictionary feature.
  */
 describe('language detection', () => {
-  it('uses exactly the documented detection set', () => {
-    expect(DETECTION_CODES.length).toBe(35);
+  /**
+   * Every code here has been sent to the live endpoint and accepted. The docs list 35
+   * detection languages; `nl-BE` is excluded because the API rejects it, so the set is
+   * deliberately not a copy of the documented list.
+   */
+  it('uses the detection set the API actually accepts', () => {
+    expect(DETECTION_CODES.length).toBe(34);
     expect([...DETECTION_CODES].sort()).toEqual(
       ['bg', 'ca', 'cs', 'da', 'de', 'de-CH', 'el', 'en', 'es', 'et', 'fi', 'fr', 'hi',
-       'hu', 'id', 'it', 'ja', 'ko', 'lt', 'lv', 'ms', 'nl', 'nl-BE', 'no', 'pl', 'pt',
+       'hu', 'id', 'it', 'ja', 'ko', 'lt', 'lv', 'ms', 'nl', 'no', 'pl', 'pt',
        'ro', 'ru', 'sk', 'sv', 'th', 'tr', 'uk', 'vi', 'zh'].sort(),
     );
+  });
+
+  /**
+   * The regression that shipped: Deepgram documents `nl-BE` for detection but the API
+   * answers `400 Bad Request: Failed to parse query string`. Because every detection
+   * code is sent in ONE request, that single value made all auto-detect dictation fail.
+   */
+  it('never sends the rejected detection code', () => {
+    expect(DETECTION_CODES).not.toContain('nl-BE');
+    // Still a valid pinned language, where the parameter is `language=`.
+    expect(isSupportedLanguage('nl-BE')).toBe(true);
+    expect(normaliseLanguageCode('nl-BE')).toBe('nl-BE');
+  });
+
+  it('is not artificially capped on length', () => {
+    // 34 repeated parameters is ~745 characters and is accepted; a count cap would be
+    // a fix for a problem that does not exist.
+    expect(DETECTION_CODES.length).toBeGreaterThan(30);
   });
 
   it('restricts detection to codes the catalogue can also pin', () => {

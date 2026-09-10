@@ -93,10 +93,11 @@ import Foundation
         // unreachable, so the unqualified boolean form must not be used.
         let values = try items(pin: .auto)
             .filter { $0.name == "detect_language" }.compactMap(\.value)
-        // The documented detection set is 35 codes, smaller than Nova-3's language
-        // list, so this must NOT simply be the catalogue.
+        // The detection set is smaller than Nova-3's language list, so this must NOT
+        // simply be the catalogue. It is 34 rather than the documented 35 because the
+        // API rejects `detect_language=nl-BE`; see the catalogue's note.
         #expect(values == DeepgramLanguageCatalog.detectionCodes)
-        #expect(values.count == 35)
+        #expect(values.count == 34)
         #expect(!values.contains("true"))
         // Every detection code must also be a language the app can pin, or the
         // picker could offer something detection can never return.

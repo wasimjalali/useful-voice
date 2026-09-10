@@ -6,6 +6,18 @@ public final class NotesStore {
     private let fileURL: URL
     private var notes: [Note]   // newest first
 
+    /// The error from the most recent failed persist, or `nil` when the last
+    /// write succeeded. Save errors are captured rather than discarded so a
+    /// read-only or full disk cannot fail silently.
+    public private(set) var lastSaveError: Error?
+
+    /// Called synchronously on the saving thread whenever a persist fails.
+    public var onSaveFailure: ((Error) -> Void)?
+
+    public func clearSaveError() {
+        lastSaveError = nil
+    }
+
     public init(fileURL: URL) {
         self.fileURL = fileURL
         guard let data = try? Data(contentsOf: fileURL) else {
@@ -49,8 +61,13 @@ public final class NotesStore {
     }
 
     private func save() {
-        if let data = try? JSONEncoder().encode(notes) {
-            try? data.write(to: fileURL, options: .atomic)
+        do {
+            let data = try JSONEncoder().encode(notes)
+            try data.write(to: fileURL, options: .atomic)
+            lastSaveError = nil
+        } catch {
+            lastSaveError = error
+            onSaveFailure?(error)
         }
     }
 }

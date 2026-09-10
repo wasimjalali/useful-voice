@@ -22,6 +22,7 @@ struct LanguageMemoryPage: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+                if let issue = viewModel.statusMessage { statusBanner(issue) }
                 if !viewModel.suggestions.isEmpty { suggestions }
                 teachCard
                 libraryCard
@@ -34,6 +35,48 @@ struct LanguageMemoryPage: View {
         }
         .background(Theme.surface)
         .sheet(isPresented: $showImport) { importSheet }
+    }
+
+    // MARK: - Status
+
+    /// Shows a persistence problem plainly, in the same idiom as the scratchpad
+    /// editor's save error.
+    ///
+    /// This exists because the store used to swallow every write failure: the page
+    /// reported success while the dictionary on disk was unchanged, and a failed
+    /// read was silently replaced by an empty file. A user had no way to tell that
+    /// their words were not being kept.
+    private func statusBanner(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.danger)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Changes are not being saved")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                Text(message)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            if viewModel.saveIssue != nil && viewModel.loadIssue == nil {
+                Button("Dismiss") { viewModel.dismissSaveIssue() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.ink)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.sunken)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Theme.lineStrong, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     // MARK: - Header

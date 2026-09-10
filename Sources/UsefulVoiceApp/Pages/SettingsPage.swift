@@ -9,6 +9,7 @@ struct SettingsPage: View {
     @State private var deepgramKey = ""
     @State private var hasDeepgramKey = false
     @State private var formattingEnabled = true
+    @State private var spokenPunctuationEnabled = false
 
     @State private var silenceTimeout = 60.0
     @State private var recordingsToKeep = 10
@@ -19,6 +20,7 @@ struct SettingsPage: View {
     @State private var saveIsError = false
     @State private var isTesting = false
     @State private var testResult: ProviderHealthResult?
+    @StateObject private var diagnostics = DiagnosticsViewModel()
 
     /// The Deepgram listen endpoint, shown (redacted) in the connection test.
     private let deepgramEndpoint = "https://api.deepgram.com/v1/listen"
@@ -31,6 +33,7 @@ struct SettingsPage: View {
                 generalSection
                 speechSection
                 dataSection
+                diagnosticsSection
             }
             .padding(.horizontal, 32)
             .padding(.top, 20)
@@ -87,6 +90,21 @@ struct SettingsPage: View {
                      : result.message)
                     .font(.system(size: 12))
                     .foregroundStyle(result.ok ? Theme.success : Theme.danger)
+            }
+
+            // A stored key that cannot be read is NOT the same as no key, and the
+            // user's next move is different: re-entering it would overwrite a key
+            // that is probably still fine. Say what actually happened.
+            if let problem = DeepgramKeyStore.shared.lookupProblem {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.danger)
+                    Text("Your saved Deepgram key could not be read: \(problem). Unlock your login keychain and reopen Settings, or enter the key again to replace it.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .padding(14)
@@ -166,6 +184,15 @@ struct SettingsPage: View {
                 ) {
                     Toggle("", isOn: $formattingEnabled).labelsHidden()
                 }
+
+                Divider().overlay(Theme.line)
+
+                settingsRow(
+                    "Speak punctuation",
+                    detail: "Say “period”, “comma” or “new line” to insert it. English only."
+                ) {
+                    Toggle("", isOn: $spokenPunctuationEnabled).labelsHidden()
+                }
             }
         }
     }
@@ -189,6 +216,114 @@ struct SettingsPage: View {
                 }
             }
         }
+    }
+
+    /// Recent problems, so a failure that has already scrolled past in the HUD is
+    /// still answerable afterwards.
+    ///
+    /// The log records descriptions only — never a transcript, never the API key —
+    /// which is why it is safe to show and to copy into a bug report.
+    private var diagnosticsSection: some View {
+        settingsSection(title: "Diagnostics") {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 10) {
+                    Circle()
+                        .fill(diagnostics.errorCount > 0 ? Theme.warning : Theme.success)
+                        .frame(width: 7, height: 7)
+                    Text(diagnosticsSummary)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.muted)
+                    Spacer(minLength: 12)
+                    Button("Refresh") { diagnostics.reload() }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 12, weight: .medium))
+                        .clickableCursor()
+                    Button("Copy report") { diagnostics.copyReport() }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 12, weight: .medium))
+                        .clickableCursor()
+                        .disabled(!diagnostics.hasEntries)
+                    Button("Clear") { diagnostics.clear() }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 12, weight: .medium))
+                        .clickableCursor()
+                        .disabled(!diagnostics.hasEntries)
+                }
+
+                if let confirmation = diagnostics.copyConfirmation {
+                    Text(confirmation)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.muted)
+                }
+
+                if diagnostics.hasEntries {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(diagnostics.entries.enumerated()), id: \.offset) { index, entry in
+                            if index > 0 {
+                                Divider().overlay(Theme.line)
+                            }
+                            diagnosticsRow(entry)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                } else {
+                    Text("Nothing has gone wrong. Errors are recorded here when something fails, so you can copy the details into a report.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Text(dataLocationSummary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+        }
+        .onAppear { diagnostics.reload() }
+    }
+
+    private func diagnosticsRow(_ entry: Diagnostics.Entry) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(entry.level.rawValue.uppercased())
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(entry.level == .error ? Theme.danger : Theme.muted)
+                .frame(width: 52, alignment: .leading)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.category)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                Text(entry.message)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+            Spacer(minLength: 8)
+        }
+        .padding(.vertical, 8)
+    }
+
+    private var diagnosticsSummary: String {
+        let total = diagnostics.entries.count
+        guard total > 0 else { return "No problems recorded" }
+        let errors = diagnostics.errorCount
+        if errors == 0 {
+            return "\(total) recent event\(total == 1 ? "" : "s"), none of them errors"
+        }
+        return "\(errors) error\(errors == 1 ? "" : "s") in the last \(total) events"
+    }
+
+    /// States plainly where the user's data and their audio live, since both are
+    /// theirs to inspect or delete and neither is discoverable otherwise.
+    private var dataLocationSummary: String {
+        let support = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Sadaa")
+        return "Your dictionary, notes and transcripts are in \(support.path), readable only by you. Recordings are in the Recordings folder inside it and are deleted as newer ones replace them."
     }
 
     private func settingsSection<Content: View>(
@@ -300,8 +435,11 @@ struct SettingsPage: View {
     }
 
     private func load() {
-        hasDeepgramKey = Keychain.exists(account: "deepgram-key")
+        // Existence-only check: never returns or decrypts the key, so it cannot
+        // block this main-thread SwiftUI update on an authorization prompt.
+        hasDeepgramKey = DeepgramKeyStore.shared.isConfigured()
         formattingEnabled = settings.formattingEnabled
+        spokenPunctuationEnabled = settings.spokenPunctuationEnabled
         silenceTimeout = settings.silenceTimeout
         recordingsToKeep = settings.recordingsToKeep
         soundEffectsEnabled = settings.soundEffectsEnabled
@@ -313,6 +451,7 @@ struct SettingsPage: View {
         saveIsError = false
 
         settings.formattingEnabled = formattingEnabled
+        settings.spokenPunctuationEnabled = spokenPunctuationEnabled
         settings.silenceTimeout = silenceTimeout
         settings.recordingsToKeep = recordingsToKeep
         settings.soundEffectsEnabled = soundEffectsEnabled
@@ -320,7 +459,10 @@ struct SettingsPage: View {
         do {
             let trimmedKey = deepgramKey.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmedKey.isEmpty {
-                try Keychain.set(trimmedKey, account: "deepgram-key")
+                try Keychain.set(trimmedKey, account: DeepgramKeyStore.account)
+                // Keep the in-memory cache the dictation pipeline reads in step
+                // with the keychain, so the new key works without a relaunch.
+                DeepgramKeyStore.shared.update(trimmedKey)
                 hasDeepgramKey = true
                 deepgramKey = ""
             }
@@ -337,8 +479,25 @@ struct SettingsPage: View {
         isTesting = true
         Task {
             let typed = deepgramKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            let key = typed.isEmpty ? (Keychain.get(account: "deepgram-key") ?? "") : typed
+            // Read the stored key off the main actor: the keychain call can
+            // block on securityd or on a user authorization prompt.
+            //
+            // `lookup` rather than `get`, because a stored key that cannot be read
+            // is not the same as no key: reporting "Enter your Deepgram API key"
+            // when the truth is a locked keychain sends the user to re-enter a
+            // credential that is already there and fine.
+            let lookup = await Task.detached(priority: .userInitiated) {
+                Keychain.lookup(account: DeepgramKeyStore.account)
+            }.value
+            let key = typed.isEmpty ? (lookup.value ?? "") : typed
             guard !key.isEmpty else {
+                let message: String
+                switch lookup {
+                case .unavailable(let reason) where typed.isEmpty:
+                    message = "Your saved key could not be read (\(reason)). Unlock your login keychain and try again, or enter the key to replace it."
+                default:
+                    message = "Enter your Deepgram API key."
+                }
                 await MainActor.run {
                     testResult = ProviderHealthCheck.result(
                         providerName: "Deepgram",
@@ -346,13 +505,16 @@ struct SettingsPage: View {
                         ok: false,
                         startedAt: Date(),
                         finishedAt: Date(),
-                        message: "Enter your Deepgram API key."
+                        message: message
                     )
                     isTesting = false
                 }
                 return
             }
-            let provider = DeepgramProvider(config: .init(apiKey: key, smartFormat: formattingEnabled))
+            let provider = DeepgramProvider(config: .init(
+                apiKey: key,
+                smartFormat: formattingEnabled,
+                spokenPunctuation: spokenPunctuationEnabled))
             let result = await ProviderHealthCheck.check(
                 provider: provider,
                 endpoint: deepgramEndpoint,

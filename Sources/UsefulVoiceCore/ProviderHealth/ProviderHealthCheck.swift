@@ -137,6 +137,8 @@ public enum ProviderHealthCheck {
             case .http(let status, let body):
                 let detail = sanitize(body.trimmingCharacters(in: .whitespacesAndNewlines))
                 return detail.isEmpty ? "HTTP \(status) from provider" : "HTTP \(status): \(detail)"
+            case .outOfCredits:
+                return "the Deepgram account is out of credits"
             case .badResponse:
                 return "unreadable provider response"
             case .notConfigured(let what):

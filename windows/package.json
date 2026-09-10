@@ -1,0 +1,88 @@
+{
+  "name": "useful-voice-windows",
+  "productName": "Useful Voice",
+  "version": "1.0.0",
+  "description": "Voice-to-text dictation for Windows, powered by Deepgram Nova-3.",
+  "private": true,
+  "type": "module",
+  "main": "dist/main/index.js",
+  "author": {
+    "name": "Karko AI",
+    "email": "hello@karko.ai"
+  },
+  "license": "SEE LICENSE IN ../LICENSE",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "npm run build:main && npm run build:renderer",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "node scripts/build-renderer.mjs",
+    "build:icon": "node scripts/make-icon.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "start": "npm run build && electron .",
+    "self-test": "npm run build && electron . --self-test --report=self-test-report.txt",
+    "verify": "npm run typecheck && npm test && npm run build && npm run self-test",
+    "dist": "npm run build && electron-builder --win --publish never",
+    "dist:portable": "npm run build && electron-builder --win portable --publish never"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "build": {
+    "appId": "ai.karko.usefulvoice",
+    "productName": "Useful Voice",
+    "copyright": "Copyright © Karko AI",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "extraMetadata": {
+      "main": "dist/main/index.js"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "icon": "build/icon.ico",
+      "signtoolOptions": {
+        "publisherName": "Karko AI"
+      },
+      "legalTrademarks": "Useful Voice"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Useful Voice",
+      "deleteAppDataOnUninstall": false,
+      "include": "build/installer.nsh"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    }
+  }
+}

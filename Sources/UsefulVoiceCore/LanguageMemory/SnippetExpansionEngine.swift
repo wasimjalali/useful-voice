@@ -23,7 +23,7 @@ public enum SnippetExpansionEngine {
             guard !trigger.isEmpty, !expansion.isEmpty else { continue }
 
             let before = output
-            let regex = LanguageMemoryMatcher.wordBoundaryRegex(for: trigger)
+            guard let regex = LanguageMemoryMatcher.wordBoundaryRegex(for: trigger) else { continue }
             let range = NSRange(output.startIndex..<output.endIndex, in: output)
             output = regex.stringByReplacingMatches(
                 in: output,

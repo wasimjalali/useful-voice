@@ -19,22 +19,46 @@ public final class DictionaryStore {
     private var pending: [String]            // awaiting accept/dismiss, insertion order
     private var pendingCounts: [String: Int] // keyed by canonical
 
-    public init(fileURL: URL) {
+    private let failures = StoreFailureReporter(label: "Dictionary")
+    private let outcome: StoreLoadOutcome
+    private var isWritable: Bool
+
+    public init(fileURL: URL, diagnostics: Diagnostics = .shared) {
         self.fileURL = fileURL
-        guard let data = try? Data(contentsOf: fileURL) else {
-            entries = []; dismissed = []; pending = []; pendingCounts = [:]
-            return
+        let loaded = StoreFileReader.load(from: fileURL, diagnostics: diagnostics) { data in
+            try JSONDecoder().decode(Persisted.self, from: data)
         }
-        if let decoded = try? JSONDecoder().decode(Persisted.self, from: data) {
+        self.outcome = loaded.outcome
+        if let decoded = loaded.value {
             entries = decoded.entries
             dismissed = decoded.dismissed
             pending = decoded.pending
             pendingCounts = decoded.pendingCounts ?? [:]
         } else {
-            try? FileManager.default.moveItem(
-                at: fileURL, to: fileURL.appendingPathExtension("bak"))
             entries = []; dismissed = []; pending = []; pendingCounts = [:]
         }
+        self.isWritable = loaded.outcome.allowsWriting
+    }
+
+    /// Whether the file could be read at launch, and why not if it could not.
+    public var loadOutcome: StoreLoadOutcome { outcome }
+
+    /// The last write failure, or nil. Drives the UI's save indicator.
+    public var lastSaveError: String? { failures.lastSaveError }
+
+    /// Called on every write failure.
+    public func onSaveFailure(_ handler: @escaping (String) -> Void) {
+        failures.onSaveFailure(handler)
+    }
+
+    public func clearSaveError() {
+        failures.clearSaveError()
+    }
+
+    /// Allow writing again, after the user has resolved a launch-time read problem.
+    public func allowWritingAgain() {
+        isWritable = true
+        failures.clearSaveError()
     }
 
     // MARK: - Personal entries
@@ -176,15 +200,30 @@ public final class DictionaryStore {
         pending.removeAll { TermMatcher.matches($0, term) }
     }
 
-    private func save() {
+    /// Persist the current state, reporting rather than swallowing any failure.
+    @discardableResult
+    public func save() -> Bool {
+        guard isWritable else {
+            // The file exists but was never read. Writing now would replace the
+            // user's dictionary with a list we do not have, so refuse.
+            failures.reportSaveFailure(
+                "not saving: \(loadOutcome.userFacingMessage ?? "the existing file could not be read")")
+            return false
+        }
         let snapshot = Persisted(
             entries: entries,
             dismissed: dismissed,
             pending: pending,
             pendingCounts: pendingCounts
         )
-        if let data = try? JSONEncoder().encode(snapshot) {
-            try? data.write(to: fileURL, options: .atomic)
+        do {
+            let data = try JSONEncoder().encode(snapshot)
+            try data.write(to: fileURL, options: .atomic)
+            failures.reportSaveSuccess()
+            return true
+        } catch {
+            failures.reportSaveFailure(error)
+            return false
         }
     }
 }

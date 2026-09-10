@@ -66,10 +66,18 @@ public enum DictionaryCorrector {
 
             // Case-normalize the exact dictionary phrase when STT returns
             // the right words with the wrong casing.
+            //
+            // MUST be word-boundary matched, not a plain substring replace. A
+            // short term like "AI", "PR" or "API" appears inside unrelated words,
+            // and a substring substitution corrupts them: "said" became "sAId",
+            // "email" became "emAIl", "therapist" became "therAPIst". The
+            // word-boundary matcher is already case-insensitive, so the intended
+            // casing fix ("claude code" -> "Claude Code") still works while
+            // substrings of longer words are left alone.
             append(ReplacementRule(
                 match: phrase,
                 replacement: phrase,
-                matchMode: .caseInsensitivePhrase,
+                matchMode: .wordBoundaryPhrase,
                 language: term.language
             ))
         }

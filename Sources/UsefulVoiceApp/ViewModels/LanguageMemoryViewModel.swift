@@ -10,11 +10,42 @@ final class LanguageMemoryViewModel: ObservableObject {
     @Published var suggestions: [MemorySuggestion] = []
     @Published var query = ""
 
+    /// A persistent problem with the backing file, if any.
+    ///
+    /// Unlike a save error this does not clear itself: it means the store could not
+    /// read the file at launch and has therefore refused every write since, so the
+    /// user's edits are being held in memory only. It must stay visible until the
+    /// app restarts with a readable file.
+    @Published var loadIssue: String?
+
+    /// The most recent write failure, cleared once a write succeeds.
+    @Published var saveIssue: String?
+
     private let store: LanguageMemoryStore
 
     init(store: LanguageMemoryStore) {
         self.store = store
+        loadIssue = store.loadOutcome.userFacingMessage
+        saveIssue = store.lastSaveError
+        // Report write failures into the UI instead of letting them vanish. Before
+        // this, the store discarded the error entirely and the page kept saying
+        // "Saved" while nothing reached disk.
+        store.onSaveFailure { [weak self] message in
+            Task { @MainActor in
+                self?.saveIssue = message
+            }
+        }
         refresh()
+    }
+
+    /// The single message the page should show, load problems taking precedence.
+    var statusMessage: String? { loadIssue ?? saveIssue }
+
+    /// Acknowledge a write failure. A load problem cannot be dismissed, because the
+    /// store is still refusing to write and the condition is still true.
+    func dismissSaveIssue() {
+        saveIssue = nil
+        store.clearSaveError()
     }
 
     var filteredTerms: [MemoryTerm] {

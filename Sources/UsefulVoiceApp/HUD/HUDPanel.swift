@@ -81,10 +81,22 @@ final class HUDPanel: NSObject {
         hideTimer?.invalidate()
         hideTimer = nil
         guard delay > 0 else { fadeOut(); return }
-        hideTimer = Timer.scheduledTimer(withTimeInterval: delay,
-                                         repeats: false) { [weak self] _ in
+        let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.fadeOut() }
         }
+        hideTimer = timer
+        // .common so the dismissal still fires while a menu is open or a window
+        // is being dragged, instead of lingering past its intended lifetime.
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    /// Removes the panel from screen immediately, with no fade. Used on
+    /// termination, where an animation would never complete.
+    func hideImmediately() {
+        hideTimer?.invalidate()
+        hideTimer = nil
+        fadeOut()
+        panel?.orderOut(nil)
     }
 
     // MARK: - Building

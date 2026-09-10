@@ -6,3 +6,15 @@ dist/
 *.m4a
 *.aac
 *.flac
+
+# Browser-automation scratch from a landing-page session (2026-09-02): Playwright
+# accessibility snapshots and page screenshots. Kept out of the repo so `git status`
+# reflects the product rather than a one-off debugging session.
+/voice-*.yml
+/live-*.yml
+/work-*.yml
+/voice-*.png
+/brain-*.png
+/work-*.png
+/live-*.png
+.playwright-mcp/

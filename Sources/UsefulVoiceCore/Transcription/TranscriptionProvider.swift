@@ -24,6 +24,14 @@ public struct Transcript: Equatable, Sendable {
 
 public enum ProviderError: Error {
     case http(Int, String)
+    /// The Deepgram project is out of credits (HTTP 402).
+    ///
+    /// Separate from `http` because it is the one failure the user can fix in a
+    /// minute and the docs give it its own error code, `ASR_PAYMENT_REQUIRED`:
+    /// "Project does not have enough credits for an ASR request and does not have
+    /// an overage agreement." Reporting it as a generic 400 sends the user
+    /// hunting for a problem with their audio instead of topping up.
+    case outOfCredits(String)
     case badResponse
     case notConfigured(String)
     case timedOut

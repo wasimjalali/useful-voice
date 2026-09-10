@@ -65,15 +65,99 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything else installs an event tap: a second copy of the app
+        // would fight this one for the hotkey (one press would toggle dictation
+        // on and straight back off) and draw a second HUD pill. The duplicate is
+        // reachable because `make run` leaves a live bundle in dist/ with the
+        // same bundle identifier and signature as the /Applications copy.
+        if SingleInstance.yieldToExistingInstance() { return }
+
+        // Recorded before the key cache is primed, because priming can block
+        // indefinitely on a keychain authorization dialog. It previously ran only
+        // after the read returned, so a launch that hit a prompt produced no launch
+        // record at all — the one case where a launch record is most useful.
+        recordLaunchDiagnostic()
         ThinScrollbar.install()
         installMainMenu()
+        primeKeyCache()
         chimes.isEnabled = { [settings] in settings.soundEffectsEnabled }
         setUpStatusItem()
         setUpController()
         requestPermissions()
         startHotkeys()
-        if let viewModel {
-            mainWindow.show(viewModel: viewModel, settings: settings)
+
+        // Only open the window when the user asked for the app. A login-item or
+        // restored-state launch must stay quiet in the menu bar: opening a
+        // window here took focus with `activate(ignoringOtherApps: true)` on
+        // every login, so the first keystrokes after logging in landed in
+        // Useful Voice instead of the app the user was typing into.
+        if LaunchReason.current(from: notification) == .userInitiated {
+            openMainWindow()
+        }
+    }
+
+    /// Records one line describing this launch.
+    ///
+    /// Why: on a healthy install nothing is ever logged, so `diagnostics.log` would
+    /// stay empty and could not answer the obvious first question — "which build was
+    /// this, and was anything different about it?". One line per launch makes the log
+    /// a usable timeline, and the file is capped, so this cannot grow without bound.
+    ///
+    /// Contains no user content: version, build, and two booleans.
+    /// Facts known immediately at launch. Deliberately says nothing about the key,
+    /// which is not known yet — see `recordKeyStateDiagnostic`.
+    private func recordLaunchDiagnostic() {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
+        let loginItem = LoginItem.isEnabled ? "starts at login" : "manual start"
+        Diagnostics.shared.info(
+            "launch",
+            "Useful Voice \(version) (\(build)) on macOS \(ProcessInfo.processInfo.operatingSystemVersionString); \(loginItem)",
+        )
+    }
+
+    /// Recorded once the keychain read resolves, which may be never.
+    ///
+    /// A missing record is therefore itself the signal: it means the read never
+    /// returned, which in practice means a keychain authorization dialog is still
+    /// on screen. That is worth being able to see, because while that dialog is up
+    /// every dictation fails with "no transcription provider configured" and the
+    /// cause is invisible from inside the app.
+    private func recordKeyStateDiagnostic() {
+        // Distinguishes "no key stored" from "a key is stored but could not be
+        // read", which the pre-lookup API collapsed into one unhelpful value.
+        let store = DeepgramKeyStore.shared
+        if store.current != nil {
+            Diagnostics.shared.info("keychain", "Deepgram key loaded")
+        } else if let problem = store.lookupProblem {
+            Diagnostics.shared.warning(
+                "keychain",
+                "a Deepgram key is stored but could not be read (\(problem)); dictation will ask for a key until the keychain grants access",
+            )
+        } else {
+            Diagnostics.shared.info("keychain", "no Deepgram key configured")
+        }
+    }
+
+    /// Warms the Deepgram key cache off the main thread.
+    ///
+    /// The read can block on securityd, and on the first run after a re-signed
+    /// reinstall it can put up an authorization prompt. Doing it here, on a
+    /// background thread, keeps both app launch and the event tap responsive.
+    private func primeKeyCache() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            DeepgramKeyStore.shared.load()
+            DispatchQueue.main.async { [weak self] in
+                self?.viewModel?.refreshConfig()
+                // The key state is recorded separately, once it is actually known.
+                // It cannot be part of the launch line: the read is asynchronous and
+                // can block on a keychain prompt, so reading it there reported
+                // "no key cached" on every launch — wrong every single time, which
+                // is worse than no line at all. And this callback never runs at all
+                // while a prompt is unanswered, which is why the key state is its
+                // own record rather than a field on the launch record.
+                self?.recordKeyStateDiagnostic()
+            }
         }
     }
 
@@ -81,6 +165,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                        hasVisibleWindows flag: Bool) -> Bool {
         openMainWindow()
         return true
+    }
+
+    /// AppKit asks for this on macOS 14+ when the process takes part in state
+    /// restoration; without it every launch logs "Secure coding is not enabled
+    /// for restorable state!". The app keeps no restorable state of its own, so
+    /// answering yes is both correct and quiet.
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        true
+    }
+
+    /// Returning from System Settings is the most likely moment for a grant to
+    /// have changed, so re-check both the Accessibility tap and the microphone.
+    func applicationDidBecomeActive(_ notification: Notification) {
+        if viewModel?.hotkeyActive == false || axPollTimer != nil {
+            startAccessibilityPoll()
+        }
+    }
+
+    /// Tear down deterministically: an in-flight recording is discarded rather
+    /// than left as a truncated WAV, and timers/tap stop before the process dies.
+    func applicationWillTerminate(_ notification: Notification) {
+        axPollTimer?.invalidate()
+        axPollTimer = nil
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+        hud.hideImmediately()
+        hotkeys.stop()
+        if controller?.state == .recording {
+            controller?.cancel()
+        }
+        viewModel?.flushPendingEdits()
     }
 
     /// Useful Voice is an accessory app, so no menu bar is visible, but AppKit still
@@ -130,12 +245,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Sadaa")
         let appSupport = sadaaDir.appendingPathComponent("Recordings")
-        guard let store = try? RecordingStore(directory: appSupport) else {
-            fatalError("Cannot create recordings directory at \(appSupport.path)")
-        }
+        // Never trap here. A failed app-support directory (full disk, managed
+        // Mac, permission change) must not turn launch-at-login into an
+        // invisible crash loop; RecordingStore.make falls back to a temporary
+        // directory and the app stays usable.
+        let store = RecordingStore.make(directory: appSupport)
 
         try? FileManager.default.createDirectory(
             at: sadaaDir, withIntermediateDirectories: true)
+        // Owner-only. The directory is created with the process umask (022 on a
+        // default macOS install), which would make the dictionary, the full
+        // dictation history and the retained recordings readable by every other
+        // account on the machine. This also corrects files written by an earlier
+        // build, and directories restored from a backup (modes are not preserved).
+        FileProtection.restrictRecursively(sadaaDir)
         let history = DictationHistory(
             fileURL: sadaaDir.appendingPathComponent("history.json"))
         self.history = history
@@ -404,17 +527,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .map { Snippet(id: $0.id, trigger: $0.trigger, expansion: $0.expansion) }
     }
 
-    /// Active transcription provider: Deepgram Nova-3, keyed from the Keychain.
+    /// Active transcription provider: Deepgram Nova-3, keyed from the in-memory
+    /// key cache.
+    ///
+    /// Deliberately does NOT read the Keychain: this runs on the main actor
+    /// inside the dictation pipeline, and a blocking keychain read there would
+    /// stall the main run loop, which is where the global event tap lives.
+    /// `DeepgramKeyStore` is primed off-main at launch and refreshed whenever the
+    /// user saves the key in Settings.
     private static func buildProviders(settings: AppSettings)
         -> [TranscriptionProvider] {
-        guard let key = Keychain.get(account: "deepgram-key")?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-              !key.isEmpty else {
+        guard let key = DeepgramKeyStore.shared.current, !key.isEmpty else {
             return []
         }
         return [DeepgramProvider(config: .init(
             apiKey: key,
-            smartFormat: settings.formattingEnabled))]
+            smartFormat: settings.formattingEnabled,
+            spokenPunctuation: settings.spokenPunctuationEnabled))]
     }
 
     private static func describeProviderError(_ error: ProviderError) -> String {
@@ -425,6 +554,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ).prefix(200)
             return detail.isEmpty ? "HTTP \(status) from provider"
                                   : "HTTP \(status): \(detail)"
+        case .outOfCredits:
+            return "Your Deepgram account is out of credits. Add credits, then try again."
         case .badResponse:
             return "unreadable provider response"
         case .notConfigured(let what):
@@ -454,8 +585,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self?.controller?.cancel()
             }
         }
-        hotkeys.isRecordingActive = { [weak self] in
-            self?.controller?.state == .recording
+
+        // The tap died: usually the Accessibility grant was revoked while the app
+        // was running, or a system event killed the tap. Without this the hotkey
+        // goes silently dead while the UI still reports "Hotkeys active".
+        hotkeys.onTapDisabled = { [weak self] in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                MainActor.assumeIsolated {
+                    self.viewModel?.hotkeyActive = false
+                    self.hotkeys.stop()
+                    self.startAccessibilityPoll()
+                }
+            }
         }
 
         // Gate on real trust first. CGEvent.tapCreate returns a non-nil but
@@ -468,9 +610,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // start the tap without requiring a relaunch.
         hud.show(.error("Enable Accessibility for Useful Voice in System Settings to use the hotkey."))
         hud.hide(after: 6)
-        axPollTimer?.invalidate()
-        axPollTimer = Timer.scheduledTimer(withTimeInterval: 2.0,
-                                           repeats: true) { [weak self] _ in
+        startAccessibilityPoll()
+    }
+
+    /// Polls for Accessibility trust until the tap can start.
+    ///
+    /// Called both at launch and whenever the tap is torn down (for example after
+    /// the grant is revoked mid-session), so re-granting recovers without a
+    /// relaunch in every direction.
+    private func startAccessibilityPoll() {
+        guard axPollTimer == nil else { return }
+        axPollTimer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 guard AXIsProcessTrusted() else { return }
@@ -479,6 +629,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.axPollTimer = nil
                 }
             }
+        }
+        if let axPollTimer {
+            // .common so the poll keeps ticking while a menu is open or a window
+            // is being dragged, which are exactly when a user returns from
+            // System Settings.
+            RunLoop.main.add(axPollTimer, forMode: .common)
         }
     }
 
@@ -500,6 +656,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func render(state: DictationState) {
         defer { lastDictationState = state }
+        // Publish to the tap thread whether Esc belongs to us. Set here rather
+        // than read from a closure so the tap thread never touches main-actor
+        // state directly.
+        hotkeys.isRecordingActive = (state == .recording)
         switch state {
         case .idle:
             stopRecordingTimer()

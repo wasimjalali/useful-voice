@@ -10,6 +10,7 @@ struct ScratchpadPage: View {
     @State private var showImport = false
     @State private var importText = ""
     @State private var importMessage = ""
+    @State private var showDeleteConfirm = false
 
     init(viewModel: UsefulVoiceViewModel) {
         self.viewModel = viewModel
@@ -28,39 +29,116 @@ struct ScratchpadPage: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Theme.surface)
         .sheet(isPresented: $showImport) { importSheet }
+        .confirmationDialog(
+            "Delete this note?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) { confirmDelete() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This note will be removed. You can undo this right after.")
+        }
         .onDisappear { scratchpad.commitDraft() }
     }
 
     // MARK: - Header
 
     private var header: some View {
-        CommandPageHeader(
-            title: "Notes"
-        ) {
-            HStack(spacing: 8) {
-                BrandedMenuButton(help: "Import and export") {
-                    Button("Copy all as Markdown") {
-                        copy(scratchpad.exportAllMarkdown(), toast: "All notes copied")
+        VStack(alignment: .leading, spacing: 12) {
+            CommandPageHeader(
+                title: "Notes"
+            ) {
+                HStack(spacing: 8) {
+                    BrandedMenuButton(help: "Import and export") {
+                        Button("Copy all as Markdown") {
+                            copy(scratchpad.exportAllMarkdown(), toast: "All notes copied")
+                        }
+                        Button("Copy JSON backup") {
+                            copy(scratchpad.exportAllJSON(), toast: "Backup copied")
+                        }
+                        Button("Import JSON backup") {
+                            importText = ""
+                            importMessage = ""
+                            showImport = true
+                        }
                     }
-                    Button("Copy JSON backup") {
-                        copy(scratchpad.exportAllJSON(), toast: "Backup copied")
+                    Button("New note") {
+                        scratchpad.createNote()
+                        toasts.show("Note created")
                     }
-                    Button("Import JSON backup") {
-                        importText = ""
-                        importMessage = ""
-                        showImport = true
-                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.brand)
+                    .controlSize(.large)
+                    .clickableCursor()
                 }
-                Button("New note") {
-                    scratchpad.createNote()
-                    toasts.show("Note created")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.brand)
-                .controlSize(.large)
-                .clickableCursor()
+            }
+
+            if let deletion = scratchpad.undoableDeletion {
+                undoBar(deletion)
             }
         }
+    }
+
+    /// Inline, self-dismissing undo affordance shown right after a delete.
+    /// Surface/border tokens only — undo is not a status colour.
+    private func undoBar(_ deletion: ScratchpadViewModel.DeletedNote) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "trash")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.muted)
+
+            Text(deletedLabel(deletion))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Theme.ink)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Spacer(minLength: 12)
+
+            Button("Undo") {
+                scratchpad.undoDelete()
+                toasts.show("Note restored")
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Theme.ink)
+            .clickableCursor()
+
+            Button {
+                scratchpad.dismissUndo()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.muted)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .clickableCursor()
+            .help("Dismiss")
+            .accessibilityLabel("Dismiss undo")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Theme.lineStrong, lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(deletedLabel(deletion)). Undo available.")
+    }
+
+    private func confirmDelete() {
+        guard scratchpad.deleteSelected() != nil else { return }
+        toasts.show("Note deleted", kind: .info)
+    }
+
+    /// The undo bar names the note it can bring back.
+    private func deletedLabel(_ deletion: ScratchpadViewModel.DeletedNote) -> String {
+        let title = deletion.note.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? "Note deleted" : "Deleted \"\(title)\""
     }
 
     // MARK: - Workspace
@@ -170,17 +248,25 @@ struct ScratchpadPage: View {
                         Text("\(ScratchpadNote.wordCount(in: scratchpad.draftBody)) words")
                             .font(.system(size: 11, weight: .medium).monospacedDigit())
                             .foregroundStyle(Theme.muted)
-                        Text("Saved")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Theme.success)
+                        if scratchpad.saveState == .saved {
+                            Text("Saved")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Theme.success)
+                        }
                     }
                     .fixedSize(horizontal: false, vertical: true)
 
                     if !scratchpad.saveError.isEmpty {
-                        Text(scratchpad.saveError)
-                            .font(.system(size: 12))
-                            .foregroundStyle(Theme.danger)
-                            .padding(.top, 8)
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Theme.danger)
+                            Text(scratchpad.saveError)
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.danger)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.top, 8)
                     }
                 }
                 .padding(22)
@@ -240,10 +326,7 @@ struct ScratchpadPage: View {
                     }
                 }
                 Divider()
-                Button("Delete note", role: .destructive) {
-                    scratchpad.deleteSelected()
-                    toasts.show("Note deleted", kind: .info)
-                }
+                Button("Delete note", role: .destructive) { showDeleteConfirm = true }
             }
         }
     }
@@ -306,7 +389,7 @@ struct ScratchpadPage: View {
                         importMessage = "The JSON backup could not be read."
                         return
                     }
-                    importMessage = "Imported \(result.inserted) new and updated \(result.updated)."
+                    importMessage = importSummary(result)
                     toasts.show("Notes imported")
                 }
                 .buttonStyle(.borderedProminent)
@@ -324,5 +407,15 @@ struct ScratchpadPage: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
         toasts.show(toast)
+    }
+
+    /// Reports what the merge actually did, including local notes that were
+    /// kept because they were newer than the record in the backup.
+    private func importSummary(_ result: ScratchpadImportResult) -> String {
+        var parts = ["Imported \(result.inserted) new", "updated \(result.updated)"]
+        if result.keptLocal > 0 {
+            parts.append("kept \(result.keptLocal) newer local")
+        }
+        return parts.joined(separator: ", ") + "."
     }
 }

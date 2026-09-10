@@ -49,6 +49,7 @@ public final class AppSettings {
         static let hotkeyKeycode = "hotkeyKeycode"
         static let languageSwitchKeycode = "languageSwitchKeycode"
         static let formattingEnabled = "formattingEnabled"
+        static let spokenPunctuationEnabled = "spokenPunctuationEnabled"
         static let soundEffectsEnabled = "soundEffectsEnabled"
         static let lastExportFolder = "lastExportFolder"
     }
@@ -98,6 +99,17 @@ public final class AppSettings {
     public var formattingEnabled: Bool {
         get { defaults.object(forKey: Keys.formattingEnabled) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Keys.formattingEnabled) }
+    }
+
+    /// Convert spoken punctuation commands ("period", "new line") into the
+    /// characters themselves, using Deepgram's Dictation feature.
+    ///
+    /// Defaults to off: it changes what the words mean, so it is opt-in rather
+    /// than bundled with formatting. English only — Deepgram documents Dictation
+    /// as "English (all available regions)" — so it is ignored for German.
+    public var spokenPunctuationEnabled: Bool {
+        get { defaults.object(forKey: Keys.spokenPunctuationEnabled) as? Bool ?? false }
+        set { defaults.set(newValue, forKey: Keys.spokenPunctuationEnabled) }
     }
 
     /// Soft chimes when dictation starts and stops. Default: on.

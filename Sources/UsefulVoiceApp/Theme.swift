@@ -61,3 +61,15 @@ enum Theme {
     static let focus = accent
     static let red = danger
 }
+
+/// Motion tokens. The brand system specifies one easing curve for everything:
+/// `cubic-bezier(0.22, 1, 0.36, 1)`, 120–300 ms, entrances as a small rise.
+enum BrandMotion {
+    static func easeOut(duration: Double) -> Animation {
+        .timingCurve(0.22, 1, 0.36, 1, duration: duration)
+    }
+
+    /// Section changes: a quiet cross-fade with a small rise, fast enough that
+    /// switching pages never feels like waiting for an animation.
+    static let page = easeOut(duration: 0.22)
+}

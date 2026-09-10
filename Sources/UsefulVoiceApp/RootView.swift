@@ -35,6 +35,7 @@ struct RootView: View {
     @ObservedObject var viewModel: UsefulVoiceViewModel
     let settings: AppSettings
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selection: SidebarSection = .home
     @StateObject private var toasts = AppToastCenter()
 
@@ -84,7 +85,9 @@ struct RootView: View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(SidebarSection.allCases) { section in
                 Button {
-                    selection = section
+                    withAnimation(reduceMotion ? nil : BrandMotion.page) {
+                        selection = section
+                    }
                 } label: {
                     SidebarItem(
                         title: section.title,
@@ -121,15 +124,30 @@ struct RootView: View {
     // MARK: - Stage
 
     private var stage: some View {
-        detail
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Theme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay { PremiumToastHost() }
-            .shadow(color: Theme.ink.opacity(0.06), radius: 18, y: 8)
-            .padding(.top, 6)
-            .padding(.trailing, 10)
-            .padding(.bottom, 10)
+        ZStack {
+            detail
+                .id(selection)
+                .transition(pageTransition)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay { PremiumToastHost() }
+        .shadow(color: Theme.ink.opacity(0.06), radius: 18, y: 8)
+        .padding(.top, 6)
+        .padding(.trailing, 10)
+        .padding(.bottom, 10)
+    }
+
+    /// The incoming page cross-fades in from a small rise; the outgoing page only
+    /// fades, so the two never push each other around. Identity under Reduce Motion.
+    private var pageTransition: AnyTransition {
+        guard !reduceMotion else { return .identity }
+        return .asymmetric(
+            insertion: .opacity.combined(with: .offset(y: 8)),
+            removal: .opacity
+        )
     }
 
     @ViewBuilder

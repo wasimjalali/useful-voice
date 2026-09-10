@@ -857,3 +857,75 @@ should not be inferred as covered:
   that `keyterm` is Nova-3-only, but documents nowhere what happens to a `keyterm`
   parameter on the fallback model. The app's defence is to make the fallback
   unreachable rather than to rely on knowing.
+
+## 9. Findings from the adversarial review of this branch (F-35 … F-37)
+
+An independent review of the branch found three further defects, two of which were
+introduced by the work above. Recorded because the pattern matters: both of the
+serious ones were in code written specifically to be careful.
+
+### F-35 — The language picker took keyboard focus and never gave it back
+
+**Introduced by this work, and user-visible.** `LanguagePickerPanel` called
+`makeKeyAndOrderFront` and `NSApp.activate(ignoringOtherApps:)`, but `close()` only
+ordered the panel out. Nothing restored the previously frontmost application.
+
+That is not untidiness in this app. Every delivery path is focus-dependent:
+`TextInserter.postCommandV` posts an **unaddressed** ⌘V to `.cghidEventTap`, which
+goes to whatever application is frontmost, and its accessibility fallback targets the
+system-wide focused element. So after the user pressed the language hotkey and chose
+a language, the frontmost application was Useful Voice — and **the next dictation
+would paste into nothing**, unless they happened to click back first.
+
+It is a regression against what it replaced: the old in-place English↔German cycle
+never activated anything, so it could not have this problem. The new panel's own
+class comment even claimed the opposite of what it did.
+
+Fixed by recording `NSWorkspace.shared.frontmostApplication` before activating and
+activating it again on close. `.activateIgnoringOtherApps` is deprecated and ignored
+on macOS 14+, so the plain `activate()` is both current and equivalent.
+
+### F-36 — The detection-coverage check was inverted, on both platforms identically
+
+`detectionStayedOnNova3` asked `code.hasPrefix(catalogueCode)` — the wrong direction.
+It tested whether the catalogue contained a *prefix of the answer* rather than whether
+the answer was a regional form of a catalogue language, so almost everything passed:
+
+| Input | Returned | Why |
+|---|---|---|
+| `nope` | `true` | matches `no` (Norwegian) |
+| `korean` | `true` | matches `ko` |
+| `ja-JP`, `zh-CN`, `en-US` | `true` | matches `ja`, `zh`, `en` |
+
+The one case in the test suite, `klingon`, returned `false` **by luck** — no
+catalogue code is a prefix of it — which is exactly the kind of accidental pass that
+makes a test worthless.
+
+The severity was capped only because the function had **no callers**, so the check
+whose stated purpose was to catch Deepgram silently falling back off Nova-3 — which
+drops `keyterm` and disables the personal dictionary — had never run. Fixed to
+compare from the returned code towards the catalogue, requiring a `-` separator so
+`nordic` is not Norwegian, and **wired up**: it now runs after every dictation and
+logs a warning when the detected language leaves Nova-3. Deliberately a log line
+rather than an alert, since it may be a single unusual utterance and interrupting
+dictation would be worse than the problem.
+
+### F-37 — Windows CI had never once run the Windows tests
+
+Adding the Windows CI job immediately failed on `rendererWiring.test.ts` with *"could
+not find the end of: function mountMain("* — while passing on macOS. The cause was
+not the test's logic: with no `.gitattributes` in the repository, a Windows runner
+checks source files out with CRLF, and that test locates a declaration by searching
+for `"\n}\n"`, which can never match CRLF.
+
+So the test had reported **zero tests on the platform it was written for** since the
+day it was added, and the same hazard applied to every other test that parses source
+text as strings — including the cross-platform catalogue test that regexes the macOS
+Swift file. Fixed at the root with a `.gitattributes` forcing LF, and defensively by
+normalising line endings as those tests read.
+
+The job then failed again on packaging — *"Application entry file
+dist\main\index.js ... does not exist"* — because `electron-builder` packages `dist/`
+as-is and compiles nothing, so tests must be followed by a build. Which is itself the
+point: **both failures were in the verification path, not the product, and neither
+could have been found on this Mac.**

@@ -7,6 +7,8 @@ struct SidebarItem: View {
     let systemImage: String
     let isSelected: Bool
 
+    @State private var hovering = false
+
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: systemImage)
@@ -22,8 +24,13 @@ struct SidebarItem: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isSelected ? Theme.sunken : Color.clear)
+                .fill(isSelected || hovering ? Theme.sunken : Color.clear)
         )
+        // The highlight fades in and out instead of snapping, so the rail reads
+        // as responsive rather than flickering as the pointer moves down it.
+        .animation(BrandMotion.control, value: isSelected)
+        .animation(BrandMotion.control, value: hovering)
+        .onHover { hovering = $0 }
         .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }

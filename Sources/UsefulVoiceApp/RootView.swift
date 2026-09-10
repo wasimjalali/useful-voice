@@ -36,7 +36,15 @@ struct RootView: View {
     let settings: AppSettings
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The section the rail highlights. Moves the instant you click, so the
+    /// sidebar never feels laggy.
     @State private var selection: SidebarSection = .home
+    /// The section actually on the stage. Lags `selection` by the length of the
+    /// exit fade so the old page can leave before the new one arrives.
+    @State private var displayed: SidebarSection = .home
+    @State private var pageOpacity: Double = 1
+    @State private var pageOffset: CGFloat = 0
+    @State private var pendingPageSwitch: DispatchWorkItem?
     @StateObject private var toasts = AppToastCenter()
 
     var body: some View {
@@ -85,9 +93,7 @@ struct RootView: View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(SidebarSection.allCases) { section in
                 Button {
-                    withAnimation(reduceMotion ? nil : BrandMotion.page) {
-                        selection = section
-                    }
+                    select(section)
                 } label: {
                     SidebarItem(
                         title: section.title,
@@ -101,6 +107,43 @@ struct RootView: View {
                 .accessibilityAddTraits(selection == section ? [.isSelected] : [])
             }
         }
+    }
+
+    /// Runs the section change as two beats instead of one. A single cross-fade
+    /// shows both dense pages at half opacity at the same time (a ghosted double
+    /// image) and, on this curve, is over before the eye can follow it. Receding
+    /// the old page first and then rising the new one reads as a clean
+    /// transition. Reduce Motion swaps instantly.
+    private func select(_ section: SidebarSection) {
+        guard section != selection else { return }
+        selection = section
+        pendingPageSwitch?.cancel()
+
+        guard !reduceMotion else {
+            displayed = section
+            pageOpacity = 1
+            pageOffset = 0
+            return
+        }
+
+        withAnimation(BrandMotion.pageExit) {
+            pageOpacity = 0
+            pageOffset = -6
+        }
+
+        let work = DispatchWorkItem {
+            displayed = section
+            pageOffset = 8
+            withAnimation(BrandMotion.page) {
+                pageOpacity = 1
+                pageOffset = 0
+            }
+        }
+        pendingPageSwitch = work
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + BrandMotion.pageExitDuration,
+            execute: work
+        )
     }
 
     private var footer: some View {
@@ -126,8 +169,8 @@ struct RootView: View {
     private var stage: some View {
         ZStack {
             detail
-                .id(selection)
-                .transition(pageTransition)
+                .opacity(pageOpacity)
+                .offset(y: pageOffset)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -140,19 +183,9 @@ struct RootView: View {
         .padding(.bottom, 10)
     }
 
-    /// The incoming page cross-fades in from a small rise; the outgoing page only
-    /// fades, so the two never push each other around. Identity under Reduce Motion.
-    private var pageTransition: AnyTransition {
-        guard !reduceMotion else { return .identity }
-        return .asymmetric(
-            insertion: .opacity.combined(with: .offset(y: 8)),
-            removal: .opacity
-        )
-    }
-
     @ViewBuilder
     private var detail: some View {
-        switch selection {
+        switch displayed {
         case .home:
             HomePage(viewModel: viewModel)
         case .languageMemory:

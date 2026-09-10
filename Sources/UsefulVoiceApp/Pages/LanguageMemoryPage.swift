@@ -326,7 +326,7 @@ struct LanguageMemoryPage: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
         } else {
-            VStack(spacing: 0) {
+            LazyVStack(spacing: 0) {
                 content()
             }
             .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -357,7 +357,7 @@ struct LanguageMemoryPage: View {
                     .foregroundStyle(Theme.muted)
                     .padding(.vertical, 8)
             } else {
-                VStack(spacing: 0) {
+                LazyVStack(spacing: 0) {
                     ForEach(viewModel.filteredSnippets) { snippet in
                         MemorySnippetRow(
                             snippet: snippet,

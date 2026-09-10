@@ -43,7 +43,7 @@ build:
 	swift build -c release
 
 test:
-	./Scripts/run-tests.sh
+	./scripts/run-tests.sh
 
 bundle: build
 	rm -rf $(APP)
@@ -69,7 +69,7 @@ install: bundle
 	@# installing to. A stale copy left in dist/ shares this bundle id and this
 	@# signature, so it also shares the Accessibility grant and installs a second
 	@# event tap -- one hotkey press would then toggle dictation twice.
-	@./Scripts/stop-instances.sh
+	@./scripts/stop-instances.sh
 	rm -rf "/Applications/Useful Voice.app"
 	cp -R $(APP) "/Applications/Useful Voice.app"
 	open "/Applications/Useful Voice.app"
@@ -78,7 +78,7 @@ install: bundle
 # left to unregister the login item, and the user has to find it by hand in
 # System Settings.
 uninstall:
-	@./Scripts/uninstall.sh
+	@./scripts/uninstall.sh
 
 # ---------------------------------------------------------------------------
 # Distribution: hardened runtime + Developer ID + notarization.

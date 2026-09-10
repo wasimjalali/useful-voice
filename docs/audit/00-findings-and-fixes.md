@@ -178,7 +178,7 @@ observed and a capture failure is now a reported error rather than silence.
 
 ### F-9 — The test script only worked by accident
 
-**What was wrong.** `Scripts/run-tests.sh` looked for `lib_TestingInterop.dylib`
+**What was wrong.** `scripts/run-tests.sh` looked for `lib_TestingInterop.dylib`
 next to `Testing.framework`. This Command Line Tools installation ships it in
 `Library/Developer/usr/lib/` instead. The script never found it, and the
 `[ -f "$INTEROP" ] && cp …` guard discarded the failure — so the suite passed only
@@ -976,7 +976,7 @@ consecutive attempts.
 
 ### The guard that should have existed
 
-`Scripts/check-deepgram-request.sh` now checks the app's real requests against the
+`scripts/check-deepgram-request.sh` now checks the app's real requests against the
 live endpoint: the whole auto-detection set in one request, every detection code
 individually, every code as a pinned `language=`, and the regional pins. It reads the
 detection codes out of `DeepgramLanguage.swift` rather than duplicating them, so it
@@ -988,3 +988,26 @@ This is the second finding in this document that only a live system could have f
 (the first was F-37, where the Windows tests had never run). Both are the same lesson:
 a local suite proves the code does what it was written to do, never that what it was
 written to do is correct.
+
+## 11. F-39 — `Scripts/` versus `scripts/`, and why it never showed
+
+The repository tracks the directory as lowercase `scripts/`, but the `Makefile`, the
+audit notes and `scripts/uninstall.sh` all referred to `./Scripts/`. Both spellings
+have always worked on this machine, because APFS is case-insensitive: the two paths
+resolve to the same directory, so `make test` and `make install` have run correctly
+for as long as they have existed.
+
+On a case-sensitive filesystem they would not. `./Scripts/run-tests.sh` from the
+`Makefile` fails on a Linux checkout. It has never bitten because the CI job does not
+use the `Makefile` — it runs `swift test` directly — and the only machine running
+`make` is this case-insensitive Mac. So the repository is one Linux contributor, or
+one `make`-based CI job, away from a confusing failure.
+
+Corrected to the spelling git actually stores, in the `Makefile`, the audit notes,
+`scripts/uninstall.sh` and the new check script.
+
+Worth noting because of how it was found: the case was invisible in `git ls-files`
+with `core.ignorecase = true`, and the file on disk had been created at the path the
+shell resolved, so nothing looked wrong. It only surfaced by comparing
+`git ls-tree main` against `git ls-tree HEAD` while checking whether a commit had
+accidentally renamed a directory.

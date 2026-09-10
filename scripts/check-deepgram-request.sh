@@ -9,8 +9,8 @@
 # Deepgram but rejected by the API. Only a real request could have caught that.
 #
 # Usage:
-#   DEEPGRAM_API_KEY=... ./Scripts/check-deepgram-request.sh
-#   ./Scripts/check-deepgram-request.sh            # reads the key from the Keychain
+#   DEEPGRAM_API_KEY=... ./scripts/check-deepgram-request.sh
+#   ./scripts/check-deepgram-request.sh            # reads the key from the Keychain
 #
 # Exits non-zero on the first rejection, so it can gate a release.
 set -uo pipefail

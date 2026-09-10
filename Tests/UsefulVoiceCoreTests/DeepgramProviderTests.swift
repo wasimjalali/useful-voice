@@ -356,6 +356,43 @@ import Foundation
         #expect(DeepgramProvider.requestID(fromBody: Data(#"{"metadata":{"request_id":"nested"}}"#.utf8)) == "nested")
     }
 
+    /// Auto-detection repeats `detect_language` once per supported code, so the
+    /// request URL grows with the catalogue. That is comfortable at 35 codes and would
+    /// stop being comfortable if the list were ever replaced with the full language
+    /// set or the raw documented code list (105 strings): the request line would grow
+    /// into the range where proxies and servers start refusing it, and the failure
+    /// would look like a network problem rather than a configuration one. This pins a
+    /// ceiling so that expansion is a deliberate decision rather than a surprise.
+    @Test func testAutoDetectRequestStaysWellInsideUrlLimits() async throws {
+        let audioURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("deepgram-url-\\(UUID().uuidString).wav")
+        try Data([0x52, 0x49, 0x46, 0x46]).write(to: audioURL)
+        defer { try? FileManager.default.removeItem(at: audioURL) }
+
+        nonisolated(unsafe) var captured: URL?
+        DeepgramStubURLProtocol.handler = { request in
+            captured = request.url
+            let body = #"{"results":{"channels":[{"alternatives":[{"transcript":"ok","words":[]}]}]}}"#
+            return (HTTPURLResponse(url: request.url!, statusCode: 200,
+                                    httpVersion: nil, headerFields: nil)!, Data(body.utf8))
+        }
+        // Spoken punctuation is the largest realistic request: it adds two more
+        // parameters on top of the detection list.
+        _ = try await provider(spokenPunctuation: true, session: DeepgramStubURLProtocol.session())
+            .transcribe(audio: audioURL,
+                        hint: TranscriptionHint(languagePin: .auto, dictionaryWords: []))
+
+        let query = try #require(captured?.query)
+        let url = try #require(captured?.absoluteString)
+        // Every hop in practice accepts at least 2000 characters, and servers commonly
+        // allow 8 KB. Assert well below the lower of the two, so there is headroom
+        // before a real limit is approached.
+        #expect(url.count < 1500, "detection URL is \\(url.count) characters")
+        // And confirm the URL really is carrying the restriction, not just short.
+        #expect(query.contains("detect_language=zh"))
+        #expect(query.contains("detect_language=zh-HK") == false)
+    }
+
     /// Run one transcription against the stub handler with a throwaway audio file.
     private func transcribeWithStub() async throws -> Transcript {
         let audioURL = FileManager.default.temporaryDirectory
@@ -393,4 +430,5 @@ private final class DeepgramStubURLProtocol: URLProtocol {
         }
     }
     override func stopLoading() {}
+
 }

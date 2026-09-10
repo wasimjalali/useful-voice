@@ -271,3 +271,98 @@ struct MemoryLanguageTests {
         #expect(MemoryLanguage.allCases.count == LanguagePin.allCases.count)
     }
 }
+
+/// The user has real data on disk. `MemoryLanguage` changed from a failable enum to
+/// a struct, and `language-memory.json` stores it as a bare JSON string — so the
+/// encoding has to be unchanged, byte for byte, or existing stores stop decoding.
+/// These tests pin the format rather than trusting it.
+@Suite("Memory language on-disk compatibility")
+struct MemoryLanguageCompatibilityTests {
+
+    /// Every language value as the OLD enum would have written it. An enum with a
+    /// `String` raw value and no custom `Codable` conformance encodes as a plain
+    /// string, so the struct must do the same rather than switching to, say, a
+    /// keyed container `{"rawValue": "en"}`.
+    @Test func testEncodesAsABareJSONString() throws {
+        let encoder = JSONEncoder()
+        for raw in ["auto", "en", "de"] {
+            let data = try encoder.encode(MemoryLanguage(rawValue: raw))
+            #expect(String(decoding: data, as: UTF8.self) == "\"\(raw)\"")
+        }
+    }
+
+    /// The dates in the store use ISO 8601, so decode with the store's exact
+    /// strategies rather than defaults, or this would test the wrong thing.
+    private static func storeDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
+
+    private static func storeEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+
+    /// Decode the *live* store if it is present and prove a round trip preserves it.
+    ///
+    /// Skipped on CI and on any machine without the file; it exists to be run against
+    /// a real install, which unit fixtures cannot substitute for.
+    @Test func testLiveStoreSurvivesARoundTrip() throws {
+        let path = ("~/Library/Application Support/Sadaa/language-memory.json" as NSString)
+            .expandingTildeInPath
+        let url = URL(fileURLWithPath: path)
+        guard let original = try? Data(contentsOf: url) else { return }
+
+        // The live file is the versioned wrapper, not a bare snapshot; decoding the
+        // wrapper is what the store itself does on load.
+        let persisted = try Self.storeDecoder().decode(LanguageMemoryPersisted.self, from: original)
+        let snapshot = persisted.snapshot
+        let reencoded = try Self.storeEncoder().encode(persisted)
+        let decodedAgain = try Self.storeDecoder()
+            .decode(LanguageMemoryPersisted.self, from: reencoded).snapshot
+
+        // Nothing lost: comparing the re-serialised forms normalises key ordering,
+        // which JSONEncoder does not guarantee, without weakening the check.
+        let normalise: (Data) throws -> String = { data in
+            let object = try JSONSerialization.jsonObject(with: data)
+            let sorted = try JSONSerialization.data(withJSONObject: object,
+                                                    options: [.sortedKeys])
+            return String(decoding: sorted, as: UTF8.self)
+        }
+        #expect(try normalise(reencoded) == normalise(original),
+                "a round trip through the new MemoryLanguage changed the stored data")
+
+        // And the contents still agree with what was read.
+        #expect(decodedAgain.terms.count == snapshot.terms.count)
+        #expect(decodedAgain.replacements.count == snapshot.replacements.count)
+        for (before, after) in zip(snapshot.terms, decodedAgain.terms) {
+            #expect(before.language == after.language)
+            #expect(before.phrase == after.phrase)
+        }
+    }
+
+    /// The enum accepted only three values, so a store written by an older build can
+    /// only contain those. All three must still decode.
+    @Test func testEveryValueTheOldEnumCouldWriteStillDecodes() throws {
+        for raw in ["auto", "en", "de"] {
+            let decoded = try Self.storeDecoder().decode(
+                MemoryLanguage.self, from: Data("\"\(raw)\"".utf8))
+            #expect(decoded.rawValue == raw)
+            #expect(decoded == MemoryLanguage(rawValue: raw))
+        }
+    }
+
+    /// A value the old enum could NOT write must still decode rather than throw.
+    /// Throwing here would fail the store load, and a store that fails to load is
+    /// refused for writing — so one unrecognised language would cost the user their
+    /// entire dictionary.
+    @Test func testUnrecognisedValuesDoNotFailTheStore() throws {
+        for raw in ["", "multi", "klingon", "zh-HK"] {
+            let decoded = try Self.storeDecoder().decode(
+                MemoryLanguage.self, from: Data("\"\(raw)\"".utf8))
+            #expect(decoded.rawValue == raw)
+        }
+    }
+}

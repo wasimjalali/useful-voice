@@ -105,8 +105,39 @@ describe('language detection', () => {
   it('recognises when a detected language left Nova-3', () => {
     expect(detectionStayedOnNova3('en')).toBe(true);
     expect(detectionStayedOnNova3('zh-HK')).toBe(true);
+    // Deepgram may answer with a more specific tag than the catalogue stores, so a
+    // regional form of a known language still counts as covered.
     expect(detectionStayedOnNova3('en-US')).toBe(true);
+    expect(detectionStayedOnNova3('zh-CN')).toBe(true);
+    expect(detectionStayedOnNova3('ja-JP')).toBe(true);
+    expect(detectionStayedOnNova3('ko-KR')).toBe(true);
     expect(detectionStayedOnNova3('klingon')).toBe(false);
+    expect(detectionStayedOnNova3('xx')).toBe(false);
+    expect(detectionStayedOnNova3('')).toBe(false);
+  });
+
+  /**
+   * The inverted comparison this replaced asked whether the catalogue contained a
+   * *prefix* of the returned code, so it passed almost everything: each string below
+   * merely begins with a real code that is a different language. A check that answers
+   * "yes" by accident is worse than no check, because its caller believes it.
+   */
+  it('does not mistake an unknown code for a known one', () => {
+    expect(detectionStayedOnNova3('nope')).toBe(false); // no
+    expect(detectionStayedOnNova3('korean')).toBe(false); // ko
+    expect(detectionStayedOnNova3('japanese')).toBe(false); // ja
+    expect(detectionStayedOnNova3('germanic')).toBe(false); // de
+    expect(detectionStayedOnNova3('italiano')).toBe(false); // it
+    expect(detectionStayedOnNova3('astronomy')).toBe(false); // as
+    expect(detectionStayedOnNova3('nordic')).toBe(false); // no
+    expect(detectionStayedOnNova3('thai-food')).toBe(false); // th
+  });
+
+  it('requires a separator before the regional suffix', () => {
+    // Without the separator, plain `startsWith` makes "nordic" Norwegian.
+    expect(detectionStayedOnNova3('no')).toBe(true);
+    expect(detectionStayedOnNova3('no-NO')).toBe(true);
+    expect(detectionStayedOnNova3('nordic')).toBe(false);
   });
 });
 
@@ -252,5 +283,42 @@ describe('cross-platform catalogue parity', () => {
     const swiftDetection = [...detectionBlock.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
     expect(swiftDetection.length).toBeGreaterThan(0);
     expect([...DETECTION_CODES]).toEqual(swiftDetection);
+  });
+
+  /**
+   * The detection-coverage rule was inverted on BOTH platforms in the same way — the
+   * prefix test ran from the catalogue towards the answer instead of the reverse — so
+   * a shared set of expected results is the check that catches a rewrite of either
+   * copy. It lives here because this is the only test that can see both.
+   */
+  it('agrees with macOS on which detected languages count as covered', () => {
+    const swiftPathInner = swiftPath;
+    let swift: string;
+    try {
+      swift = readFileSync(swiftPathInner, 'utf8').replace(/\r\n/g, '\n');
+    } catch {
+      return;
+    }
+
+    // Cover every case that distinguishes the correct rule from the inverted one.
+    const cases: Array<[string, boolean]> = [
+      ['en', true], ['de', true], ['zh-HK', true], ['multi', false],
+      ['en-US', true], ['zh-CN', true], ['ja-JP', true], ['ko-KR', true], ['no-NO', true],
+      ['nope', false], ['korean', false], ['japanese', false], ['germanic', false],
+      ['nordic', false], ['astronomy', false], ['thai-food', false],
+      ['klingon', false], ['xx', false], ['', false],
+    ];
+
+    for (const [code, expected] of cases) {
+      expect(detectionStayedOnNova3(code), `windows: ${code}`).toBe(expected);
+    }
+
+    // The Swift side must implement the same rule. Compare its source-level logic by
+    // requiring the canonicalising form, since the expected values cannot be executed
+    // from here.
+    expect(swift).toContain('normalised.hasPrefix(known + "-")');
+    expect(swift).toContain('normalised == known');
+    // And must not have regressed to the inverted comparison.
+    expect(swift).not.toContain('code.hasPrefix($0.code)');
   });
 });

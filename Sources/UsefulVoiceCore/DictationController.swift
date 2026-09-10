@@ -28,6 +28,9 @@ public final class DictationController {
     /// window and a re-entrant tap can't start a new recording mid-paste.
     private let deliver: (String, @escaping () -> Void) -> Void
     private let record: (DictationRecord) -> Void
+    /// Where a detected-language anomaly is reported. Injected so tests do not append
+    /// to the real install's log.
+    private let diagnostics: Diagnostics
     private let format: ((String, FormattingContext) async throws -> FormattingResult)?
     private let rawTransform: ((String, FormattingContext) async -> FormattingResult)?
     private let context: () -> FormattingContext
@@ -56,6 +59,7 @@ public final class DictationController {
                 recordingsToKeep: Int,
                 deliver: @escaping (String, @escaping () -> Void) -> Void,
                 record: @escaping (DictationRecord) -> Void = { _ in },
+                diagnostics: Diagnostics = .shared,
                 format: ((String, FormattingContext) async throws -> FormattingResult)? = nil,
                 rawTransform: ((String, FormattingContext) async -> FormattingResult)? = nil,
                 context: @escaping () -> FormattingContext = {
@@ -73,6 +77,7 @@ public final class DictationController {
         self.recordingsToKeep = recordingsToKeep
         self.deliver = deliver
         self.record = record
+        self.diagnostics = diagnostics
         self.format = format
         self.rawTransform = rawTransform
         self.context = context
@@ -289,6 +294,8 @@ public final class DictationController {
         }
         pendingRawMode = false
 
+        recordDetectedLanguageCheck(transcript.detectedLanguage)
+
         record(DictationRecord(
             text: finalText,
             createdAt: now(),
@@ -331,5 +338,29 @@ public final class DictationController {
         case .timedOut: return "timed out"
         case .transport(let urlError): return urlError.localizedDescription
         }
+    }
+
+    /// Record when the provider left Nova-3 to transcribe, which silently disables the
+    /// personal dictionary.
+    ///
+    /// `keyterm` is documented as "Only compatible with Nova-3", and Deepgram falls
+    /// back down a model chain when a requested or detected language is unavailable on
+    /// the requested model. Detection is restricted to languages Nova-3 speaks
+    /// natively, so this should be unreachable — which is exactly why it is worth
+    /// reporting if it ever happens. The alternative symptom is a transcript where the
+    /// user's own terminology is misspelled, and that reads as a dictionary bug rather
+    /// than a model one, so nobody would look here.
+    ///
+    /// Deliberately a log line rather than an alert: it may be a single unusual
+    /// utterance, and interrupting dictation to say so would be worse than the problem.
+    private func recordDetectedLanguageCheck(_ detected: String?) {
+        guard let detected, !detected.isEmpty else { return }
+        guard !DeepgramLanguageCatalog.detectionStayedOnNova3(detected) else { return }
+        diagnostics.record(
+            level: .warning,
+            category: "dictation",
+            message: "detected language '\(detected)' is outside Nova-3, so the provider "
+                + "fell back to a lower model and dictionary terms were not applied"
+        )
     }
 }

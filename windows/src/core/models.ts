@@ -6,7 +6,7 @@
  * pure TypeScript and fully covered by unit tests that run anywhere.
  */
 
-import { DEEPGRAM_LANGUAGES, isSupportedLanguage } from './transcription/languages.js';
+import { DEEPGRAM_LANGUAGES, normaliseLanguageCode } from './transcription/languages.js';
 
 /**
  * The language a setting, term or replacement is scoped to.
@@ -32,31 +32,27 @@ export const LANGUAGE_MODES: readonly MemoryLanguage[] = ['auto', 'multi'];
 /**
  * Normalise a stored language value to something sendable.
  *
- * Two things this has to get right, both learned the hard way:
+ * A thin wrapper over `normaliseLanguageCode` rather than a second implementation.
+ * There were briefly two copies of this rule — one here and one in `languages.ts` —
+ * which is how a stored-language rule drifts: the settings path and the picker path
+ * would have answered differently for the same input.
+ *
+ * Two things the rule has to get right, both learned the hard way:
  *
  * 1. **`'multi'` is not `'auto'`.** An earlier build offered `'multi'` in the picker
- *    labelled "Detect automatically". `multi` is code-switching — for audio where
- *    the speaker changes language mid-sentence — while auto-detection is
+ *    labelled "Detect automatically". `multi` is code-switching — for audio where the
+ *    speaker changes language mid-sentence — while auto-detection is
  *    `detect_language`. A user who chose what they were told was auto-detection was
- *    silently transcribing in the wrong mode. The value survives as a real choice,
- *    but it no longer claims to be detection.
- * 2. **An unknown code must never be sent.** The provider would error, or fall back
- *    to a weaker model that does not support `keyterm` — silently dropping the
- *    dictionary feature.
+ *    silently transcribing in the wrong mode. The value survives as a real choice, but
+ *    it no longer claims to be detection.
+ * 2. **An unknown code must never be sent.** The provider would error, or fall back to
+ *    a weaker model that does not support `keyterm` — silently dropping the dictionary
+ *    feature.
  *
- * Regions keep their case: folding `zh-HK` to `zh-hk` matches nothing and would
- * quietly demote Cantonese to detection.
+ * Accepts `unknown` because the value comes from a JSON file a user can edit.
  */
 export function normaliseMemoryLanguage(value: unknown): MemoryLanguage {
-  if (typeof value !== 'string') return 'auto';
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return 'auto';
-  if (trimmed.toLowerCase() === 'auto') return 'auto';
-  if (isSupportedLanguage(trimmed)) return trimmed;
-  const folded = DEEPGRAM_LANGUAGES.find(
-    (language) => language.code.toLowerCase() === trimmed.toLowerCase(),
-  );
-  return folded ? folded.code : 'auto';
+  return typeof value === 'string' ? normaliseLanguageCode(value) : 'auto';
 }
 
 /**

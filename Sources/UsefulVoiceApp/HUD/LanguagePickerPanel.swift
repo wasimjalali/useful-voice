@@ -2,19 +2,6 @@ import AppKit
 import SwiftUI
 import UsefulVoiceCore
 
-/// A focusable floating panel hosting `LanguagePicker`.
-///
-/// The language hotkey used to cycle English↔German in place, which stopped being
-/// usable as soon as the picker offered more than two languages: cycling through
-/// ten entries by tapping a key is worse than not having the shortcut. The hotkey
-/// now opens this instead, so the shortcut still exists but the choice is made
-/// deliberately.
-///
-/// Deliberately *not* built on `HUDPanel`. That panel is `.nonactivatingPanel` and
-/// never takes focus, because a dictation HUD must not steal the caret from the app
-/// you are typing into. This one needs the opposite: a search field has to receive
-/// keystrokes, so the panel must be able to become key while still appearing over
-/// whatever app has focus.
 /// An `NSPanel` that is willing to become the key window.
 ///
 /// This subclass is not optional garnish, it is what makes the picker usable.
@@ -31,6 +18,26 @@ final class KeyablePanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
+/// A focusable floating panel hosting `LanguagePicker`.
+///
+/// The language hotkey used to cycle English↔German in place, which stopped being
+/// usable as soon as the picker offered more than two languages: reaching the tenth
+/// entry by tapping a key is worse than not having the shortcut. The hotkey now opens
+/// this instead, so the shortcut survives while the choice stays deliberate.
+///
+/// Deliberately *not* built on `HUDPanel`. That panel is `.nonactivatingPanel` and
+/// never takes focus, because a dictation HUD must not steal the caret from the app
+/// you are typing into. This one needs the opposite — a search field has to receive
+/// keystrokes, so the panel must be able to become key.
+///
+/// **Taking focus makes restoring it this panel's responsibility.** Every delivery
+/// path in the app is focus-dependent: `TextInserter` posts an unaddressed ⌘V to
+/// `.cghidEventTap`, which goes to whatever application is frontmost, and its
+/// accessibility fallback targets the system-wide focused element. So a panel that
+/// takes frontmost and does not give it back silently breaks the *next* dictation —
+/// the transcript would be pasted into nothing, or into this app. The old in-place
+/// cycle had no such problem because it never activated anything, which is what makes
+/// this a regression to avoid rather than a nicety to add.
 @MainActor
 final class LanguagePickerPanel: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
@@ -42,6 +49,12 @@ final class LanguagePickerPanel: NSObject, NSWindowDelegate {
     private var isShowing = false
     /// Guards the callback so closing the panel does not fire a selection.
     private var didSelect = false
+    /// The application that was frontmost when the panel opened.
+    ///
+    /// Captured so it can be handed focus back on close. See the class comment: the
+    /// app's paste path depends on which application is frontmost, so failing to
+    /// restore this breaks the next dictation rather than merely being untidy.
+    private var previousApplication: NSRunningApplication?
 
     private let panelWidth: CGFloat = 292
     private let panelHeight: CGFloat = 396
@@ -71,6 +84,13 @@ final class LanguagePickerPanel: NSObject, NSWindowDelegate {
         self.onSelect = onSelect
         self.onDismiss = onDismiss
         didSelect = false
+        // Recorded before the panel takes focus, and only if it is a different
+        // application: activating ourselves when we are already frontmost would be a
+        // no-op, and storing ourselves would make close() activate the wrong app.
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        previousApplication = frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+            ? nil
+            : frontmost
 
         let binding = Binding<LanguagePin>(
             get: { current() },
@@ -98,14 +118,27 @@ final class LanguagePickerPanel: NSObject, NSWindowDelegate {
         panel.makeKeyAndOrderFront(nil)
         // Activating is what lets a background (accessory) app's window accept typed
         // input. Done after ordering front so the window is already on screen when
-        // focus moves, which avoids a visible flash.
+        // focus moves. This app is `LSUIElement`, so it is not normally frontmost.
         NSApp.activate(ignoringOtherApps: true)
     }
 
     func close() {
         guard isShowing else { return }
+        // Set before ordering out: the resign-key notification that follows re-enters
+        // this method, and the guard above is what stops the recursion.
         isShowing = false
         panel?.orderOut(nil)
+
+        // Hand focus back to whatever had it. Without this the app remains frontmost,
+        // and the next dictation would paste into a window that is not the user's
+        // editor — the delivery path relies on the frontmost application to know where
+        // text goes. `.activateIgnoringOtherApps` is deprecated and ignored on macOS
+        // 14+, so the plain call is both current and equivalent.
+        if let previous = previousApplication, !previous.isTerminated {
+            previous.activate()
+        }
+        previousApplication = nil
+
         // Fired after the panel is gone so a caller reacting to dismissal cannot
         // re-open it.
         if !didSelect { onDismiss?() }

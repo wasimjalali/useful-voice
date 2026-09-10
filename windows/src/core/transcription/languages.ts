@@ -215,9 +215,21 @@ export function supportsSpokenPunctuation(code: string): boolean {
  * dropped: the app was told to bias the transcript with the user's dictionary and
  * could not. Worth surfacing, because the visible symptom — odd spellings of the
  * user's own terminology — looks like a dictionary fault rather than a model one.
+ *
+ * The comparison goes from the *returned* code towards the catalogue, and the
+ * direction is the whole point. Deepgram may answer with a more specific tag than the
+ * catalogue stores — `zh-CN` for `zh`, `en-US` for `en` — so the returned code is the
+ * one that gets stripped. Testing it the other way round
+ * (`code.startsWith(language.code)`) inverts the meaning and passes almost
+ * everything: `nope` matches `no`, `korean` matches `ko`, `ja-JP` matches `ja`. That
+ * direction looked plausible and was wrong, and a check that answers "yes" by
+ * accident is worse than no check, because its caller believes it.
  */
 export function detectionStayedOnNova3(code: string): boolean {
-  return DEEPGRAM_LANGUAGES.some(
-    (language) => language.code === code || code.startsWith(language.code),
-  );
+  const normalised = code.trim().toLowerCase();
+  if (normalised.length === 0) return false;
+  return DEEPGRAM_LANGUAGES.some((language) => {
+    const known = language.code.toLowerCase();
+    return normalised === known || normalised.startsWith(`${known}-`);
+  });
 }

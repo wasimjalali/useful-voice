@@ -114,7 +114,55 @@ struct DeepgramLanguageCatalogTests {
         #expect(DeepgramLanguageCatalog.detectionStayedOnNova3("en"))
         #expect(DeepgramLanguageCatalog.detectionStayedOnNova3("de"))
         #expect(DeepgramLanguageCatalog.detectionStayedOnNova3("zh-HK"))
+    }
+
+    /// Deepgram may answer with a more specific tag than the catalogue stores, so a
+    /// regional form of a known language must still count as covered. This is the
+    /// only reason the check does any prefix work at all.
+    @Test func testRegionalFormsOfKnownLanguagesCountAsCovered() {
         #expect(DeepgramLanguageCatalog.detectionStayedOnNova3("en-US"))
+        #expect(DeepgramLanguageCatalog.detectionStayedOnNova3("en-GB"))
+        #expect(DeepgramLanguageCatalog.detectionStayedOnNova3("zh-CN"))
+        #expect(DeepgramLanguageCatalog.detectionStayedOnNova3("zh-hant"))
+        #expect(DeepgramLanguageCatalog.detectionStayedOnNova3("ja-JP"))
+        #expect(DeepgramLanguageCatalog.detectionStayedOnNova3("ko-KR"))
+        #expect(DeepgramLanguageCatalog.detectionStayedOnNova3("PT-BR"))
+    }
+
+    /// The inverted comparison this replaced passed almost everything, because it
+    /// asked whether the catalogue contained a *prefix* of the returned code. These
+    /// are the specific strings that slipped through: each one merely begins with a
+    /// real code that is a different language entirely.
+    @Test func testUnknownCodesAreNotMistakenForKnownOnes() {
+        // Every one of these starts with a catalogue code and is not that language.
+        #expect(!DeepgramLanguageCatalog.detectionStayedOnNova3("nope"))      // no
+        #expect(!DeepgramLanguageCatalog.detectionStayedOnNova3("korean"))    // ko
+        #expect(!DeepgramLanguageCatalog.detectionStayedOnNova3("japanese"))  // ja
+        #expect(!DeepgramLanguageCatalog.detectionStayedOnNova3("germanic"))  // de
+        #expect(!DeepgramLanguageCatalog.detectionStayedOnNova3("italiano"))  // it
+        #expect(!DeepgramLanguageCatalog.detectionStayedOnNova3("marathi"))   // mr
+        #expect(!DeepgramLanguageCatalog.detectionStayedOnNova3("thai-food")) // th
+        // And codes outside the model entirely.
+        #expect(!DeepgramLanguageCatalog.detectionStayedOnNova3("klingon"))
+        #expect(!DeepgramLanguageCatalog.detectionStayedOnNova3("xx"))
+        #expect(!DeepgramLanguageCatalog.detectionStayedOnNova3(""))
+        #expect(!DeepgramLanguageCatalog.detectionStayedOnNova3("   "))
+    }
+
+    /// A language with no hyphenated regional forms must not swallow a longer code
+    /// that merely begins with it, which is what `hasPrefix` without the separator
+    /// did.
+    @Test func testPrefixMatchingRequiresASeparator() {
+        // "no" is Norwegian; "nordic" is not Norwegian under any reading.
+        #expect(!DeepgramLanguageCatalog.detectionStayedOnNova3("nordic"))
+        // "as" is Assamese; "astronomy" is not.
+        #expect(!DeepgramLanguageCatalog.detectionStayedOnNova3("astronomy"))
+        // But a genuine regional form still counts: Norwegian is a catalogue language,
+        // and Deepgram may well answer with the region-qualified tag for it. Coverage
+        // is a question about which language the answer belongs to, not about whether
+        // the exact string appears in the documented list.
+        #expect(DeepgramLanguageCatalog.detectionStayedOnNova3("no-NO"))
+        #expect(DeepgramLanguageCatalog.detectionStayedOnNova3("no"))
     }
 
     // MARK: - Spoken punctuation
@@ -364,5 +412,88 @@ struct MemoryLanguageCompatibilityTests {
                 MemoryLanguage.self, from: Data("\"\(raw)\"".utf8))
             #expect(decoded.rawValue == raw)
         }
+    }
+}
+
+/// The model-fallback check exists to make a silent failure audible. It was dead code
+/// when written, and a check nobody calls cannot be trusted, so these tests drive a
+/// real dictation through `DictationController` rather than calling it directly.
+///
+/// Uses `Diagnostics(directory: nil)`, which buffers in memory and never touches the
+/// filesystem — the shared sink writes to the real install's log, and a test that
+/// appends fixtures there is a defect this repo has already had once.
+@Suite("Detected-language downgrade reporting")
+@MainActor
+struct DetectedLanguageDowngradeTests {
+
+    /// Messages the controller recorded under the `dictation` category.
+    ///
+    /// `Diagnostics.record` writes to its buffer synchronously and only the file write
+    /// is queued, so reading straight after a completed dictation is already correct.
+    /// This retries anyway, because a test that depends on that internal ordering for
+    /// its correctness is a test that will fail for the wrong reason one day.
+    private func dictationReports(_ diagnostics: Diagnostics) async -> [String] {
+        for _ in 0..<50 {
+            let messages = diagnostics
+                .entries(level: .warning)
+                .filter { $0.category == "dictation" }
+                .map(\.message)
+            if !messages.isEmpty { return messages }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return []
+    }
+
+    @MainActor
+    private func runDictation(detectedLanguage: String?) async -> Diagnostics {
+        let diagnostics = Diagnostics(directory: nil)
+        // `make` rather than the throwing initialiser, and a temp directory so the
+        // test never touches the real recordings folder.
+        let store = RecordingStore.make(directory: FileManager.default.temporaryDirectory
+            .appendingPathComponent("uv-lang-\(UUID().uuidString)"))
+        let controller = DictationController(
+            recorder: FakeRecorder(),
+            providers: { [FakeProvider(name: "fake",
+                                       result: .success(Transcript(text: "hello",
+                                                                   detectedLanguage: detectedLanguage,
+                                                                   durationSeconds: 1)))] },
+            store: store,
+            hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
+            recordingsToKeep: 0,
+            deliver: { _, done in done() },
+            diagnostics: diagnostics
+        )
+        // toggleAndWait drives one complete dictation: start, stop, transcribe, and
+        // wait for the processing task, so the diagnostic has been recorded by the
+        // time this returns.
+        await controller.toggleAndWait()
+        await controller.toggleAndWait()
+        return diagnostics
+    }
+
+    @Test func testLowerModelFallbackIsReported() async throws {
+        let diagnostics = await runDictation(detectedLanguage: "klingon")
+        let messages = await dictationReports(diagnostics)
+        #expect(messages.count == 1, "expected one downgrade report, got \(messages.count)")
+        #expect(messages.first?.contains("klingon") == true)
+        // The message has to say what actually went wrong, since the visible symptom
+        // otherwise looks like a dictionary fault.
+        #expect(messages.first?.contains("Nova-3") == true)
+    }
+
+    /// A language Nova-3 speaks must not be reported, or every ordinary dictation
+    /// would log a warning and the signal would be worthless.
+    @Test func testASupportedDetectedLanguageIsNotReported() async throws {
+        let diagnostics = await runDictation(detectedLanguage: "de")
+        let messages = await dictationReports(diagnostics)
+        #expect(messages.isEmpty)
+    }
+
+    /// A provider that reports no detected language — a pinned language, or a response
+    /// without the field — must not be treated as a downgrade.
+    @Test func testAnAbsentDetectedLanguageIsNotReported() async throws {
+        let diagnostics = await runDictation(detectedLanguage: nil)
+        let messages = await dictationReports(diagnostics)
+        #expect(messages.isEmpty)
     }
 }

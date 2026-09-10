@@ -159,11 +159,25 @@ public enum DeepgramLanguageCatalog {
     ///
     /// If it is not, the provider fell back to a lower model and `keyterm` was
     /// silently dropped — the app was told to bias the transcript with the user's
-    /// dictionary and could not. Worth surfacing rather than discarding, because
-    /// the visible symptom (odd spellings of the user's own terminology) looks
-    /// like a dictionary problem rather than a model problem.
+    /// dictionary and could not. Worth surfacing rather than discarding, because the
+    /// visible symptom (odd spellings of the user's own terminology) looks like a
+    /// dictionary problem rather than a model problem.
+    ///
+    /// The comparison goes from the *returned* code towards the catalogue, and the
+    /// direction is the whole point. Deepgram may answer with a more specific tag
+    /// than the one the catalogue stores — `zh-CN` for `zh`, `en-US` for `en` — so
+    /// the returned code is the one that gets stripped. Testing it the other way
+    /// round (`code.hasPrefix(catalogueCode)`) inverts the meaning and passes almost
+    /// everything: `nope` matches `no`, `korean` matches `ko`, `ja-JP` matches `ja`.
+    /// That direction looked plausible and was wrong, and a check that answers "yes"
+    /// by accident is worse than no check, because its caller believes it.
     public static func detectionStayedOnNova3(_ code: String) -> Bool {
-        all.contains { $0.code == code || code.hasPrefix($0.code) }
+        let normalised = code.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalised.isEmpty else { return false }
+        return all.contains { language in
+            let known = language.code.lowercased()
+            return normalised == known || normalised.hasPrefix(known + "-")
+        }
     }
 
     /// Whether spoken punctuation ("period", "new line") applies.

@@ -60,5 +60,12 @@ jobs:
       - name: Generate icon
         run: npm run build:icon
 
+      # `electron-builder` packages `dist/**` as-is; it does not compile anything. The
+      # first version of this job went straight from tests to packaging and failed with
+      # "Application entry file dist\\main\\index.js ... does not exist", because
+      # nothing had built it.
+      - name: Build
+        run: npm run build
+
       - name: Package
         run: npx electron-builder --win --publish never

@@ -233,7 +233,9 @@ describe('cross-platform catalogue parity', () => {
     // Swift source is absent, so there is nothing to compare against.
     let swift: string;
     try {
-      swift = readFileSync(swiftPath, 'utf8');
+      // Normalised, because the macOS catalogue is parsed with regular expressions
+      // and a CRLF checkout would change what they match.
+      swift = readFileSync(swiftPath, 'utf8').replace(/\r\n/g, '\n');
     } catch {
       return;
     }

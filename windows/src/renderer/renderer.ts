@@ -1,4 +1,5 @@
 import { startCapture, stopCapture, cancelCapture, isCapturing } from './capture.js';
+import { dropdown } from './dropdown.js';
 import { languagePicker } from './languagePicker.js';
 import type {
   DictationStateEvent,
@@ -269,6 +270,14 @@ let render: () => void = () => {};
  */
 let activeLanguagePicker: { open: () => void } | null = null;
 
+/**
+ * Set when the user navigates, consumed by the next render so only real page
+ * switches animate. Without the flag the page entrance animation would replay on
+ * every unrelated repaint (a toast, a dictation state tick), which reads as a
+ * flicker rather than a transition.
+ */
+const nextPageAnimates = { value: false };
+
 function setNotice(kind: 'success' | 'warning' | 'danger', message: string): void {
   state.notice = { kind, message };
   if (noticeTimer) window.clearTimeout(noticeTimer);
@@ -395,42 +404,20 @@ function mountMain(): void {
 
     const page = PAGES.find((entry) => entry.id === state.page);
 
-    // Operator row: the current dictation state, always visible.
-    const stateLabel =
-      state.dictation.state === 'recording'
-        ? 'Listening…'
-        : state.dictation.state === 'transcribing'
-          ? 'Transcribing…'
-          : state.dictation.state === 'delivering'
-            ? 'Pasting…'
-            : state.dictation.state === 'error'
-              ? 'Last attempt failed'
-              : 'Ready';
-    operator.replaceChildren(
-      el(
-        'div',
-        { class: 'inline', style: 'gap:8px' as never },
-        el('span', {
-          class: `list-row-title ${state.dictation.state === 'error' ? 'danger' : ''}`,
-          style: 'font-size:12px' as never,
-        }, stateLabel),
-      ),
-      el(
-        'p',
-        { class: 'tiny faint', style: 'margin:0;line-height:1.5' as never },
-        state.settings?.hotkey.accelerator
-          ? `Hotkey: ${state.settings.hotkey.accelerator}`
-          : 'No hotkey set',
-      ),
-    );
+    renderOperator();
 
     title.textContent = page?.label ?? 'Useful Voice';
     subtitle.textContent = pageSubtitle(state.page);
 
     headerActions.replaceChildren(...headerActionsFor(state.page));
 
+    const animatePage = nextPageAnimates.value;
+    nextPageAnimates.value = false;
     const pageNode = renderPage();
     body.replaceChildren(pageNode);
+    if (animatePage) {
+      (pageNode as HTMLElement).classList.add('page-enter');
+    }
 
     // A persistence or notice banner is shown above whatever page is open, so a
     // save failure is visible no matter where the user is.
@@ -470,10 +457,43 @@ function mountMain(): void {
     }
   }
 
+  /** The rail's operator row. Updated on its own for dictation state changes. */
+  function renderOperator(): void {
+    const stateLabel =
+      state.dictation.state === 'recording'
+        ? 'Listening…'
+        : state.dictation.state === 'transcribing'
+          ? 'Transcribing…'
+          : state.dictation.state === 'delivering'
+            ? 'Pasting…'
+            : state.dictation.state === 'error'
+              ? 'Last attempt failed'
+              : 'Ready';
+    operator.replaceChildren(
+      el(
+        'div',
+        { class: 'inline', style: 'gap:8px' as never },
+        el('span', {
+          class: `list-row-title ${state.dictation.state === 'error' ? 'danger' : ''}`,
+          style: 'font-size:12px' as never,
+        }, stateLabel),
+      ),
+      el(
+        'p',
+        { class: 'tiny faint', style: 'margin:0;line-height:1.5' as never },
+        state.settings?.hotkey.accelerator
+          ? `Hotkey: ${state.settings.hotkey.accelerator}`
+          : 'No hotkey set',
+      ),
+    );
+  }
+
   render = renderAll;
 
   function navigate(page: Page): void {
+    if (state.page === page) return;
     state.page = page;
+    nextPageAnimates.value = true;
     render();
   }
 
@@ -1621,14 +1641,20 @@ function mountMain(): void {
     options: Array<[string, string]>,
     onChange: (value: string) => void,
   ): Node {
-    const select = el('select', { class: 'field-select', 'aria-label': label } as never);
-    for (const [optionValue, optionLabel] of options) {
-      const option = el('option', { value: optionValue } as never, optionLabel);
-      if (optionValue === value) option.selected = true;
-      select.append(option);
-    }
-    select.addEventListener('change', () => onChange(select.value));
-    return el('div', { class: 'row' }, el('div', { class: 'row-label' }, label), el('div', { class: 'row-value' }, select));
+    // A native <select> is drawn by the OS and ignores the design system — the
+    // same reason the language row uses a custom picker.
+    const control = dropdown({
+      value,
+      options: options.map(([optionValue, optionLabel]) => ({ value: optionValue, label: optionLabel })),
+      onChange,
+      label,
+    });
+    return el(
+      'div',
+      { class: 'row' },
+      el('div', { class: 'row-label' }, label),
+      el('div', { class: 'row-value' }, control.element),
+    );
   }
 
   function textRow(
@@ -1900,6 +1926,7 @@ function mountMain(): void {
   api.onOpenLanguagePicker(() => {
     if (state.page !== 'settings') {
       state.page = 'settings';
+      nextPageAnimates.value = true;
       render();
     }
     // After render(), so this opens the instance that is actually in the document.
@@ -1907,15 +1934,20 @@ function mountMain(): void {
   });
 
   api.onNavigate((page) => {
-    if (PAGES.some((entry) => entry.id === page)) {
+    if (PAGES.some((entry) => entry.id === page) && state.page !== page) {
       state.page = page as Page;
+      nextPageAnimates.value = true;
       render();
     }
   });
 
   api.onState((event) => {
     state.dictation = event;
-    render();
+    // Dictation state shows in the rail everywhere, and in the page body only on
+    // Home. Rebuilding every page for a state tick would drop focus from any
+    // in-progress input and re-create every row for no visible change.
+    if (state.page === 'home') render();
+    else renderOperator();
   });
 
   api.onSaveStatus((status) => {

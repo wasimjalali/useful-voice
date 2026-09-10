@@ -144,29 +144,34 @@ struct PremiumSearchField: View {
     }
 }
 
+/// An on-brand selection dropdown.
+///
+/// Previously this was a SwiftUI `Menu`, whose popup is drawn by AppKit and so
+/// ignored the design system entirely — the same reason the language control was
+/// moved to a popover. A popover lets the list keep the surface, hairline border,
+/// sunken hover and ink checkmark every other control uses.
 struct BrandedMenuPicker<Value: Hashable>: View {
     let title: String
     @Binding var selection: Value
     let options: [(label: String, value: Value)]
+
+    @State private var isPresented = false
+    @State private var hovering = false
+    /// The row the pointer or the arrow keys last landed on. One piece of state
+    /// drives both, so hover and keyboard can never disagree about the highlight.
+    @State private var highlightedIndex = 0
+    /// Holds focus while the popover is open so Up/Down/Return work without the
+    /// mouse; the native `Menu` this replaced had that, so the popover must too.
+    @FocusState private var listFocused: Bool
 
     private var selectedLabel: String {
         options.first { $0.value == selection }?.label ?? title
     }
 
     var body: some View {
-        Menu {
-            ForEach(options.indices, id: \.self) { index in
-                let option = options[index]
-                Button {
-                    selection = option.value
-                } label: {
-                    if option.value == selection {
-                        Label(option.label, systemImage: "checkmark")
-                    } else {
-                        Text(option.label)
-                    }
-                }
-            }
+        Button {
+            highlightedIndex = options.firstIndex { $0.value == selection } ?? 0
+            isPresented.toggle()
         } label: {
             HStack(spacing: 10) {
                 Text(selectedLabel)
@@ -181,21 +186,92 @@ struct BrandedMenuPicker<Value: Hashable>: View {
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
         .buttonStyle(.plain)
         .padding(.horizontal, 12)
         .frame(height: 34)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 9))
+        .background(
+            RoundedRectangle(cornerRadius: 9)
+                .fill(hovering || isPresented ? Theme.sunken : Theme.surface)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 9)
-                .strokeBorder(Theme.lineStrong, lineWidth: 1)
+                .strokeBorder(isPresented ? Theme.ink : Theme.lineStrong, lineWidth: 1)
         )
         .fixedSize(horizontal: false, vertical: true)
+        .onHover { hovering = $0 }
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) { menuList }
         .help(title)
         .accessibilityLabel(title)
         .accessibilityValue(selectedLabel)
         .clickableCursor()
+    }
+
+    private var menuList: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            ForEach(options.indices, id: \.self) { index in
+                let option = options[index]
+                let isSelected = option.value == selection
+                Button {
+                    choose(option.value)
+                } label: {
+                    HStack(spacing: 9) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Theme.ink)
+                            .opacity(isSelected ? 1 : 0)
+                            .frame(width: 12, alignment: .leading)
+                        Text(option.label)
+                            .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                            .foregroundStyle(Theme.ink)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(highlightedIndex == index ? Theme.sunken : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .onHover { highlightedIndex = $0 ? index : highlightedIndex }
+                .clickableCursor()
+                .accessibilityLabel(option.label)
+                .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+            }
+        }
+        .padding(6)
+        .frame(minWidth: 170)
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Theme.lineStrong, lineWidth: 1)
+        )
+        .focusable()
+        .focused($listFocused)
+        .focusEffectDisabled()
+        .onAppear { listFocused = true }
+        .onKeyPress(.upArrow) { moveHighlight(-1); return .handled }
+        .onKeyPress(.downArrow) { moveHighlight(1); return .handled }
+        .onKeyPress(.return) {
+            guard options.indices.contains(highlightedIndex) else { return .ignored }
+            choose(options[highlightedIndex].value)
+            return .handled
+        }
+        .onKeyPress(.escape) { isPresented = false; return .handled }
+    }
+
+    private func moveHighlight(_ delta: Int) {
+        guard !options.isEmpty else { return }
+        highlightedIndex = (highlightedIndex + delta + options.count) % options.count
+    }
+
+    private func choose(_ value: Value) {
+        selection = value
+        isPresented = false
     }
 }
 

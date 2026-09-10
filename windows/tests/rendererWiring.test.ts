@@ -125,3 +125,56 @@ describe('the mid-edit guard', () => {
     expect(guard).toContain('input.value.trim().length > 0');
   });
 });
+
+describe('page transitions', () => {
+  const mountMain = declarationText('function mountMain(');
+
+  it('animates the incoming page only on a real page switch', () => {
+    // `page-enter` must be gated by the flag, or every unrelated repaint (a toast,
+    // a background refetch) would replay the entrance animation and flicker.
+    expect(mountMain).toContain('nextPageAnimates.value = true;');
+    expect(mountMain).toContain('const animatePage = nextPageAnimates.value;');
+    expect(mountMain).toContain("(pageNode as HTMLElement).classList.add('page-enter');");
+    expect(mountMain).toContain('if (animatePage) {');
+  });
+
+  it('defines the animation in CSS and applies it only to page switches', () => {
+    const styles = readSource('../src/renderer/styles.css');
+    expect(styles).toMatch(/\.page-enter\s*{[^}]*page-in\s+220ms\s+var\(--ease-out\)/);
+    expect(styles).toMatch(/@keyframes\s+page-in\s*{/);
+    // The shared reduced-motion kill switch must still cover it.
+    expect(styles).toContain('prefers-reduced-motion: reduce');
+  });
+
+  it('does not rebuild the whole page for a dictation state tick', () => {
+    // On any page but Home the dictation state is only the rail operator row, so the
+    // body must not be torn down (that is what dropped focus mid-typing).
+    expect(mountMain).toContain('function renderOperator(');
+    expect(mountMain).toContain("if (state.page === 'home') render();");
+    expect(mountMain).toContain('else renderOperator();');
+  });
+});
+
+describe('the on-brand select', () => {
+  const dropdownSource = readSource('../src/renderer/dropdown.ts');
+
+  it('replaces the native select everywhere in the renderer', () => {
+    // A select is drawn by the OS, so it cannot follow the design system.
+    expect(rendererSource).not.toContain("el('select'");
+    expect(rendererSource).not.toContain('field-select');
+    expect(rendererSource).toContain("import { dropdown } from './dropdown.js';");
+    expect(rendererSource).toContain('const control = dropdown({');
+  });
+
+  it('is a keyboard-operable listbox', () => {
+    // Handler-shaped fragments, not bare words: the file header names these keys
+    // in prose, so a `toContain('ArrowDown')` could pass with no handling at all.
+    expect(dropdownSource).toContain('keydown');
+    for (const key of ['ArrowDown', 'ArrowUp', 'Enter', 'Escape']) {
+      expect(dropdownSource, `${key} must be handled`).toContain(`event.key === '${key}'`);
+    }
+    expect(dropdownSource).toContain("role: 'listbox'");
+    expect(dropdownSource).toContain("'aria-expanded'");
+    expect(dropdownSource).toContain("'aria-activedescendant'");
+  });
+});

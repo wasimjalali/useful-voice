@@ -13,22 +13,17 @@ struct HistoryPage: View {
     @State private var correctionObserved = ""
     @State private var correctionCorrected = ""
 
-    private var records: [DictationRecord] {
-        _ = viewModel.recent.count
-        return viewModel.historyStore.search(query)
-    }
-
-    private var selectedRecord: DictationRecord? {
-        if let selectedID, let selected = records.first(where: { $0.id == selectedID }) {
-            return selected
-        }
-        return records.first
-    }
-
     var body: some View {
-        FillRemainingHeightLayout(spacing: 22) {
+        // Filter and group once per render. These used to be computed properties
+        // read from inside every row, so a library of n records cost O(n²) filter
+        // passes per render — the main reason the Library page felt heavy.
+        _ = viewModel.recent.count
+        let records = viewModel.historyStore.search(query)
+        let selected = selectedRecord(in: records)
+        let groups = grouped(records)
+        return FillRemainingHeightLayout(spacing: 22) {
             header
-            workspace
+            workspace(records: records, selected: selected, groups: groups)
         }
         .padding(.horizontal, 32)
         .padding(.top, 20)
@@ -52,6 +47,13 @@ struct HistoryPage: View {
         .sheet(item: $correctionRecord) { record in correctionSheet(record) }
     }
 
+    private func selectedRecord(in records: [DictationRecord]) -> DictationRecord? {
+        if let selectedID, let selected = records.first(where: { $0.id == selectedID }) {
+            return selected
+        }
+        return records.first
+    }
+
     private var header: some View {
         CommandPageHeader(
             title: "Library"
@@ -63,16 +65,22 @@ struct HistoryPage: View {
         }
     }
 
-    private var workspace: some View {
+    private func workspace(records: [DictationRecord],
+                           selected: DictationRecord?,
+                           groups: [(day: Date, records: [DictationRecord])]) -> some View {
         HStack(alignment: .top, spacing: 18) {
-            transcriptList.frame(width: 300)
-            transcriptDetail.frame(maxWidth: .infinity)
+            transcriptList(records: records, selected: selected, groups: groups)
+                .frame(width: 300)
+            transcriptDetail(selected)
+                .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .layoutPriority(1)
     }
 
-    private var transcriptList: some View {
+    private func transcriptList(records: [DictationRecord],
+                                selected: DictationRecord?,
+                                groups: [(day: Date, records: [DictationRecord])]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             PremiumSearchField(placeholder: "Search transcripts", text: $query)
 
@@ -87,7 +95,7 @@ struct HistoryPage: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 16) {
-                        ForEach(grouped(records), id: \.day) { group in
+                        ForEach(groups, id: \.day) { group in
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(dayTitle(group.day))
                                     .font(.system(size: 11, weight: .semibold))
@@ -95,7 +103,7 @@ struct HistoryPage: View {
                                     .padding(.horizontal, 4)
                                 VStack(spacing: 4) {
                                     ForEach(group.records) { record in
-                                        transcriptRow(record)
+                                        transcriptRow(record, isSelected: selected?.id == record.id)
                                     }
                                 }
                             }
@@ -109,7 +117,7 @@ struct HistoryPage: View {
         .frame(maxHeight: .infinity)
     }
 
-    private func transcriptRow(_ record: DictationRecord) -> some View {
+    private func transcriptRow(_ record: DictationRecord, isSelected: Bool) -> some View {
         HStack(alignment: .top, spacing: 6) {
             Button {
                 selectedID = record.id
@@ -118,7 +126,7 @@ struct HistoryPage: View {
                     HStack {
                         Text(time(record.createdAt))
                             .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                            .foregroundStyle(selectedRecord?.id == record.id ? Theme.brand : Theme.muted)
+                            .foregroundStyle(isSelected ? Theme.brand : Theme.muted)
                         Spacer()
                         if let duration = record.durationSeconds {
                             Text(durationText(duration))
@@ -147,18 +155,18 @@ struct HistoryPage: View {
         }
         .padding(10)
         .background(
-            selectedRecord?.id == record.id ? Theme.surface : Color.clear,
+            isSelected ? Theme.surface : Color.clear,
             in: RoundedRectangle(cornerRadius: 9)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 9)
-                .strokeBorder(selectedRecord?.id == record.id ? Theme.line : Color.clear, lineWidth: 1)
+                .strokeBorder(isSelected ? Theme.line : Color.clear, lineWidth: 1)
         )
     }
 
-    private var transcriptDetail: some View {
+    private func transcriptDetail(_ selected: DictationRecord?) -> some View {
         Group {
-            if let record = selectedRecord {
+            if let record = selected {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         detailHeader(record)

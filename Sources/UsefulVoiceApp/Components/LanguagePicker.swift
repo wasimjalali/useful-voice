@@ -281,6 +281,8 @@ struct LanguagePickerButton: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+        .animation(BrandMotion.control, value: hovering)
+        .animation(BrandMotion.control, value: isPresented)
         .clickableCursor()
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             LanguagePicker(selection: $selection)

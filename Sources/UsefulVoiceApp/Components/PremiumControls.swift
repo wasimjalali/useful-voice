@@ -199,6 +199,8 @@ struct BrandedMenuPicker<Value: Hashable>: View {
         )
         .fixedSize(horizontal: false, vertical: true)
         .onHover { hovering = $0 }
+        .animation(BrandMotion.control, value: hovering)
+        .animation(BrandMotion.control, value: isPresented)
         .popover(isPresented: $isPresented, arrowEdge: .bottom) { menuList }
         .help(title)
         .accessibilityLabel(title)
@@ -344,6 +346,7 @@ struct BrandedSegmentedControl<Value: Hashable>: View {
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(Theme.line, lineWidth: 1)
         )
+        .animation(BrandMotion.control, value: selection)
     }
 }
 

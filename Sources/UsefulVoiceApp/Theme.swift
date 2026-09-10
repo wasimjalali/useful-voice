@@ -69,7 +69,18 @@ enum BrandMotion {
         .timingCurve(0.22, 1, 0.36, 1, duration: duration)
     }
 
-    /// Section changes: a quiet cross-fade with a small rise, fast enough that
-    /// switching pages never feels like waiting for an animation.
-    static let page = easeOut(duration: 0.22)
+    /// Hover and selection changes on controls. Short, so the pointer feels
+    /// connected to the highlight rather than waiting for it.
+    static let control = easeOut(duration: 0.15)
+
+    /// The outgoing page's recession. The curve is front-loaded, so this is
+    /// already mostly over by ~60 ms; it exists to clear the stage, not to be
+    /// watched.
+    static let pageExitDuration: Double = 0.12
+    static let pageExit = easeOut(duration: pageExitDuration)
+
+    /// The incoming page's rise. Longer than the exit on purpose: the arrival is
+    /// the half the eye reads as motion, and sequencing the two avoids the
+    /// double-exposed ghost a same-length cross-fade produces on dense pages.
+    static let page = easeOut(duration: 0.26)
 }

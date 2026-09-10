@@ -15,6 +15,22 @@ import UsefulVoiceCore
 /// you are typing into. This one needs the opposite: a search field has to receive
 /// keystrokes, so the panel must be able to become key while still appearing over
 /// whatever app has focus.
+/// An `NSPanel` that is willing to become the key window.
+///
+/// This subclass is not optional garnish, it is what makes the picker usable.
+/// AppKit refuses key status to a window that cannot become key, and a
+/// `.borderless` panel cannot by default — `canBecomeKey` returns false because
+/// there is no title bar to click. `HUDPanel` gets away with a borderless panel
+/// precisely because it never wants focus: it is `.nonactivatingPanel` and must not
+/// steal the caret from the app being dictated into. This panel wants the opposite,
+/// so it has to say so. Without the override the popup appears and then ignores
+/// every keystroke, so its search field is inert — the feature would look present
+/// and be unusable.
+final class KeyablePanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
 @MainActor
 final class LanguagePickerPanel: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
@@ -32,9 +48,17 @@ final class LanguagePickerPanel: NSObject, NSWindowDelegate {
 
     var isVisible: Bool { isShowing }
 
-    /// Show the picker for `selection`, calling `onSelect` only if the user picks.
+    /// Show the picker, calling `onSelect` only if the user picks.
+    ///
+    /// Takes a closure for the current value rather than the value itself. Passing the
+    /// value would freeze the panel at whatever it was when the hotkey was pressed:
+    /// the picker keeps holding a `Binding`, and a binding built from a captured value
+    /// answers with that stale value for as long as the panel is open. If anything
+    /// changed the language in the meantime — the menu bar, another window — the
+    /// checkmark would point at the wrong row and re-selecting the shown value would
+    /// write it back over the real one.
     func show(
-        selection: LanguagePin,
+        current: @escaping () -> LanguagePin,
         onSelect: @escaping (LanguagePin) -> Void,
         onDismiss: (() -> Void)? = nil
     ) {
@@ -49,7 +73,7 @@ final class LanguagePickerPanel: NSObject, NSWindowDelegate {
         didSelect = false
 
         let binding = Binding<LanguagePin>(
-            get: { selection },
+            get: { current() },
             set: { [weak self] chosen in
                 guard let self else { return }
                 self.didSelect = true
@@ -68,10 +92,14 @@ final class LanguagePickerPanel: NSObject, NSWindowDelegate {
 
         position(panel)
         isShowing = true
-        // `.accessory`-style activation so the panel can take keystrokes for the
-        // search field without the app coming to the front as a whole.
-        NSApp.activate(ignoringOtherApps: true)
+        // The panel has to be key for the search field to receive keystrokes. It is
+        // `KeyablePanel` (see above) precisely so this call can succeed on a
+        // borderless window; a plain NSPanel would refuse.
         panel.makeKeyAndOrderFront(nil)
+        // Activating is what lets a background (accessory) app's window accept typed
+        // input. Done after ordering front so the window is already on screen when
+        // focus moves, which avoids a visible flash.
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func close() {
@@ -89,7 +117,7 @@ final class LanguagePickerPanel: NSObject, NSWindowDelegate {
 
     private func buildPanel(with view: LanguagePicker) {
         let hosting = NSHostingView(rootView: view)
-        let panel = NSPanel(
+        let panel = KeyablePanel(
             contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
             styleMask: [.borderless, .fullSizeContentView],
             backing: .buffered,

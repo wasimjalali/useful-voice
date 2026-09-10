@@ -56,7 +56,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func switchLanguage() {
         guard !isDictationBusy else { return }
         languagePicker.show(
-            selection: settings.languagePin,
+            // Read lazily so the picker always reflects the live setting.
+            current: { [weak self] in self?.settings.languagePin ?? .auto },
             onSelect: { [weak self] chosen in
                 guard let self else { return }
                 self.settings.languagePin = chosen

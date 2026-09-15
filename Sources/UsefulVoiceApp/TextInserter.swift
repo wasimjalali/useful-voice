@@ -275,12 +275,20 @@ struct TextInserter {
 
         // Prefer the element's own identifier; it is stable for a given control
         // and distinguishes fields in the same window.
+        //
+        // The element part uses CFHash, which AXUIElement derives from the
+        // process and the element it names, so two lookups of the same field
+        // hash the same. The previous ObjectIdentifier hashed the wrapper
+        // object, and every AX lookup allocates a fresh wrapper: the before
+        // and after probes never matched, the paste was never proven, and the
+        // AX fallback then inserted the text a second time into every native
+        // text view that accepts it (the "double paste").
         var idRef: CFTypeRef?
         let identifier: String
         if AXUIElementCopyAttributeValue(
                 element, kAXIdentifierAttribute as CFString, &idRef) == .success,
            let value = idRef as? String, !value.isEmpty {
-            identifier = "\(value)#\(ObjectIdentifier(element).hashValue)"
+            identifier = "\(value)#\(CFHash(element))"
         } else {
             // No AX identifier (most native text views): fall back to the
             // element identity plus its role, which is still enough to notice
@@ -289,7 +297,7 @@ struct TextInserter {
             let role = (AXUIElementCopyAttributeValue(
                 element, kAXRoleAttribute as CFString, &roleRef) == .success)
                 ? (roleRef as? String ?? "?") : "?"
-            identifier = "\(role)#\(ObjectIdentifier(element).hashValue)"
+            identifier = "\(role)#\(CFHash(element))"
         }
         return (identifier, count)
     }

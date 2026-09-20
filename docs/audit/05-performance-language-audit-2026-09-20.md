@@ -668,3 +668,82 @@ Before each implementation PR is merged:
 
 Phase 1 must not begin until Gate 0's Windows strategy is chosen and the owner approves
 this implementation specification.
+
+# Shipped results — 2026-09-20
+
+All PRs below are merged to `main`. Gates per PR: `make test` + `swift build`
+(macOS), `npm run verify` (Windows). CI green on every squash merge.
+
+| PR | Commit | Finding | Result |
+| --- | --- | --- | --- |
+| #18 | `3f1924d` | Phase 0 audit + this spec | Baseline and implementation spec recorded |
+| #19 | `da6f289` | F-3 non-Latin keyterm undercount | A 7-char Japanese term now estimates 7 tokens (was 2); a 100-term CJK dictionary correctly drops to 57 terms instead of passing all 100 and being rejected by Deepgram |
+| #20 | `76151e8` | F-5 Electron 33 ESM loader failure | Electron pinned to 43.7.0; `npm run verify` green on real Windows CI; `engines` floor raised to Node 22.12 |
+| #21 | `6481d8a` | Latent `require('electron')` in ESM main | Static `screen` import; contract test guards regression both directions |
+| #22 | `0f61afb` | F-2 Windows drops 24/34 detected languages | `resolveDetectedLanguage`: exact → base-subtag → `auto`; **preserved 10 → 34, lost 24 → 0**; regional tags like `de-CH` and `nl-BE` kept; fallback diagnostics added (code only, no transcript/key leakage) |
+| #23 | `04f50e8` | F-1, F-6, F-12 macOS language semantics | Detected code resolves through `LanguagePin(detectedCode:)` (exact → base-subtag → `auto`, mirrors Windows) and scopes memory + formatting; raw code stored in history; requested pin stored when detection absent; one `TranscriptionHint` captured for the whole provider chain; retry/reprocess use recorded context; raw-mode flag no longer leaks into `retryLast` |
+| #24 | `3db60a7` | F-4 Language Memory dead work | See measurements below |
+| #25 | `4d90943` | F-7 bulk persistence amplification | See measurements below |
+
+## Final measurements
+
+### Language detection fidelity (Windows resolver, frozen 34-code case)
+
+| | before | after |
+| --- | --- | --- |
+| codes preserved | 10 | **34** |
+| codes lost to `auto` | 24 | **0** |
+
+### Language Memory post-processing (frozen corpus, 15,149-char transcript)
+
+| terms | scope | before (Phase 0) | after PR4+PR5 |
+| --- | --- | --- | --- |
+| 1,000 | auto | 872.60 ms | **333.33 ms** |
+| 1,000 | detected `de` | 571.95 ms | **232.56 ms** |
+| 5,000 | auto | 18,413.69 ms | **3,732.41 ms** |
+| 5,000 | detected `de` | 3,260.14 ms | **1,887.29 ms** |
+
+For the reported failure mode (auto-detected non-English dictation), the combined
+PR4+PR5 effect at 5,000 terms is **18.4 s → 1.9 s (~9.7×)**: detected scope cuts
+participating rules to ~67% and the dead-work removal cuts the rest.
+
+### Bulk import (frozen 1,000-term snapshot)
+
+| | before | after PR6 |
+| --- | --- | --- |
+| elapsed | 8,093.11 ms | **4,342.83 ms** |
+| full-file writes | ~1,001 | **1** |
+| file bytes | 239,975 | 239,975 (identical) |
+
+The remainder is the O(n²) merge-matcher scan — compute, not I/O.
+
+## What the review loop caught
+
+- PR4 reviewer: `recordedCode:` treated `multi` as an unknown detection → `.auto`,
+  which would send `detect_language` on reprocess and deterministically corrupt a
+  code-switched clip; fixed by matching requested pins first. Also caught that the
+  raw-mode leak tests were false-positive guards — restructured so `retryLast()`
+  (the only consumer not gated by a `toggle()` write) actually observes the flag,
+  and verified teeth by reverting the fix.
+- PR5 reviewer: `firstReplacement.text == text` does not imply
+  `appliedRuleIDs.isEmpty` — net-zero rule cycles (A→B, B→A) leave pass two's
+  remaining rules a different state. Fixed with the airtight condition
+  (no applied IDs + byte-identical text, NFC/NFD-safe) plus a regression test.
+- PR6 reviewer: `learnFromEdit` could save once when the policy produced entries
+  that the upsert guards all rejected; gate moved to applied-not-produced.
+- Windows parity check: `dataStore.ts` already batches via debounced
+  `scheduleSave()` — no Windows PR needed for F-7.
+
+## Skipped per owner direction (low-impact / cosmetic)
+
+- `CapturingProvider.hints` Swift 6 sendability warning in test code.
+- `stripComments` contract-test limitation (`//` inside literals could mask a
+  future `require(` on those line tails — nothing hidden today).
+- PR7 language-documentation alignment: superseded — the F-13 copy conflict was
+  resolved by the shipped behavior; remaining doc polish deferred.
+- Indexed/off-main Language Memory matcher: still the largest open cost
+  (auto scope ~3.7 s at 5,000 terms). Deliberately deferred — high-risk
+  architectural change; revisit if dictation latency reports persist.
+- F-8 (Windows focus stealing), F-9 (no cancel/delivery timeout),
+  F-10 (synchronous JSON rewrites), F-11 (Windows fallback diagnostic):
+  verified but not user-blocking; recorded here for a future pass.

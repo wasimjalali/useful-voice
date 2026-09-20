@@ -380,6 +380,7 @@ public final class DictationController {
         case .notConfigured(let what): return what
         case .timedOut: return "timed out"
         case .transport(let urlError): return urlError.localizedDescription
+        case .engineFailed(let detail): return detail
         }
     }
 

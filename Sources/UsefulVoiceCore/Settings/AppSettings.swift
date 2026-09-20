@@ -256,6 +256,8 @@ public final class AppSettings {
         static let spokenPunctuationEnabled = "spokenPunctuationEnabled"
         static let soundEffectsEnabled = "soundEffectsEnabled"
         static let lastExportFolder = "lastExportFolder"
+        static let transcriptionEngine = "transcriptionEngine"
+        static let localModelID = "localModelID"
     }
 
     private let defaults: UserDefaults
@@ -329,5 +331,30 @@ public final class AppSettings {
     public var lastExportFolder: String {
         get { defaults.string(forKey: Keys.lastExportFolder) ?? "" }
         set { defaults.set(newValue, forKey: Keys.lastExportFolder) }
+    }
+
+    /// The transcription engine: Deepgram's cloud API or an on-device Whisper
+    /// model. Defaults to Deepgram, preserving pre-local behaviour — existing
+    /// users see no change until they pick local themselves.
+    public var transcriptionEngine: TranscriptionEngineChoice {
+        get {
+            let raw = defaults.string(forKey: Keys.transcriptionEngine) ?? ""
+            return TranscriptionEngineChoice(rawValue: raw) ?? .deepgram
+        }
+        set { defaults.set(newValue.rawValue, forKey: Keys.transcriptionEngine) }
+    }
+
+    /// Which local model the engine uses. Defaults to the recommended turbo
+    /// model; an unrecognised stored value falls back to it rather than naming
+    /// a model this build cannot find.
+    public var localModelID: String {
+        get {
+            let raw = defaults.string(forKey: Keys.localModelID) ?? ""
+            return WhisperModelCatalog.model(forID: raw)?.id ?? WhisperModelCatalog.default.id
+        }
+        set {
+            let resolved = WhisperModelCatalog.model(forID: newValue) ?? WhisperModelCatalog.default
+            defaults.set(resolved.id, forKey: Keys.localModelID)
+        }
     }
 }

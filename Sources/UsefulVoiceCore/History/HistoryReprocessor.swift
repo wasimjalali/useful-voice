@@ -61,7 +61,7 @@ public enum HistoryReprocessor {
             let next = DictationRecord(
                 text: result.text,
                 createdAt: now,
-                language: transcript.detectedLanguage ?? record.language,
+                language: transcript.sanitizedDetectedLanguage ?? record.language,
                 provider: providerName,
                 durationSeconds: transcript.durationSeconds ?? record.durationSeconds,
                 mode: result.mode,

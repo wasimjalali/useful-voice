@@ -20,6 +20,32 @@ public struct Transcript: Equatable, Sendable {
         self.detectedLanguage = detectedLanguage
         self.durationSeconds = durationSeconds
     }
+
+    /// The detected code safe to store in history or log: trimmed, stripped to
+    /// BCP-47 tag characters (ASCII letters and hyphen), capped at 35
+    /// characters, and `nil` when nothing usable remains.
+    ///
+    /// A malformed `detected_language` must not forge a history row or a log
+    /// line — a newline or escape sequence in the raw value could inject a
+    /// fake record or diagnostic entry — so this deliberately strips
+    /// everything outside the tag alphabet rather than preserving the exact
+    /// bytes. The same rule is applied everywhere the value is persisted,
+    /// matching the Windows port's sanitizer.
+    public var sanitizedDetectedLanguage: String? {
+        detectedLanguage.flatMap { raw in
+            let tagCharacters = raw
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .unicodeScalars
+                .filter { scalar in
+                    scalar.value == 45                        // '-'
+                        || (65...90).contains(scalar.value)   // A-Z
+                        || (97...122).contains(scalar.value)  // a-z
+                }
+                .prefix(35)
+            let sanitized = String(String.UnicodeScalarView(tagCharacters))
+            return sanitized.isEmpty ? nil : sanitized
+        }
+    }
 }
 
 public enum ProviderError: Error {

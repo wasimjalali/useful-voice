@@ -399,8 +399,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         let audioURL = URL(fileURLWithPath: audioPath)
-        let hint = transcriptionHint(languageMemory: languageMemory)
-        let context = formattingContext(languageMemory: languageMemory)
+        // Reprocess in the language the dictation ran in, not whatever is
+        // pinned now — a German record re-runs its German rules even if the
+        // user has since switched to English. `resolvedPin` validates the
+        // stored union: a stored `multi` re-sends `language=multi`, an
+        // unknown stored code resolves to `.auto` (detect_language) rather
+        // than being sent to the provider.
+        let recordPin = record.resolvedPin ?? settings.languagePin
+        let hint = transcriptionHint(languageMemory: languageMemory,
+                                     languagePin: recordPin)
+        let context = formattingContext(languageMemory: languageMemory,
+                                        languagePin: recordPin)
         Task { [weak self] in
             await self?.reprocessHistoryAudio(
                 record: record,
@@ -460,7 +469,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let reprocessed = DictationRecord(
             text: formatted.text,
             createdAt: Date(),
-            language: transcript.detectedLanguage ?? record.language,
+            language: transcript.sanitizedDetectedLanguage ?? record.language,
             provider: "\(usedProvider ?? record.provider) reprocess",
             durationSeconds: transcript.durationSeconds ?? record.durationSeconds,
             mode: formatted.mode,
@@ -497,25 +506,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return LanguageMemoryPostProcessor.rawResult(from: prepared)
     }
 
-    private func transcriptionHint(languageMemory: LanguageMemoryStore) -> TranscriptionHint {
+    private func transcriptionHint(languageMemory: LanguageMemoryStore,
+                                   languagePin: LanguagePin) -> TranscriptionHint {
         TranscriptionHint(
-            languagePin: settings.languagePin,
+            languagePin: languagePin,
             dictionaryWords: Self.dictionaryBiasWords(
                 from: languageMemory.snapshot(),
-                languagePin: settings.languagePin
+                languagePin: languagePin
             )
         )
     }
 
-    private func formattingContext(languageMemory: LanguageMemoryStore) -> FormattingContext {
+    private func formattingContext(languageMemory: LanguageMemoryStore,
+                                   languagePin: LanguagePin) -> FormattingContext {
         let memory = languageMemory.snapshot()
         return FormattingContext(
             appBundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
             dictionaryWords: Self.dictionaryBiasWords(
                 from: memory,
-                languagePin: settings.languagePin
+                languagePin: languagePin
             ),
-            language: settings.languagePin,
+            language: languagePin,
             snippets: Self.snippets(from: memory),
             replacementRules: memory.replacements
         )

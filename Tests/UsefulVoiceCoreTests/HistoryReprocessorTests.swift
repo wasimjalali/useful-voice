@@ -78,4 +78,35 @@ import Foundation
         #expect(result.reprocessed?.memoryHitIDs == [memoryID])
         #expect(result.reprocessed?.snippetIDs == [snippetID])
     }
+
+    /// A malformed detected_language must not forge a history row: the
+    /// reprocess path stores the sanitized code (letters and hyphen only), so
+    /// an injected newline cannot smuggle a fake record line into history.
+    @Test func testAudioReprocessStoresSanitizedDetectedLanguage() async {
+        let audioURL = URL(fileURLWithPath: "/tmp/sadaa-test.wav")
+        let record = DictationRecord(
+            text: "old text",
+            createdAt: Date(timeIntervalSince1970: 1),
+            language: "en",
+            provider: "Azure",
+            durationSeconds: 2,
+            audioPath: audioURL.path
+        )
+
+        let result = await HistoryReprocessor.reprocessAudio(
+            record: record,
+            audioURL: audioURL,
+            now: Date(timeIntervalSince1970: 3),
+            providerName: "Azure reprocess",
+            transcribe: { _ in
+                Transcript(text: "fresh raw", detectedLanguage: "de\n-DE",
+                           durationSeconds: 4)
+            },
+            format: { raw in
+                FormattingResult(text: raw, newTerms: [], mode: .formatted)
+            }
+        )
+
+        #expect(result.reprocessed?.language == "de-DE")
+    }
 }

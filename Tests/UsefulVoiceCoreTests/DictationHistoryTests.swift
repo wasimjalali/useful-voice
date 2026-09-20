@@ -22,6 +22,25 @@ import Foundation
                         provider: "azure", durationSeconds: 1.5)
     }
 
+    /// `resolvedPin` is the seam both reprocess paths share: it must pin the
+    /// stored-union semantics at the record level — a stored `multi` re-sends
+    /// `language=multi`, a regional detection scopes as its base, an unknown
+    /// code scopes as auto, and a nil-language record stays nil so callers
+    /// keep their current-pin fallback.
+    @Test func testResolvedPinAppliesTheStoredUnion() {
+        func pin(for stored: String?) -> LanguagePin? {
+            DictationRecord(text: "t", createdAt: Date(), language: stored,
+                            provider: "p", durationSeconds: 1).resolvedPin
+        }
+        #expect(pin(for: "multi") == .multilingual)
+        #expect(pin(for: "auto") == .auto)
+        #expect(pin(for: "de") == .de)
+        #expect(pin(for: "de-DE") == .de)
+        #expect(pin(for: "de-CH") == LanguagePin(rawValue: "de-CH"))
+        #expect(pin(for: "is") == .auto)
+        #expect(pin(for: nil) == nil)
+    }
+
     @Test func testLegacyRecordWithoutModeDecodes() throws {
         // history.json written before the mode field existed.
         let legacy = """

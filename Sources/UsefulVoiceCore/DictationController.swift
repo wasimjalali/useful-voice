@@ -173,6 +173,10 @@ public final class DictationController {
         do {
             audioURL = try recorder.stop()
         } catch {
+            // The raw intent dies with this dictation: a stale flag would be
+            // consumed by retryLast(), the one path that reaches process()
+            // without a fresh toggle(rawMode:) write.
+            pendingRawMode = false
             state = .error("Couldn't stop recording: \(error.localizedDescription)")
             return
         }
@@ -181,6 +185,7 @@ public final class DictationController {
         // fake transcript, which then gets formatted, pasted and left on the
         // clipboard. Discard here so nothing is uploaded, billed or delivered.
         guard recorder.didCaptureSpeech else {
+            pendingRawMode = false   // the raw intent dies with this dictation
             try? store.prune(keep: recordingsToKeep)
             state = .error("No speech detected.")
             return
@@ -198,7 +203,24 @@ public final class DictationController {
     /// failed dictation was recorded (presetContext).
     private func process(audioURL: URL, measuredDuration: Double?,
                          presetContext: FormattingContext? = nil) async {
+        // Raw mode is consumed exactly once, at the top: a failed or empty
+        // transcript used to leave the flag set and leak raw mode into the next
+        // dictation.
+        let rawMode = pendingRawMode
+        pendingRawMode = false
+
         let formattingContext = presetContext ?? context()
+        // One hint for the whole chain: `hint()` reads live settings, so
+        // calling it per provider could hand each provider a different request
+        // if the pin changed mid-chain. On retry the FormattingContext captured
+        // at record time carries both the pin and the bias list, so the request
+        // is re-sent verbatim — a retry must ask for what the original
+        // dictation asked, not whatever is pinned now (the same "format for
+        // the app the user dictated into" invariant as presetContext).
+        let capturedHint = presetContext.map {
+            TranscriptionHint(languagePin: $0.language,
+                              dictionaryWords: $0.dictionaryWords)
+        } ?? hint()
         let chain = providers()
         guard !chain.isEmpty else {
             state = .error("No transcription provider configured. Open Settings.")
@@ -224,7 +246,7 @@ public final class DictationController {
         for provider in chain {
             do {
                 transcript = try await provider.transcribe(audio: audioURL,
-                                                            hint: hint())
+                                                            hint: capturedHint)
                 usedProvider = provider.name
                 break
             } catch {
@@ -255,6 +277,25 @@ public final class DictationController {
             return
         }
 
+        // What Deepgram detected decides the processing language — validated
+        // through the catalogue so a returned `de-CH` keeps its region while
+        // `de-DE` scopes as `de`. History stores the raw code, trimmed and
+        // stripped to tag characters so a malformed value cannot forge a
+        // shareable log line or a strange history row: an unknown detection is
+        // processed as `auto` (permissive rather than wrong-language) but
+        // recorded as reported, and is never sent back to the provider.
+        let rawDetected = transcript.sanitizedDetectedLanguage
+        let effectivePin = rawDetected.map { LanguagePin(detectedCode: $0) }
+            ?? formattingContext.language
+        // App identity, snippets, replacement rules and dictionary context stay
+        // the values captured at recording time; only the language is resolved.
+        let effectiveContext = FormattingContext(
+            appBundleID: formattingContext.appBundleID,
+            dictionaryWords: formattingContext.dictionaryWords,
+            language: effectivePin,
+            snippets: formattingContext.snippets,
+            replacementRules: formattingContext.replacementRules)
+
         // Raw transcript to the sidecar BEFORE formatting (never-lose).
         try? store.saveTranscript(transcript.text, for: audioURL)
 
@@ -263,9 +304,9 @@ public final class DictationController {
         var replacementRuleIDs: [UUID] = []
         var memoryHitIDs: [UUID] = []
         var snippetIDs: [UUID] = []
-        if pendingRawMode {
+        if rawMode {
             if let rawTransform {
-                let result = await rawTransform(transcript.text, formattingContext)
+                let result = await rawTransform(transcript.text, effectiveContext)
                 finalText = result.text
                 mode = .raw
                 replacementRuleIDs = result.replacementRuleIDs
@@ -274,7 +315,7 @@ public final class DictationController {
             }
         } else if let format {
             do {
-                let result = try await format(transcript.text, formattingContext)
+                let result = try await format(transcript.text, effectiveContext)
                 finalText = result.text
                 mode = result.mode
                 replacementRuleIDs = result.replacementRuleIDs
@@ -284,7 +325,7 @@ public final class DictationController {
             } catch {
                 formatterUnavailable()   // keep raw finalText; mode stays .raw
                 if let rawTransform {
-                    let result = await rawTransform(transcript.text, formattingContext)
+                    let result = await rawTransform(transcript.text, effectiveContext)
                     finalText = result.text
                     replacementRuleIDs = result.replacementRuleIDs
                     memoryHitIDs = result.memoryHitIDs
@@ -292,14 +333,16 @@ public final class DictationController {
                 }
             }
         }
-        pendingRawMode = false
 
-        recordDetectedLanguageCheck(transcript.detectedLanguage)
+        recordDetectedLanguageCheck(rawDetected)
 
         record(DictationRecord(
             text: finalText,
             createdAt: now(),
-            language: transcript.detectedLanguage,
+            // The raw detected code when present, else the requested pin (which
+            // may itself be "auto"): history records what was reported, never a
+            // re-resolved value.
+            language: rawDetected ?? formattingContext.language.rawValue,
             provider: usedProvider ?? "unknown",
             durationSeconds: transcript.durationSeconds ?? measuredDuration,
             mode: mode,

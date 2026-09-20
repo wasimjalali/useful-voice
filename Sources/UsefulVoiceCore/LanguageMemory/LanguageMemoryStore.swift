@@ -100,13 +100,17 @@ public final class LanguageMemoryStore {
 
     @discardableResult
     public func upsertTerm(_ term: MemoryTerm) -> MemoryTerm {
-        upsertTerm(term, persist: true)
+        // A rejected term returns its normalized form, matching the pre-split
+        // contract where the early return yielded the same value.
+        upsertTerm(term, persist: true) ?? normalizedTerm(term)
     }
 
+    /// Nil when the entry is rejected before mutating — the bulk callers use
+    /// that to tell "no write needed" apart from "applied but not yet saved".
     @discardableResult
-    private func upsertTerm(_ term: MemoryTerm, persist: Bool) -> MemoryTerm {
+    private func upsertTerm(_ term: MemoryTerm, persist: Bool) -> MemoryTerm? {
         let normalized = normalizedTerm(term)
-        guard !TermMatcher.canonical(normalized.phrase).isEmpty else { return normalized }
+        guard !TermMatcher.canonical(normalized.phrase).isEmpty else { return nil }
 
         let result: MemoryTerm
         if let index = state.terms.firstIndex(where: {
@@ -158,30 +162,35 @@ public final class LanguageMemoryStore {
             existingDictionary: existing,
             now: now
         )
+        var applied = false
         for entry in result.entries {
             switch entry {
             case .term(let term):
-                _ = upsertTerm(term, persist: false)
+                applied = upsertTerm(term, persist: false) != nil || applied
             case .replacement(let rule):
-                _ = upsertReplacement(rule, persist: false)
+                applied = upsertReplacement(rule, persist: false) != nil || applied
             }
         }
-        // One logical write per learned edit — and none when nothing was learned.
-        if !result.entries.isEmpty { save() }
+        // One logical write per learned edit — and none when nothing was
+        // applied. Entries can exist yet all be rejected by the upsert guards
+        // (e.g. punctuation-only input canonicalizes to empty), so the gate is
+        // on what was applied, not on what the policy produced.
+        if applied { save() }
         return result
     }
 
     @discardableResult
     public func upsertReplacement(_ rule: ReplacementRule) -> ReplacementRule {
-        upsertReplacement(rule, persist: true)
+        upsertReplacement(rule, persist: true) ?? normalizedReplacement(rule)
     }
 
+    /// Nil when the rule is rejected before mutating.
     @discardableResult
-    private func upsertReplacement(_ rule: ReplacementRule, persist: Bool) -> ReplacementRule {
+    private func upsertReplacement(_ rule: ReplacementRule, persist: Bool) -> ReplacementRule? {
         let normalized = normalizedReplacement(rule)
         guard !TermMatcher.canonical(normalized.match).isEmpty,
               !normalized.replacement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else { return normalized }
+        else { return nil }
 
         if let index = state.replacements.firstIndex(where: {
             $0.id == normalized.id || TermMatcher.matches($0.match, normalized.match)
@@ -197,15 +206,16 @@ public final class LanguageMemoryStore {
 
     @discardableResult
     public func upsertSnippet(_ snippet: MemorySnippet) -> MemorySnippet {
-        upsertSnippet(snippet, persist: true)
+        upsertSnippet(snippet, persist: true) ?? normalizedSnippet(snippet)
     }
 
+    /// Nil when the snippet is rejected before mutating.
     @discardableResult
-    private func upsertSnippet(_ snippet: MemorySnippet, persist: Bool) -> MemorySnippet {
+    private func upsertSnippet(_ snippet: MemorySnippet, persist: Bool) -> MemorySnippet? {
         let normalized = normalizedSnippet(snippet)
         guard !TermMatcher.canonical(normalized.trigger).isEmpty,
               !normalized.expansion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else { return normalized }
+        else { return nil }
 
         if let index = state.snippets.firstIndex(where: {
             $0.id == normalized.id || TermMatcher.matches($0.trigger, normalized.trigger)

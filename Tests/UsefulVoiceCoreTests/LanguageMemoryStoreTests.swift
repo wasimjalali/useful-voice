@@ -250,11 +250,52 @@ import Foundation
             corrected: "Please open Claude Code",
             now: Date(timeIntervalSince1970: 1_700_000_000)
         )
-        #expect(!learned.entries.isEmpty)
+        // The "exactly once" assertion only separates batched from per-entry
+        // saves when the edit produces more than one entry — pin that premise.
+        #expect(learned.entries.count > 1)
         #expect(outcomes == [true])
 
         let reopened = LanguageMemoryStore(fileURL: url)
         #expect(reopened.snapshot() == store.snapshot())
+    }
+
+    /// Entries the policy produces but the upsert guards reject (here:
+    /// punctuation-only input canonicalizes to empty) must not trigger a
+    /// write — the gate is on what was applied, not what was produced.
+    @Test func testLearnFromEditWithOnlyRejectedEntriesDoesNotPersist() {
+        let url = tempFile()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = LanguageMemoryStore(fileURL: url)
+
+        var outcomes: [Bool] = []
+        store.saveObserver = { outcomes.append($0) }
+
+        _ = store.learnFromEdit(original: "???", corrected: "!!!")
+        #expect(outcomes.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+
+    /// A real write failure (as opposed to a refused write) reports `false`
+    /// through the seam: the directory the file lives in is replaced by a
+    /// regular file after load, so the atomic write cannot succeed.
+    @Test func testSaveObserverSeesARealWriteFailure() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("savefail-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("language-memory.json")
+        let store = LanguageMemoryStore(fileURL: url)
+
+        // The store loaded fresh; now break the parent path so createDirectory
+        // fails inside save().
+        try FileManager.default.removeItem(at: dir)
+        try Data("x".utf8).write(to: dir)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        var outcomes: [Bool] = []
+        store.saveObserver = { outcomes.append($0) }
+
+        store.upsertTerm(MemoryTerm(phrase: "Claude Code"))
+        #expect(outcomes == [false])
     }
 
     /// An edit with nothing to learn must not touch the file at all — the same

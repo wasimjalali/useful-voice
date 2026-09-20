@@ -48,4 +48,40 @@ import Testing
             language: .en
         ).isEmpty)
     }
+
+    @Test func testRegexCacheKeepsEarlierPhrasesAfterOverflow() {
+        // The 4,096 bound limits what is retained, not what works: once the
+        // cache is full, new phrases compile uncached while entries that were
+        // already cached stay hot. Clearing at the bound would evict a large
+        // dictionary's own hot phrases.
+        let earlyPhrase = "cache residency probe zxqv"
+        let first = LanguageMemoryMatcher.wordBoundaryRegex(for: earlyPhrase)
+        #expect(first != nil)
+
+        // Push past the bound with distinct phrases so the cache fills up.
+        for index in 0..<4_200 {
+            #expect(LanguageMemoryMatcher.wordBoundaryRegex(
+                for: "cache filler phrase \(index)") != nil)
+        }
+
+        // The early phrase is still served from the cache — the same instance.
+        let again = LanguageMemoryMatcher.wordBoundaryRegex(for: earlyPhrase)
+        #expect(first === again)
+        #expect(LanguageMemoryMatcher.containsWordBoundaryPhrase(
+            earlyPhrase,
+            in: "the cache residency probe zxqv still matches"
+        ))
+
+        // A phrase first compiled past the bound is not retained — each call
+        // returns a fresh instance — but it still compiles and matches.
+        let overBound = "overflow probe zztop"
+        let overBoundFirst = LanguageMemoryMatcher.wordBoundaryRegex(for: overBound)
+        let overBoundSecond = LanguageMemoryMatcher.wordBoundaryRegex(for: overBound)
+        #expect(overBoundFirst != nil)
+        #expect(overBoundFirst !== overBoundSecond)
+        #expect(LanguageMemoryMatcher.containsWordBoundaryPhrase(
+            overBound,
+            in: "an overflow probe zztop works"
+        ))
+    }
 }

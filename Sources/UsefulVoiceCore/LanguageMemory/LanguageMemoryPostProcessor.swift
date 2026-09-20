@@ -34,24 +34,43 @@ public enum LanguageMemoryPostProcessor {
             to: firstReplacement.text,
             language: language
         )
-        // Second pass catches text introduced by snippet expansions. Rules that
-        // already fired are skipped: re-running them is not idempotent when a
-        // rule's replacement still contains its own match, and the result was
-        // visible corruption — alias "Karko" -> phrase "Karko AI" turned "Karko"
-        // into "Karko AI AI", and "Useful" -> "Useful Voice" became "Useful Voice
-        // Voice". A rule matches a literal phrase, so re-applying it to text it
-        // already produced can only duplicate.
-        let appliedInFirstPass = Set(firstReplacement.appliedRuleIDs)
-        let remainingRules = rules.filter { !appliedInFirstPass.contains($0.id) }
-        let finalReplacement = ReplacementEngine.apply(
-            remainingRules,
-            to: snippet.text,
-            language: language
-        )
+        // Second pass catches text introduced by snippet expansions — and a
+        // match a LATER rule creates for an EARLIER one: rules apply
+        // sequentially over the evolving text, so when "the cat -> a cat" has
+        // already missed before "teh -> the" produces "the cat", only a second
+        // pass resolves it. Skipping on the snippet condition alone would be
+        // wrong for exactly that case; skipping only when nothing changed at
+        // all is safe because re-running rules over identical text can only
+        // reproduce the same output. Rules that already fired are skipped:
+        // re-running them is not idempotent when a rule's replacement still
+        // contains its own match, and the result was visible corruption —
+        // alias "Karko" -> phrase "Karko AI" turned "Karko" into "Karko AI AI",
+        // and "Useful" -> "Useful Voice" became "Useful Voice Voice". A rule
+        // matches a literal phrase, so re-applying it to text it already
+        // produced can only duplicate.
+        let finalReplacement: ReplacementResult
+        if firstReplacement.text == text && snippet.text == firstReplacement.text {
+            finalReplacement = ReplacementResult(text: snippet.text, appliedRuleIDs: [])
+        } else {
+            let appliedInFirstPass = Set(firstReplacement.appliedRuleIDs)
+            let remainingRules = rules.filter { !appliedInFirstPass.contains($0.id) }
+            finalReplacement = ReplacementEngine.apply(
+                remainingRules,
+                to: snippet.text,
+                language: language
+            )
+        }
+        // Pass one, snippet expansion and pass two often leave the text
+        // untouched, so the four variants are frequently the same string.
+        // Matching terms once per distinct text — not once per stage — keeps
+        // the result identical without re-scanning identical inputs.
+        var seenTexts = Set<String>()
+        let distinctTexts = [text, firstReplacement.text, snippet.text, finalReplacement.text]
+            .filter { seenTexts.insert($0).inserted }
         let memoryHitIDs = matchingTermIDs(
             terms: snapshot.terms,
             language: language,
-            texts: [text, firstReplacement.text, snippet.text, finalReplacement.text]
+            texts: distinctTexts
         )
 
         return LanguageMemoryProcessingResult(
@@ -128,10 +147,13 @@ public enum LanguageMemoryPostProcessor {
     }
 
     private static func mergedIDs(_ groups: [[UUID]]) -> [UUID] {
-        groups.reduce(into: [UUID]()) { result, ids in
-            for id in ids where !result.contains(id) {
+        var seen = Set<UUID>()
+        var result: [UUID] = []
+        for ids in groups {
+            for id in ids where seen.insert(id).inserted {
                 result.append(id)
             }
         }
+        return result
     }
 }

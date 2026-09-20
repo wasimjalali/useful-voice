@@ -234,7 +234,15 @@ struct StoreWriteRefusalTests {
 
         let store = LanguageMemoryStore(fileURL: url, diagnostics: silent)
         #expect(store.terms().isEmpty)
+
+        var saveCalls = 0
+        store.saveObserver = { _ in saveCalls += 1 }
         #expect(store.save() == false)
+        // A refused write never reaches the observer — it only sees real attempts.
+        #expect(saveCalls == 0)
+        // Mutations are refused too: no observer call, no write.
+        store.upsertTerm(MemoryTerm(phrase: "Kubernetes"))
+        #expect(saveCalls == 0)
         #expect(store.lastSaveError != nil)
 
         var isDirectory: ObjCBool = false
@@ -280,7 +288,11 @@ struct StoreWriteRefusalTests {
 
         let store = LanguageMemoryStore(fileURL: url, diagnostics: silent)
         #expect(store.loadOutcome.allowsWriting == false)
+
+        var saveCalls = 0
+        store.saveObserver = { _ in saveCalls += 1 }
         #expect(store.save() == false)
+        #expect(saveCalls == 0, "a refused write must not reach the observer")
 
         // The newer file is still there, untouched.
         let raw = try Data(contentsOf: url)

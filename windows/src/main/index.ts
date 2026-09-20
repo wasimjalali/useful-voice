@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, shell, Menu } from 'electron';
+import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, shell, screen, Menu } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promises as fs, writeFileSync } from 'node:fs';
@@ -259,7 +259,7 @@ class UsefulVoiceApp {
       this.hudWindow.showInactive();
       return;
     }
-    const { width } = require('electron').screen.getPrimaryDisplay().workAreaSize;
+    const { width } = screen.getPrimaryDisplay().workAreaSize;
     this.hudWindow = new BrowserWindow({
       width: 280,
       height: 64,

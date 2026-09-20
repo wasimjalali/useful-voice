@@ -255,6 +255,15 @@ describe('channel naming', () => {
  * identifiers that merely end in "require" (`createRequire`, `required`) and member
  * calls (`obj.require(`), neither of which is the CommonJS global.
  *
+ * Two blind spots are accepted and documented rather than engineered away.
+ * First, stripping is naive: a `//` or `/*` inside a string or regex literal (for
+ * example `if (/^https:\/\//i.test(url))` in index.ts) eats real code to the end of
+ * the line or block, so a `require(` appended to such a line would be invisible —
+ * the only direction this guard can miss. Second, member or alias forms
+ * (`globalThis.require(`, `const r = require`) are excluded on purpose: none is a
+ * working CommonJS bypass under ESM — they all still throw at runtime — so they
+ * only evade detection of a latent crash, which is what this guard exists for.
+ *
  * Only `src/main` is scanned. The preload is out of scope on purpose: it bundles to
  * CJS for `contextIsolation`, where `require` is legitimate.
  */

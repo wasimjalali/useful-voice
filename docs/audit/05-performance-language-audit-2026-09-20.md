@@ -255,12 +255,16 @@ Evidence: `LanguageMemoryStore.swift:98-132,163-198,269-327,391-414`.
 The language hotkey shows and focuses the main window, has no busy guard and does not
 restore the prior application. The next dictation sees Useful Voice itself as the
 foreground app and clears `audioTargetApp`. `DictationService.stopAndProcess` also
-drops the target captured at recording start.
+drops the target captured at recording start: it passes `targetApp: undefined`, so
+every Windows `DictationOutcome` records `appName: 'Unknown'` and history permanently
+loses the target app, not just live delivery. The picker path itself early-returns
+when no main window exists (`index.ts:377-382`), so the hotkey can only steal focus
+through an existing window.
 
 Evidence:
 
 - `windows/src/main/index.ts:343-387,503-523`
-- `windows/src/main/dictationService.ts:159-207`
+- `windows/src/main/dictationService.ts:159-207,360-368`
 
 The macOS picker explicitly restores the previous application in
 `LanguagePickerPanel.swift:125-140`.
@@ -316,8 +320,8 @@ Evidence:
 **Impact:** Low and currently latent
 **Caught by:** read-only auditor
 
-`pendingRawMode` clears only after successful formatting. Early returns retain it for
-the next dictation. No current app UI calls `toggle(rawMode: true)`, so this is not a
+`pendingRawMode` clears only once processing reaches the format stage. Early returns
+retain it for the next dictation. No current app UI calls `toggle(rawMode: true)`, so this is not a
 present user path, but the state machine is wrong.
 
 Evidence: `DictationController.swift:41,101-108,171-295`.
@@ -430,10 +434,12 @@ the bundled preload has different module requirements.
 
 **Invariant to preserve:**
 
-> "Deliberately not focusable: it must never steal focus from the app the user is dictating into."
+> "Deliberately not focusable: it must never steal focus from the app the user is dictating into, which would make the paste land in the wrong place…"
 
 **Gates:** `cd windows && npm run verify`.
-**Measurement:** self-test reaches and reports the HUD/audio-capability checks.
+**Measurement:** self-test reaches the audio-capability check; the new
+source-contract assertion covers the `require` removal, since `showHud` is not
+exercised by the self-test.
 
 ## PR3 — preserve every Windows detected language and add fallback diagnostics
 
@@ -491,8 +497,14 @@ test intentionally.
 
 1. Capture one `TranscriptionHint` before provider iteration and send that same value
    to every provider in the chain.
-2. After success, derive the effective pin from the raw detected code using
-   `LanguagePin(code:)`; if no detected code exists, use the requested pin.
+2. After success, derive the effective pin from the raw detected code: exact
+   case-insensitive catalogue match first, then a base-subtag match
+   (`de-DE` -> `de`), mirroring PR3. `LanguagePin(code:)` today covers only the
+   exact and case-insensitive steps, so the subtag fallback must be added either
+   inside it or applied before it — without it, regional detections resolve to
+   `auto` and F-1 persists. If no detected code exists, use the requested pin; an
+   unknown detection resolves to `auto` for processing while the raw code is
+   still stored.
 3. Copy the captured `FormattingContext`, changing only its language before invoking
    format/rawTransform. App identity, snippets, replacement rules and dictionary
    context remain the values captured at recording time.
@@ -510,6 +522,7 @@ test intentionally.
 > "A stored code the catalogue no longer offers falls back to detection rather than being sent and failing at the provider."
 
 **Tests:** auto+detected German excludes English rules and applies German rules;
+a regional detected code (`de-DE`) resolves to the `de` pin rather than `auto`;
 pinned Japanese with no detected field stores/applies Japanese; unknown detected code
 is stored raw but memory falls back to auto; every provider receives the same captured
 hint even if settings change; retry keeps original context; German reprocess ignores a
@@ -547,7 +560,7 @@ rules should participate when detection succeeds.
 
 > "Second pass catches text introduced by snippet expansions."
 
-> "Rules that already fired are skipped: re-running them is not idempotent."
+> "Rules that already fired are skipped: re-running them is not idempotent when a rule's replacement still contains its own match…"
 
 **Tests:** no snippets; snippet introduces a replacement target; `Karko -> Karko AI`
 never produces `Karko AI AI`; pass-one cascade (`teh -> the`, then
@@ -577,7 +590,7 @@ may remain two writes unless measurement justifies expanding scope.
 
 **Invariants to preserve:**
 
-> "A file from a newer build decodes but must not be written back."
+> "A file from a newer build decodes but must not be written back: doing so would drop the fields this build does not know about."
 
 > "the previous version wrote unconditionally, so a file that failed to load was silently replaced by an empty snapshot"
 

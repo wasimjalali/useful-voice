@@ -131,8 +131,9 @@ verified by execution and which still require a Windows machine to confirm.
 
 ## Audits
 
-Four detailed reports in [`docs/audit/`](docs/audit) cover the recording pipeline,
-hotkey and lifecycle, the dictionary and language memory, and the UI. Start with
+Five detailed reports in [`docs/audit/`](docs/audit) cover the recording pipeline,
+hotkey and lifecycle, the dictionary and language memory, the UI, and a language
+and performance audit. Start with
 [`00-findings-and-fixes.md`](docs/audit/00-findings-and-fixes.md), which summarises
 every finding, what changed, how each change is verified, and what was deliberately
 left alone.

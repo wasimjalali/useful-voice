@@ -10,6 +10,10 @@ public final class LanguageMemoryStore {
     private let outcome: StoreLoadOutcome
     private var isWritable: Bool
 
+    /// Test seam: invoked from `save()` once the `isWritable` guard has passed,
+    /// with the write's outcome. Refused writes never reach it.
+    var saveObserver: ((Bool) -> Void)?
+
     public init(fileURL: URL, diagnostics: Diagnostics = .shared) {
         self.fileURL = fileURL
 
@@ -96,9 +100,19 @@ public final class LanguageMemoryStore {
 
     @discardableResult
     public func upsertTerm(_ term: MemoryTerm) -> MemoryTerm {
-        let normalized = normalizedTerm(term)
-        guard !TermMatcher.canonical(normalized.phrase).isEmpty else { return normalized }
+        // A rejected term returns its normalized form, matching the pre-split
+        // contract where the early return yielded the same value.
+        upsertTerm(term, persist: true) ?? normalizedTerm(term)
+    }
 
+    /// Nil when the entry is rejected before mutating — the bulk callers use
+    /// that to tell "no write needed" apart from "applied but not yet saved".
+    @discardableResult
+    private func upsertTerm(_ term: MemoryTerm, persist: Bool) -> MemoryTerm? {
+        let normalized = normalizedTerm(term)
+        guard !TermMatcher.canonical(normalized.phrase).isEmpty else { return nil }
+
+        let result: MemoryTerm
         if let index = state.terms.firstIndex(where: {
             $0.id == normalized.id || TermMatcher.matches($0.phrase, normalized.phrase)
         }) {
@@ -121,14 +135,14 @@ public final class LanguageMemoryStore {
             )
             state.terms[index] = merged
             removeSuggestions(matching: merged.phrase)
-            save()
-            return merged
+            result = merged
         } else {
             state.terms.insert(normalized, at: 0)
             removeSuggestions(matching: normalized.phrase)
-            save()
-            return normalized
+            result = normalized
         }
+        if persist { save() }
+        return result
     }
 
     /// Learn from an observed → corrected edit (Library teaching + word-level
@@ -148,23 +162,35 @@ public final class LanguageMemoryStore {
             existingDictionary: existing,
             now: now
         )
+        var applied = false
         for entry in result.entries {
             switch entry {
             case .term(let term):
-                _ = upsertTerm(term)
+                applied = upsertTerm(term, persist: false) != nil || applied
             case .replacement(let rule):
-                _ = upsertReplacement(rule)
+                applied = upsertReplacement(rule, persist: false) != nil || applied
             }
         }
+        // One logical write per learned edit — and none when nothing was
+        // applied. Entries can exist yet all be rejected by the upsert guards
+        // (e.g. punctuation-only input canonicalizes to empty), so the gate is
+        // on what was applied, not on what the policy produced.
+        if applied { save() }
         return result
     }
 
     @discardableResult
     public func upsertReplacement(_ rule: ReplacementRule) -> ReplacementRule {
+        upsertReplacement(rule, persist: true) ?? normalizedReplacement(rule)
+    }
+
+    /// Nil when the rule is rejected before mutating.
+    @discardableResult
+    private func upsertReplacement(_ rule: ReplacementRule, persist: Bool) -> ReplacementRule? {
         let normalized = normalizedReplacement(rule)
         guard !TermMatcher.canonical(normalized.match).isEmpty,
               !normalized.replacement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else { return normalized }
+        else { return nil }
 
         if let index = state.replacements.firstIndex(where: {
             $0.id == normalized.id || TermMatcher.matches($0.match, normalized.match)
@@ -174,16 +200,22 @@ public final class LanguageMemoryStore {
             state.replacements.insert(normalized, at: 0)
         }
         removeSuggestions(matching: normalized.match)
-        save()
+        if persist { save() }
         return normalized
     }
 
     @discardableResult
     public func upsertSnippet(_ snippet: MemorySnippet) -> MemorySnippet {
+        upsertSnippet(snippet, persist: true) ?? normalizedSnippet(snippet)
+    }
+
+    /// Nil when the snippet is rejected before mutating.
+    @discardableResult
+    private func upsertSnippet(_ snippet: MemorySnippet, persist: Bool) -> MemorySnippet? {
         let normalized = normalizedSnippet(snippet)
         guard !TermMatcher.canonical(normalized.trigger).isEmpty,
               !normalized.expansion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else { return normalized }
+        else { return nil }
 
         if let index = state.snippets.firstIndex(where: {
             $0.id == normalized.id || TermMatcher.matches($0.trigger, normalized.trigger)
@@ -193,7 +225,7 @@ public final class LanguageMemoryStore {
             state.snippets.insert(normalized, at: 0)
         }
         removeSuggestions(matching: normalized.trigger)
-        save()
+        if persist { save() }
         return normalized
     }
 
@@ -278,7 +310,7 @@ public final class LanguageMemoryStore {
                 continue
             }
             let existed = state.terms.contains { TermMatcher.matches($0.phrase, term.phrase) }
-            _ = upsertTerm(term)
+            _ = upsertTerm(term, persist: false)
             if existed { updated += 1 } else { inserted += 1 }
         }
 
@@ -289,7 +321,7 @@ public final class LanguageMemoryStore {
                 continue
             }
             let existed = state.replacements.contains { TermMatcher.matches($0.match, rule.match) }
-            _ = upsertReplacement(rule)
+            _ = upsertReplacement(rule, persist: false)
             if existed { updated += 1 } else { inserted += 1 }
         }
 
@@ -300,7 +332,7 @@ public final class LanguageMemoryStore {
                 continue
             }
             let existed = state.snippets.contains { TermMatcher.matches($0.trigger, snippet.trigger) }
-            _ = upsertSnippet(snippet)
+            _ = upsertSnippet(snippet, persist: false)
             if existed { updated += 1 } else { inserted += 1 }
         }
 
@@ -406,9 +438,11 @@ public final class LanguageMemoryStore {
             )
             try data.write(to: fileURL, options: .atomic)
             failures.reportSaveSuccess()
+            saveObserver?(true)
             return true
         } catch {
             failures.reportSaveFailure(error)
+            saveObserver?(false)
             return false
         }
     }

@@ -154,6 +154,182 @@ import Foundation
         #expect(Set(second.pronunciations) == Set(["sada", "sa da"]))
     }
 
+    /// A bulk import previously wrote the whole snapshot once per item (~O(n²)
+    /// bytes for n items). It must now mutate in memory and persist exactly once.
+    @Test func testBulkImportPersistsExactlyOnceAndRoundTrips() {
+        let url = tempFile()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = LanguageMemoryStore(fileURL: url)
+
+        var outcomes: [Bool] = []
+        store.saveObserver = { outcomes.append($0) }
+
+        var terms: [MemoryTerm] = []
+        var rules: [ReplacementRule] = []
+        var snippets: [MemorySnippet] = []
+        for index in 0..<40 {
+            terms.append(MemoryTerm(phrase: "imported term \(index)"))
+        }
+        for index in 0..<30 {
+            rules.append(ReplacementRule(match: "observed \(index)", replacement: "corrected \(index)"))
+        }
+        for index in 0..<30 {
+            snippets.append(MemorySnippet(trigger: "trigger \(index)", expansion: "expansion \(index)"))
+        }
+        let result = store.importSnapshot(LanguageMemorySnapshot(
+            terms: terms, replacements: rules, snippets: snippets
+        ))
+
+        #expect(result.inserted == 100)
+        #expect(result.invalid.isEmpty)
+        #expect(outcomes == [true])
+
+        let reopened = LanguageMemoryStore(fileURL: url)
+        #expect(reopened.terms().count == 40)
+        #expect(reopened.replacements().count == 30)
+        #expect(reopened.snippets().count == 30)
+        #expect(Set(reopened.terms().map(\.phrase)) == Set(terms.map(\.phrase)))
+    }
+
+    /// Re-importing the same snapshot must leave the persisted state unchanged:
+    /// merges are idempotent, IDs stay stable, and duplicates are counted rather
+    /// than appended. Compare decoded snapshots, not bytes.
+    @Test func testReimportIsIdempotent() {
+        let url = tempFile()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = LanguageMemoryStore(fileURL: url)
+        // Whole-second dates survive the ISO8601 encoder's second-precision
+        // format exactly, so the decoded file can be compared to the in-memory
+        // snapshot field-for-field.
+        let stamp = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = LanguageMemorySnapshot(
+            terms: [
+                MemoryTerm(phrase: "Sadaa", createdAt: stamp, updatedAt: stamp),
+                MemoryTerm(phrase: "Useful Voice", createdAt: stamp, updatedAt: stamp),
+            ],
+            replacements: [ReplacementRule(match: "sada", replacement: "Sadaa",
+                                           createdAt: stamp, updatedAt: stamp)],
+            snippets: [MemorySnippet(trigger: "sig", expansion: "Best,\nWasim",
+                                     createdAt: stamp, updatedAt: stamp)],
+            // Neither side may match an imported phrase, or the upserts'
+            // `removeSuggestions(matching:)` would drop it on the second pass.
+            suggestions: [MemorySuggestion(kind: .term, observed: "wrds",
+                                           proposed: "words", lastSeenAt: stamp)]
+        )
+
+        let first = store.importSnapshot(snapshot)
+        #expect(first.inserted == 5)
+        let afterFirst = store.snapshot()
+
+        var outcomes: [Bool] = []
+        store.saveObserver = { outcomes.append($0) }
+        let second = store.importSnapshot(snapshot)
+
+        #expect(second.inserted == 0)
+        #expect(second.updated == 4)
+        #expect(second.duplicates == 1)
+        #expect(outcomes == [true])
+        #expect(store.snapshot() == afterFirst)
+
+        let reopened = LanguageMemoryStore(fileURL: url)
+        #expect(reopened.snapshot() == afterFirst)
+    }
+
+    /// `learnFromEdit` produces several entries (phrase-level + word-level
+    /// corrections); all of them must persist in a single write.
+    @Test func testLearnFromEditPersistsExactlyOnce() {
+        let url = tempFile()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = LanguageMemoryStore(fileURL: url)
+
+        var outcomes: [Bool] = []
+        store.saveObserver = { outcomes.append($0) }
+
+        let learned = store.learnFromEdit(
+            original: "Please open cloud code",
+            corrected: "Please open Claude Code",
+            now: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        // The "exactly once" assertion only separates batched from per-entry
+        // saves when the edit produces more than one entry — pin that premise.
+        #expect(learned.entries.count > 1)
+        #expect(outcomes == [true])
+
+        let reopened = LanguageMemoryStore(fileURL: url)
+        #expect(reopened.snapshot() == store.snapshot())
+    }
+
+    /// Entries the policy produces but the upsert guards reject (here:
+    /// punctuation-only input canonicalizes to empty) must not trigger a
+    /// write — the gate is on what was applied, not what was produced.
+    @Test func testLearnFromEditWithOnlyRejectedEntriesDoesNotPersist() {
+        let url = tempFile()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = LanguageMemoryStore(fileURL: url)
+
+        var outcomes: [Bool] = []
+        store.saveObserver = { outcomes.append($0) }
+
+        _ = store.learnFromEdit(original: "???", corrected: "!!!")
+        #expect(outcomes.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+
+    /// A real write failure (as opposed to a refused write) reports `false`
+    /// through the seam: the directory the file lives in is replaced by a
+    /// regular file after load, so the atomic write cannot succeed.
+    @Test func testSaveObserverSeesARealWriteFailure() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("savefail-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("language-memory.json")
+        let store = LanguageMemoryStore(fileURL: url)
+
+        // The store loaded fresh; now break the parent path so createDirectory
+        // fails inside save().
+        try FileManager.default.removeItem(at: dir)
+        try Data("x".utf8).write(to: dir)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        var outcomes: [Bool] = []
+        store.saveObserver = { outcomes.append($0) }
+
+        store.upsertTerm(MemoryTerm(phrase: "Claude Code"))
+        #expect(outcomes == [false])
+    }
+
+    /// An edit with nothing to learn must not touch the file at all — the same
+    /// "no write when nothing was learned" behaviour the per-upsert writes gave.
+    @Test func testLearnFromEditWithoutEntriesDoesNotPersist() {
+        let url = tempFile()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = LanguageMemoryStore(fileURL: url)
+
+        var outcomes: [Bool] = []
+        store.saveObserver = { outcomes.append($0) }
+
+        let learned = store.learnFromEdit(original: "   ", corrected: "   ")
+        #expect(learned.entries.isEmpty)
+        #expect(outcomes.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+
+    /// One-off upserts keep their immediate persist semantics: each call writes.
+    @Test func testOneOffUpsertsStillPersistImmediately() {
+        let url = tempFile()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = LanguageMemoryStore(fileURL: url)
+
+        var outcomes: [Bool] = []
+        store.saveObserver = { outcomes.append($0) }
+
+        store.upsertTerm(MemoryTerm(phrase: "Claude Code"))
+        store.upsertReplacement(ReplacementRule(match: "cloud code", replacement: "Claude Code"))
+        store.upsertSnippet(MemorySnippet(trigger: "sig", expansion: "Best,\nWasim"))
+
+        #expect(outcomes == [true, true, true])
+    }
+
     @Test func testCorruptFileRecoversWithBackup() throws {
         let url = tempFile()
         defer {

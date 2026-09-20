@@ -15,9 +15,11 @@ struct ModelFileValidatorTests {
         try Data(bytes).write(to: url)
     }
 
-    private func modelFile(ggmlMagic: Bool = true, size: Int) throws -> URL {
+    private func modelFile(lmggMagic: Bool = true, size: Int) throws -> URL {
         let dir = try tempDir()
-        var bytes = ggmlMagic ? [UInt8]([0x67, 0x67, 0x6D, 0x6C]) : [UInt8]([0x47, 0x47, 0x55, 0x46])
+        // "lmgg" is the real on-disk magic of ggml-*.bin (u32 "ggml", little
+        // endian); the alternate branch writes the GGUF container magic.
+        var bytes = lmggMagic ? [UInt8]([0x6C, 0x6D, 0x67, 0x67]) : [UInt8]([0x47, 0x47, 0x55, 0x46])
         if size > bytes.count {
             bytes += [UInt8](repeating: 0, count: size - bytes.count)
         }
@@ -52,7 +54,16 @@ struct ModelFileValidatorTests {
     }
 
     @Test func ggufMagicIsAccepted() throws {
-        let url = try modelFile(ggmlMagic: false, size: 1_000)
+        let url = try modelFile(lmggMagic: false, size: 1_000)
+        #expect(ModelFileValidator.validate(fileURL: url, expectedBytes: 1_000) == .valid)
+    }
+
+    @Test func asciiGgmlMagicIsAccepted() throws {
+        let dir = try tempDir()
+        var bytes = [UInt8]([0x67, 0x67, 0x6D, 0x6C]) // "ggml"
+        bytes += [UInt8](repeating: 0, count: 1_000 - bytes.count)
+        let url = dir.appendingPathComponent("ggml-test.bin")
+        try Data(bytes).write(to: url)
         #expect(ModelFileValidator.validate(fileURL: url, expectedBytes: 1_000) == .valid)
     }
 

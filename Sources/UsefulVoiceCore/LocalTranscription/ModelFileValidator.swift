@@ -3,7 +3,7 @@ import Foundation
 
 /// Outcome of checking a would-be model file on disk.
 public enum ModelFileValidation: Equatable, Sendable {
-    /// File exists, size matches the catalog, magic bytes look like ggml/GGUF.
+    /// File exists, size matches the catalog, magic bytes look like a model.
     case valid
     /// No file at the path.
     case missing
@@ -25,15 +25,19 @@ public enum ModelFileValidation: Equatable, Sendable {
 ///   3. full SHA-256 (expensive; run once after a download, not on every
 ///      dictation).
 ///
-/// The whisper.cpp `.bin` format begins with the 4-byte magic `ggml`; the newer
-/// GGUF container begins with `GGUF`. Anything else — an HTML error page from a
-/// proxy, a partial download, a renamed text file — is rejected before the
-/// engine ever sees it, because whisper.cpp aborts outright on a bad header
-/// rather than returning an error.
+/// The whisper.cpp `.bin` format writes the magic `ggml` as a little-endian
+/// u32, so the first four bytes on disk are `lmgg` — verified against the real
+/// Hugging Face files. The newer GGUF container begins with the ASCII `GGUF`.
+/// Anything else — an HTML error page from a proxy, a partial download, a
+/// renamed text file — is rejected before the engine ever sees it, because
+/// whisper.cpp aborts outright on a bad header rather than returning an error.
 public enum ModelFileValidator {
-    /// The two magics whisper.cpp accepts: legacy `ggml` containers and `GGUF`.
+    /// The magics whisper.cpp accepts: `lmgg` (the `ggml` u32 little-endian, as
+    /// shipped in `ggml-*.bin`), the ASCII `ggml` spelling for safety, and the
+    /// `GGUF` container magic.
     static let acceptedMagics: [Data] = [
-        Data([0x67, 0x67, 0x6D, 0x6C]), // "ggml"
+        Data([0x6C, 0x6D, 0x67, 0x67]), // "lmgg" — ggml u32, little-endian
+        Data([0x67, 0x67, 0x6D, 0x6C]), // "ggml" — ASCII spelling
         Data([0x47, 0x47, 0x55, 0x46]), // "GGUF"
     ]
 

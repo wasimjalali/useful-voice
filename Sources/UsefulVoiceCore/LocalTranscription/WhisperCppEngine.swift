@@ -56,6 +56,18 @@ public actor WhisperCppEngine: LocalSpeechEngine {
         try await load(modelURL: modelURL)
     }
 
+    /// Works around a ggml-metal teardown bug in this XCFramework: Metal
+    /// residency sets keep freed buffers registered for a keep-alive window
+    /// (180 s), and `ggml_metal_device_free` asserts the set is empty during
+    /// static destruction at process exit — so quitting the app (or the test
+    /// runner) within 3 minutes of a transcription aborts with SIGABRT.
+    /// Disabling residency sets avoids the assert entirely; the buffers take
+    /// the normal decommit path instead. Set without overwrite so a user's
+    /// explicit environment still wins.
+    private static func prepareEnvironment() {
+        setenv("GGML_METAL_NO_RESIDENCY", "1", 0)
+    }
+
     public func load(modelURL: URL) async throws {
         // Free first: holding two large contexts at once on a small-memory Mac
         // is exactly the thrash the bigger model must avoid.
@@ -63,6 +75,8 @@ public actor WhisperCppEngine: LocalSpeechEngine {
         context = nil
         loadedModelURL = nil
         if let previous { whisper_free(previous) }
+
+        Self.prepareEnvironment()
 
         var contextParams = whisper_context_default_params()
         contextParams.use_gpu = true       // Metal

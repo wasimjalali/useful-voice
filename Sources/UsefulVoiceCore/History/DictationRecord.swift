@@ -10,6 +10,20 @@ public struct DictationRecord: Codable, Equatable, Identifiable, Sendable {
     /// regional tag like `de-DE` is stored verbatim for fidelity but must be
     /// validated (`LanguagePin(recordedCode:)`) before reuse as `language=`.
     public let language: String?
+
+    /// The pin this dictation ran under, resolved from `language` — the value
+    /// reprocessing must request so a record re-runs its own language's rules
+    /// rather than whatever is pinned now. Nil when the record predates stored
+    /// languages, leaving the caller's current-pin fallback in place.
+    ///
+    /// Kept on the record itself rather than resolved at each call site: the
+    /// union semantics (a stored `multi` must re-send `language=multi`, a
+    /// stored `de-DE` must scope as `de`, an unknown code must scope as
+    /// `auto`) live in `LanguagePin(recordedCode:)`, and funnelling through
+    /// here is what keeps both reprocess paths on the same rule.
+    public var resolvedPin: LanguagePin? {
+        language.map { LanguagePin(recordedCode: $0) }
+    }
     public let provider: String
     public let durationSeconds: Double?
     /// How the text was produced (raw or formatted). Optional so pre-mode

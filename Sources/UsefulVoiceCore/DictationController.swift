@@ -174,7 +174,8 @@ public final class DictationController {
             audioURL = try recorder.stop()
         } catch {
             // The raw intent dies with this dictation: a stale flag would be
-            // consumed by retryLast() or the next dictation.
+            // consumed by retryLast(), the one path that reaches process()
+            // without a fresh toggle(rawMode:) write.
             pendingRawMode = false
             state = .error("Couldn't stop recording: \(error.localizedDescription)")
             return

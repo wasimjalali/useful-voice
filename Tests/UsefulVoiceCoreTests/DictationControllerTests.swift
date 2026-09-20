@@ -755,21 +755,24 @@ final class CapturingProvider: TranscriptionProvider {
         #expect(second.hints.first?.languagePin == .en)
     }
 
-    /// Regression: a raw-mode dictation whose providers all failed used to leave
-    /// `pendingRawMode` set, so the NEXT dictation silently skipped the
-    /// formatter.
-    @Test func testFailedRawModeDoesNotLeakIntoNextDictation() async throws {
-        var attempt = 0
+    /// Regression: a raw-mode dictation whose providers all failed used to
+    /// leave `pendingRawMode` set. The flag can only be *observed* stale by
+    /// `retryLast()` — the next dictation's own `toggle(rawMode:)` stop
+    /// rewrites it before `process()` reads it. So the guard must end with a
+    /// retry, not a fresh dictation: without the fix, the retried dictation
+    /// silently runs through rawTransform instead of the formatter.
+    @Test func testFailedRawModeDoesNotLeakIntoRetry() async throws {
         let failing = FakeProvider(name: "p1",
                                    result: .failure(ProviderError.http(500, "boom")))
         let working = FakeProvider(name: "p2",
-            result: .success(Transcript(text: "second", detectedLanguage: nil,
+            result: .success(Transcript(text: "rescued", detectedLanguage: nil,
                                         durationSeconds: nil)))
+        var providersWork = false
         var formatRan = false
         var rawTransformRan = false
         let controller = DictationController(
             recorder: recorder,
-            providers: { attempt += 1; return attempt == 1 ? [failing] : [working] },
+            providers: { providersWork ? [working] : [failing] },
             store: store,
             hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
             recordingsToKeep: 10,
@@ -788,12 +791,13 @@ final class CapturingProvider: TranscriptionProvider {
         await controller.toggleAndWait()
         #expect(delivered == [])
         #expect(!formatRan && !rawTransformRan)
+        #expect(controller.canRetry)
 
-        controller.toggle()                  // a fresh dictation, normal stop
-        await controller.toggleAndWait()
+        providersWork = true
+        await controller.retryLastAndWait()
         #expect(formatRan)
         #expect(!rawTransformRan)
-        #expect(delivered == ["formatted: second"])
+        #expect(delivered == ["formatted: rescued"])
     }
 
     /// The formatter-failure fallback runs the same resolved context as the
@@ -882,19 +886,23 @@ final class CapturingProvider: TranscriptionProvider {
     }
 
     /// Regression: a raw-mode dictation that early-returns on the silent path
-    /// used to leave `pendingRawMode` set, so the next normal dictation ran
-    /// rawTransform instead of the formatter. The raw intent dies with the
-    /// dictation that never reached process().
-    @Test func testSilentRawModeDoesNotLeakIntoNextDictation() async throws {
-        recorder.didCaptureSpeech = false
-        let provider = FakeProvider(name: "fake",
-            result: .success(Transcript(text: "second",
+    /// used to leave `pendingRawMode` set. The next dictation's own
+    /// `toggle(rawMode:)` stop rewrites the flag before `process()` reads it,
+    /// so the only way to observe the stale value is `retryLast()` — the raw
+    /// intent dies with the dictation that never reached process(), and the
+    /// retried failure must still run the formatter.
+    @Test func testSilentRawModeDoesNotLeakIntoRetry() async throws {
+        let failing = FakeProvider(name: "p1",
+                                   result: .failure(ProviderError.http(500, "boom")))
+        let working = FakeProvider(name: "p2",
+            result: .success(Transcript(text: "rescued",
                                         detectedLanguage: nil, durationSeconds: nil)))
+        var providersWork = false
         var formatRan = false
         var rawTransformRan = false
         let controller = DictationController(
             recorder: recorder,
-            providers: { [provider] },
+            providers: { providersWork ? [working] : [failing] },
             store: store,
             hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
             recordingsToKeep: 10,
@@ -909,33 +917,41 @@ final class CapturingProvider: TranscriptionProvider {
                 return FormattingResult(text: "raw: \(raw)", newTerms: [], mode: .raw)
             })
 
+        // Seed a retrievable failure so a later stale flag has a consumer.
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(controller.canRetry)
+
+        recorder.didCaptureSpeech = false
         controller.toggle()                  // start
         controller.toggle(rawMode: true)     // stop, raw — silent: early return
         await controller.toggleAndWait()
         #expect(delivered == [])
         #expect(!formatRan && !rawTransformRan)
 
-        recorder.didCaptureSpeech = true
-        controller.toggle()                  // a fresh dictation, normal stop
-        await controller.toggleAndWait()
+        providersWork = true
+        await controller.retryLastAndWait()
         #expect(formatRan)
         #expect(!rawTransformRan)
-        #expect(delivered == ["formatted: second"])
+        #expect(delivered == ["formatted: rescued"])
     }
 
     /// Same leak on the failed-stop path: `recorder.stop()` throws before
-    /// process() consumes the flag, so it must be cleared at the early return.
-    @Test func testFailedStopRawModeDoesNotLeakIntoNextDictation() async throws {
+    /// process() consumes the flag, so it must be cleared at the early return
+    /// or `retryLast()` reprocesses the retained failure through rawTransform.
+    @Test func testFailedStopRawModeDoesNotLeakIntoRetry() async throws {
         struct StopFailed: Error {}
-        recorder.stopError = StopFailed()
-        let provider = FakeProvider(name: "fake",
-            result: .success(Transcript(text: "second",
+        let failing = FakeProvider(name: "p1",
+                                   result: .failure(ProviderError.http(500, "boom")))
+        let working = FakeProvider(name: "p2",
+            result: .success(Transcript(text: "rescued",
                                         detectedLanguage: nil, durationSeconds: nil)))
+        var providersWork = false
         var formatRan = false
         var rawTransformRan = false
         let controller = DictationController(
             recorder: recorder,
-            providers: { [provider] },
+            providers: { providersWork ? [working] : [failing] },
             store: store,
             hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
             recordingsToKeep: 10,
@@ -950,6 +966,11 @@ final class CapturingProvider: TranscriptionProvider {
                 return FormattingResult(text: "raw: \(raw)", newTerms: [], mode: .raw)
             })
 
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(controller.canRetry)
+
+        recorder.stopError = StopFailed()
         controller.toggle()                  // start
         controller.toggle(rawMode: true)     // stop, raw — stop() throws
         await controller.toggleAndWait()
@@ -957,10 +978,10 @@ final class CapturingProvider: TranscriptionProvider {
         #expect(!formatRan && !rawTransformRan)
 
         recorder.stopError = nil
-        controller.toggle()                  // a fresh dictation, normal stop
-        await controller.toggleAndWait()
+        providersWork = true
+        await controller.retryLastAndWait()
         #expect(formatRan)
         #expect(!rawTransformRan)
-        #expect(delivered == ["formatted: second"])
+        #expect(delivered == ["formatted: rescued"])
     }
 }

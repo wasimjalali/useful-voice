@@ -137,11 +137,10 @@ final class UsefulVoiceViewModel: ObservableObject {
     func reprocessHistoryTextOnly(_ record: DictationRecord) {
         let snapshot = languageMemory.exportSnapshot()
         // Reprocess in the language the dictation ran in, not whatever is
-        // pinned now. The stored value is a detected-code-or-requested-pin
-        // union, so it is validated through `recordedCode:` — a stored `multi`
-        // re-sends `language=multi`, an unknown code scopes as auto rather
-        // than producing an unsendable pin.
-        let pin = record.language.map { LanguagePin(recordedCode: $0) } ?? languagePin
+        // pinned now. `resolvedPin` validates the stored union: a stored
+        // `multi` re-sends `language=multi`, an unknown code scopes as auto
+        // rather than producing an unsendable pin.
+        let pin = record.resolvedPin ?? languagePin
         let language = MemoryLanguage(languagePin: pin)
         let source = record.rawText ?? record.text
         let result = LanguageMemoryPostProcessor.rawResult(

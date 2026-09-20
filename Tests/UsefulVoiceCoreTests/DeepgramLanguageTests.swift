@@ -354,6 +354,10 @@ struct LanguagePinTests {
     @Test func testRecordedCodeKeepsTheStoredMultiPin() {
         #expect(LanguagePin(recordedCode: "multi") == .multilingual)
         #expect(LanguagePin(recordedCode: " multi ") == .multilingual)
+        #expect(LanguagePin(recordedCode: "MULTI") == .multilingual)
+        // `multi-Foo` is not the stored mode: it can only be a detected-looking
+        // tag, so it delegates to `detectedCode:` and resolves to auto.
+        #expect(LanguagePin(recordedCode: "multi-Foo") == .auto)
     }
 
     /// A stored `auto` is detection, not a language.

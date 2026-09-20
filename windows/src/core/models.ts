@@ -157,6 +157,11 @@ export interface DictationRecord {
   rawText: string;
   /** Text after memory but before the optional formatter. */
   intermediateText: string;
+  /**
+   * The raw detected code Deepgram returned, or the requested pin when detection
+   * is absent. Not guaranteed sendable — a regional tag like `de-DE` is stored
+   * verbatim for fidelity but must be validated before reuse as `language=`.
+   */
   language: MemoryLanguage;
   appName: string;
   durationSeconds: number;

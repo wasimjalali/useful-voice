@@ -255,3 +255,47 @@ export function detectionStayedOnNova3(code: string): boolean {
     return normalised === known || normalised.startsWith(`${known}-`);
   });
 }
+
+/**
+ * Resolve a provider-returned `detected_language` to the language used for
+ * local processing — memory scoping and the formatter.
+ *
+ * The order of the two matches is the whole point:
+ *
+ * 1. **Exact catalogue match first.** Deepgram can return a regional tag the
+ *    catalogue itself carries — `de-CH` is its own row because Swiss German is
+ *    a genuinely different variant from `de`. Folding every regional tag to its
+ *    base subtag would collapse `de-CH` to `de` and lose a distinction the
+ *    catalogue deliberately keeps.
+ * 2. **Then the base subtag.** Deepgram also answers with regional forms the
+ *    catalogue does *not* carry — `de-DE`, `en-US`, `zh-CN` — which must land
+ *    on `de`, `en` and `zh` rather than die as unknown. Trying the exact form
+ *    first is what lets `de-CH` survive while `de-DE` still resolves.
+ *
+ * Both matches are case-insensitive but resolve to the catalogue's own casing:
+ * the provider's capitalisation is not guaranteed, while `zh-HK` and `nl-BE`
+ * carry meaningful uppercase subtags that a blanket lowercase would corrupt.
+ *
+ * Anything else resolves to `auto` — never to the requested pin and never to
+ * the raw code. Two reasons, both load-bearing: an unknown code must never be
+ * sent back to the provider (it would error, or force a model fallback that
+ * silently drops `keyterm`), and `auto` scoping keeps the memory pass
+ * permissive rather than wrong-language — under `auto` every term participates,
+ * which beats constraining corrections to a language the transcript is not in.
+ * The raw code is still what history stores; this function only decides the
+ * processing scope.
+ */
+export function resolveDetectedLanguage(detected: string): string {
+  const trimmed = detected.trim();
+  if (trimmed.length === 0) return 'auto';
+  const lowered = trimmed.toLowerCase();
+  const exact = DEEPGRAM_LANGUAGES.find(
+    (language) => language.code.toLowerCase() === lowered,
+  );
+  if (exact) return exact.code;
+  const base = trimmed.split('-')[0]?.toLowerCase() ?? '';
+  const baseMatch = DEEPGRAM_LANGUAGES.find(
+    (language) => language.code.toLowerCase() === base,
+  );
+  return baseMatch ? baseMatch.code : 'auto';
+}

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -21,6 +21,9 @@ import { describe, expect, it } from 'vitest';
  * Every extractor is asserted non-trivial below: a regex that matched nothing would
  * leave this file green while verifying exactly nothing, which is worse than having no
  * test at all.
+ *
+ * The last block applies the same text-scan contract to a different property: that
+ * the ESM main process contains no CommonJS `require(` call.
  */
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -234,5 +237,77 @@ describe('channel naming', () => {
     const counted =
       invokedChannels.length + channelsSentByPreload.length + channelsSubscribedByPreload.length;
     expect(counted).toBe(Number(documented?.[1] ?? -1));
+  });
+});
+
+/**
+ * The main process compiles to ESM — the package is `"type": "module"` and tsc emits
+ * `.js` files that Node runs as ES modules — so a bare `require(` is not a style
+ * problem, it is a `ReferenceError: require is not defined` waiting for the code
+ * path that calls it. tsc does not flag the call: `@types/node` still declares
+ * `require` as a global, which is exactly how `require('electron').screen` once sat
+ * latent inside `showHud`, a path the self-test never exercises.
+ *
+ * The scan is textual and deliberately approximate, like the channel checks above:
+ * line and block comments are stripped first so a comment *mentioning* `require(`
+ * cannot fail the build, while string literals are left alone — a `"require("`
+ * inside a string still trips the check, which fails safe. The lookbehind excludes
+ * identifiers that merely end in "require" (`createRequire`, `required`) and member
+ * calls (`obj.require(`), neither of which is the CommonJS global.
+ *
+ * Two blind spots are accepted and documented rather than engineered away.
+ * First, stripping is naive: a `//` or `/*` inside a string or regex literal (for
+ * example `if (/^https:\/\//i.test(url))` in index.ts) eats real code to the end of
+ * the line or block, so a `require(` appended to such a line would be invisible —
+ * the only direction this guard can miss. Second, member or alias forms
+ * (`globalThis.require(`, `const r = require`) are excluded on purpose: none is a
+ * working CommonJS bypass under ESM — they all still throw at runtime — so they
+ * only evade detection of a latent crash, which is what this guard exists for.
+ *
+ * Only `src/main` is scanned. The preload is out of scope on purpose: it bundles to
+ * CJS for `contextIsolation`, where `require` is legitimate.
+ */
+const BARE_REQUIRE = /(?<![\w$.])require\s*\(/;
+
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
+}
+
+function mainSourceFiles(): { name: string; stripped: string }[] {
+  const mainDir = path.join(projectRoot, 'src/main');
+  return readdirSync(mainDir, { recursive: true })
+    .map(String)
+    .filter((name) => name.endsWith('.ts'))
+    .map((name) => ({
+      name,
+      stripped: stripComments(readFileSync(path.join(mainDir, name), 'utf8')),
+    }));
+}
+
+describe('main process module format', () => {
+  it('matches a bare require( and nothing that merely resembles one', () => {
+    // Asserted both ways, for the same reason the channel counts are: a pattern that
+    // matched nothing would leave the scan below green while checking nothing, and
+    // one that matched too much would fail on legitimate code.
+    expect(BARE_REQUIRE.test("require('electron')")).toBe(true);
+    expect(BARE_REQUIRE.test("require  ('electron')")).toBe(true);
+    expect(BARE_REQUIRE.test('createRequire(import.meta.url)')).toBe(false);
+    expect(BARE_REQUIRE.test('createrequire(mod)')).toBe(false);
+    expect(BARE_REQUIRE.test('required(field)')).toBe(false);
+    expect(BARE_REQUIRE.test('requirement met')).toBe(false);
+    expect(BARE_REQUIRE.test("const importRequire = require")).toBe(false);
+    expect(BARE_REQUIRE.test("obj.require('x')")).toBe(false);
+    // A comment that talks about require( is not a call.
+    expect(BARE_REQUIRE.test(stripComments("// use require('electron') here"))).toBe(false);
+    expect(BARE_REQUIRE.test(stripComments("/* require('x') */ ok()"))).toBe(false);
+  });
+
+  it('finds no bare require( in any src/main TypeScript file', () => {
+    const files = mainSourceFiles();
+    // Non-trivial, like the extraction counts: an empty listing would pass the
+    // assertion below while scanning nothing.
+    expect(files.length, 'src/main files scanned').toBeGreaterThanOrEqual(4);
+    const offenders = files.filter(({ stripped }) => BARE_REQUIRE.test(stripped)).map(({ name }) => name);
+    expect(offenders, 'ESM main sources containing a CommonJS require').toEqual([]);
   });
 });

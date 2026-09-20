@@ -426,6 +426,7 @@ class UsefulVoiceApp {
       memory: () => this.data.memorySnapshot(),
       apiKey: async () => this.settings.revealApiKey(),
       onStatus: (status) => this.handleStatus(status),
+      onDiagnostic: (category, message) => this.diagnostics.log(category, message),
       onCompleted: (outcome) => {
         this.data.appendHistory({
           id: outcome.id,

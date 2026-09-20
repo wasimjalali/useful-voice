@@ -4,6 +4,7 @@ import { selectKeyterms } from '../core/memory/biasBuilder.js';
 import { RecordingClock } from '../core/audio/silenceWatchdog.js';
 import { MINIMUM_AUDIO_BYTES } from '../core/audio/wav.js';
 import { ProviderError, type Transcript } from '../core/transcription/deepgramProvider.js';
+import { detectionStayedOnNova3, resolveDetectedLanguage } from '../core/transcription/languages.js';
 
 export type DictationState = 'idle' | 'recording' | 'transcribing' | 'delivering' | 'error';
 
@@ -78,6 +79,11 @@ export interface DictationServiceDeps {
   apiKey: () => Promise<string | null>;
   onStatus: (status: DictationStatus) => void;
   onCompleted?: (result: DictationOutcome) => void;
+  /**
+   * Records a diagnostic worth keeping. Never pass transcript text or the API
+   * key here — the bounded log is something the user can share.
+   */
+  onDiagnostic?: (category: string, message: string) => void;
   /** Optional post-transcription formatting (the formatter). */
   formatter?: FormatterPort;
   idFactory?: () => string;
@@ -323,21 +329,38 @@ export class DictationService {
       return;
     }
 
-    const language = transcript.detectedLanguage
-      ? coerceLanguage(transcript.detectedLanguage, context.language)
-      : context.language;
+    // What Deepgram detected decides the processing language — validated through
+    // the catalogue so a returned `de-CH` keeps its region while `de-DE` scopes
+    // as `de`. History stores the raw code exactly as reported: an unknown
+    // detection is processed as `auto` (permissive rather than wrong-language)
+    // but recorded verbatim, and is never sent back to the provider.
+    const rawDetected = transcript.detectedLanguage?.trim() || null;
+    const effectiveLanguage = rawDetected ? resolveDetectedLanguage(rawDetected) : context.language;
+    const storedLanguage = rawDetected ?? context.language;
+
+    // A detected code Nova-3 does not speak natively means the provider fell
+    // back down the model chain, which silently drops `keyterm` — and the
+    // symptom (the user's own terminology misspelled) reads as a dictionary
+    // fault, so it is worth a log line. Only the code is recorded, never
+    // transcript text or the key.
+    if (rawDetected && !detectionStayedOnNova3(rawDetected)) {
+      this.deps.onDiagnostic?.(
+        'language',
+        `detected language '${rawDetected}' is outside Nova-3, so the provider may have fallen back to a lower model and keyterms may have been dropped`,
+      );
+    }
 
     // Deterministic memory pass: never skipped, even in raw mode. Raw mode means
     // "do not run the formatter", not "do not apply the user's dictionary".
-    const memoryResult = applyMemory(rawText, snapshot, language);
+    const memoryResult = applyMemory(rawText, snapshot, effectiveLanguage);
 
     let finalText = memoryResult.text;
     let mode: 'raw' | 'formatted' = 'raw';
     if (!rawMode && settings.formattingEnabled && this.deps.formatter) {
       try {
-        const formatted = await this.deps.formatter(memoryResult.text, language);
+        const formatted = await this.deps.formatter(memoryResult.text, effectiveLanguage);
         if (formatted.trim().length > 0) {
-          const reApplied = applyMemory(formatted, snapshot, language);
+          const reApplied = applyMemory(formatted, snapshot, effectiveLanguage);
           finalText = reApplied.text;
           mode = 'formatted';
         }
@@ -361,7 +384,7 @@ export class DictationService {
       text: finalText,
       rawText,
       intermediateText: memoryResult.text,
-      language,
+      language: storedLanguage,
       appName: context.targetApp ?? 'Unknown',
       durationSeconds: transcript.durationSeconds ?? captured.durationSeconds,
       mode,
@@ -490,12 +513,4 @@ export function describeTranscriptionFailure(error: unknown): string {
 function describe(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
-}
-
-/** Map a provider-reported language onto one this app supports. */
-export function coerceLanguage(detected: string, fallback: MemoryLanguage): MemoryLanguage {
-  const normalised = detected.toLowerCase().split('-')[0] ?? '';
-  const supported: MemoryLanguage[] = ['en', 'de', 'es', 'fr', 'it', 'pt', 'nl', 'ja', 'zh'];
-  const match = supported.find((candidate) => candidate === normalised);
-  return match ?? fallback;
 }

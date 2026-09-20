@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   DictationService,
-  coerceLanguage,
   describeRecordingFailure,
   describeTranscriptionFailure,
   type CapturedAudio,
@@ -11,7 +10,8 @@ import {
   type TranscriberPort,
 } from '../src/main/dictationService.js';
 import { ProviderError, type Transcript } from '../src/core/transcription/deepgramProvider.js';
-import { DEFAULT_SETTINGS, emptySnapshot, type AppSettings, type LanguageMemorySnapshot } from '../src/core/models.js';
+import { DETECTION_CODES, resolveDetectedLanguage } from '../src/core/transcription/languages.js';
+import { DEFAULT_SETTINGS, emptySnapshot, type AppSettings, type LanguageMemorySnapshot, type MemoryTerm } from '../src/core/models.js';
 
 /** Deterministic id factory so assertions do not depend on randomUUID. */
 let idCounter = 0;
@@ -80,6 +80,21 @@ class FakeSink implements TextSinkPort {
   }
 }
 
+/** A dictionary term with the fields every test has to fill in anyway. */
+function memoryTerm(overrides: Partial<MemoryTerm> & Pick<MemoryTerm, 'id' | 'phrase'>): MemoryTerm {
+  return {
+    aliases: [],
+    pronunciations: [],
+    language: 'auto',
+    priority: 'high',
+    notes: '',
+    usageCount: 0,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
 function setup(options: {
   settings?: Partial<AppSettings>;
   memory?: Partial<LanguageMemorySnapshot>;
@@ -91,6 +106,7 @@ function setup(options: {
   const sink = new FakeSink();
   const statuses: DictationStatus[] = [];
   const completed: string[] = [];
+  const diagnostics: Array<{ category: string; message: string }> = [];
 
   const settings: AppSettings = { ...DEFAULT_SETTINGS, ...options.settings };
   const memory = { ...emptySnapshot(), ...options.memory };
@@ -104,12 +120,13 @@ function setup(options: {
     apiKey: async () => (options.apiKey === undefined ? 'test-key' : options.apiKey),
     onStatus: (status) => statuses.push(status),
     onCompleted: (outcome) => completed.push(outcome.text),
+    onDiagnostic: (category, message) => diagnostics.push({ category, message }),
     idFactory,
     formatter: options.formatter,
     deliveryTimeoutMs: 200,
   });
 
-  return { service, recorder, transcriber, sink, statuses, completed, settings, memory };
+  return { service, recorder, transcriber, sink, statuses, completed, diagnostics, settings, memory };
 }
 
 describe('happy path', () => {
@@ -179,7 +196,8 @@ describe('happy path', () => {
     ctx.transcriber.transcript = { text: 'hallo', durationSeconds: 1, detectedLanguage: 'de-DE' };
     await ctx.service.startRecording();
     await ctx.service.stopAndProcess();
-    expect(ctx.service.mostRecent?.language).toBe('de');
+    // The raw provider code round-trips into history, region subtag included.
+    expect(ctx.service.mostRecent?.language).toBe('de-DE');
   });
 });
 
@@ -580,18 +598,140 @@ describe('max-duration guard', () => {
   });
 });
 
-describe('coerceLanguage', () => {
-  it('maps a regional tag to its base language', () => {
-    expect(coerceLanguage('de-DE', 'en')).toBe('de');
-    expect(coerceLanguage('en-US', 'de')).toBe('en');
+describe('resolveDetectedLanguage', () => {
+  it('keeps a catalogue regional tag exact rather than collapsing it', () => {
+    // de-CH is its own catalogue row (Swiss German), not German.
+    expect(resolveDetectedLanguage('de-CH')).toBe('de-CH');
   });
 
-  it('keeps the fallback for an unsupported language', () => {
-    expect(coerceLanguage('is', 'en')).toBe('en');
+  it('resolves a non-catalogue regional tag to its base language', () => {
+    expect(resolveDetectedLanguage('de-DE')).toBe('de');
+    expect(resolveDetectedLanguage('en-US')).toBe('en');
+    expect(resolveDetectedLanguage('zh-CN')).toBe('zh');
   });
 
-  it('handles malformed input', () => {
-    expect(coerceLanguage('', 'de')).toBe('de');
+  it('resolves an unknown code to auto, never the requested pin', () => {
+    // Intentional change from the old coerceLanguage('is', 'en') === 'en': the
+    // pin would scope memory to a language the transcript is not in, while
+    // 'auto' keeps matching permissive and is never sent to the provider.
+    expect(resolveDetectedLanguage('is')).toBe('auto');
+  });
+
+  it('resolves empty input to auto', () => {
+    expect(resolveDetectedLanguage('')).toBe('auto');
+    expect(resolveDetectedLanguage('   ')).toBe('auto');
+  });
+
+  it('is case-insensitive but resolves to the catalogue casing', () => {
+    expect(resolveDetectedLanguage('DE-CH')).toBe('de-CH');
+    expect(resolveDetectedLanguage('DE')).toBe('de');
+  });
+
+  it('resolves every detectable code away from auto', () => {
+    // F-2 regression guard: the old hardcoded mapping silently discarded 24 of
+    // the 34 codes Deepgram can report (ru, sv, uk, bg, ...).
+    expect(DETECTION_CODES).toHaveLength(34);
+    for (const code of DETECTION_CODES) {
+      expect(resolveDetectedLanguage(code), code).not.toBe('auto');
+    }
+  });
+});
+
+describe('detected language handling', () => {
+  it('scopes memory by the resolved base language while history stores the raw regional code', async () => {
+    const ctx = setup({
+      memory: {
+        terms: [
+          memoryTerm({ id: 't-de', phrase: 'Kubernetes', pronunciations: ['kubernets'], language: 'de' }),
+          memoryTerm({ id: 't-en', phrase: 'TypeScript', pronunciations: ['type script'], language: 'en' }),
+        ],
+      },
+    });
+    ctx.transcriber.transcript = {
+      text: 'deploy kubernets and type script',
+      durationSeconds: 1,
+      detectedLanguage: 'de-DE',
+    };
+    await ctx.service.startRecording();
+    await ctx.service.stopAndProcess();
+    // de-DE resolves to de for processing: the German-scoped term fires, the
+    // English-scoped one does not (an 'auto' scope would have fixed both).
+    expect(ctx.sink.delivered).toEqual(['deploy Kubernetes and type script']);
+    expect(ctx.service.mostRecent?.memoryHitIds).toEqual(['t-de']);
+    expect(ctx.service.mostRecent?.language).toBe('de-DE');
+  });
+
+  it('applies a Russian-scoped term when detection reports ru, and not an English-scoped one', async () => {
+    const ctx = setup({
+      memory: {
+        terms: [
+          memoryTerm({ id: 't-ru', phrase: 'Kubernetes', pronunciations: ['kubernets'], language: 'ru' }),
+          memoryTerm({ id: 't-en', phrase: 'TypeScript', pronunciations: ['type script'], language: 'en' }),
+        ],
+      },
+    });
+    ctx.transcriber.transcript = {
+      text: 'deploy kubernets and type script',
+      durationSeconds: 1,
+      detectedLanguage: 'ru',
+    };
+    await ctx.service.startRecording();
+    await ctx.service.stopAndProcess();
+    // Previously ru collapsed to the pin (auto), so every language's rules ran.
+    expect(ctx.sink.delivered).toEqual(['deploy Kubernetes and type script']);
+    expect(ctx.service.mostRecent?.memoryHitIds).toEqual(['t-ru']);
+    expect(ctx.service.mostRecent?.language).toBe('ru');
+  });
+
+  it('processes an unknown detected code as auto, stores it raw, and warns without transcript text', async () => {
+    const transcriptText = 'kubernets and type script';
+    const ctx = setup({
+      memory: {
+        terms: [
+          memoryTerm({ id: 't-en', phrase: 'Kubernetes', pronunciations: ['kubernets'], language: 'en' }),
+          memoryTerm({ id: 't-ru', phrase: 'TypeScript', pronunciations: ['type script'], language: 'ru' }),
+        ],
+      },
+    });
+    ctx.transcriber.transcript = { text: transcriptText, durationSeconds: 1, detectedLanguage: 'is' };
+    await ctx.service.startRecording();
+    await ctx.service.stopAndProcess();
+    // Effective 'auto': terms from every language participate.
+    expect(ctx.sink.delivered).toEqual(['Kubernetes and TypeScript']);
+    // But history records what Deepgram actually said.
+    expect(ctx.service.mostRecent?.language).toBe('is');
+    expect(ctx.diagnostics).toHaveLength(1);
+    expect(ctx.diagnostics[0]?.category).toBe('language');
+    expect(ctx.diagnostics[0]?.message).toContain("'is'");
+    // The warning names the code only — never the transcript or the key.
+    expect(ctx.diagnostics[0]?.message).not.toContain(transcriptText);
+    expect(ctx.diagnostics[0]?.message).not.toContain('test-key');
+  });
+
+  it('warns when detection left Nova-3, but not for a regional form Nova-3 handles', async () => {
+    const ctx = setup();
+    ctx.transcriber.transcript = { text: 'hello', durationSeconds: 1, detectedLanguage: 'en-US' };
+    await ctx.service.startRecording();
+    await ctx.service.stopAndProcess();
+    expect(ctx.service.mostRecent?.language).toBe('en-US');
+    expect(ctx.diagnostics).toEqual([]);
+  });
+
+  it('stores the requested pin when nothing is detected, with no diagnostic', async () => {
+    const ctx = setup({ settings: { languagePin: 'de' } });
+    ctx.transcriber.transcript = { text: 'hallo', durationSeconds: 1, detectedLanguage: null };
+    await ctx.service.startRecording();
+    await ctx.service.stopAndProcess();
+    expect(ctx.service.mostRecent?.language).toBe('de');
+    expect(ctx.diagnostics).toEqual([]);
+  });
+
+  it('round-trips a raw regional code into history', async () => {
+    const ctx = setup();
+    ctx.transcriber.transcript = { text: 'hallo', durationSeconds: 1, detectedLanguage: 'de-DE' };
+    await ctx.service.startRecording();
+    await ctx.service.stopAndProcess();
+    expect(ctx.service.mostRecent?.language).toBe('de-DE');
   });
 });
 

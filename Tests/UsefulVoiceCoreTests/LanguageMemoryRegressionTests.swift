@@ -177,6 +177,29 @@ import Testing
                 > KeytermBudget.estimatedTokens(for: "GPT4"))
     }
 
+    // Mirrors windows/tests/keytermBudget.test.ts: CJK is reachable via the
+    // `auto` language pin, and the previous flat ~5-chars-per-token estimate
+    // undercounted these scripts by roughly 5x, so a CJK dictionary could pass
+    // the budget check and then be rejected by the API.
+
+    @Test func testCJKCostsFarMoreThanLatinOfSameLength() {
+        let japanese = "こんにちは世界"
+        let latin = "abcdefg"
+        #expect(japanese.count == latin.count)
+        #expect(KeytermBudget.estimatedTokens(for: japanese)
+                > KeytermBudget.estimatedTokens(for: latin) * 3)
+    }
+
+    @Test func testHanAndHangulCostRoughlyOneTokenPerCharacter() {
+        #expect(KeytermBudget.estimatedTokens(for: "中文字符测试") >= 6)
+        #expect(KeytermBudget.estimatedTokens(for: "한국어테스트") >= 5)
+    }
+
+    @Test func testCyrillicCostsMoreThanLatin() {
+        #expect(KeytermBudget.estimatedTokens(for: "Привет")
+                > KeytermBudget.estimatedTokens(for: "Privet"))
+    }
+
     @Test func testLongIdentifierCostsMoreThanOneToken() {
         // A single "word" that is really a long identifier is split by the
         // tokenizer; the estimate must not treat it as free.

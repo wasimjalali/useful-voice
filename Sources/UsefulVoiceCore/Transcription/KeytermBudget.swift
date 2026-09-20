@@ -40,13 +40,45 @@ public enum KeytermBudget {
         let words = trimmed.split(whereSeparator: { $0.isWhitespace }).count
         // ~5 characters per subword token is the conservative end of common BPE
         // vocabularies for Latin script; round up so we never undercount.
-        let byLength = Int((Double(trimmed.count) / 5.0).rounded(.up))
+        // Non-Latin scripts split far more aggressively per character — kana,
+        // Han and Hangul cost roughly one token each — so the previous flat
+        // ~5-chars-per-token assumption undercounted them by roughly 5x. CJK is
+        // reachable via the `auto` language pin, so a CJK dictionary could
+        // exceed the ceiling while the estimate still looked safe. Weigh each
+        // Unicode scalar (a code point, not a grapheme cluster) by script.
+        var lengthTokens = 0
+        for scalar in trimmed.unicodeScalars {
+            lengthTokens += Self.tokenWeight(scalar)
+        }
+        let byLength = Int((Double(lengthTokens) / 5.0).rounded(.up))
 
         // Punctuation and internal separators are usually their own tokens.
         let separators = trimmed.filter { !$0.isLetter && !$0.isNumber }.count
         let base = max(words, byLength) + separators
 
         return max(1, base)
+    }
+
+    /// How many BPE tokens one Unicode scalar plausibly costs, in units of
+    /// "average Latin characters per token" (~5 for the conservative end of
+    /// common vocabularies). Dividing by 5 afterwards keeps one consistent
+    /// currency.
+    private static func tokenWeight(_ scalar: Unicode.Scalar) -> Int {
+        let code = scalar.value
+        // Han, Hiragana, Katakana, Hangul: roughly one token per character.
+        if (code >= 0x3040 && code <= 0x30FF)      // kana
+            || (code >= 0x3400 && code <= 0x4DBF)  // CJK ext A
+            || (code >= 0x4E00 && code <= 0x9FFF)  // CJK unified
+            || (code >= 0xF900 && code <= 0xFAFF)  // CJK compat
+            || (code >= 0xAC00 && code <= 0xD7AF)  // Hangul syllables
+            || (code >= 0x1100 && code <= 0x11FF) { // Hangul jamo
+            return 5
+        }
+        // Cyrillic, Greek, Arabic, Hebrew, Thai, Devanagari, Myanmar etc.:
+        // split more than Latin.
+        if code >= 0x0370 && code <= 0x0FFF { return 3 }
+        if code >= 0x0E00 && code <= 0x109F { return 3 }
+        return 1
     }
 
     /// Total estimated cost of a keyterm list.

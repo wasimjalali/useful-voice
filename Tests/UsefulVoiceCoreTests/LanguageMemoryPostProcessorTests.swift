@@ -86,6 +86,30 @@ import Foundation
         #expect(result.snippetIDs.isEmpty)
     }
 
+    @Test func testPassTwoStillRunsWhenRulesFiredWithNetZeroOutput() {
+        // A net-zero rule cycle restores the input text: A rewrites it, a
+        // middle rule misses on the intermediate text, B restores it. The
+        // pass-two skip requires `appliedRuleIDs.isEmpty` — text equality
+        // alone is NOT sufficient, because a rule evaluated against the
+        // intermediate state can match the restored text. Without pass two,
+        // the middle rule's "it slept" is silently dropped.
+        // Sorted longest-first by effectiveRules: A(16) -> X(11) -> B(9).
+        let ruleA = ReplacementRule(match: "the cat sat here", replacement: "a dog sat")
+        let ruleX = ReplacementRule(match: "the cat sat", replacement: "it slept")
+        let ruleB = ReplacementRule(match: "a dog sat", replacement: "the cat sat here")
+        let snapshot = LanguageMemorySnapshot(replacements: [ruleA, ruleX, ruleB])
+
+        let result = LanguageMemoryPostProcessor.applyDeterministic(
+            to: "the cat sat here",
+            snapshot: snapshot,
+            language: .en
+        )
+
+        #expect(result.text == "it slept here")
+        // Pass one fires A then B; pass two fires X — merged first-seen order.
+        #expect(result.replacementRuleIDs == [ruleA.id, ruleB.id, ruleX.id])
+    }
+
     @Test func testPassTwoCatchesRuleTargetIntroducedBySnippet() {
         // The snippet expansion creates a match for a rule that did not fire
         // in pass one; pass two must still resolve it.

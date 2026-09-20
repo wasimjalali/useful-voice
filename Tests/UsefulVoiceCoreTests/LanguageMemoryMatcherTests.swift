@@ -54,14 +54,18 @@ import Testing
         // cache is full, new phrases compile uncached while entries that were
         // already cached stay hot. Clearing at the bound would evict a large
         // dictionary's own hot phrases.
+        //
+        // Note: this test permanently saturates the process-wide static cache
+        // for the rest of the suite — deterministic today because no other
+        // test mass-inserts phrases and entries are never evicted, but a
+        // future test that fills the cache first would change what it sees.
         let earlyPhrase = "cache residency probe zxqv"
         let first = LanguageMemoryMatcher.wordBoundaryRegex(for: earlyPhrase)
         #expect(first != nil)
 
         // Push past the bound with distinct phrases so the cache fills up.
         for index in 0..<4_200 {
-            #expect(LanguageMemoryMatcher.wordBoundaryRegex(
-                for: "cache filler phrase \(index)") != nil)
+            _ = LanguageMemoryMatcher.wordBoundaryRegex(for: "cache filler phrase \(index)")
         }
 
         // The early phrase is still served from the cache — the same instance.

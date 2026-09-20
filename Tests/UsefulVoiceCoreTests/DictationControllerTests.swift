@@ -14,6 +14,8 @@ final class FakeRecorder: AudioRecording {
     /// Whether the fake recording "heard" speech. Defaults true so normal tests
     /// model a real dictation; a test sets it false to exercise the silence gate.
     var didCaptureSpeech = true
+    /// Set to make `stop()` throw, exercising the failed-stop early return.
+    var stopError: Error?
     var configuredSilenceTimeout: TimeInterval?
 
     func start(to url: URL) throws {
@@ -21,6 +23,7 @@ final class FakeRecorder: AudioRecording {
         try Data(count: bytesToWrite).write(to: url)
     }
     func stop() throws -> URL {
+        if let stopError { throw stopError }
         guard let url = startedURL else { throw AudioRecorderError.notRecording }
         return url
     }
@@ -813,5 +816,151 @@ final class CapturingProvider: TranscriptionProvider {
         await controller.toggleAndWait()
         #expect(languageAtFallback == .de)
         #expect(records.first?.language == "de-DE")
+    }
+
+    /// An auto pin whose response carries no detected_language stores the
+    /// requested mode itself: `"auto"`, not nil and not a re-resolved value.
+    @Test func testAutoPinWithAbsentDetectionStoresAuto() async throws {
+        let provider = FakeProvider(name: "fake",
+            result: .success(Transcript(text: "hello",
+                                        detectedLanguage: nil, durationSeconds: 1)))
+        var languageAtFormat: LanguagePin?
+        let controller = makeFormattingController(
+            providers: [provider], languagePin: .auto) { raw, ctx in
+            languageAtFormat = ctx.language
+            return FormattingResult(text: raw, newTerms: [])
+        }
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(languageAtFormat == .auto)
+        #expect(records.first?.language == "auto")
+    }
+
+    /// Retry must re-send the request the original dictation made: the pin and
+    /// bias list captured at record time, not whatever `hint()` would read now.
+    /// After the pin changes post-failure, the provider still receives pin A.
+    @Test func testRetrySendsTheOriginalCapturedHintAfterPinChange() async throws {
+        let failing = CapturingProvider(name: "p1",
+            result: .failure(ProviderError.http(500, "boom")))
+        let working = CapturingProvider(name: "p2",
+            result: .success(Transcript(text: "rescued",
+                                        detectedLanguage: nil, durationSeconds: nil)))
+        var attempt = 0
+        // Live settings: the pin flips after the first dictation fails.
+        var livePin: LanguagePin = .en
+        let controller = DictationController(
+            recorder: recorder,
+            providers: { attempt += 1; return attempt == 1 ? [failing] : [working] },
+            store: store,
+            hint: {
+                TranscriptionHint(languagePin: livePin,
+                                  dictionaryWords: ["live-\(livePin.rawValue)"])
+            },
+            recordingsToKeep: 10,
+            deliver: { [weak self] text, done in self?.delivered.append(text); done() },
+            record: { [weak self] record in self?.records.append(record) },
+            context: {
+                FormattingContext(appBundleID: nil,
+                                  dictionaryWords: ["ctx-\(livePin.rawValue)"],
+                                  language: livePin)
+            })
+
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(controller.canRetry)
+        #expect(failing.hints.first?.languagePin == .en)
+
+        // The user pins a different language before clicking Retry.
+        livePin = .de
+        await controller.retryLastAndWait()
+        #expect(delivered == ["rescued"])
+        // The retry re-sent the original request: pin A and its bias list, not
+        // the live pin B `hint()` would have produced.
+        let retryHint = try #require(working.hints.first)
+        #expect(retryHint.languagePin == .en)
+        #expect(retryHint.dictionaryWords == ["ctx-en"])
+    }
+
+    /// Regression: a raw-mode dictation that early-returns on the silent path
+    /// used to leave `pendingRawMode` set, so the next normal dictation ran
+    /// rawTransform instead of the formatter. The raw intent dies with the
+    /// dictation that never reached process().
+    @Test func testSilentRawModeDoesNotLeakIntoNextDictation() async throws {
+        recorder.didCaptureSpeech = false
+        let provider = FakeProvider(name: "fake",
+            result: .success(Transcript(text: "second",
+                                        detectedLanguage: nil, durationSeconds: nil)))
+        var formatRan = false
+        var rawTransformRan = false
+        let controller = DictationController(
+            recorder: recorder,
+            providers: { [provider] },
+            store: store,
+            hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
+            recordingsToKeep: 10,
+            deliver: { [weak self] text, done in self?.delivered.append(text); done() },
+            record: { [weak self] record in self?.records.append(record) },
+            format: { raw, _ in
+                formatRan = true
+                return FormattingResult(text: "formatted: \(raw)", newTerms: [])
+            },
+            rawTransform: { raw, _ in
+                rawTransformRan = true
+                return FormattingResult(text: "raw: \(raw)", newTerms: [], mode: .raw)
+            })
+
+        controller.toggle()                  // start
+        controller.toggle(rawMode: true)     // stop, raw — silent: early return
+        await controller.toggleAndWait()
+        #expect(delivered == [])
+        #expect(!formatRan && !rawTransformRan)
+
+        recorder.didCaptureSpeech = true
+        controller.toggle()                  // a fresh dictation, normal stop
+        await controller.toggleAndWait()
+        #expect(formatRan)
+        #expect(!rawTransformRan)
+        #expect(delivered == ["formatted: second"])
+    }
+
+    /// Same leak on the failed-stop path: `recorder.stop()` throws before
+    /// process() consumes the flag, so it must be cleared at the early return.
+    @Test func testFailedStopRawModeDoesNotLeakIntoNextDictation() async throws {
+        struct StopFailed: Error {}
+        recorder.stopError = StopFailed()
+        let provider = FakeProvider(name: "fake",
+            result: .success(Transcript(text: "second",
+                                        detectedLanguage: nil, durationSeconds: nil)))
+        var formatRan = false
+        var rawTransformRan = false
+        let controller = DictationController(
+            recorder: recorder,
+            providers: { [provider] },
+            store: store,
+            hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
+            recordingsToKeep: 10,
+            deliver: { [weak self] text, done in self?.delivered.append(text); done() },
+            record: { [weak self] record in self?.records.append(record) },
+            format: { raw, _ in
+                formatRan = true
+                return FormattingResult(text: "formatted: \(raw)", newTerms: [])
+            },
+            rawTransform: { raw, _ in
+                rawTransformRan = true
+                return FormattingResult(text: "raw: \(raw)", newTerms: [], mode: .raw)
+            })
+
+        controller.toggle()                  // start
+        controller.toggle(rawMode: true)     // stop, raw — stop() throws
+        await controller.toggleAndWait()
+        #expect(delivered == [])
+        #expect(!formatRan && !rawTransformRan)
+
+        recorder.stopError = nil
+        controller.toggle()                  // a fresh dictation, normal stop
+        await controller.toggleAndWait()
+        #expect(formatRan)
+        #expect(!rawTransformRan)
+        #expect(delivered == ["formatted: second"])
     }
 }

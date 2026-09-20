@@ -401,11 +401,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let audioURL = URL(fileURLWithPath: audioPath)
         // Reprocess in the language the dictation ran in, not whatever is
         // pinned now — a German record re-runs its German rules even if the
-        // user has since switched to English. The stored value is the raw
-        // detected code, so it goes through `detectedCode:`: an unknown stored
-        // code resolves to `.auto` (detect_language) rather than being sent to
-        // the provider.
-        let recordPin = record.language.map { LanguagePin(detectedCode: $0) }
+        // user has since switched to English. The stored value is a
+        // detected-code-or-requested-pin union, so it goes through
+        // `recordedCode:`: a stored `multi` re-sends `language=multi`, an
+        // unknown stored code resolves to `.auto` (detect_language) rather
+        // than being sent to the provider.
+        let recordPin = record.language.map { LanguagePin(recordedCode: $0) }
             ?? settings.languagePin
         let hint = transcriptionHint(languageMemory: languageMemory,
                                      languagePin: recordPin)
@@ -470,7 +471,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let reprocessed = DictationRecord(
             text: formatted.text,
             createdAt: Date(),
-            language: transcript.detectedLanguage ?? record.language,
+            language: transcript.sanitizedDetectedLanguage ?? record.language,
             provider: "\(usedProvider ?? record.provider) reprocess",
             durationSeconds: transcript.durationSeconds ?? record.durationSeconds,
             mode: formatted.mode,

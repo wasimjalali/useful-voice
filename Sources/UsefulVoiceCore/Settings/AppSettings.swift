@@ -129,6 +129,35 @@ public struct LanguagePin: RawRepresentable, Hashable, Sendable, Codable {
         self = .auto
     }
 
+    /// A pin for a `DictationRecord.language` value.
+    ///
+    /// The stored field is a **union**: it holds the raw detected code when the
+    /// provider reported one, otherwise the pin the dictation requested. That
+    /// means a stored `"multi"` is the request mode the user pinned, not a
+    /// detected language — and `init(detectedCode:)` would wrongly widen it to
+    /// `.auto`, turning the reprocess request into `detect_language` instead of
+    /// `language=multi`.
+    ///
+    /// Separate from `detectedCode:` for exactly that reason: a stored pin can
+    /// be a *request mode* (`multi`) that is sendable but is not a detected
+    /// language, so the detected-value initializer must not decide it. `auto`
+    /// maps to `.auto` and `multi` to `.multilingual` here; every other value
+    /// is a detected code (or a pinned concrete language, which resolves the
+    /// same way), so it delegates to `init(detectedCode:)` — `de` stays `de`,
+    /// `de-DE` resolves to `de`, and anything unknown falls back to `.auto`.
+    public init(recordedCode: String) {
+        let trimmed = recordedCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed.lowercased() == "auto" {
+            self = .auto
+            return
+        }
+        if trimmed.lowercased() == "multi" {
+            self = .multilingual
+            return
+        }
+        self.init(detectedCode: trimmed)
+    }
+
     /// Whether the stored value names something this build still recognises.
     ///
     /// Distinguishes "detection" from "a language this build dropped", which are

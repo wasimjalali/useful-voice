@@ -330,6 +330,49 @@ struct LanguagePinTests {
         #expect(LanguagePin(detectedCode: "") == .auto)
         #expect(LanguagePin(detectedCode: "   ") == .auto)
     }
+
+    /// Edge shapes a detected value can take: a leading separator, extra
+    /// subtags and single letters all resolve safely rather than producing an
+    /// unsendable or mis-scoped pin.
+    @Test func testDetectedCodeHandlesEdgeShapes() {
+        // A leading separator leaves an empty base subtag — not a language.
+        #expect(LanguagePin(detectedCode: "-de") == .auto)
+        // Extra subtags still land on the base language.
+        #expect(LanguagePin(detectedCode: "de-DE-extra") == .de)
+        // Single letters are not catalogue codes.
+        #expect(LanguagePin(detectedCode: "d") == .auto)
+        #expect(LanguagePin(detectedCode: "e") == .auto)
+    }
+
+    // MARK: - Recorded-code resolution
+
+    /// `DictationRecord.language` is a detected-code-or-requested-pin union.
+    /// `recordedCode:` exists because a stored `multi` is the request mode the
+    /// user pinned — sendable as `language=multi` — and `detectedCode:` would
+    /// wrongly widen it to `.auto` (detect_language). THE regression guard for
+    /// the multi-pin reprocess defect.
+    @Test func testRecordedCodeKeepsTheStoredMultiPin() {
+        #expect(LanguagePin(recordedCode: "multi") == .multilingual)
+        #expect(LanguagePin(recordedCode: " multi ") == .multilingual)
+    }
+
+    /// A stored `auto` is detection, not a language.
+    @Test func testRecordedCodeMapsAutoToAuto() {
+        #expect(LanguagePin(recordedCode: "auto") == .auto)
+        #expect(LanguagePin(recordedCode: "AUTO") == .auto)
+    }
+
+    /// Everything else is a detected code (or a pinned concrete language,
+    /// which resolves identically), so it delegates to `detectedCode:` —
+    /// regional tags resolve through the catalogue's two-step match and
+    /// unknown values scope as auto.
+    @Test func testRecordedCodeDelegatesDetectedValues() {
+        #expect(LanguagePin(recordedCode: "de") == .de)
+        #expect(LanguagePin(recordedCode: "de-DE") == .de)
+        #expect(LanguagePin(recordedCode: "de-CH") == LanguagePin(rawValue: "de-CH"))
+        #expect(LanguagePin(recordedCode: "is") == .auto)
+        #expect(LanguagePin(recordedCode: "") == .auto)
+    }
 }
 
 /// `MemoryLanguage` is persisted inside `language-memory.json`, so it must decode

@@ -173,6 +173,9 @@ public final class DictationController {
         do {
             audioURL = try recorder.stop()
         } catch {
+            // The raw intent dies with this dictation: a stale flag would be
+            // consumed by retryLast() or the next dictation.
+            pendingRawMode = false
             state = .error("Couldn't stop recording: \(error.localizedDescription)")
             return
         }
@@ -181,6 +184,7 @@ public final class DictationController {
         // fake transcript, which then gets formatted, pasted and left on the
         // clipboard. Discard here so nothing is uploaded, billed or delivered.
         guard recorder.didCaptureSpeech else {
+            pendingRawMode = false   // the raw intent dies with this dictation
             try? store.prune(keep: recordingsToKeep)
             state = .error("No speech detected.")
             return
@@ -207,8 +211,15 @@ public final class DictationController {
         let formattingContext = presetContext ?? context()
         // One hint for the whole chain: `hint()` reads live settings, so
         // calling it per provider could hand each provider a different request
-        // if the pin changed mid-chain.
-        let capturedHint = hint()
+        // if the pin changed mid-chain. On retry the FormattingContext captured
+        // at record time carries both the pin and the bias list, so the request
+        // is re-sent verbatim — a retry must ask for what the original
+        // dictation asked, not whatever is pinned now (the same "format for
+        // the app the user dictated into" invariant as presetContext).
+        let capturedHint = presetContext.map {
+            TranscriptionHint(languagePin: $0.language,
+                              dictionaryWords: $0.dictionaryWords)
+        } ?? hint()
         let chain = providers()
         guard !chain.isEmpty else {
             state = .error("No transcription provider configured. Open Settings.")
@@ -272,19 +283,7 @@ public final class DictationController {
         // shareable log line or a strange history row: an unknown detection is
         // processed as `auto` (permissive rather than wrong-language) but
         // recorded as reported, and is never sent back to the provider.
-        let rawDetected: String? = transcript.detectedLanguage.flatMap { raw in
-            let tagCharacters = raw
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .unicodeScalars
-                .filter { scalar in
-                    scalar.value == 45                        // '-'
-                        || (65...90).contains(scalar.value)   // A-Z
-                        || (97...122).contains(scalar.value)  // a-z
-                }
-                .prefix(35)
-            let sanitized = String(String.UnicodeScalarView(tagCharacters))
-            return sanitized.isEmpty ? nil : sanitized
-        }
+        let rawDetected = transcript.sanitizedDetectedLanguage
         let effectivePin = rawDetected.map { LanguagePin(detectedCode: $0) }
             ?? formattingContext.language
         // App identity, snippets, replacement rules and dictionary context stay

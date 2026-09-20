@@ -34,24 +34,54 @@ public enum LanguageMemoryPostProcessor {
             to: firstReplacement.text,
             language: language
         )
-        // Second pass catches text introduced by snippet expansions. Rules that
-        // already fired are skipped: re-running them is not idempotent when a
-        // rule's replacement still contains its own match, and the result was
-        // visible corruption — alias "Karko" -> phrase "Karko AI" turned "Karko"
-        // into "Karko AI AI", and "Useful" -> "Useful Voice" became "Useful Voice
-        // Voice". A rule matches a literal phrase, so re-applying it to text it
-        // already produced can only duplicate.
-        let appliedInFirstPass = Set(firstReplacement.appliedRuleIDs)
-        let remainingRules = rules.filter { !appliedInFirstPass.contains($0.id) }
-        let finalReplacement = ReplacementEngine.apply(
-            remainingRules,
-            to: snippet.text,
-            language: language
-        )
+        // Second pass catches text introduced by snippet expansions — and a
+        // match a LATER rule creates for an EARLIER one: rules apply
+        // sequentially over the evolving text, so when "the cat -> a cat" has
+        // already missed before "teh -> the" produces "the cat", only a second
+        // pass resolves it. Rules that already fired are skipped: re-running
+        // them is not idempotent when a rule's replacement still contains its
+        // own match, and the result was visible corruption — alias "Karko" ->
+        // phrase "Karko AI" turned "Karko" into "Karko AI AI", and "Useful" ->
+        // "Useful Voice" became "Useful Voice Voice".
+        //
+        // Pass two is skipped only when it is a guaranteed deterministic
+        // replay of pass one — pass one fired NO rules (so `remainingRules`
+        // would be all of `rules` again) AND the text it would see is
+        // byte-identical to what pass one saw. Fired-but-net-zero output does
+        // NOT qualify: a cycle like "the cat sat here" -> "a dog sat" ->
+        // "the cat sat here" leaves the input text restored, but a rule that
+        // was evaluated against the intermediate text state can match the
+        // restored text in pass two. Byte-level comparison matters too —
+        // canonical `==` folds NFC/NFD while the ICU matchers do not.
+        let finalReplacement: ReplacementResult
+        let passTwoIsDeterministicReplay =
+            firstReplacement.appliedRuleIDs.isEmpty
+            && snippet.text.utf8.elementsEqual(firstReplacement.text.utf8)
+            && firstReplacement.text.utf8.elementsEqual(text.utf8)
+        if passTwoIsDeterministicReplay {
+            finalReplacement = ReplacementResult(text: snippet.text, appliedRuleIDs: [])
+        } else {
+            let appliedInFirstPass = Set(firstReplacement.appliedRuleIDs)
+            let remainingRules = rules.filter { !appliedInFirstPass.contains($0.id) }
+            finalReplacement = ReplacementEngine.apply(
+                remainingRules,
+                to: snippet.text,
+                language: language
+            )
+        }
+        // Pass one, snippet expansion and pass two often leave the text
+        // untouched, so the four variants are frequently the same string.
+        // Matching terms once per distinct text — not once per stage — keeps
+        // the result identical without re-scanning identical inputs. Dedupe is
+        // keyed on UTF-8 bytes, not `==`: canonical equality folds NFC/NFD
+        // forms that the ICU word-boundary matchers treat as different text.
+        var seenTexts = Set<[UInt8]>()
+        let distinctTexts = [text, firstReplacement.text, snippet.text, finalReplacement.text]
+            .filter { seenTexts.insert(Array($0.utf8)).inserted }
         let memoryHitIDs = matchingTermIDs(
             terms: snapshot.terms,
             language: language,
-            texts: [text, firstReplacement.text, snippet.text, finalReplacement.text]
+            texts: distinctTexts
         )
 
         return LanguageMemoryProcessingResult(
@@ -128,10 +158,13 @@ public enum LanguageMemoryPostProcessor {
     }
 
     private static func mergedIDs(_ groups: [[UUID]]) -> [UUID] {
-        groups.reduce(into: [UUID]()) { result, ids in
-            for id in ids where !result.contains(id) {
+        var seen = Set<UUID>()
+        var result: [UUID] = []
+        for ids in groups {
+            for id in ids where seen.insert(id).inserted {
                 result.append(id)
             }
         }
+        return result
     }
 }

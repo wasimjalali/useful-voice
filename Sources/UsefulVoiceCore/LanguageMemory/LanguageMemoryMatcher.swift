@@ -57,8 +57,11 @@ public enum LanguageMemoryMatcher {
     /// lock keeps the dictionary itself safe.
     private static let cacheLock = NSLock()
     private static var cache: [String: NSRegularExpression] = [:]
-    /// Bound on the cache so a pathological stream of distinct phrases (for
-    /// example a huge imported snippet set) cannot grow it without limit.
+    /// Bound on how many compiled phrases are retained — not on what works.
+    /// Once the cache is full, a new phrase still compiles and matches; it is
+    /// simply not stored. Clearing at the bound would evict a large
+    /// dictionary's own hot entries and recompile every one of them on the
+    /// next dictation, which is exactly the cost this cache exists to remove.
     private static let cacheLimit = 4096
 
     /// Compiles (or reuses) the word-boundary matcher for `phrase`.
@@ -85,8 +88,9 @@ public enum LanguageMemoryMatcher {
         }
 
         cacheLock.lock()
-        if cache.count >= cacheLimit { cache.removeAll(keepingCapacity: true) }
-        cache[trimmed] = regex
+        if cache.count < cacheLimit {
+            cache[trimmed] = regex
+        }
         cacheLock.unlock()
         return regex
     }

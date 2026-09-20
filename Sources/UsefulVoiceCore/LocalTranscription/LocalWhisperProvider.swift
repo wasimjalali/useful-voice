@@ -11,9 +11,11 @@ import Foundation
 public final class LocalWhisperProvider: TranscriptionProvider, @unchecked Sendable {
     public let name = "Whisper (local)"
 
+    /// The model this provider transcribes with, so the app layer can tell
+    /// when a settings change requires a different provider.
+    public let model: WhisperModel
     private let engine: any LocalSpeechEngine
     private let store: LocalModelStore
-    private let model: WhisperModel
 
     /// Fires with each new segment's text as decoding produces it. Set by the
     /// app layer to show partial results while a dictation is still processing;

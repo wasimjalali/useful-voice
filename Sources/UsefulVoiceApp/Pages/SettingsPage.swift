@@ -5,11 +5,17 @@ import UsefulVoiceCore
 struct SettingsPage: View {
     let settings: AppSettings
     @ObservedObject var viewModel: UsefulVoiceViewModel
+    /// The same manager instance the app layer wired up — observed here so
+    /// download progress and availability redraw this page live.
+    @ObservedObject private var models: LocalModelManager
 
+    @State private var engine: TranscriptionEngineChoice = .deepgram
     @State private var deepgramKey = ""
     @State private var hasDeepgramKey = false
     @State private var formattingEnabled = true
     @State private var spokenPunctuationEnabled = false
+    /// Set when the user asks to delete a model, driving the confirmation.
+    @State private var modelPendingDeletion: WhisperModel?
 
     @State private var silenceTimeout = 60.0
     @State private var recordingsToKeep = 10
@@ -21,6 +27,12 @@ struct SettingsPage: View {
     @State private var isTesting = false
     @State private var testResult: ProviderHealthResult?
     @StateObject private var diagnostics = DiagnosticsViewModel()
+
+    init(settings: AppSettings, viewModel: UsefulVoiceViewModel) {
+        self.settings = settings
+        self.viewModel = viewModel
+        _models = ObservedObject(wrappedValue: viewModel.models)
+    }
 
     /// The Deepgram listen endpoint, shown (redacted) in the connection test.
     private let deepgramEndpoint = "https://api.deepgram.com/v1/listen"
@@ -42,6 +54,25 @@ struct SettingsPage: View {
         }
         .background(Theme.surface)
         .onAppear(perform: load)
+        .confirmationDialog(
+            "Delete \(modelPendingDeletion?.displayName ?? "model")?",
+            isPresented: Binding(
+                get: { modelPendingDeletion != nil },
+                set: { if !$0 { modelPendingDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let model = modelPendingDeletion {
+                    models.delete(model)
+                    viewModel.refreshConfig()
+                }
+                modelPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) { modelPendingDeletion = nil }
+        } message: {
+            Text("The weights file is removed from this Mac. You can download it again later.")
+        }
     }
 
     private var header: some View {
@@ -164,52 +195,287 @@ struct SettingsPage: View {
     private var speechSection: some View {
         settingsSection(title: "Speech") {
             VStack(alignment: .leading, spacing: 16) {
-                secretField(
-                    title: "Deepgram API key",
-                    placeholder: hasDeepgramKey
-                        ? "Saved in Keychain. Enter a new key to replace it."
-                        : "Enter your Deepgram API key",
-                    value: $deepgramKey,
-                    hasSavedValue: hasDeepgramKey,
-                    clear: {
-                        Keychain.delete(account: "deepgram-key")
-                        hasDeepgramKey = false
-                        viewModel.refreshConfig()
-                    }
-                )
-
-                Divider().overlay(Theme.line)
-
                 settingsRow(
-                    "Auto-format transcript",
-                    detail: "Adds punctuation, capitalization and formatted numbers"
+                    "Transcription engine",
+                    detail: engineDetail
                 ) {
-                    Toggle("", isOn: $formattingEnabled).labelsHidden()
+                    BrandedMenuPicker(
+                        title: "Engine",
+                        selection: engineBinding,
+                        options: TranscriptionEngineChoice.allCases.map {
+                            ($0.displayName, $0)
+                        }
+                    )
+                    .frame(width: 190)
                 }
 
                 Divider().overlay(Theme.line)
 
-                settingsRow(
-                    "Speak punctuation",
-                    detail: "Say “period”, “comma” or “new line” to insert it. English only."
-                ) {
-                    Toggle("", isOn: $spokenPunctuationEnabled).labelsHidden()
+                switch engine {
+                case .deepgram:
+                    deepgramContent
+                case .whisperLocal:
+                    localContent
                 }
 
-                Divider().overlay(Theme.line)
+                if engine == .deepgram {
+                    Divider().overlay(Theme.line)
 
-                // Disclosed because it is charged and was previously invisible:
-                // the app sends `keyterm` for every dictionary term, on every
-                // request, and Deepgram bills Keyterm Prompting separately.
-                // https://deepgram.com/pricing
-                InlineNote(
-                    text: "Deepgram bills Keyterm Prompting separately from transcription: "
-                        + "$0.0013 per minute on pay-as-you-go, on top of $0.0043 per minute "
-                        + "for Nova-3. That is about 30% more per minute while your dictionary "
-                        + "is in use. Smart formatting and language detection are included."
-                )
+                    // Disclosed because it is charged and was previously invisible:
+                    // the app sends `keyterm` for every dictionary term, on every
+                    // request, and Deepgram bills Keyterm Prompting separately.
+                    // https://deepgram.com/pricing
+                    InlineNote(
+                        text: "Deepgram bills Keyterm Prompting separately from transcription: "
+                            + "$0.0013 per minute on pay-as-you-go, on top of $0.0043 per minute "
+                            + "for Nova-3. That is about 30% more per minute while your dictionary "
+                            + "is in use. Smart formatting and language detection are included."
+                    )
+                }
             }
         }
+    }
+
+    private var engineDetail: String {
+        switch engine {
+        case .deepgram:
+            return "Audio is transcribed by Deepgram's Nova-3 API"
+        case .whisperLocal:
+            return "Transcribes on this Mac — no key, nothing leaves the device"
+        }
+    }
+
+    private var engineBinding: Binding<TranscriptionEngineChoice> {
+        Binding(
+            get: { engine },
+            set: { newValue in
+                engine = newValue
+                settings.transcriptionEngine = newValue
+                viewModel.refreshConfig()
+            }
+        )
+    }
+
+    private var deepgramContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            secretField(
+                title: "Deepgram API key",
+                placeholder: hasDeepgramKey
+                    ? "Saved in Keychain. Enter a new key to replace it."
+                    : "Enter your Deepgram API key",
+                value: $deepgramKey,
+                hasSavedValue: hasDeepgramKey,
+                clear: {
+                    Keychain.delete(account: "deepgram-key")
+                    hasDeepgramKey = false
+                    viewModel.refreshConfig()
+                }
+            )
+
+            Divider().overlay(Theme.line)
+
+            settingsRow(
+                "Auto-format transcript",
+                detail: "Adds punctuation, capitalization and formatted numbers"
+            ) {
+                Toggle("", isOn: $formattingEnabled).labelsHidden()
+            }
+
+            Divider().overlay(Theme.line)
+
+            settingsRow(
+                "Speak punctuation",
+                detail: "Say “period”, “comma” or “new line” to insert it. English only."
+            ) {
+                Toggle("", isOn: $spokenPunctuationEnabled).labelsHidden()
+            }
+
+            Divider().overlay(Theme.line)
+
+            // Disclosed because it is charged and was previously invisible:
+            // the app sends `keyterm` for every dictionary term, on every
+            // request, and Deepgram bills Keyterm Prompting separately.
+            // https://deepgram.com/pricing
+            InlineNote(
+                text: "Deepgram bills Keyterm Prompting separately from transcription — "
+                    + "$0.0013 per minute on pay-as-you-go, on top of $0.0043 per minute "
+                    + "for Nova-3. That is about 30% more per minute while your dictionary "
+                    + "is in use. Smart formatting and language detection are included."
+            )
+        }
+    }
+
+    // MARK: - Local models
+
+    /// The local branch: every catalog model with its download state, plus the
+    /// download prompt when the active model is missing — per the spec, the
+    /// prompt lives on the same screen as the engine choice.
+    private var localContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(models.models) { model in
+                modelRow(model)
+                if model.id != models.models.last?.id {
+                    Divider().overlay(Theme.line)
+                }
+            }
+
+            Divider().overlay(Theme.line)
+
+            if models.availability(of: models.activeModel) != .usable {
+                InlineNote(
+                    text: "\(models.activeModel.displayName) is not downloaded yet — "
+                        + "dictation with the local engine will ask you to download it first."
+                )
+            }
+
+            InlineNote(
+                text: "Local models format their own punctuation and capitalization. "
+                    + "Your dictionary still biases recognition and fixes mistakes afterwards. "
+                    + models.diskSummary + "."
+            )
+        }
+    }
+
+    private func modelRow(_ model: WhisperModel) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
+                Text(model.displayName)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.ink)
+                if model.isRecommended {
+                    Text("Recommended")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Theme.success)
+                }
+                Spacer(minLength: 8)
+                if models.isActive(model), models.availability(of: model) == .usable {
+                    HStack(spacing: 5) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.success)
+                        Text("Active")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.success)
+                    }
+                }
+            }
+
+            Text(modelMetadata(model))
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let note = model.note {
+                Text(note)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            modelControls(model)
+        }
+    }
+
+    /// "809M params · 99 languages · MIT · 1.6 GB on disk"
+    private func modelMetadata(_ model: WhisperModel) -> String {
+        var parts = [
+            "\(model.parameterCount) params",
+            "\(model.languageCount) languages",
+            model.licenseName,
+            model.sizeDescription,
+        ]
+        if let bytes = models.installedBytes(for: model) {
+            parts.append("\(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)) downloaded")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    @ViewBuilder
+    private func modelControls(_ model: WhisperModel) -> some View {
+        let availability = models.availability(of: model)
+        let state = models.state(for: model)
+
+        HStack(spacing: 10) {
+            switch state {
+            case .downloading(let received, let total):
+                ProgressView(value: Double(received), total: Double(max(total, 1)))
+                    .progressViewStyle(.linear)
+                    .frame(maxWidth: 200)
+                Text(Self.progressDescription(received: received, total: total))
+                    .font(.system(size: 11).monospacedDigit())
+                    .foregroundStyle(Theme.muted)
+                Button("Pause") { models.pause(model) }
+                    .buttonStyle(.borderless)
+                    .font(.system(size: 12, weight: .medium))
+                    .clickableCursor()
+            case .validating:
+                ProgressView()
+                    .controlSize(.small)
+                Text("Verifying checksum")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.muted)
+            case .paused:
+                Button("Resume download") { models.download(model) }
+                    .buttonStyle(.borderless)
+                    .font(.system(size: 12, weight: .medium))
+                    .clickableCursor()
+            case .failed(let message):
+                Text(message)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.danger)
+                    .lineLimit(2)
+                Button("Try again") { models.download(model) }
+                    .buttonStyle(.borderless)
+                    .font(.system(size: 12, weight: .medium))
+                    .clickableCursor()
+            case .idle:
+                switch availability {
+                case .usable:
+                    if !models.isActive(model) {
+                        Button("Use this model") { models.activate(model) }
+                            .buttonStyle(.borderless)
+                            .font(.system(size: 12, weight: .medium))
+                            .clickableCursor()
+                    }
+                    Button("Delete", role: .destructive) {
+                        modelPendingDeletion = model
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.system(size: 12, weight: .medium))
+                    .clickableCursor()
+                case .missing:
+                    if models.canResume(model) {
+                        Button("Resume download") { models.download(model) }
+                            .buttonStyle(.borderless)
+                            .font(.system(size: 12, weight: .medium))
+                            .clickableCursor()
+                    } else {
+                        Button("Download \(model.sizeDescription)") { models.download(model) }
+                            .buttonStyle(.borderless)
+                            .font(.system(size: 12, weight: .medium))
+                            .clickableCursor()
+                    }
+                case .invalid:
+                    Button("Download again") { models.download(model) }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 12, weight: .medium))
+                        .clickableCursor()
+                    Button("Delete", role: .destructive) {
+                        modelPendingDeletion = model
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.system(size: 12, weight: .medium))
+                    .clickableCursor()
+                }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private static func progressDescription(received: Int64, total: Int64) -> String {
+        let done = ByteCountFormatter.string(fromByteCount: received, countStyle: .file)
+        let whole = ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        return "\(done) of \(whole)"
     }
 
     private var dataSection: some View {
@@ -453,6 +719,8 @@ struct SettingsPage: View {
         // Existence-only check: never returns or decrypts the key, so it cannot
         // block this main-thread SwiftUI update on an authorization prompt.
         hasDeepgramKey = DeepgramKeyStore.shared.isConfigured()
+        engine = settings.transcriptionEngine
+        models.refreshAvailability()
         formattingEnabled = settings.formattingEnabled
         spokenPunctuationEnabled = settings.spokenPunctuationEnabled
         silenceTimeout = settings.silenceTimeout
@@ -492,6 +760,10 @@ struct SettingsPage: View {
     private func testConnection() {
         testResult = nil
         isTesting = true
+        if engine == .whisperLocal {
+            testLocalEngine()
+            return
+        }
         Task {
             let typed = deepgramKey.trimmingCharacters(in: .whitespacesAndNewlines)
             // Read the stored key off the main actor: the keychain call can
@@ -533,6 +805,37 @@ struct SettingsPage: View {
             let result = await ProviderHealthCheck.check(
                 provider: provider,
                 endpoint: deepgramEndpoint,
+                hint: TranscriptionHint(languagePin: viewModel.languagePin, dictionaryWords: [])
+            )
+            await MainActor.run {
+                testResult = result
+                isTesting = false
+            }
+        }
+    }
+
+    /// Probes the local engine with the same health-check path as Deepgram:
+    /// a tiny generated clip through the real provider. First run also loads
+    /// the model, so it doubles as a "does the engine actually work" test.
+    private func testLocalEngine() {
+        Task {
+            guard let provider = viewModel.makeTranscriptionProvider?() else {
+                await MainActor.run {
+                    testResult = ProviderHealthCheck.result(
+                        providerName: "Whisper (local)",
+                        endpoint: "on-device",
+                        ok: false,
+                        startedAt: Date(),
+                        finishedAt: Date(),
+                        message: "No local provider could be built."
+                    )
+                    isTesting = false
+                }
+                return
+            }
+            let result = await ProviderHealthCheck.check(
+                provider: provider,
+                endpoint: "on-device",
                 hint: TranscriptionHint(languagePin: viewModel.languagePin, dictionaryWords: [])
             )
             await MainActor.run {

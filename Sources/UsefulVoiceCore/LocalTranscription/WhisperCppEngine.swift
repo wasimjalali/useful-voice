@@ -14,6 +14,8 @@ public actor WhisperCppEngine: LocalSpeechEngine {
     public private(set) var loadedModelURL: URL?
     private var context: OpaquePointer?
 
+    public init() {}
+
     /// The decoding params are configured for dictation, not translation:
     /// transcribe in the spoken language, timestamps on (harmless, and the
     /// segment callbacks that drive partial results are keyed to them),

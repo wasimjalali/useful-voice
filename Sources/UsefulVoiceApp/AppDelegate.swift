@@ -24,6 +24,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var languageMemory: LanguageMemoryStore?
     private var scratchpad: ScratchpadStore?
     private var controller: DictationController?
+    /// Local transcription: the on-disk model directory, the whisper.cpp
+    /// engine (lazily loads a context), and the cached provider for the
+    /// currently selected model.
+    private let modelStore = LocalModelStore()
+    private let localEngine = WhisperCppEngine()
+    private var localProvider: LocalWhisperProvider?
+    private var modelManager: LocalModelManager?
     private var recordingTimer: Timer?
     /// When the current recording began, so the pill can show elapsed mm:ss.
     private var recordingStartedAt: Date?
@@ -315,18 +322,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             notesURL: sadaaDir.appendingPathComponent("notes.json"))
         self.scratchpad = scratchpad
 
+        // Model directory is created and hardened once up front so the
+        // Settings page and a first download never race its creation.
+        modelStore.prepare()
+        let modelManager = LocalModelManager(settings: settings, store: modelStore)
+        modelManager.onModelsChanged = { [weak self] in
+            // A model was deleted or the active one switched: drop the loaded
+            // context so its memory is freed now, not at the next dictation.
+            Task { await self?.localEngine.unload() }
+            self?.viewModel?.refreshConfig()
+        }
+        self.modelManager = modelManager
+
         let viewModel = UsefulVoiceViewModel(
             settings: settings,
             history: history,
             usageStats: usageStats,
             languageMemory: languageMemory,
             scratchpad: scratchpad,
+            models: modelManager,
             onToggle: { [weak self] in self?.toggleDictation() })
         self.viewModel = viewModel
 
         let controller = DictationController(
             recorder: recorder,
-            providers: { [settings] in Self.buildProviders(settings: settings) },
+            providers: { [weak self] in self?.buildProviders() ?? [] },
             store: store,
             hint: { [settings, languageMemory] in
                 TranscriptionHint(
@@ -414,6 +434,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 recordingsToKeep: recordingsToKeep
             )
         }
+        viewModel.makeTranscriptionProvider = { [weak self] in
+            self?.buildProviders().first
+        }
         self.controller = controller
     }
 
@@ -454,7 +477,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                        hint: TranscriptionHint,
                                        context: FormattingContext,
                                        languageMemory: LanguageMemoryStore) async {
-        let chain = Self.buildProviders(settings: settings)
+        let chain = buildProviders()
         guard !chain.isEmpty else {
             viewModel?.reprocessHistoryTextOnly(record)
             hud.show(.error("No provider configured. Reprocessed with local memory only."))
@@ -582,23 +605,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .map { Snippet(id: $0.id, trigger: $0.trigger, expansion: $0.expansion) }
     }
 
-    /// Active transcription provider: Deepgram Nova-3, keyed from the in-memory
-    /// key cache.
+    /// Active transcription provider: the engine the user picked in Settings.
     ///
     /// Deliberately does NOT read the Keychain: this runs on the main actor
     /// inside the dictation pipeline, and a blocking keychain read there would
     /// stall the main run loop, which is where the global event tap lives.
     /// `DeepgramKeyStore` is primed off-main at launch and refreshed whenever the
     /// user saves the key in Settings.
-    private static func buildProviders(settings: AppSettings)
-        -> [TranscriptionProvider] {
-        guard let key = DeepgramKeyStore.shared.current, !key.isEmpty else {
+    ///
+    /// A local selection that cannot run (model missing or invalid) returns an
+    /// `UnavailableProvider` rather than an empty chain, so the dictation fails
+    /// with "download it in Settings" instead of the generic no-provider error.
+    /// Local is never silently swapped for Deepgram — choosing it means no
+    /// audio leaves the machine.
+    private func buildProviders() -> [TranscriptionProvider] {
+        let model = modelManager?.activeModel ?? WhisperModelCatalog.default
+        let plan = ProviderSelector.resolve(
+            engine: settings.transcriptionEngine,
+            deepgramKeyAvailable: !(DeepgramKeyStore.shared.current ?? "").isEmpty,
+            localModel: model,
+            localModelAvailability: modelStore.availability(of: model))
+        switch plan {
+        case .deepgram:
+            guard let key = DeepgramKeyStore.shared.current, !key.isEmpty else {
+                return []
+            }
+            return [DeepgramProvider(config: .init(
+                apiKey: key,
+                smartFormat: settings.formattingEnabled,
+                spokenPunctuation: settings.spokenPunctuationEnabled))]
+        case .local(let model):
+            return [localProvider(for: model)]
+        case .needsDeepgramKey:
+            // Same outcome the Deepgram path always had: the chain is empty and
+            // the controller reports "No transcription provider configured".
             return []
+        case .needsModelDownload, .modelInvalid:
+            let message = ProviderSelector.unavailableMessage(for: plan)
+                ?? "Local transcription is not set up. Open Settings."
+            return [UnavailableProvider(name: "Whisper (local)", message: message)]
         }
-        return [DeepgramProvider(config: .init(
-            apiKey: key,
-            smartFormat: settings.formattingEnabled,
-            spokenPunctuation: settings.spokenPunctuationEnabled))]
+    }
+
+    /// The provider for the active local model, rebuilt only when the selected
+    /// model changes (the engine context is shared and swaps lazily inside).
+    private func localProvider(for model: WhisperModel) -> LocalWhisperProvider {
+        if let localProvider, localProvider.model.id == model.id {
+            return localProvider
+        }
+        let provider = LocalWhisperProvider(
+            model: model, engine: localEngine, store: modelStore)
+        provider.onPartialResult = { [weak self] (text: String) in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard self?.controller?.state == .transcribing else { return }
+                    self?.hud.show(.transcribing(partial: text))
+                }
+            }
+        }
+        localProvider = provider
+        return provider
     }
 
     private static func describeProviderError(_ error: ProviderError) -> String {
@@ -737,7 +803,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if lastDictationState == .recording { chimes.playStop() }
             stopRecordingTimer()
             setIcon("waveform", tint: .systemOrange)
-            hud.show(.transcribing)
+            hud.show(.transcribing(partial: nil))
         case .delivering:
             hud.show(.delivering)
         case .error(let message):

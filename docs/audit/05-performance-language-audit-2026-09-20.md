@@ -1,7 +1,7 @@
 # Audit 05 — performance, dictation pipeline and language switching
 
-**Date:** 2026-09-20  
-**Audited revision:** `d9156d9` (`main`, clean working tree)  
+**Date:** 2026-09-20
+**Audited revision:** `d9156d9` (`main`, clean working tree)
 **Status:** Phase 0 complete; no implementation code has been changed
 
 This audit covers the whole macOS and Windows app, with the highest priority on the
@@ -123,7 +123,7 @@ controlled API probe proves otherwise.
 
 ## F-1 — macOS auto detection does not control local language behavior
 
-**Impact:** High  
+**Impact:** High
 **Caught by:** read-only auditor; independently verified by the orchestrator
 
 The provider returns the detected language, but the formatting and raw-transform
@@ -146,7 +146,7 @@ dictation. It also maximizes the number of rules and terms scanned.
 
 ## F-2 — Windows discards 24 of its 34 detectable languages
 
-**Impact:** High  
+**Impact:** High
 **Caught by:** orchestrator measurement; read-only auditor traced the consequence
 
 `coerceLanguage` recognizes only a hard-coded subset. The offline mapping check found:
@@ -164,7 +164,7 @@ shown as if detection did not work.
 
 ## F-3 — macOS undercounts non-Latin keyterms and can fail every request
 
-**Impact:** High  
+**Impact:** High
 **Caught by:** orchestrator; confirmed by the auditor
 
 The Swift estimator assumes roughly five characters per token for every script.
@@ -183,7 +183,7 @@ Deepgram's hard 500-token limit, causing the whole dictation request to fail.
 
 ## F-4 — macOS Language Memory takes 2.88 seconds at 5,000 terms
 
-**Impact:** High  
+**Impact:** High
 **Caught by:** previous audit lead; measured and re-verified in this audit
 
 Current work includes:
@@ -207,7 +207,7 @@ Evidence:
 
 ## F-5 — Windows cannot pass its required runtime gate with Electron 33.4.11
 
-**Impact:** High gate blocker; packaged-Windows consequence still requires Windows  
+**Impact:** High gate blocker; packaged-Windows consequence still requires Windows
 **Caught by:** baseline run; root cause discriminated by orchestrator-authored minimal probe
 
 A one-line Electron ESM program crashes identically before app code links. Windows
@@ -219,7 +219,7 @@ and `require` is undefined. The safe source fix is to statically import `screen`
 
 ## F-6 — macOS pinned dictations store no language and reprocess with today's pin
 
-**Impact:** Medium  
+**Impact:** Medium
 **Caught by:** orchestrator; confirmed by the auditor
 
 Deepgram returns `detected_language` only when detection was requested.
@@ -238,7 +238,7 @@ recording after switching to English can transcribe and correct it as English.
 
 ## F-7 — importing 1,000 macOS terms blocks for 8.1 seconds
 
-**Impact:** Medium  
+**Impact:** Medium
 **Caught by:** read-only auditor; measured by the orchestrator
 
 `importSnapshot` calls public upserts. Each upsert performs a full JSON encode and
@@ -249,7 +249,7 @@ Evidence: `LanguageMemoryStore.swift:98-132,163-198,269-327,391-414`.
 
 ## F-8 — Windows language switching takes focus and loses the original target
 
-**Impact:** Medium; requires real-Windows UX verification before a fix  
+**Impact:** Medium; requires real-Windows UX verification before a fix
 **Caught by:** orchestrator; confirmed by the auditor
 
 The language hotkey shows and focuses the main window, has no busy guard and does not
@@ -267,7 +267,7 @@ The macOS picker explicitly restores the previous application in
 
 ## F-9 — macOS cannot cancel transcription and has no delivery timeout
 
-**Impact:** Medium; high-risk change, deferred  
+**Impact:** Medium; high-risk change, deferred
 **Caught by:** read-only auditor; verified by the orchestrator
 
 `cancel()` accepts only `.recording`; Escape is also gated to that state.
@@ -285,7 +285,7 @@ unstructured work task whose cancellation semantics must be designed and tested.
 
 ## F-10 — macOS synchronously rewrites two JSON files after a dictation
 
-**Impact:** Medium/low at the measured data size  
+**Impact:** Medium/low at the measured data size
 **Caught by:** read-only auditor; measured by the orchestrator
 
 Usage recording rewrites all Language Memory, then history append rewrites all
@@ -300,7 +300,7 @@ Evidence:
 
 ## F-11 — Windows lacks the macOS model-fallback diagnostic
 
-**Impact:** Medium/low  
+**Impact:** Medium/low
 **Caught by:** read-only auditor
 
 `detectionStayedOnNova3` exists in Windows but has no production call site. A model
@@ -313,7 +313,7 @@ Evidence:
 
 ## F-12 — raw-mode state leaks after a failed macOS raw dictation
 
-**Impact:** Low and currently latent  
+**Impact:** Low and currently latent
 **Caught by:** read-only auditor
 
 `pendingRawMode` clears only after successful formatting. Early returns retain it for
@@ -324,7 +324,7 @@ Evidence: `DictationController.swift:41,101-108,171-295`.
 
 ## F-13 — language copy is contradictory
 
-**Impact:** Low  
+**Impact:** Low
 **Caught by:** orchestrator
 
 Settings claims automatic detection across the full Nova-3 catalogue even though the
@@ -365,7 +365,7 @@ probe first, then the complete Windows gate and packaging checks. Electron 43 re
 within the supported release window and Windows 10 x64 remains supported.
 
 **Pros:** smallest source diff; removes the proven old-loader failure; keeps native
-ESM.  
+ESM.
 **Cons:** ten-major dependency jump; requires full Electron API, self-test and package
 verification; real Windows still required for OS integrations.
 
@@ -373,7 +373,7 @@ verification; real Windows still required for OS integrations.
 
 Keep Electron 33 and change the main build/runtime module format.
 
-**Pros:** avoids a major Electron upgrade.  
+**Pros:** avoids a major Electron upgrade.
 **Cons:** larger code/configuration blast radius; must account for `import.meta.url`,
 core module loading, package `type`, preload boundaries and packaged entry points.
 
@@ -381,13 +381,13 @@ core module loading, package `type`, preload boundaries and packaged entry point
 
 Proceed only with macOS PRs and record all Windows items as open.
 
-**Pros:** zero runtime migration risk.  
+**Pros:** zero runtime migration risk.
 **Cons:** leaves the Windows verification gate, detected-language loss and latent HUD
 crash unresolved.
 
 ## PR1 — budget non-Latin macOS keyterms conservatively
 
-**Risk:** Low  
+**Risk:** Low
 **Files:**
 
 - `Sources/UsefulVoiceCore/Transcription/KeytermBudget.swift`
@@ -412,12 +412,12 @@ request and that the app intentionally keeps a 100-token margin.
 **Tests:** mirror the Windows CJK, Hangul, Cyrillic and Latin comparisons; verify
 existing Latin cases and constants are unchanged.
 
-**Gates:** `make test`, `swift build`.  
+**Gates:** `make test`, `swift build`.
 **Measurement:** selection result/count only; no Deepgram call.
 
 ## PR2 — remove the latent CommonJS call from the Windows ESM main
 
-**Risk:** Low, but blocked by Gate 0  
+**Risk:** Low, but blocked by Gate 0
 **Files:**
 
 - `windows/src/main/index.ts`
@@ -432,12 +432,12 @@ the bundled preload has different module requirements.
 
 > "Deliberately not focusable: it must never steal focus from the app the user is dictating into."
 
-**Gates:** `cd windows && npm run verify`.  
+**Gates:** `cd windows && npm run verify`.
 **Measurement:** self-test reaches and reports the HUD/audio-capability checks.
 
 ## PR3 — preserve every Windows detected language and add fallback diagnostics
 
-**Risk:** Low/medium, blocked by Gate 0  
+**Risk:** Low/medium, blocked by Gate 0
 **Files:**
 
 - `windows/src/main/dictationService.ts`
@@ -473,12 +473,12 @@ absent detection uses the pin; a Russian-scoped rule applies while an English-sc
 rule does not; raw regional history round-trips. Update the existing `is` fallback
 test intentionally.
 
-**Gate:** `cd windows && npm run verify`.  
+**Gate:** `cd windows && npm run verify`.
 **Measurement:** mapping becomes `supported=34 preserved=34 lost=0`.
 
 ## PR4 — make macOS detected/requested language semantics end to end
 
-**Risk:** Medium  
+**Risk:** Medium
 **Files:**
 
 - `Sources/UsefulVoiceCore/DictationController.swift`
@@ -517,13 +517,13 @@ current English pin; failed raw mode does not affect the next dictation. Include
 wiring-level assertion that the effective `FormattingContext.language` reaches the
 real AppDelegate memory closure, not only an injected mock.
 
-**Gates:** `make test`, `swift build`.  
+**Gates:** `make test`, `swift build`.
 **Measurement:** re-run the 1,000/5,000-term auto-language case; fewer language-scoped
 rules should participate when detection succeeds.
 
 ## PR5 — remove output-identical macOS Language Memory work
 
-**Risk:** Medium  
+**Risk:** Medium
 **Files:**
 
 - `LanguageMemoryMatcher.swift`
@@ -554,7 +554,7 @@ never produces `Karko AI AI`; pass-one cascade (`teh -> the`, then
 `the cat -> a cat`) still reaches the current final output; duplicate text variants;
 more than 4,096 phrases across two runs; exact ID order.
 
-**Gates:** `make test`, `swift build`.  
+**Gates:** `make test`, `swift build`.
 **Measurement:** re-run the frozen 15,149-character, 1,000/5,000-term harness. Do not
 claim the 4,096 cache policy eliminates compilation for every term above the bound.
 If wall time remains material, stop and consult on an off-main or indexed matcher as a
@@ -562,7 +562,7 @@ new high-risk item; do not add it to this PR.
 
 ## PR6 — persist macOS bulk Language Memory mutations once
 
-**Risk:** Medium  
+**Risk:** Medium
 **Files:**
 
 - `LanguageMemoryStore.swift`
@@ -589,13 +589,13 @@ merge behavior survive; learned entries save once; unreadable/newer-version stor
 refuse writing and preserve original bytes. If a persistence seam is needed for write
 counts, place it after the `isWritable` guard.
 
-**Gates:** `make test`, `swift build`.  
+**Gates:** `make test`, `swift build`.
 **Measurement:** repeat the frozen 1,000-term import. Baseline is 8,093.11 ms and
 239,975 bytes; the final logical file must remain equivalent.
 
 ## PR7 — align language documentation after behavior lands
 
-**Risk:** Low  
+**Risk:** Low
 **Files:**
 
 - `Sources/UsefulVoiceApp/Pages/SettingsPage.swift`

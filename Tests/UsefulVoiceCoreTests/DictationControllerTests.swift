@@ -38,6 +38,23 @@ struct FakeProvider: TranscriptionProvider {
     }
 }
 
+/// Records every hint it is sent, so a test can prove the whole provider chain
+/// received the same captured hint rather than a per-provider re-read of live
+/// settings.
+final class CapturingProvider: TranscriptionProvider {
+    let name: String
+    let result: Result<Transcript, Error>
+    private(set) var hints: [TranscriptionHint] = []
+    init(name: String, result: Result<Transcript, Error>) {
+        self.name = name
+        self.result = result
+    }
+    func transcribe(audio: URL, hint: TranscriptionHint) async throws -> Transcript {
+        hints.append(hint)
+        return try result.get()
+    }
+}
+
 @Suite @MainActor final class DictationControllerTests {
     private let dir: URL
     private let store: RecordingStore
@@ -87,6 +104,8 @@ struct FakeProvider: TranscriptionProvider {
 
     private func makeFormattingController(
         providers: [TranscriptionProvider],
+        languagePin: LanguagePin = .auto,
+        hint: (() -> TranscriptionHint)? = nil,
         rawTransform: ((String, FormattingContext) async -> FormattingResult)? = nil,
         format: @escaping (String, FormattingContext) async throws -> FormattingResult)
         -> DictationController {
@@ -94,14 +113,14 @@ struct FakeProvider: TranscriptionProvider {
             recorder: recorder,
             providers: { providers },
             store: store,
-            hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
+            hint: hint ?? { TranscriptionHint(languagePin: languagePin, dictionaryWords: []) },
             recordingsToKeep: 10,
             deliver: { [weak self] text, done in self?.delivered.append(text); done() },
             record: { [weak self] record in self?.records.append(record) },
             format: format,
             rawTransform: rawTransform,
             context: { FormattingContext(appBundleID: nil, dictionaryWords: [],
-                                         language: .auto) },
+                                         language: languagePin) },
             suggestTerms: { [weak self] terms in self?.suggested.append(contentsOf: terms) },
             formatterUnavailable: { [weak self] in self?.fellBack = true })
         controller.onStateChange = { [weak self] state in self?.states.append(state) }
@@ -245,6 +264,9 @@ struct FakeProvider: TranscriptionProvider {
 
         #expect(records.count == 1)
         #expect(records.first?.text == "hello world")
+        // An unknown reported code is stored as reported — it is never
+        // re-resolved or sent back to the provider.
+        #expect(records.first?.language == "english")
         #expect(records.first?.provider == "fake")
         #expect(records.first?.audioPath == recorder.startedURL!.path)
     }
@@ -562,5 +584,234 @@ struct FakeProvider: TranscriptionProvider {
             return
         }
         #expect(message.contains("provider"))
+    }
+
+    // MARK: - Detected language
+
+    /// What the provider detected decides the processing language: a regional
+    /// tag the catalogue does not carry resolves to its base language, while
+    /// history stores the raw code verbatim.
+    @Test func testRegionalDetectionScopesProcessingButIsStoredRaw() async throws {
+        let provider = FakeProvider(name: "fake",
+            result: .success(Transcript(text: "hallo welt",
+                                        detectedLanguage: "de-DE", durationSeconds: 1)))
+        var languageAtFormat: LanguagePin?
+        let controller = makeFormattingController(providers: [provider]) { raw, ctx in
+            languageAtFormat = ctx.language
+            return FormattingResult(text: raw, newTerms: [])
+        }
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(languageAtFormat == .de)
+        #expect(records.first?.language == "de-DE")
+    }
+
+    /// `de-CH` is its own catalogue row — Swiss German, not a restyling of
+    /// German — so it must keep its region rather than collapse the way
+    /// `de-DE` does.
+    @Test func testCatalogueRegionalDetectionKeepsItsRegion() async throws {
+        let provider = FakeProvider(name: "fake",
+            result: .success(Transcript(text: "gruezi welt",
+                                        detectedLanguage: "de-CH", durationSeconds: 1)))
+        var languageAtFormat: LanguagePin?
+        let controller = makeFormattingController(providers: [provider]) { raw, ctx in
+            languageAtFormat = ctx.language
+            return FormattingResult(text: raw, newTerms: [])
+        }
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(languageAtFormat == LanguagePin(rawValue: "de-CH"))
+        #expect(records.first?.language == "de-CH")
+    }
+
+    /// Wiring-level: the format closure runs the real deterministic memory pass
+    /// on `ctx.language`, the same thing the app's memory closure does. With an
+    /// auto pin and a German detection, a German-scoped term must fire while an
+    /// English-scoped one must not — under the old auto scope, both would.
+    @Test func testDetectedLanguageScopesMemoryByResolvedLanguage() async throws {
+        let snapshot = LanguageMemorySnapshot(
+            terms: [
+                MemoryTerm(phrase: "Kubernetes", pronunciations: ["kubernets"],
+                           language: .de),
+                MemoryTerm(phrase: "TypeScript", pronunciations: ["type script"],
+                           language: .en),
+            ])
+        let provider = FakeProvider(name: "fake",
+            result: .success(Transcript(text: "deploy kubernets and type script",
+                                        detectedLanguage: "de-DE", durationSeconds: 1)))
+        let controller = makeFormattingController(providers: [provider]) { raw, ctx in
+            LanguageMemoryPostProcessor.rawResult(
+                for: raw, snapshot: snapshot,
+                language: MemoryLanguage(languagePin: ctx.language))
+        }
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(delivered == ["deploy Kubernetes and type script"])
+        #expect(records.first?.memoryHitIDs == [snapshot.terms[0].id])
+        #expect(records.first?.language == "de-DE")
+    }
+
+    /// An unknown detection is processed as auto — every language's rules
+    /// participate, which is permissive rather than wrong-language — but
+    /// history records what the provider actually reported.
+    @Test func testUnknownDetectionProcessesAsAutoAndStoresRaw() async throws {
+        let provider = FakeProvider(name: "fake",
+            result: .success(Transcript(text: "hallo",
+                                        detectedLanguage: "is", durationSeconds: 1)))
+        var languageAtFormat: LanguagePin?
+        let controller = makeFormattingController(providers: [provider]) { raw, ctx in
+            languageAtFormat = ctx.language
+            return FormattingResult(text: raw, newTerms: [])
+        }
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(languageAtFormat == .auto)
+        #expect(records.first?.language == "is")
+    }
+
+    /// A pinned dictation whose response carries no detected_language stores
+    /// the requested pin — previously nil — and processes under it.
+    @Test func testAbsentDetectionStoresAndAppliesTheRequestedPin() async throws {
+        let provider = FakeProvider(name: "fake",
+            result: .success(Transcript(text: "konnichiwa",
+                                        detectedLanguage: nil, durationSeconds: 1)))
+        var languageAtFormat: LanguagePin?
+        let controller = makeFormattingController(
+            providers: [provider],
+            languagePin: LanguagePin(rawValue: "ja")) { raw, ctx in
+            languageAtFormat = ctx.language
+            return FormattingResult(text: raw, newTerms: [])
+        }
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(languageAtFormat == LanguagePin(rawValue: "ja"))
+        #expect(records.first?.language == "ja")
+    }
+
+    /// A whitespace-only detection is not a detection: the requested pin is
+    /// stored and used, and nothing empty reaches history.
+    @Test func testWhitespaceOnlyDetectionStoresTheRequestedPin() async throws {
+        let provider = FakeProvider(name: "fake",
+            result: .success(Transcript(text: "hallo",
+                                        detectedLanguage: "   ", durationSeconds: 1)))
+        let controller = makeFormattingController(
+            providers: [provider], languagePin: .de) { raw, _ in
+            FormattingResult(text: raw, newTerms: [])
+        }
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(records.first?.language == "de")
+    }
+
+    /// A malformed detection must not forge a history row or a log line: the
+    /// stored code is stripped to tag characters (letters and hyphen), so a
+    /// newline cannot inject a fake record or diagnostic entry.
+    @Test func testDetectedCodeIsSanitizedBeforeStorage() async throws {
+        let provider = FakeProvider(name: "fake",
+            result: .success(Transcript(text: "hallo",
+                                        detectedLanguage: "de\n-DE injected",
+                                        durationSeconds: 1)))
+        let controller = makeFormattingController(providers: [provider]) { raw, _ in
+            FormattingResult(text: raw, newTerms: [])
+        }
+        controller.toggle()
+        await controller.toggleAndWait()
+        let stored = try #require(records.first?.language)
+        #expect(stored == "de-DEinjected")
+        #expect(stored.allSatisfy { $0.isASCII && ($0.isLetter || $0 == "-") })
+    }
+
+    /// `hint()` reads live settings: called per provider, a pin change
+    /// mid-chain would hand each provider a different request. The controller
+    /// captures the hint once and hands that same value to the whole chain.
+    @Test func testEveryProviderReceivesTheSameCapturedHint() async throws {
+        let first = CapturingProvider(name: "primary",
+                                      result: .failure(ProviderError.http(500, "boom")))
+        let second = CapturingProvider(name: "secondary",
+            result: .success(Transcript(text: "rescued", detectedLanguage: nil,
+                                        durationSeconds: nil)))
+        var hintCalls = 0
+        let controller = makeFormattingController(
+            providers: [first, second],
+            hint: {
+                // Alternate pins on every call so a per-provider re-read is
+                // observable: the second provider would see `de`, not `en`.
+                hintCalls += 1
+                return TranscriptionHint(
+                    languagePin: hintCalls % 2 == 1 ? .en : .de,
+                    dictionaryWords: [])
+            },
+            format: { raw, _ in FormattingResult(text: raw, newTerms: []) }
+        )
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(delivered == ["rescued"])
+        #expect(first.hints.count == 1)
+        #expect(second.hints.count == 1)
+        #expect(first.hints.first?.languagePin == .en)
+        #expect(second.hints.first?.languagePin == .en)
+    }
+
+    /// Regression: a raw-mode dictation whose providers all failed used to leave
+    /// `pendingRawMode` set, so the NEXT dictation silently skipped the
+    /// formatter.
+    @Test func testFailedRawModeDoesNotLeakIntoNextDictation() async throws {
+        var attempt = 0
+        let failing = FakeProvider(name: "p1",
+                                   result: .failure(ProviderError.http(500, "boom")))
+        let working = FakeProvider(name: "p2",
+            result: .success(Transcript(text: "second", detectedLanguage: nil,
+                                        durationSeconds: nil)))
+        var formatRan = false
+        var rawTransformRan = false
+        let controller = DictationController(
+            recorder: recorder,
+            providers: { attempt += 1; return attempt == 1 ? [failing] : [working] },
+            store: store,
+            hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
+            recordingsToKeep: 10,
+            deliver: { [weak self] text, done in self?.delivered.append(text); done() },
+            record: { [weak self] record in self?.records.append(record) },
+            format: { raw, _ in
+                formatRan = true
+                return FormattingResult(text: "formatted: \(raw)", newTerms: [])
+            },
+            rawTransform: { raw, _ in
+                rawTransformRan = true
+                return FormattingResult(text: "raw: \(raw)", newTerms: [], mode: .raw)
+            })
+        controller.toggle()                  // start
+        controller.toggle(rawMode: true)     // stop, raw — providers all fail
+        await controller.toggleAndWait()
+        #expect(delivered == [])
+        #expect(!formatRan && !rawTransformRan)
+
+        controller.toggle()                  // a fresh dictation, normal stop
+        await controller.toggleAndWait()
+        #expect(formatRan)
+        #expect(!rawTransformRan)
+        #expect(delivered == ["formatted: second"])
+    }
+
+    /// The formatter-failure fallback runs the same resolved context as the
+    /// formatter path: a detected `de-DE` scopes the raw transform as `de` too.
+    @Test func testFormatterFailureFallbackUsesTheResolvedLanguage() async throws {
+        struct Boom: Error {}
+        let provider = FakeProvider(name: "fake",
+            result: .success(Transcript(text: "hallo",
+                                        detectedLanguage: "de-DE", durationSeconds: 1)))
+        var languageAtFallback: LanguagePin?
+        let controller = makeFormattingController(
+            providers: [provider],
+            rawTransform: { raw, ctx in
+                languageAtFallback = ctx.language
+                return FormattingResult(text: raw, newTerms: [], mode: .raw)
+            },
+            format: { _, _ in throw Boom() }
+        )
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(languageAtFallback == .de)
+        #expect(records.first?.language == "de-DE")
     }
 }

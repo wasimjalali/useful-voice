@@ -282,6 +282,54 @@ struct LanguagePinTests {
         #expect(LanguagePin(code: "de") == .de)
         #expect(LanguagePin(code: "multi") == .multilingual)
     }
+
+    // MARK: - Detected-code resolution
+
+    /// `detectedCode:` resolves what the provider *reported*, so it does the
+    /// base-subtag work `init(code:)` deliberately lacks. A regional tag the
+    /// catalogue itself carries is a distinct language row, not a variant to
+    /// collapse — which is why the exact match must run first.
+    @Test func testDetectedCodeKeepsCatalogueRegionalsExact() {
+        // `de-CH` is Swiss German, not German; `zh-TW` is Traditional, not
+        // Simplified. Folding either to its base subtag loses the distinction.
+        #expect(LanguagePin(detectedCode: "de-CH") == LanguagePin(rawValue: "de-CH"))
+        #expect(LanguagePin(detectedCode: "DE-CH") == LanguagePin(rawValue: "de-CH"))
+        #expect(LanguagePin(detectedCode: "zh-TW") == LanguagePin(rawValue: "zh-TW"))
+        #expect(LanguagePin(detectedCode: "nl-BE") == LanguagePin(rawValue: "nl-BE"))
+    }
+
+    /// Deepgram also answers with regional forms the catalogue does not carry;
+    /// those must land on the base language rather than die as unknown.
+    @Test func testDetectedCodeResolvesNonCatalogueRegionalsToTheBaseLanguage() {
+        #expect(LanguagePin(detectedCode: "de-DE") == .de)
+        #expect(LanguagePin(detectedCode: "en-US") == .en)
+        #expect(LanguagePin(detectedCode: "zh-CN") == LanguagePin(rawValue: "zh"))
+        // A script subtag still lands on the base language.
+        #expect(LanguagePin(detectedCode: "zh-Hans-CN") == LanguagePin(rawValue: "zh"))
+    }
+
+    /// Every code detection can return resolves to itself — none collapses or
+    /// remaps. The audit's F-1 defect was regional detections falling to auto.
+    @Test func testDetectedCodeResolvesEveryDetectableCodeToItself() {
+        #expect(DeepgramLanguageCatalog.detectionCodes.count == 34)
+        for code in DeepgramLanguageCatalog.detectionCodes {
+            #expect(LanguagePin(detectedCode: code) == LanguagePin(rawValue: code),
+                    "\(code) did not resolve to itself")
+        }
+        #expect(LanguagePin(detectedCode: "ja") == LanguagePin(rawValue: "ja"))
+    }
+
+    /// An unknown code resolves to auto — never the requested pin and never the
+    /// raw value, which could not be sent anyway. `multi` is a request mode,
+    /// not a detected language.
+    @Test func testDetectedCodeResolvesUnknownAndModesToAuto() {
+        #expect(LanguagePin(detectedCode: "is") == .auto)
+        #expect(LanguagePin(detectedCode: "nb") == .auto)
+        #expect(LanguagePin(detectedCode: "multi") == .auto)
+        #expect(LanguagePin(detectedCode: "klingon-1") == .auto)
+        #expect(LanguagePin(detectedCode: "") == .auto)
+        #expect(LanguagePin(detectedCode: "   ") == .auto)
+    }
 }
 
 /// `MemoryLanguage` is persisted inside `language-memory.json`, so it must decode

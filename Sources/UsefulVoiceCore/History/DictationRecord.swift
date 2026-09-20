@@ -4,6 +4,10 @@ public struct DictationRecord: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
     public let text: String
     public let createdAt: Date
+    /// The raw detected code the provider returned, or the requested pin when
+    /// detection is absent. Not guaranteed sendable — a regional tag like
+    /// `de-DE` is stored verbatim for fidelity but must be validated
+    /// (`LanguagePin(detectedCode:)`) before reuse as `language=`.
     public let language: String?
     public let provider: String
     public let durationSeconds: Double?

@@ -69,6 +69,66 @@ public struct LanguagePin: RawRepresentable, Hashable, Sendable, Codable {
         self = .auto
     }
 
+    /// A pin for a provider-reported `detected_language` value.
+    ///
+    /// Deepgram answers with BCP-47-ish tags that do not always line up with the
+    /// catalogue's rows: `de-DE`, `en-US` and `zh-CN` are regional forms of
+    /// catalogue languages but are not catalogue codes themselves. Resolution is
+    /// therefore a two-step match, and the order is the whole point:
+    ///
+    /// 1. **Exact match first** (case-insensitive, resolved to the catalogue's
+    ///    own casing). A regional tag the catalogue itself carries — `de-CH`,
+    ///    `zh-TW`, `nl-BE` — is a distinct language row, not a variant to
+    ///    collapse: Swiss German is not a restyling of German German. Trying the
+    ///    exact form first is what lets `de-CH` survive while `de-DE` still
+    ///    resolves.
+    /// 2. **Then the base subtag** — the substring before the first `-`.
+    ///    `de-DE` lands on `de`, `en-US` on `en`, `zh-CN` (and even `zh-Hans-CN`)
+    ///    on `zh`. Without this step every regional detection resolved to
+    ///    `auto` and the language-scoped memory work measured in the audit was
+    ///    lost.
+    ///
+    /// Anything else — `is`, `multi`, an empty string or outright garbage —
+    /// resolves to `.auto`, never to the raw code. The result is always a
+    /// processing-safe, sendable value: history stores the raw reported code
+    /// itself, this initializer only decides the processing scope, and under
+    /// `auto` every language's memory rules participate — permissive rather
+    /// than wrong-language.
+    ///
+    /// Deliberately separate from `init(code:)` rather than folded into it: the
+    /// settings path must not gain base-subtag matching, because a stored value
+    /// there is something the user picked, and silently widening `en-US` to `en`
+    /// would change what they chose.
+    public init(detectedCode: String) {
+        let trimmed = detectedCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            self = .auto
+            return
+        }
+        // Exact catalogue match first, resolved to the catalogue's own casing:
+        // the provider's capitalisation is not guaranteed, while `de-CH` and
+        // `zh-TW` carry meaningful uppercase subtags a blanket lowercase would
+        // corrupt.
+        if let exact = DeepgramLanguageCatalog.all.first(where: {
+            $0.code.lowercased() == trimmed.lowercased()
+        }) {
+            self = LanguagePin(rawValue: exact.code)
+            return
+        }
+        // Then the base subtag: regional forms the catalogue does not carry
+        // land on their base language rather than dying as unknown.
+        let base = trimmed.components(separatedBy: "-").first ?? trimmed
+        if let match = DeepgramLanguageCatalog.all.first(where: {
+            $0.code.lowercased() == base.lowercased()
+        }) {
+            self = LanguagePin(rawValue: match.code)
+            return
+        }
+        // An unknown detection scopes as auto: every language's rules
+        // participate, and nothing unsendable is ever produced here.
+        self = .auto
+    }
+
     /// Whether the stored value names something this build still recognises.
     ///
     /// Distinguishes "detection" from "a language this build dropped", which are

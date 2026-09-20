@@ -80,6 +80,13 @@ self-test blocker is in that Electron/Node ESM interop combination, not in an ap
 module. It does **not** excuse the separate bare `require('electron')` in the app's ESM
 main process; that defect becomes reachable after the link-time blocker is removed.
 
+> **Errata (2026-09-20, Gate 0 PR):** the crash signature above is also produced when
+> `ELECTRON_RUN_AS_NODE=1` leaks into the `electron` launch — which is what this
+> agent environment did. With the sentinel unset, `import 'electron'` exposes the
+> full API. The root cause is therefore the environment sentinel, not a proven
+> Electron 33 loader defect; the upgrade to 43.7.0 was still warranted on
+> support-window grounds.
+
 ### Hardest realistic offline cases
 
 The transcript is 15,149 characters. The history is at its 1,000-record cap. The

@@ -45,18 +45,31 @@ build:
 test:
 	./scripts/run-tests.sh
 
+# SPM stages the whisper.cpp XCFramework next to the built binary as a dynamic
+# framework. The app bundle must embed it under Contents/Frameworks, with an
+# rpath so @rpath/whisper.framework resolves there.
+FRAMEWORK = whisper.framework
+
 bundle: build
 	rm -rf $(APP)
-	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources
+	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources $(APP)/Contents/Frameworks
 	cp bundle/Info.plist $(APP)/Contents/Info.plist
 	cp .build/release/UsefulVoiceApp $(APP)/Contents/MacOS/Sadaa
 	cp assets/branding/Sadaa.icns $(APP)/Contents/Resources/Sadaa.icns
 	cp assets/branding/useful-voice-mark-dark.png $(APP)/Contents/Resources/SadaaLogo.png
+	cp -R .build/release/$(FRAMEWORK) $(APP)/Contents/Frameworks/
+	@# The binary's own rpaths point at SPM's build/artifact dirs; inside the
+	@# bundle the framework lives at ../Frameworks relative to the executable.
+	install_name_tool -add_rpath "@executable_path/../Frameworks" \
+		$(APP)/Contents/MacOS/Sadaa 2>/dev/null || true
 	@# Stamp the version from a single source of truth so shipped binaries are
 	@# distinguishable when triaging a report, and CFBundleVersion increases
 	@# monotonically (required for updates to install cleanly).
 	plutil -replace CFBundleShortVersionString -string "$(MARKETING_VERSION)" $(APP)/Contents/Info.plist
 	plutil -replace CFBundleVersion -string "$(BUILD_NUMBER)" $(APP)/Contents/Info.plist
+	@# Nested code is signed inside-out: the framework gets its own signature
+	@# (the upstream XCFramework is only ad-hoc signed), then the bundle.
+	codesign --force --sign "$(SIGN_IDENTITY)" $(APP)/Contents/Frameworks/$(FRAMEWORK)
 	codesign --force --sign "$(SIGN_IDENTITY)" $(APP)
 	@codesign -dv $(APP) 2>&1 | sed -n 's/^/    /p'
 
@@ -93,17 +106,22 @@ ifeq ($(DEVID_IDENTITY),)
 	@exit 1
 endif
 	rm -rf $(APP)
-	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources
+	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources $(APP)/Contents/Frameworks
 	cp bundle/Info.plist $(APP)/Contents/Info.plist
 	cp .build/release/UsefulVoiceApp $(APP)/Contents/MacOS/Sadaa
 	cp assets/branding/Sadaa.icns $(APP)/Contents/Resources/Sadaa.icns
 	cp assets/branding/useful-voice-mark-dark.png $(APP)/Contents/Resources/SadaaLogo.png
+	cp -R .build/release/$(FRAMEWORK) $(APP)/Contents/Frameworks/
+	install_name_tool -add_rpath "@executable_path/../Frameworks" \
+		$(APP)/Contents/MacOS/Sadaa 2>/dev/null || true
 	plutil -replace CFBundleShortVersionString -string "$(MARKETING_VERSION)" $(APP)/Contents/Info.plist
 	plutil -replace CFBundleVersion -string "$(BUILD_NUMBER)" $(APP)/Contents/Info.plist
-	@# No --deep: Apple documents it as unsuitable for distribution signing. The
-	@# bundle has no nested code, so a single explicit sign is correct. The
-	@# hardened runtime is required for notarization, and --timestamp is required
-	@# for the signature to stay valid past the certificate's lifetime.
+	@# No --deep: Apple documents it as unsuitable for distribution signing.
+	@# Nested code is signed inside-out with the hardened runtime on each
+	@# signature; the --timestamp keeps them valid past the certificate's life.
+	codesign --force --options runtime --timestamp \
+		--sign "$(DEVID_IDENTITY)" \
+		$(APP)/Contents/Frameworks/$(FRAMEWORK)
 	codesign --force --options runtime --timestamp \
 		--entitlements $(ENTITLEMENTS) \
 		--sign "$(DEVID_IDENTITY)" $(APP)

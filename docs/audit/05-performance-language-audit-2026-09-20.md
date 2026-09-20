@@ -321,8 +321,8 @@ Evidence:
 **Caught by:** read-only auditor
 
 `pendingRawMode` clears only once processing reaches the format stage. Early returns
-retain it for the next dictation. No current app UI calls `toggle(rawMode: true)`, so this is not a
-present user path, but the state machine is wrong.
+retain it for the next dictation. No current app UI calls `toggle(rawMode: true)`,
+so this is not a present user path, but the state machine is wrong.
 
 Evidence: `DictationController.swift:41,101-108,171-295`.
 
@@ -515,7 +515,7 @@ test intentionally.
 
 **Invariants to preserve:**
 
-> "Retry must format for the app the user dictated into, not for whatever is frontmost when they click Retry."
+> "Retry must format for the app the user dictated into, not for whatever is frontmost when they click Retry (usually Useful Voice itself)."
 
 > "Raw transcript to the sidecar BEFORE formatting (never-lose)."
 
@@ -592,7 +592,7 @@ may remain two writes unless measurement justifies expanding scope.
 
 > "A file from a newer build decodes but must not be written back: doing so would drop the fields this build does not know about."
 
-> "the previous version wrote unconditionally, so a file that failed to load was silently replaced by an empty snapshot"
+> "the previous version wrote unconditionally, so a file that failed to load was silently replaced by an empty snapshot on the next edit — destroying the user's whole language memory (terms, replacements and snippets) because of one transient read error"
 
 Keep validation, merge order, stable IDs, disabled-state behavior, counters,
 suggestion removal and write-refusal semantics unchanged.

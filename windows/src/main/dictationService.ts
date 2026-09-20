@@ -97,6 +97,11 @@ export interface DictationOutcome {
   text: string;
   rawText: string;
   intermediateText: string;
+  /**
+   * Raw detected code as reported by the provider, or the requested pin when
+   * detection is absent — not validated, so never sendable as `language=`
+   * without going through `resolveDetectedLanguage`/`normaliseLanguageCode`.
+   */
   language: MemoryLanguage;
   appName: string;
   durationSeconds: number;
@@ -331,10 +336,16 @@ export class DictationService {
 
     // What Deepgram detected decides the processing language — validated through
     // the catalogue so a returned `de-CH` keeps its region while `de-DE` scopes
-    // as `de`. History stores the raw code exactly as reported: an unknown
-    // detection is processed as `auto` (permissive rather than wrong-language)
-    // but recorded verbatim, and is never sent back to the provider.
-    const rawDetected = transcript.detectedLanguage?.trim() || null;
+    // as `de`. History stores the raw code, trimmed and stripped to tag
+    // characters so a hostile or malformed value cannot forge a shareable log
+    // line or a strange history row: an unknown detection is processed as
+    // `auto` (permissive rather than wrong-language) but recorded as reported,
+    // and is never sent back to the provider.
+    const rawDetected =
+      transcript.detectedLanguage
+        ?.trim()
+        .replace(/[^A-Za-z-]/g, '')
+        .slice(0, 35) || null;
     const effectiveLanguage = rawDetected ? resolveDetectedLanguage(rawDetected) : context.language;
     const storedLanguage = rawDetected ?? context.language;
 
@@ -345,7 +356,7 @@ export class DictationService {
     // transcript text or the key.
     if (rawDetected && !detectionStayedOnNova3(rawDetected)) {
       this.deps.onDiagnostic?.(
-        'language',
+        'dictation',
         `detected language '${rawDetected}' is outside Nova-3, so the provider may have fallen back to a lower model and keyterms may have been dropped`,
       );
     }

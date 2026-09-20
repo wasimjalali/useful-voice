@@ -5,6 +5,7 @@ import {
   describeTranscriptionFailure,
   type CapturedAudio,
   type DictationStatus,
+  type FormatterPort,
   type RecorderPort,
   type TextSinkPort,
   type TranscriberPort,
@@ -99,7 +100,7 @@ function setup(options: {
   settings?: Partial<AppSettings>;
   memory?: Partial<LanguageMemorySnapshot>;
   apiKey?: string | null;
-  formatter?: (text: string) => Promise<string>;
+  formatter?: FormatterPort;
 } = {}) {
   const recorder = new FakeRecorder();
   const transcriber = new FakeTranscriber();
@@ -627,13 +628,26 @@ describe('resolveDetectedLanguage', () => {
     expect(resolveDetectedLanguage('DE')).toBe('de');
   });
 
-  it('resolves every detectable code away from auto', () => {
+  it('resolves every detectable code to itself — none collapses or remaps', () => {
     // F-2 regression guard: the old hardcoded mapping silently discarded 24 of
-    // the 34 codes Deepgram can report (ru, sv, uk, bg, ...).
+    // the 34 codes Deepgram can report (ru, sv, uk, bg, ...). Every detection
+    // code is a verbatim catalogue member, so === code holds and would also
+    // catch a swapped-mapping regression that "not auto" misses.
     expect(DETECTION_CODES).toHaveLength(34);
     for (const code of DETECTION_CODES) {
-      expect(resolveDetectedLanguage(code), code).not.toBe('auto');
+      expect(resolveDetectedLanguage(code), code).toBe(code);
     }
+  });
+
+  it('keeps nl-BE resolvable even though Deepgram cannot detect it', () => {
+    // nl-BE is pinned-only (absent from DETECTION_CODES because
+    // detect_language rejects it), but if a provider ever returned it, the
+    // catalogue match keeps the region.
+    expect(resolveDetectedLanguage('nl-BE')).toBe('nl-BE');
+  });
+
+  it("resolves 'multi' to auto — the code-switching mode is not a detected language", () => {
+    expect(resolveDetectedLanguage('multi')).toBe('auto');
   });
 });
 
@@ -701,7 +715,7 @@ describe('detected language handling', () => {
     // But history records what Deepgram actually said.
     expect(ctx.service.mostRecent?.language).toBe('is');
     expect(ctx.diagnostics).toHaveLength(1);
-    expect(ctx.diagnostics[0]?.category).toBe('language');
+    expect(ctx.diagnostics[0]?.category).toBe('dictation');
     expect(ctx.diagnostics[0]?.message).toContain("'is'");
     // The warning names the code only — never the transcript or the key.
     expect(ctx.diagnostics[0]?.message).not.toContain(transcriptText);
@@ -732,6 +746,46 @@ describe('detected language handling', () => {
     await ctx.service.startRecording();
     await ctx.service.stopAndProcess();
     expect(ctx.service.mostRecent?.language).toBe('de-DE');
+  });
+
+  it('treats a whitespace-only detection as absent and stores the pin', async () => {
+    const ctx = setup({ settings: { languagePin: 'de' } });
+    ctx.transcriber.transcript = { text: 'hallo', durationSeconds: 1, detectedLanguage: '   ' };
+    await ctx.service.startRecording();
+    await ctx.service.stopAndProcess();
+    expect(ctx.service.mostRecent?.language).toBe('de');
+    expect(ctx.diagnostics).toEqual([]);
+  });
+
+  it('hands the resolved language to the formatter, not the raw code', async () => {
+    let seen: string | undefined;
+    const ctx = setup({
+      formatter: async (text, language) => {
+        seen = language;
+        return text;
+      },
+    });
+    ctx.transcriber.transcript = { text: 'hallo', durationSeconds: 1, detectedLanguage: 'de-DE' };
+    await ctx.service.startRecording();
+    await ctx.service.stopAndProcess();
+    expect(seen).toBe('de');
+    // History still stores the raw regional code.
+    expect(ctx.service.mostRecent?.language).toBe('de-DE');
+  });
+
+  it('strips control characters from a detected code before storing or logging it', async () => {
+    const ctx = setup();
+    ctx.transcriber.transcript = {
+      text: 'hallo',
+      durationSeconds: 1,
+      detectedLanguage: 'de\n-DE injected',
+    };
+    await ctx.service.startRecording();
+    await ctx.service.stopAndProcess();
+    expect(ctx.service.mostRecent?.language).toBe('de-DEinjected');
+    for (const entry of ctx.diagnostics) {
+      expect(entry.message).not.toContain('\n');
+    }
   });
 });
 

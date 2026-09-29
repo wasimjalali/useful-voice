@@ -65,9 +65,10 @@ function english(text: string): string {
   // "07:45AM" -> "7:45 AM", "3PM" -> "3 PM": no leading zero and a space before AM or PM.
   // Never inside a longer number or code ("UA 007 PM", "A007AM").
   result = result.replace(
-    /(?<![\p{L}\p{N}_:.])(0?)([1-9]|1[0-2])(:[0-5]\d)?\s?([AaPp][Mm])(?![A-Za-z])/gu,
-    (_m, _zero: string, hour: string, minutes: string | undefined, meridiem: string) =>
-      `${hour}${minutes ?? ''} ${meridiem}`,
+    /(?<![\p{L}\p{N}_:.,$€£])(0?)([1-9]|1[0-2])(:[0-5]\d)?[ ]?([AaPp][Mm])(?![A-Za-z])/gu,
+    (match, zero: string, hour: string, minutes: string | undefined, meridiem: string) =>
+      // A leading zero goes only from a clock time with minutes ("07:45"), not from "05 AM".
+      zero !== '' && minutes === undefined ? match : `${hour}${minutes ?? ''} ${meridiem}`,
   );
   // "the 21st Floor" -> "the 21st floor": Deepgram capitalises the noun after a digit
   // ordinal. Only common nouns that are not part of a name, and only when no other
@@ -91,7 +92,7 @@ function english(text: string): string {
 }
 
 const QUARTER_FOLLOWERS =
-  'revenue|results|earnings|sales|numbers|report|targets|goals|planning|review|forecast|budget|roadmap|growth|profit|performance|update|okrs|close|guidance|bookings|is|was|will|of|and|or|to';
+  'revenue|results|earnings|sales|numbers|report|targets|goals|planning|review|forecast|budget|roadmap|growth|profit|performance|update|okrs|close|guidance|bookings|is|was|will|of';
 
 const QUESTION_OPENERS = new Set([
   'did', 'do', 'does', 'is', 'are', 'was', 'were', 'will', 'would', 'can', 'could', 'should',
@@ -100,16 +101,18 @@ const QUESTION_OPENERS = new Set([
 
 /**
  * Deepgram drops the closing full stop after a currency amount ("costs $25"). Added only
- * when the whole text is a one-line sentence of at least four words that starts with a
- * capital letter, is not a question opener or a URL, and ends on the amount with no
+ * when the text is one line of at least four words, its last sentence starts with a capital
+ * letter and is not a question opener, there is no URL, and it ends on the amount with no
  * punctuation at all. Lists, chat fragments and questions are left alone.
  */
 function closingFullStop(text: string): string {
   const words = text.split(/\s+/u).filter((word) => word !== '');
-  const first = words[0];
+  // The last sentence decides: "Thanks. Did you pay $25" is a question.
+  const lastSentence = text.split(/(?<=[.!?])\s+/u).at(-1) ?? text;
+  const first = lastSentence.split(/\s+/u).find((word) => word !== '');
   if (
     words.length < 4 ||
-    text.includes('\n') ||
+    /[\r\n\u0085\u2028\u2029]/u.test(text) ||
     text.includes('://') ||
     first === undefined ||
     !/^\p{Lu}/u.test(first) ||

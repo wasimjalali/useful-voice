@@ -800,6 +800,46 @@
    "lang": "en",
    "input": "Take a look at https://example.com/pricing/$25",
    "expected": "Take a look at https://example.com/pricing/$25"
+  },
+  {
+   "lang": "en",
+   "input": "Press Q two to quit.",
+   "expected": "Press Q two to quit."
+  },
+  {
+   "lang": "en",
+   "input": "Ask Q one to help.",
+   "expected": "Ask Q one to help."
+  },
+  {
+   "lang": "en",
+   "input": "Thanks. Did you pay $25",
+   "expected": "Thanks. Did you pay $25"
+  },
+  {
+   "lang": "en",
+   "input": "Thanks for the update. The fee is $25",
+   "expected": "Thanks for the update. The fee is $25."
+  },
+  {
+   "lang": "en",
+   "input": "Route 05 AM.",
+   "expected": "Route 05 AM."
+  },
+  {
+   "lang": "en",
+   "input": "Costs 1,010 AM.",
+   "expected": "Costs 1,010 AM."
+  },
+  {
+   "lang": "en",
+   "input": "It costs $3PM.",
+   "expected": "It costs $3PM."
+  },
+  {
+   "lang": "en",
+   "input": "Meeting at 07:45 AM sharp.",
+   "expected": "Meeting at 7:45 AM sharp."
   }
  ]
 }

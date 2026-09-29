@@ -56,8 +56,9 @@ public enum TranscriptStyle {
         }
         // "07:45AM" -> "7:45 AM", "3PM" -> "3 PM": no leading zero and a space before AM or PM.
         // Never inside a longer number or code ("UA 007 PM", "A007AM").
-        result = replacing(#"(?<![\p{L}\p{N}_:.])(0?)([1-9]|1[0-2])(:[0-5]\d)?\s?([AaPp][Mm])(?![A-Za-z])"#, in: result) {
-            "\($0[2])\($0[3]) \($0[4])"
+        // A leading zero goes only from a clock time with minutes ("07:45"), not from "05 AM".
+        result = replacing(#"(?<![\p{L}\p{N}_:.,$€£])(0?)([1-9]|1[0-2])(:[0-5]\d)?[ ]?([AaPp][Mm])(?![A-Za-z])"#, in: result) {
+            !$0[1].isEmpty && $0[3].isEmpty ? $0[0] : "\($0[2])\($0[3]) \($0[4])"
         }
         // "the 21st Floor" -> "the 21st floor": Deepgram capitalises the noun after a digit
         // ordinal. Only common nouns that are not part of a name, and only when no other
@@ -69,7 +70,7 @@ public enum TranscriptStyle {
         // "q three" -> "Q3", only as a quarter: at the end of a phrase, before a word that
         // follows a quarter ("Q three revenue") or a linking word. "Press Q two times" and
         // "hit the Q three times" keep their words.
-        result = replacing(#"(?<![\p{L}\p{N}_])[Qq][ -](one|two|three|four)(?![\p{L}\p{N}_])(?=\s*(?:[.,;:!?)]|$)|\s+(?:revenue|results|earnings|sales|numbers|report|targets|goals|planning|review|forecast|budget|roadmap|growth|profit|performance|update|okrs|close|guidance|bookings|is|was|will|of|and|or|to)\b)"#, in: result) {
+        result = replacing(#"(?<![\p{L}\p{N}_])[Qq][ -](one|two|three|four)(?![\p{L}\p{N}_])(?=\s*(?:[.,;:!?)]|$)|\s+(?:revenue|results|earnings|sales|numbers|report|targets|goals|planning|review|forecast|budget|roadmap|growth|profit|performance|update|okrs|close|guidance|bookings|is|was|will|of)\b)"#, in: result) {
             "Q\(englishNumbers[$0[1]] ?? $0[1])"
         }
         return closingFullStop(result)
@@ -81,13 +82,17 @@ public enum TranscriptStyle {
     ]
 
     /// Deepgram drops the closing full stop after a currency amount ("costs $25"). Added only
-    /// when the whole text is a one-line sentence of at least four words that starts with a
-    /// capital letter, is not a question opener or a URL, and ends on the amount with no
-    /// punctuation at all. Lists, chat fragments and questions are left alone.
+    /// when the text is one line of at least four words, its last sentence starts with a
+    /// capital letter and is not a question opener, there is no URL, and it ends on the
+    /// amount with no punctuation at all. Lists, chat fragments and questions are left alone.
     private static func closingFullStop(_ text: String) -> String {
         let words = text.split(whereSeparator: \.isWhitespace)
-        guard words.count >= 4, !text.contains("\n"), !text.contains("://"),
-              let first = words.first, first.first?.isUppercase == true,
+        // The last sentence decides: "Thanks. Did you pay $25" is a question.
+        let lastSentence = text.range(of: #"(?<=[.!?])\s+"#, options: [.regularExpression, .backwards])
+            .map { String(text[$0.upperBound...]) } ?? text
+        guard words.count >= 4, !text.contains(where: \.isNewline), !text.contains("://"),
+              let first = lastSentence.split(whereSeparator: \.isWhitespace).first,
+              first.first?.isUppercase == true,
               !questionOpeners.contains(first.lowercased()),
               text.range(of: #"[$€£]\s?\d(?:[\d,]*\d)?(?:\.\d+)?(?:\s(?:million|billion|thousand))?$"#,
                          options: .regularExpression) != nil else { return text }

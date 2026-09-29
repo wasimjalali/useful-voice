@@ -120,7 +120,7 @@ Each pass fixed its findings and then changed the design instead of piling on ex
 3. Ordinals convert only after das, dem, des, im, zum, zur, beim and only before a listed noun
    ("Kapitel", "Stock", "Quartal", "Jahr"). A date or a number that ends a sentence never matches.
 
-Every finding is pinned as an input in `evals/formatting/style-guards.json` (160 inputs, run by
+Every finding is pinned as an input in `evals/formatting/style-guards.json` (168 inputs, run by
 both the Swift and the Windows tests, which also assert their counts, so an emptied file fails).
 READMEs are docs, not app text, and were not swept.
 

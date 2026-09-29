@@ -56,15 +56,19 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--only", nargs="*", help="re-run just these case ids and update them in --out")
     args = ap.parse_args()
-    key, cases = api_key(), json.loads((HERE / "cases.json").read_text())
+    cases = json.loads((HERE / "cases.json").read_text())
     previous = {}
     if args.only is not None:
+        unknown = [i for i in args.only if i not in {c["id"] for c in cases}]
+        if unknown:
+            sys.exit(f"--only: unknown case id(s): {unknown}")
         if not Path(args.out).exists():
             sys.exit(f"--only needs an existing {args.out} to update")
         previous = {r["id"]: r for r in json.loads(Path(args.out).read_text())["rows"]}
         missing = [c["id"] for c in cases if c["id"] not in args.only and c["id"] not in previous]
         if missing:
             sys.exit(f"--only: these cases are not in {args.out} yet, include them in --only: {missing}")
+    key = api_key()
     rows, tmp = [], Path(tempfile.mkdtemp())
     for c in cases:
         if args.only is not None and c["id"] not in args.only:

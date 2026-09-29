@@ -59,8 +59,15 @@ final class MainWindowController: NSObject, NSWindowDelegate {
                 return
             }
             hosting.cacheDisplay(in: hosting.bounds, to: rep)
-            let png = rep.representation(using: .png, properties: [:])
-            completion((try? png?.write(to: url)) != nil)
+            // The image shows real notes and dictations, so only the owner may read it.
+            guard let png = rep.representation(using: .png, properties: [:]),
+                  (try? png.write(to: url, options: .atomic)) != nil,
+                  (try? FileManager.default.setAttributes([.posixPermissions: 0o600],
+                                                          ofItemAtPath: url.path)) != nil else {
+                completion(false)
+                return
+            }
+            completion(true)
         }
     }
 

@@ -76,7 +76,17 @@ public final class UsageStatsStore {
     private let outcome: StoreLoadOutcome
     private var isWritable: Bool
 
-    public init(fileURL: URL, calendar: Calendar = .autoupdatingCurrent,
+    /// Day keys are Gregorian whatever calendar the system uses. A Buddhist or Japanese
+    /// calendar would write keys like "2569-01-05" that sort after every Gregorian key
+    /// and are then dropped as "in the future" once the system calendar changes. The time
+    /// zone still follows the system, so a trip across zones moves "today" correctly.
+    public static var defaultCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .autoupdatingCurrent
+        return calendar
+    }
+
+    public init(fileURL: URL, calendar: Calendar = UsageStatsStore.defaultCalendar,
                 diagnostics: Diagnostics = .shared) {
         self.fileURL = fileURL
         self.calendar = calendar

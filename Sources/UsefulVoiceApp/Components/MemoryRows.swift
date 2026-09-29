@@ -27,6 +27,7 @@ struct MemoryTermRow: View {
             Button(action: onDelete) { Image(systemName: "trash") }
                 .buttonStyle(PremiumIconButtonStyle())
                 .help("Remove word")
+                .accessibilityLabel("Remove word")
         }
         .memoryRowChrome()
     }
@@ -62,9 +63,11 @@ struct ReplacementRuleRow: View {
             }
             .buttonStyle(PremiumIconButtonStyle())
             .help(rule.isEnabled ? "Pause fix" : "Resume fix")
+            .accessibilityLabel(rule.isEnabled ? "Pause fix" : "Resume fix")
             Button(action: onDelete) { Image(systemName: "trash") }
                 .buttonStyle(PremiumIconButtonStyle())
                 .help("Remove fix")
+                .accessibilityLabel("Remove fix")
         }
         .opacity(rule.isEnabled ? 1 : 0.58)
         .memoryRowChrome()
@@ -96,9 +99,11 @@ struct MemorySnippetRow: View {
             }
             .buttonStyle(PremiumIconButtonStyle())
             .help(snippet.isEnabled ? "Pause snippet" : "Resume snippet")
+            .accessibilityLabel(snippet.isEnabled ? "Pause snippet" : "Resume snippet")
             Button(action: onDelete) { Image(systemName: "trash") }
                 .buttonStyle(PremiumIconButtonStyle())
                 .help("Remove snippet")
+                .accessibilityLabel("Remove snippet")
         }
         .opacity(snippet.isEnabled ? 1 : 0.58)
         .memoryRowChrome()

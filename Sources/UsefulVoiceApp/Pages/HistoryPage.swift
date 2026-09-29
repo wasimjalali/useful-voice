@@ -160,12 +160,14 @@ struct HistoryPage: View {
                 Button { copy(record.text) } label: { Image(systemName: "doc.on.doc") }
                     .buttonStyle(PremiumIconButtonStyle())
                     .help("Copy transcript")
+                    .accessibilityLabel("Copy transcript")
                 Button {
                     viewModel.sendToScratchpad(record)
                     toasts.show("Sent to notes")
                 } label: { Image(systemName: "note.text.badge.plus") }
                     .buttonStyle(PremiumIconButtonStyle())
                     .help("Send to notes")
+                    .accessibilityLabel("Send to notes")
                 BrandedMenuButton(help: "More actions") {
                     Button("Learn correction") { beginCorrection(record) }
                     Button("Reprocess") {
@@ -180,6 +182,7 @@ struct HistoryPage: View {
                 }
                 .buttonStyle(PremiumIconButtonStyle())
                 .help(expanded ? "Collapse" : "Expand")
+                .accessibilityLabel(expanded ? "Collapse" : "Expand")
             }
 
             if expanded {

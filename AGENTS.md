@@ -37,7 +37,8 @@ UV_START_SECTION=insights UV_SNAPSHOT="$PWD/ui-insights.png@1280x860" \
 `UV_START_SECTION` is a sidebar section's raw value (`home`, `languageMemory`, `insights`,
 `scratchpad`, `history`, `settings`). Another running copy of the app makes the new process exit
 immediately (single-instance guard), so quit it first. The pages show your real data, so keep
-screenshots out of commits.
+screenshots out of commits. Build the bundle first (`make bundle`). A snapshot run also creates
+`usage-stats.json` in the real data folder if it does not exist yet, the same as a normal launch.
 
 ## Repo conventions
 

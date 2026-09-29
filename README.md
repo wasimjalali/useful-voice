@@ -8,7 +8,7 @@
 
 A fast, personal voice-dictation app for macOS and Windows. Tap a hotkey anywhere, speak in English or German, and the transcript lands at your cursor. Powered by Deepgram Nova-3 for fast, accurate speech-to-text.
 
-Useful Voice records, transcribes, applies your personal dictionary and inserts the result at your cursor with a clipboard backup. The main window focuses on six clear areas: Dictate, Dictionary, Insights, Notes, Library and Settings.
+Useful Voice records, transcribes, applies your personal dictionary and inserts the result at your cursor with a clipboard backup. On macOS the main window has six areas: Dictate, Dictionary, Insights, Notes, Library and Settings. The Windows app keeps its earlier layout.
 
 ![Useful Voice Dictate page with the microphone ready.](docs/images/dictate.png)
 

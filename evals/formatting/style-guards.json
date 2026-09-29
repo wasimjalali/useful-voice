@@ -269,12 +269,132 @@
   {
    "lang": "de",
    "input": "Fertig. 3 Leute kamen.",
-   "expected": "Fertig. Drei Leute kamen."
+   "expected": "Fertig. 3 Leute kamen."
   },
   {
    "lang": "de",
    "input": "Das 1. Kapitel ist fertig.",
    "expected": "Das erste Kapitel ist fertig."
+  },
+  {
+   "lang": "en",
+   "input": "The version one would expect is old.",
+   "expected": "The version one would expect is old."
+  },
+  {
+   "lang": "en",
+   "input": "The version one should use is two.",
+   "expected": "The version one should use is two."
+  },
+  {
+   "lang": "en",
+   "input": "Version one has to install.",
+   "expected": "Version one has to install."
+  },
+  {
+   "lang": "en",
+   "input": "A TWO-one lead.",
+   "expected": "A TWO-one lead."
+  },
+  {
+   "lang": "en",
+   "input": "OK-one more thing.",
+   "expected": "OK-one more thing."
+  },
+  {
+   "lang": "de",
+   "input": "Auf iOS 9 läuft es nicht.",
+   "expected": "Auf iOS 9 läuft es nicht."
+  },
+  {
+   "lang": "de",
+   "input": "Ein iPad 2 ist alt.",
+   "expected": "Ein iPad 2 ist alt."
+  },
+  {
+   "lang": "de",
+   "input": "Das iPhone 7 Pro ist neu.",
+   "expected": "Das iPhone 7 Pro ist neu."
+  },
+  {
+   "lang": "de",
+   "input": "Bitte inkl. 3 Getränke.",
+   "expected": "Bitte inkl. 3 Getränke."
+  },
+  {
+   "lang": "de",
+   "input": "Evtl. 3 Leute.",
+   "expected": "Evtl. 3 Leute."
+  },
+  {
+   "lang": "de",
+   "input": "Wir wohnen in der Hauptstr. 3 in Berlin.",
+   "expected": "Wir wohnen in der Hauptstr. 3 in Berlin."
+  },
+  {
+   "lang": "de",
+   "input": "Wir sehen uns am 3. Danach essen wir.",
+   "expected": "Wir sehen uns am 3. Danach essen wir."
+  },
+  {
+   "lang": "de",
+   "input": "Es dauert 2 bis 3 Tage.",
+   "expected": "Es dauert 2 bis 3 Tage."
+  },
+  {
+   "lang": "de",
+   "input": "Es steht 2 : 1.",
+   "expected": "Es steht 2 : 1."
+  },
+  {
+   "lang": "de",
+   "input": "Der Wert stieg von 2.5 auf 3.5 Prozent.",
+   "expected": "Der Wert stieg von 2.5 auf 3.5 Prozent."
+  },
+  {
+   "lang": "de",
+   "input": "Es kamen 3 oder 4 Tage.",
+   "expected": "Es kamen 3 oder 4 Tage."
+  },
+  {
+   "lang": "de",
+   "input": "Wir spielen gegen den 1. FC Köln.",
+   "expected": "Wir spielen gegen den 1. FC Köln."
+  },
+  {
+   "lang": "de",
+   "input": "Am 3. Okt. war es so.",
+   "expected": "Am 3. Okt. war es so."
+  },
+  {
+   "lang": "de",
+   "input": "Vom 3. auf den 4. Oktober.",
+   "expected": "Vom 3. auf den 4. Oktober."
+  },
+  {
+   "lang": "de",
+   "input": "Kapitel 3 und 4 fehlen.",
+   "expected": "Kapitel 3 und 4 fehlen."
+  },
+  {
+   "lang": "de",
+   "input": "Es steht 5 zu 3.",
+   "expected": "Es steht 5 zu 3."
+  },
+  {
+   "lang": "de",
+   "input": "3 Leute waren dabei.",
+   "expected": "Drei Leute waren dabei."
+  },
+  {
+   "lang": "de",
+   "input": "Er hat 2 Hunde und 3 Katzen.",
+   "expected": "Er hat zwei Hunde und drei Katzen."
+  },
+  {
+   "lang": "de",
+   "input": "Hallo! 2 Leute kommen später.",
+   "expected": "Hallo! Zwei Leute kommen später."
   }
  ]
 }

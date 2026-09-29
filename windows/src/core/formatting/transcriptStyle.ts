@@ -26,26 +26,30 @@ const ENGLISH_NUMBERS: Record<string, string> = {
 };
 const ENGLISH_WORDS = Object.keys(ENGLISH_NUMBERS).join('|');
 const ENGLISH_VERBS =
-  'is|was|are|were|will|has|had|and|or|to|in|for|with|from|works|shipped|came|comes|did|does|can|should|would';
+  'is|was|are|were|and|or|to|for|with|from|in';
 
 /**
  * "version two" -> "version 2", "GPT-five" -> "GPT-5". The number after the word
  * "version" or a hyphenated all-caps product code is a name, not a quantity.
- * "version" only counts when the number ends the phrase ("version two is out"), so
- * "version one users" is left as spoken. A bare acronym followed by a number
+ * "version" only counts when the number ends the phrase or is followed by a plain
+ * linking word ("version two is out"), so "version one users" and "the version one
+ * would expect" are left as spoken. A bare acronym followed by a number
  * ("the API one more time") is never touched.
  */
 function english(text: string): string {
   return text
     .replace(
       new RegExp(
-        `\\b([Vv]ersion)(\\s+)(${ENGLISH_WORDS})(?=\\s*(?:[.,;:!?)]|$)|\\s+(?:${ENGLISH_VERBS})\\b)`,
-        'g',
+        `(?<![\\p{L}\\p{N}_])([Vv]ersion)(\\s+)(${ENGLISH_WORDS})(?=\\s*(?:[.,;:!?)]|$)|\\s+(?:${ENGLISH_VERBS})(?![\\p{L}\\p{N}_]))`,
+        'gu',
       ),
       (_m, word: string, space: string, n: string) => `${word}${space}${ENGLISH_NUMBERS[n]}`,
     )
     .replace(
-      new RegExp(`\\b([A-Z]{2,5})(-)(${ENGLISH_WORDS})\\b(?!-)`, 'g'),
+      new RegExp(
+        `(?<![\\p{L}\\p{N}_])(?!(?:ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN)-)([A-Z]{3,5})(-)(${ENGLISH_WORDS})(?![\\p{L}\\p{N}_])(?!-)`,
+        'gu',
+      ),
       (_m, code: string, sep: string, n: string) => `${code}${sep}${ENGLISH_NUMBERS[n]}`,
     );
 }
@@ -60,16 +64,19 @@ const GERMAN_ORDINAL_STEMS: Record<number, string> = {
 /**
  * Words after which an ordinal has a certain ending. Only the unambiguous articles
  * are listed: "der" and "die" can be masculine, feminine or plural, and a wrong
- * ending would change a word the speaker said.
+ * ending would change a word the speaker said. "am" and "vom" are left out on
+ * purpose: "am 3." is usually a date that ends a sentence ("am 3. Danach essen wir."),
+ * and a date is not an ordinal to spell out.
  */
 const ORDINAL_ENDINGS: Record<string, string> = {
   das: 'e',
   den: 'en', dem: 'en', des: 'en',
-  am: 'en', im: 'en', zum: 'en', beim: 'en', vom: 'en', zur: 'en',
+  im: 'en', zum: 'en', beim: 'en', zur: 'en',
 };
 const MONTHS = new Set([
   'januar', 'jänner', 'februar', 'märz', 'april', 'mai', 'juni', 'juli', 'august',
   'september', 'oktober', 'november', 'dezember',
+  'jan', 'feb', 'mär', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'okt', 'nov', 'dez',
 ]);
 /** A digit before one of these is a measurement, a price or a clock time, so it stays. */
 const UNITS = new Set([
@@ -89,12 +96,27 @@ const DECIMAL_UNITS = new Set([
   'jahre', 'jahren', 'millionen', 'milliarden', 'tonnen', 'kilo', 'prozentpunkte',
 ]);
 /**
- * A digit after one of these is a date, a clock time or a range ("am 3.5.", "um 9",
- * "von 2 bis 3"), so it stays.
+ * A decimal after one of these is a date, a clock time, a range or a comparison
+ * ("am 3.5.", "von 2.5 auf 3.5 Prozent"), so it stays.
  */
-const DATE_OR_CLOCK_LEAD_INS = new Set([
+const DATE_OR_RANGE_LEAD_INS = new Set([
   'am', 'bis', 'ab', 'vom', 'seit', 'zum', 'dem', 'um', 'gegen', 'von', 'zwischen', 'x',
+  'auf', 'zu', 'und', 'oder',
 ]);
+/**
+ * A small cardinal becomes a word only after one of these, which clearly take a
+ * quantity ("habe 2 Katzen", "in 2 Wochen"). After anything else it could be a product
+ * ("iOS 9", "iPad 2"), a street number, a version or one half of a range, and the digit
+ * stays. A capitalised first word never counts.
+ */
+const QUANTITY_LEAD_INS = new Set([
+  'habe', 'hast', 'hat', 'haben', 'habt', 'hatte', 'hatten', 'sind', 'waren', 'gibt', 'gab',
+  'brauche', 'brauchst', 'braucht', 'brauchen', 'nur', 'noch', 'schon', 'bereits', 'mit', 'für',
+  'in', 'nach', 'vor', 'seit', 'über', 'unter', 'alle', 'die', 'diese', 'meine', 'unsere',
+  'seine', 'ihre', 'etwa', 'ungefähr', 'fast', 'knapp', 'genau', 'sogar', 'und', 'oder',
+]);
+/** A bare number before one of these is half of a range, score or comparison. */
+const RANGE_FOLLOWERS = new Set(['bis', 'von', 'gegen', 'zu', 'auf', 'und', 'oder']);
 const SYMBOLS_AFTER = new Set('%€$£°§+×*=÷-–/');
 const SYMBOLS_BEFORE = new Set('€$£§#№-–—/+×*=÷');
 
@@ -138,7 +160,7 @@ function germanDecimals(text: string): string {
     if (!next || !DECIMAL_UNITS.has(next.toLowerCase())) return match;
     const prev = previousWord(text.slice(0, offset));
     if (prev && (/^\p{Lu}/u.test(prev) || /\p{N}/u.test(prev))) return match;
-    if (prev && DATE_OR_CLOCK_LEAD_INS.has(prev.toLowerCase())) return match;
+    if (prev && DATE_OR_RANGE_LEAD_INS.has(prev.toLowerCase())) return match;
     return `${whole},${fraction}`;
   });
 }
@@ -167,16 +189,10 @@ function germanSmallNumbers(text: string): string {
     if (afterTrimmed.startsWith(',') && isNumber(afterTrimmed.slice(1).replace(/^ +/u, '')[0])) return match;
     if (prev && ['und', 'oder'].includes(prev.toLowerCase()) && /\d[,\s]*(und|oder)$/iu.test(before)) return match;
 
-    // Sentence start unless the full stop belongs to an abbreviation
-    // ("ca. 3", "Nr. 5", "z. B. 3"), which is left alone.
-    let atSentenceStart = before === '';
-    if (last !== undefined && '.!?'.includes(last)) {
-      if (last === '.') {
-        const wordBeforeDot = /\p{L}*$/u.exec(before.slice(0, -1))?.[0] ?? '';
-        if ([...wordBeforeDot].length <= 3) return match;
-      }
-      atSentenceStart = true;
-    }
+    // Sentence start counts only at the very start of the text or after "!" or "?".
+    // After a full stop the previous word may be an abbreviation ("inkl. 3",
+    // "Hauptstr. 3", "ca. 3"), so a digit there stays.
+    const atSentenceStart = before === '' || last === '!' || last === '?';
 
     if (ordinal) {
       // Needs a following word; "3." at the end of a sentence is ambiguous.
@@ -187,17 +203,16 @@ function germanSmallNumbers(text: string): string {
       if (!next || ending === undefined || stem === undefined) return match;
       const lower = next.toLowerCase();
       if (MONTHS.has(lower) || ['bis', 'und', 'oder'].includes(lower)) return match;
+      // "gegen den 1. FC Köln": an all-capitals word is a name, not a noun.
+      if ([...next].length > 1 && next === next.toUpperCase()) return match;
       return stem + ending;
     }
 
     const word = GERMAN_CARDINALS[digit];
     if (word === undefined) return match;
-    if (!atSentenceStart && prev) {
-      if (/^\p{Lu}/u.test(prev)) return match;
-      if (DATE_OR_CLOCK_LEAD_INS.has(prev.toLowerCase())) return match;
-    }
+    if (!atSentenceStart && !(prev && QUANTITY_LEAD_INS.has(prev.toLowerCase()))) return match;
     const next = nextWord(after);
-    if (next && UNITS.has(next.toLowerCase())) return match;
+    if (next && (UNITS.has(next.toLowerCase()) || RANGE_FOLLOWERS.has(next.toLowerCase()))) return match;
     return atSentenceStart ? word.charAt(0).toUpperCase() + word.slice(1) : word;
   });
 }

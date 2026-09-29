@@ -30,16 +30,17 @@ public enum TranscriptStyle {
 
     /// "version two" -> "version 2", "GPT-five" -> "GPT-5". The number after the
     /// word "version" or a hyphenated all-caps product code is a name, not a
-    /// quantity. "version" only counts when the number ends the phrase ("version two
-    /// is out"), so "version one users" is left as spoken. A bare acronym followed by
+    /// quantity. "version" only counts when the number ends the phrase or is followed
+    /// by a plain linking word ("version two is out"), so "version one users" and
+    /// "the version one would expect" are left as spoken. A bare acronym followed by
     /// a number ("the API one more time") is never touched.
     static func english(_ text: String) -> String {
         let words = "one|two|three|four|five|six|seven|eight|nine|ten"
-        let verbs = "is|was|are|were|will|has|had|and|or|to|in|for|with|from|works|shipped|came|comes|did|does|can|should|would"
+        let verbs = "is|was|are|were|and|or|to|for|with|from|in"
         var result = replacing(#"\b([Vv]ersion)(\s+)(\#(words))(?=\s*(?:[.,;:!?)]|$)|\s+(?:\#(verbs))\b)"#, in: text) {
             "\($0[1])\($0[2])\(englishNumbers[$0[3]] ?? $0[3])"
         }
-        result = replacing(#"\b([A-Z]{2,5})(-)(\#(words))\b(?!-)"#, in: result) {
+        result = replacing(#"\b(?!(?:ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN)-)([A-Z]{3,5})(-)(\#(words))\b(?!-)"#, in: result) {
             "\($0[1])\($0[2])\(englishNumbers[$0[3]] ?? $0[3])"
         }
         return result
@@ -57,14 +58,17 @@ public enum TranscriptStyle {
     /// Words after which an ordinal has a certain ending. Only the unambiguous
     /// articles are listed: "der" and "die" can be masculine, feminine or plural,
     /// and a wrong ending would change a word the speaker said.
+    /// "am" and "vom" are left out on purpose: "am 3." is usually a date that ends a
+    /// sentence ("am 3. Danach essen wir."), and a date is not an ordinal to spell out.
     private static let ordinalEndings = [
         "das": "e",
         "den": "en", "dem": "en", "des": "en",
-        "am": "en", "im": "en", "zum": "en", "beim": "en", "vom": "en", "zur": "en",
+        "im": "en", "zum": "en", "beim": "en", "zur": "en",
     ]
     private static let months: Set<String> = [
         "januar", "jänner", "februar", "märz", "april", "mai", "juni", "juli", "august",
         "september", "oktober", "november", "dezember",
+        "jan", "feb", "mär", "apr", "jun", "jul", "aug", "sep", "sept", "okt", "nov", "dez",
     ]
     /// A digit before one of these is a measurement, a price or a clock time, so it stays.
     private static let units: Set<String> = [
@@ -80,11 +84,24 @@ public enum TranscriptStyle {
         "stunden", "minuten", "sekunden", "tage", "tagen", "wochen", "monate", "monaten",
         "jahre", "jahren", "millionen", "milliarden", "tonnen", "kilo", "prozentpunkte",
     ])
-    /// A digit after one of these is a date, a clock time or a range ("am 3.5.",
-    /// "um 9", "von 2 bis 3"), so it stays.
-    private static let dateOrClockLeadIns: Set<String> = [
+    /// A decimal after one of these is a date, a clock time, a range or a comparison
+    /// ("am 3.5.", "von 2.5 auf 3.5 Prozent"), so it stays.
+    private static let dateOrRangeLeadIns: Set<String> = [
         "am", "bis", "ab", "vom", "seit", "zum", "dem", "um", "gegen", "von", "zwischen", "x",
+        "auf", "zu", "und", "oder",
     ]
+    /// A small cardinal becomes a word only after one of these, which clearly take a
+    /// quantity ("habe 2 Katzen", "in 2 Wochen"). After anything else it could be a
+    /// product ("iOS 9", "iPad 2"), a street number, a version or one half of a range,
+    /// and the digit stays. A capitalised first word never counts.
+    private static let quantityLeadIns: Set<String> = [
+        "habe", "hast", "hat", "haben", "habt", "hatte", "hatten", "sind", "waren", "gibt", "gab",
+        "brauche", "brauchst", "braucht", "brauchen", "nur", "noch", "schon", "bereits", "mit", "für",
+        "in", "nach", "vor", "seit", "über", "unter", "alle", "die", "diese", "meine", "unsere",
+        "seine", "ihre", "etwa", "ungefähr", "fast", "knapp", "genau", "sogar", "und", "oder",
+    ]
+    /// A bare number before one of these is half of a range, score or comparison.
+    private static let rangeFollowers: Set<String> = ["bis", "von", "gegen", "zu", "auf", "und", "oder"]
     private static let symbolsAfter = Set("%€$£°§+×*=÷-–/")
     private static let symbolsBefore = Set("€$£§#№-–—/+×*=÷")
 
@@ -99,7 +116,7 @@ public enum TranscriptStyle {
             guard let next = context.nextWord, decimalUnits.contains(next.lowercased()) else { return nil }
             let prev = context.previousWord
             if let prev, prev.first?.isUppercase == true || prev.contains(where: \.isNumber) { return nil }
-            if let prev, dateOrClockLeadIns.contains(prev.lowercased()) { return nil }
+            if let prev, dateOrRangeLeadIns.contains(prev.lowercased()) { return nil }
             return "\(groups[1]),\(groups[2])"
         })
     }
@@ -122,16 +139,10 @@ public enum TranscriptStyle {
             if context.previousWord.map({ ["und", "oder"].contains($0.lowercased()) }) == true,
                before.range(of: #"\d[,\s]*(und|oder)$"#, options: [.regularExpression, .caseInsensitive]) != nil { return nil }
 
-            // Sentence start unless the full stop belongs to an abbreviation
-            // ("ca. 3", "Nr. 5", "z. B. 3"), which is left alone.
-            var atSentenceStart = before.isEmpty
-            if let last = before.last, ".!?".contains(last) {
-                if last == "." {
-                    let wordBeforeDot = String(before.dropLast().reversed().prefix(while: { $0.isLetter }).reversed())
-                    if wordBeforeDot.count <= 3 { return nil }
-                }
-                atSentenceStart = true
-            }
+            // Sentence start counts only at the very start of the text or after "!" or "?".
+            // After a full stop the previous word may be an abbreviation ("inkl. 3",
+            // "Hauptstr. 3", "ca. 3"), so a digit there stays.
+            let atSentenceStart = before.isEmpty || before.last == "!" || before.last == "?"
 
             if ordinal {
                 // Needs a following word; "3." at the end of a sentence is ambiguous.
@@ -140,14 +151,15 @@ public enum TranscriptStyle {
                       let stem = germanOrdinalStems[digit] else { return nil }
                 let lower = next.lowercased()
                 if months.contains(lower) || ["bis", "und", "oder"].contains(lower) { return nil }
+                // "gegen den 1. FC Köln": an all-capitals word is a name, not a noun.
+                if next.count > 1, next == next.uppercased() { return nil }
                 return stem + ending
             }
             guard let word = germanCardinals[digit] else { return nil }
-            if !atSentenceStart, let prev = context.previousWord {
-                if prev.first?.isUppercase == true { return nil }
-                if dateOrClockLeadIns.contains(prev.lowercased()) { return nil }
+            if !atSentenceStart {
+                guard let prev = context.previousWord, quantityLeadIns.contains(prev.lowercased()) else { return nil }
             }
-            if let next = context.nextWord, units.contains(next.lowercased()) { return nil }
+            if let next = context.nextWord, units.contains(next.lowercased()) || rangeFollowers.contains(next.lowercased()) { return nil }
             return atSentenceStart ? word.prefix(1).uppercased() + word.dropFirst() : word
         })
     }

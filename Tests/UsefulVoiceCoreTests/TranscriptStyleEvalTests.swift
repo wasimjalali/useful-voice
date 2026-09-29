@@ -26,6 +26,7 @@ struct TranscriptStyleEvalTests {
 
     @Test func recordedDeepgramOutputEndsUpAsExpected() throws {
         var failures: [String] = []
+        #expect(try rows().count == 44)
         for row in try rows() where row.known_gap == nil {
             let styled = TranscriptStyle.apply(to: row.got, language: row.lang)
             if ![row.expected] .appending(contentsOf: row.accept ?? []).contains(styled) {
@@ -36,6 +37,7 @@ struct TranscriptStyleEvalTests {
     }
 
     @Test func knownGapsStayDigitsRatherThanGuessAnEnding() throws {
+        #expect(try rows().filter { $0.known_gap != nil }.count == 3)
         for row in try rows() where row.known_gap != nil {
             let styled = TranscriptStyle.apply(to: row.got, language: row.lang)
             // "der 3." and "die 3." have no certain ending, so the digit must survive.
@@ -57,7 +59,9 @@ struct TranscriptStyleEvalTests {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let data = try Data(contentsOf: root.appendingPathComponent("evals/formatting/style-guards.json"))
         var failures: [String] = []
-        for c in try JSONDecoder().decode(Guards.self, from: data).cases {
+        let guards = try JSONDecoder().decode(Guards.self, from: data).cases
+        #expect(guards.count == 79)
+        for c in guards {
             let styled = TranscriptStyle.apply(to: c.input, language: c.lang)
             if styled != c.expected { failures.append("\(c.input) -> \(styled), want \(c.expected)") }
         }

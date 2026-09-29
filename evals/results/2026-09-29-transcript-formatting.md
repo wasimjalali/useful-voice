@@ -41,7 +41,7 @@ select languages". In practice German Smart Format digitises with or without `nu
 |---|---|
 | Baseline (before the fix) | 29 / 44 |
 | Candidate, Deepgram output only (`numerals` dropped) | 34 / 44 |
-| Candidate after `TranscriptStyle` (what the app now delivers) | 41 / 44 |
+| Candidate after `TranscriptStyle` (what the app now delivers) | 41 / 44 (asserted by `recordedDeepgramOutputEndsUpAsExpected`) |
 
 The 3 that still differ are one documented gap (below). Nothing that was a digit on purpose
 regressed: versions, model names, money, times, percentages, decimals and years all pass.
@@ -63,19 +63,25 @@ Fixed by `TranscriptStyle`:
 
 ## Review round
 
-Two reviewers (Opus 5.5 on the styling logic, Sonnet 5.5 on request, tests and sweep) ran on PR 27.
-Opus found seven high false positives in the first version: acronyms plus a number rewritten
-("the API one more time" became "API 1 more time"), German decimals turning "iOS 17.4" and
-"10.30 Uhr" into commas, money and symbols ("5 €", "2 %", "§ 3"), spaced ranges, capitals
-after abbreviations ("ca. Drei Leute"), and a Swift/TS difference on "GPT-4.5". All were fixed by
-making the rules stricter and are pinned by `evals/formatting/style-guards.json` (55 inputs,
-run by both the Swift and the Windows tests). Sonnet's two lows (weak known-gap assertion,
-READMEs) led to a stricter assertion. READMEs are docs, not app text, and were not swept.
+Two reviewers (Opus 5.5 on the styling logic, Sonnet 5.5 on request, tests and sweep) ran on PR 27,
+twice. Pass one: seven high false positives in the first version (acronym plus number rewritten,
+"iOS 17.4" and "10.30 Uhr" turned into commas, money and symbols, spaced ranges, capitals after
+abbreviations, a Swift/TS difference). Pass two, on the stricter rules: five more highs, nearly
+all from the German small-number rule guessing too widely ("iOS 9", "inkl. 3", half-converted
+ranges, an ordinal swallowing a sentence end, "the version one would expect").
+
+The fix for pass two was a design change, not more exceptions: a German digit becomes a word only
+after a short list of words that take a quantity ("habe", "sind", "in", "mit", "für" and so on),
+or at the very start of the text. Everything else keeps Deepgram's digit. Ordinals no longer use
+"am" or "vom" (usually dates). All findings are pinned as inputs in
+`evals/formatting/style-guards.json` (79 inputs, run by both the Swift and the Windows tests,
+which also fail if the counts change or a file is empty). READMEs are docs, not app text, and
+were not swept.
 
 ## Decisions
 
-- A digit right after a sentence-initial word ("In 2 Wochen") stays, because that word is
-  capitalised and could be a noun. Safe miss.
+- A German digit stays unless a quantity word precedes it, or it opens the text. So
+  "Fertig. 3 Leute kamen." and "In 2 Wochen ist es soweit." keep the digit. Safe misses.
 - German ordinals after "der" and "die" stay as digits ("die 3. Runde"). The ending depends
   on gender and number, and a wrong ending would change a word the speaker said. These are the
   3 cases marked `known_gap`.

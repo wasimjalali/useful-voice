@@ -21,6 +21,7 @@ const rows: Row[] = JSON.parse(
 
 describe('applyTranscriptStyle on recorded Deepgram output', () => {
   it('ends up as expected', () => {
+    expect(rows).toHaveLength(44);
     const failures = rows
       .filter((row) => !row.known_gap)
       .map((row) => ({ row, styled: applyTranscriptStyle(row.got, row.lang) }))
@@ -30,6 +31,7 @@ describe('applyTranscriptStyle on recorded Deepgram output', () => {
   });
 
   it('keeps known gaps as digits rather than guessing an ending', () => {
+    expect(rows.filter((r) => r.known_gap)).toHaveLength(3);
     for (const row of rows.filter((r) => r.known_gap)) {
       // "der 3." and "die 3." have no certain ending, so the digit must survive.
       const styled = applyTranscriptStyle(row.got, row.lang);
@@ -43,6 +45,7 @@ describe('applyTranscriptStyle on recorded Deepgram output', () => {
     const { cases } = JSON.parse(
       readFileSync(new URL('../../evals/formatting/style-guards.json', import.meta.url), 'utf8'),
     ) as { cases: { lang: string; input: string; expected: string }[] };
+    expect(cases).toHaveLength(79);
     const failures = cases
       .map((c) => ({ c, styled: applyTranscriptStyle(c.input, c.lang) }))
       .filter(({ c, styled }) => styled !== c.expected)

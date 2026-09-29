@@ -715,6 +715,91 @@
    "lang": "en",
    "input": "Send 500 dollars",
    "expected": "Send 500 dollars"
+  },
+  {
+   "lang": "en",
+   "input": "Press Q two times to open the menu.",
+   "expected": "Press Q two times to open the menu."
+  },
+  {
+   "lang": "en",
+   "input": "Hit the Q three times.",
+   "expected": "Hit the Q three times."
+  },
+  {
+   "lang": "en",
+   "input": "I got a Q two lines down.",
+   "expected": "I got a Q two lines down."
+  },
+  {
+   "lang": "en",
+   "input": "We closed the deal in Q two.",
+   "expected": "We closed the deal in Q2."
+  },
+  {
+   "lang": "en",
+   "input": "She lives at 21st Place NW.",
+   "expected": "She lives at 21st Place NW."
+  },
+  {
+   "lang": "en",
+   "input": "Rupert Murdoch ran 21st Century Fox.",
+   "expected": "Rupert Murdoch ran 21st Century Fox."
+  },
+  {
+   "lang": "en",
+   "input": "The 13th Floor Elevators played tonight.",
+   "expected": "The 13th Floor Elevators played tonight."
+  },
+  {
+   "lang": "en",
+   "input": "The 7th Day Adventist Church is downtown.",
+   "expected": "The 7th Day Adventist Church is downtown."
+  },
+  {
+   "lang": "en",
+   "input": "He is a 2nd Year Student.",
+   "expected": "He is a 2nd Year Student."
+  },
+  {
+   "lang": "en",
+   "input": "Flight UA 007 PM departure.",
+   "expected": "Flight UA 007 PM departure."
+  },
+  {
+   "lang": "en",
+   "input": "The 2FA code is 080 PM.",
+   "expected": "The 2FA code is 080 PM."
+  },
+  {
+   "lang": "en",
+   "input": "The ID is A007AM.",
+   "expected": "The ID is A007AM."
+  },
+  {
+   "lang": "en",
+   "input": "Did you pay the $25",
+   "expected": "Did you pay the $25"
+  },
+  {
+   "lang": "en",
+   "input": "It costs $1,000,",
+   "expected": "It costs $1,000,"
+  },
+  {
+   "lang": "en",
+   "input": "Tip: $5",
+   "expected": "Tip: $5"
+  },
+  {
+   "lang": "en",
+   "input": "Rent is $1,200",
+   "expected": "Rent is $1,200"
+  },
+  {
+   "lang": "en",
+   "input": "Take a look at https://example.com/pricing/$25",
+   "expected": "Take a look at https://example.com/pricing/$25"
   }
  ]
 }

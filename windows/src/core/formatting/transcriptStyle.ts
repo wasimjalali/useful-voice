@@ -63,25 +63,62 @@ function english(text: string): string {
     (_m, code: string, sep: string, n: string) => `${code}${sep}${ENGLISH_NUMBERS[n]}`,
   );
   // "07:45AM" -> "7:45 AM", "3PM" -> "3 PM": no leading zero and a space before AM or PM.
+  // Never inside a longer number or code ("UA 007 PM", "A007AM").
   result = result.replace(
-    /(?<![\d:.])(0?)(\d{1,2})(:[0-5]\d)?\s?([AaPp][Mm])(?![A-Za-z])/gu,
+    /(?<![\p{L}\p{N}_:.])(0?)([1-9]|1[0-2])(:[0-5]\d)?\s?([AaPp][Mm])(?![A-Za-z])/gu,
     (_m, _zero: string, hour: string, minutes: string | undefined, meridiem: string) =>
       `${hour}${minutes ?? ''} ${meridiem}`,
   );
   // "the 21st Floor" -> "the 21st floor": Deepgram capitalises the noun after a digit
-  // ordinal. Only common nouns, so "5th Avenue" and "1st Street" keep their capital.
+  // ordinal. Only common nouns that are not part of a name, and only when no other
+  // capitalised word follows, so "5th Avenue", "21st Place NW", "21st Century Fox",
+  // "The 13th Floor Elevators" and "2nd Year Student" keep their capitals.
   result = result.replace(
-    /\b(\d+(?:st|nd|rd|th))(\s+)(Floor|Place|Time|Quarter|Draft|Edition|Anniversary|Item|Day|Century|Grade|Row|Chapter|Attempt|Round|Session|Birthday|Year|Week|Month|Half|Semester)\b/gu,
+    /\b(\d+(?:st|nd|rd|th))(\s+)(Floor|Time|Quarter|Draft|Item|Attempt|Round|Session|Row|Chapter|Week|Month|Year|Half|Semester|Grade|Birthday)\b(?=\s*(?:[.,;:!?)]|$)|\s+[a-z])/gu,
     (_m, ordinal: string, space: string, noun: string) => `${ordinal}${space}${noun.toLowerCase()}`,
   );
-  // "q three" -> "Q3".
+  // "q three" -> "Q3", only as a quarter: at the end of a phrase, before a word that follows
+  // a quarter ("Q three revenue") or a linking word. "Press Q two times" and "hit the Q
+  // three times" keep their words.
   result = result.replace(
-    new RegExp(`(?<![\\p{L}\\p{N}_])[Qq][ -](${ENGLISH_WORDS.split('|').slice(0, 4).join('|')})(?![\\p{L}\\p{N}_])`, 'gu'),
+    new RegExp(
+      `(?<![\\p{L}\\p{N}_])[Qq][ -](${ENGLISH_WORDS.split('|').slice(0, 4).join('|')})(?![\\p{L}\\p{N}_])(?=\\s*(?:[.,;:!?)]|$)|\\s+(?:${QUARTER_FOLLOWERS})(?![\\p{L}\\p{N}_]))`,
+      'gu',
+    ),
     (_m, n: string) => `Q${ENGLISH_NUMBERS[n]}`,
   );
-  // Deepgram drops the closing full stop after a currency amount ("costs $25"). Only when
-  // the whole text ends on the amount with no punctuation at all.
-  return result.replace(/([$€£]\s?\d[\d,]*(?:\.\d+)?(?:\s(?:million|billion|thousand))?)$/u, '$1.');
+  return closingFullStop(result);
+}
+
+const QUARTER_FOLLOWERS =
+  'revenue|results|earnings|sales|numbers|report|targets|goals|planning|review|forecast|budget|roadmap|growth|profit|performance|update|okrs|close|guidance|bookings|is|was|will|of|and|or|to';
+
+const QUESTION_OPENERS = new Set([
+  'did', 'do', 'does', 'is', 'are', 'was', 'were', 'will', 'would', 'can', 'could', 'should',
+  'how', 'what', 'when', 'where', 'who', 'why', 'which', 'have', 'has', 'had', 'shall', 'may',
+]);
+
+/**
+ * Deepgram drops the closing full stop after a currency amount ("costs $25"). Added only
+ * when the whole text is a one-line sentence of at least four words that starts with a
+ * capital letter, is not a question opener or a URL, and ends on the amount with no
+ * punctuation at all. Lists, chat fragments and questions are left alone.
+ */
+function closingFullStop(text: string): string {
+  const words = text.split(/\s+/u).filter((word) => word !== '');
+  const first = words[0];
+  if (
+    words.length < 4 ||
+    text.includes('\n') ||
+    text.includes('://') ||
+    first === undefined ||
+    !/^\p{Lu}/u.test(first) ||
+    QUESTION_OPENERS.has(first.toLowerCase()) ||
+    !/[$€£]\s?\d(?:[\d,]*\d)?(?:\.\d+)?(?:\s(?:million|billion|thousand))?$/u.test(text)
+  ) {
+    return text;
+  }
+  return `${text}.`;
 }
 
 const GERMAN_CARDINALS: Record<number, string> = {

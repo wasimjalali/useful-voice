@@ -55,24 +55,43 @@ public enum TranscriptStyle {
             "\($0[1])\($0[2])\(englishNumbers[$0[3]] ?? $0[3])"
         }
         // "07:45AM" -> "7:45 AM", "3PM" -> "3 PM": no leading zero and a space before AM or PM.
-        result = replacing(#"(?<![\d:.])(0?)(\d{1,2})(:[0-5]\d)?\s?([AaPp][Mm])(?![A-Za-z])"#, in: result) {
+        // Never inside a longer number or code ("UA 007 PM", "A007AM").
+        result = replacing(#"(?<![\p{L}\p{N}_:.])(0?)([1-9]|1[0-2])(:[0-5]\d)?\s?([AaPp][Mm])(?![A-Za-z])"#, in: result) {
             "\($0[2])\($0[3]) \($0[4])"
         }
         // "the 21st Floor" -> "the 21st floor": Deepgram capitalises the noun after a digit
-        // ordinal. Only common nouns, so "5th Avenue" and "1st Street" keep their capital.
-        result = replacing(#"\b(\d+(?:st|nd|rd|th))(\s+)(Floor|Place|Time|Quarter|Draft|Edition|Anniversary|Item|Day|Century|Grade|Row|Chapter|Attempt|Round|Session|Birthday|Year|Week|Month|Half|Semester)\b"#, in: result) {
+        // ordinal. Only common nouns that are not part of a name, and only when no other
+        // capitalised word follows, so "5th Avenue", "21st Place NW", "21st Century Fox",
+        // "The 13th Floor Elevators" and "2nd Year Student" keep their capitals.
+        result = replacing(#"\b(\d+(?:st|nd|rd|th))(\s+)(Floor|Time|Quarter|Draft|Item|Attempt|Round|Session|Row|Chapter|Week|Month|Year|Half|Semester|Grade|Birthday)\b(?=\s*(?:[.,;:!?)]|$)|\s+[a-z])"#, in: result) {
             "\($0[1])\($0[2])\($0[3].lowercased())"
         }
-        // "q three" -> "Q3".
-        result = replacing(#"(?<![\p{L}\p{N}_])[Qq][ -](one|two|three|four)(?![\p{L}\p{N}_])"#, in: result) {
+        // "q three" -> "Q3", only as a quarter: at the end of a phrase, before a word that
+        // follows a quarter ("Q three revenue") or a linking word. "Press Q two times" and
+        // "hit the Q three times" keep their words.
+        result = replacing(#"(?<![\p{L}\p{N}_])[Qq][ -](one|two|three|four)(?![\p{L}\p{N}_])(?=\s*(?:[.,;:!?)]|$)|\s+(?:revenue|results|earnings|sales|numbers|report|targets|goals|planning|review|forecast|budget|roadmap|growth|profit|performance|update|okrs|close|guidance|bookings|is|was|will|of|and|or|to)\b)"#, in: result) {
             "Q\(englishNumbers[$0[1]] ?? $0[1])"
         }
-        // Deepgram drops the closing full stop after a currency amount ("costs $25").
-        // Only when the whole text ends on the amount with no punctuation at all.
-        result = replacing(#"([$€£]\s?\d[\d,]*(?:\.\d+)?(?:\s(?:million|billion|thousand))?)$"#, in: result) {
-            "\($0[1])."
-        }
-        return result
+        return closingFullStop(result)
+    }
+
+    private static let questionOpeners: Set<String> = [
+        "did", "do", "does", "is", "are", "was", "were", "will", "would", "can", "could", "should",
+        "how", "what", "when", "where", "who", "why", "which", "have", "has", "had", "shall", "may",
+    ]
+
+    /// Deepgram drops the closing full stop after a currency amount ("costs $25"). Added only
+    /// when the whole text is a one-line sentence of at least four words that starts with a
+    /// capital letter, is not a question opener or a URL, and ends on the amount with no
+    /// punctuation at all. Lists, chat fragments and questions are left alone.
+    private static func closingFullStop(_ text: String) -> String {
+        let words = text.split(whereSeparator: \.isWhitespace)
+        guard words.count >= 4, !text.contains("\n"), !text.contains("://"),
+              let first = words.first, first.first?.isUppercase == true,
+              !questionOpeners.contains(first.lowercased()),
+              text.range(of: #"[$€£]\s?\d(?:[\d,]*\d)?(?:\.\d+)?(?:\s(?:million|billion|thousand))?$"#,
+                         options: .regularExpression) != nil else { return text }
+        return text + "."
     }
 
     // MARK: German

@@ -57,11 +57,19 @@ def main():
     ap.add_argument("--only", nargs="*", help="re-run just these case ids and update them in --out")
     args = ap.parse_args()
     key, cases = api_key(), json.loads((HERE / "cases.json").read_text())
-    previous = {r["id"]: r for r in json.loads(Path(args.out).read_text())["rows"]} if args.only else {}
+    previous = {}
+    if args.only is not None:
+        if not Path(args.out).exists():
+            sys.exit(f"--only needs an existing {args.out} to update")
+        previous = {r["id"]: r for r in json.loads(Path(args.out).read_text())["rows"]}
+        missing = [c["id"] for c in cases if c["id"] not in args.only and c["id"] not in previous]
+        if missing:
+            sys.exit(f"--only: these cases are not in {args.out} yet, include them in --only: {missing}")
     rows, tmp = [], Path(tempfile.mkdtemp())
     for c in cases:
         if args.only is not None and c["id"] not in args.only:
-            rows.append({**c, "got": previous[c["id"]]["got"], "pass": previous[c["id"]]["pass"]})
+            got = previous[c["id"]]["got"]
+            rows.append({**c, "got": got, "pass": got in [c["expected"], *c.get("accept", [])]})
             continue
         wav = tmp / f"{c['id']}.wav"
         synth(c["spoken"], c.get("voice", VOICES[c["lang"]]), wav)

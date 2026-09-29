@@ -63,9 +63,11 @@ Fixed by `TranscriptStyle`:
 - English ordinal nouns: "the 21st Floor" becomes "the 21st floor". Deepgram capitalises the noun
   after a digit ordinal; only a list of common nouns is lowercased, so "5th Avenue" and
   "1st Street" keep their capital.
-- English quarters: "q three" becomes "Q3".
+- English quarters: "q three" becomes "Q3" (only at the end of a phrase or before a word like
+  "revenue" or "is", so "Press Q two times" is untouched).
 - English closing full stop: "The ticket costs $25" becomes "The ticket costs $25." Deepgram drops it
-  after a currency amount. Only when the whole text ends on the amount with no punctuation.
+  after a currency amount. Only for a one-line sentence of four or more words, starting with a capital
+  letter and not a question, that ends on the amount with no punctuation.
 - English: "version two is out" becomes "version 2 is out", "GPT-five" becomes "GPT-5".
   Dropping `numerals` had turned these into words, so this keeps them as names. Narrow on
   purpose: a bare acronym plus a number ("call the API one more time") and "version one users"
@@ -79,7 +81,7 @@ Fixed by `TranscriptStyle`:
 ## Review round
 
 Two reviewers (Opus 5.5 on the styling logic, Sonnet 5.5 on request, tests and sweep) ran on PR 27,
-six times. Pass one: seven high false positives in the first version (acronym plus number
+seven times. Pass one: seven high false positives in the first version (acronym plus number
 rewritten, "iOS 17.4" and "10.30 Uhr" turned into commas, money and symbols, spaced ranges,
 capitals after abbreviations, a Swift/TS difference). Pass two, on the stricter rules: five more
 highs from the German small-number rule guessing too widely ("iOS 9", "inkl. 3", half-converted
@@ -102,6 +104,12 @@ abbreviations. Fixed by dropping "und" and "oder" as quantity continuations, rem
 "Klasse" from the ordinal nouns, and ending a sentence at a full stop only after a word of five or
 more letters. Since English is the primary language and German is not, these fixes chose the
 safest option each time (the digit stays) rather than covering more German.
+Pass seven (English only, the primary language): three highs in the new English rules ("Press Q two
+times" became "Q2 times", "21st Place NW" and "21st Century Fox" lost a capital, "UA 007 PM" became
+"UA 07 PM") and a low (a full stop added to a question or list item ending in an amount). Fixed by
+limiting "Q" to real quarter contexts, dropping street and title nouns from the ordinal list and
+requiring that no capitalised word follows, keeping times out of longer numbers and codes, and adding
+the closing full stop only to a one-line sentence of four or more words that is not a question.
 
 Each pass fixed its findings and then changed the design instead of piling on exceptions:
 
@@ -112,7 +120,7 @@ Each pass fixed its findings and then changed the design instead of piling on ex
 3. Ordinals convert only after das, dem, des, im, zum, zur, beim and only before a listed noun
    ("Kapitel", "Stock", "Quartal", "Jahr"). A date or a number that ends a sentence never matches.
 
-Every finding is pinned as an input in `evals/formatting/style-guards.json` (143 inputs, run by
+Every finding is pinned as an input in `evals/formatting/style-guards.json` (160 inputs, run by
 both the Swift and the Windows tests, which also assert their counts, so an emptied file fails).
 READMEs are docs, not app text, and were not swept.
 

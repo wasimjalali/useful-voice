@@ -25,8 +25,8 @@ struct ScratchpadPage: View {
         .padding(.horizontal, 32)
         .padding(.top, 20)
         .padding(.bottom, 32)
-        .frame(maxWidth: 1180, maxHeight: .infinity, alignment: .topLeading)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .pageColumn(maxWidth: 1200)
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.surface)
         .sheet(isPresented: $showImport) { importSheet }
         .confirmationDialog(
@@ -70,6 +70,7 @@ struct ScratchpadPage: View {
                     .buttonStyle(.borderedProminent)
                     .tint(Theme.brand)
                     .controlSize(.large)
+                    .keyboardShortcut("n", modifiers: .command)
                     .clickableCursor()
                 }
             }
@@ -145,7 +146,7 @@ struct ScratchpadPage: View {
 
     private var workspace: some View {
         GeometryReader { geometry in
-            HStack(alignment: .top, spacing: 16) {
+            HStack(alignment: .top, spacing: 20) {
                 noteList
                     .frame(minWidth: 240, idealWidth: 300, maxWidth: 320)
                     .frame(height: geometry.size.height)
@@ -160,36 +161,28 @@ struct ScratchpadPage: View {
     }
 
     private var noteList: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                PremiumSearchField(placeholder: "Search notes", text: $scratchpad.query)
-                Text("\(scratchpad.filteredNotes.count)")
-                    .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(Theme.muted)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .background(Theme.surface, in: Capsule())
-                    .overlay(Capsule().strokeBorder(Theme.line, lineWidth: 1))
-            }
+        let filtered = scratchpad.filteredNotes
+        let pinned = filtered.filter(\.isPinned)
+        let others = filtered.filter { !$0.isPinned }
+        return VStack(alignment: .leading, spacing: 12) {
+            PremiumSearchField(placeholder: "Search notes", text: $scratchpad.query)
 
-            if scratchpad.filteredNotes.isEmpty {
-                CommandEmptyState(
-                    icon: scratchpad.notes.isEmpty ? "note.text" : "magnifyingglass",
-                    title: scratchpad.notes.isEmpty ? "No notes yet" : "No matching notes",
-                    detail: scratchpad.notes.isEmpty
-                        ? "Create a note or send a transcript from Library."
-                        : "Try a shorter search."
-                )
+            if filtered.isEmpty {
+                Spacer(minLength: 0)
+                Text(scratchpad.notes.isEmpty ? "No notes yet" : "No matching notes")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.inkMuted)
+                    .frame(maxWidth: .infinity)
+                Spacer(minLength: 0)
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 4) {
-                        ForEach(scratchpad.filteredNotes) { note in
-                            ScratchpadNoteRow(
-                                note: note,
-                                isSelected: scratchpad.selectedID == note.id,
-                                onSelect: { scratchpad.select(note.id) }
-                            )
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        if !pinned.isEmpty {
+                            listHeader("Pinned")
+                            ForEach(pinned) { noteRow($0) }
+                            if !others.isEmpty { listHeader("Notes") }
                         }
+                        ForEach(others) { noteRow($0) }
                     }
                 }
             }
@@ -199,25 +192,45 @@ struct ScratchpadPage: View {
         .frame(maxHeight: .infinity)
     }
 
+    private func noteRow(_ note: ScratchpadNote) -> some View {
+        ScratchpadNoteRow(
+            note: note,
+            isSelected: scratchpad.selectedID == note.id,
+            onSelect: { scratchpad.select(note.id) }
+        )
+    }
+
+    private func listHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Theme.inkMuted)
+            .padding(.horizontal, 10)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
+    }
+
     private var editor: some View {
         Group {
             if let selected = scratchpad.selected {
                 VStack(alignment: .leading, spacing: 0) {
                     editorToolbar(selected)
-                        .padding(.bottom, 14)
+                        .padding(.bottom, 18)
 
                     TextField(
-                        "Note title",
+                        "Title",
                         text: Binding(
                             get: { scratchpad.draftTitle },
                             set: { scratchpad.updateDraftTitle($0) }
                         )
                     )
                     .textFieldStyle(.plain)
-                    .font(.system(size: 26, weight: .bold))
-                    .tracking(-0.3)
+                    .font(.system(size: 30, weight: .bold))
+                    .tracking(-0.4)
                     .foregroundStyle(Theme.ink)
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 6)
+
+                    metaLine(selected)
+                        .padding(.bottom, 12)
 
                     TextEditor(
                         text: Binding(
@@ -227,15 +240,17 @@ struct ScratchpadPage: View {
                     )
                     .font(.system(size: 16))
                     .foregroundStyle(Theme.ink)
-                    .lineSpacing(4)
+                    .lineSpacing(5)
                     .scrollContentBackground(.hidden)
-                    .padding(2)
                     .frame(minHeight: 120, maxHeight: .infinity)
                     .layoutPriority(1)
 
                     Divider().overlay(Theme.line).padding(.vertical, 12)
 
-                    HStack(spacing: 12) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "number")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.inkFaint)
                         TextField(
                             "Tags, comma separated",
                             text: Binding(
@@ -243,18 +258,9 @@ struct ScratchpadPage: View {
                                 set: { scratchpad.updateDraftTags($0) }
                             )
                         )
-                        .premiumInputChrome()
-
-                        Text("\(ScratchpadNote.wordCount(in: scratchpad.draftBody)) words")
-                            .font(.system(size: 11, weight: .medium).monospacedDigit())
-                            .foregroundStyle(Theme.muted)
-                        if scratchpad.saveState == .saved {
-                            Text("Saved")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(Theme.success)
-                        }
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13))
                     }
-                    .fixedSize(horizontal: false, vertical: true)
 
                     if !scratchpad.saveError.isEmpty {
                         HStack(alignment: .top, spacing: 6) {
@@ -269,19 +275,63 @@ struct ScratchpadPage: View {
                         .padding(.top, 8)
                     }
                 }
-                .padding(22)
+                .padding(.horizontal, 28)
+                .padding(.vertical, 22)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             } else {
-                CommandEmptyState(
-                    icon: "note.text",
-                    title: "Select or create a note",
-                    detail: "Choose a note from the list, or create one."
-                )
+                startState
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
+    }
+
+    /// Word count, last edit and save state as one quiet line under the title.
+    private func metaLine(_ selected: ScratchpadNote) -> some View {
+        let words = ScratchpadNote.wordCount(in: scratchpad.draftBody)
+        return HStack(spacing: 6) {
+            Text("\(words) \(words == 1 ? "word" : "words")")
+            Text("\u{00B7}")
+            Text("Edited \(PageFormat.relativeTime(selected.updatedAt))")
+            if scratchpad.saveState == .saved {
+                Text("\u{00B7}")
+                Text("Saved")
+            }
+        }
+        .font(.system(size: 12, weight: .medium).monospacedDigit())
+        .foregroundStyle(Theme.inkMuted)
+        .lineLimit(1)
+    }
+
+    /// Shown when no note is open. With no notes at all it says how to begin.
+    private var startState: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "note.text")
+                .font(.system(size: 30, weight: .light))
+                .foregroundStyle(Theme.inkFaint)
+            Text(scratchpad.notes.isEmpty ? "Write your first note" : "Pick a note")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+            if scratchpad.notes.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Press Command N to start writing", systemImage: "square.and.pencil")
+                    Label("Send a dictation here from Library", systemImage: "waveform")
+                }
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.inkMuted)
+                Button("New note") {
+                    scratchpad.createNote()
+                    toasts.show("Note created")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.brand)
+                .controlSize(.large)
+                .clickableCursor()
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func editorToolbar(_ selected: ScratchpadNote) -> some View {

@@ -7,6 +7,8 @@ import UsefulVoiceCore
 final class UsefulVoiceViewModel: ObservableObject {
     @Published var dictationState: DictationState = .idle
     @Published var recent: [DictationRecord] = []
+    /// Bumped whenever the usage stats change, so the Insights page redraws.
+    @Published var usageRevision = 0
     @Published var providerConfigured: Bool = false
     @Published var providerName: String = "Deepgram"
     @Published var languagePin: LanguagePin = .auto
@@ -30,6 +32,8 @@ final class UsefulVoiceViewModel: ObservableObject {
 
     private let settings: AppSettings
     private let history: DictationHistory
+    /// Lifetime usage totals behind the Insights page.
+    let usageStats: UsageStatsStore
     let languageMemory: LanguageMemoryViewModel
     let scratchpad: ScratchpadViewModel
     private let onToggle: () -> Void
@@ -38,10 +42,12 @@ final class UsefulVoiceViewModel: ObservableObject {
     var historyStore: DictationHistory { history }
 
     init(settings: AppSettings, history: DictationHistory,
+         usageStats: UsageStatsStore,
          languageMemory: LanguageMemoryStore,
          scratchpad: ScratchpadStore, onToggle: @escaping () -> Void) {
         self.settings = settings
         self.history = history
+        self.usageStats = usageStats
         self.languageMemory = LanguageMemoryViewModel(store: languageMemory)
         self.scratchpad = ScratchpadViewModel(store: scratchpad)
         self.onToggle = onToggle
@@ -56,6 +62,8 @@ final class UsefulVoiceViewModel: ObservableObject {
     func refreshState(_ state: DictationState) { dictationState = state }
 
     func refreshRecent() { recent = history.recent(5) }
+
+    func refreshUsage() { usageRevision += 1 }
 
     func refreshConfig() {
         // Reads the in-memory cache rather than the Keychain. Calling get() here

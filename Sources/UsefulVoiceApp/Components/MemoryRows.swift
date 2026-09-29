@@ -6,52 +6,32 @@ struct MemoryTermRow: View {
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: "textformat")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.brand)
-                .frame(width: 24, height: 24)
-                .background(Theme.surfaceSubtle, in: RoundedRectangle(cornerRadius: 6))
-
-            VStack(alignment: .leading, spacing: 5) {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(term.phrase)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.ink)
-                if !metadata(for: term).isEmpty {
-                    Text(metadata(for: term))
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.muted)
-                        .lineLimit(2)
-                }
-                if !term.notes.isEmpty {
-                    Text(term.notes)
+                    .lineLimit(2)
+                if !hints.isEmpty {
+                    Text("Also fixes " + hints.joined(separator: ", "))
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.muted)
                         .lineLimit(2)
                 }
             }
-            Spacer()
+            Spacer(minLength: 8)
+            if term.notes == "Learned from correction" {
+                MemoryChip(text: "Learned")
+            }
+            MemoryMeta(language: term.language, usageCount: term.usageCount)
             Button(action: onDelete) { Image(systemName: "trash") }
                 .buttonStyle(PremiumIconButtonStyle())
                 .help("Remove word")
         }
-        .padding(14)
-        .background(Theme.surface)
-        .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
+        .memoryRowChrome()
     }
 
-    private func metadata(for term: MemoryTerm) -> String {
-        var parts: [String] = []
-        if term.notes == "Learned from correction" {
-            parts.append("Learned")
-        }
-        if term.usageCount > 0 { parts.append("used \(term.usageCount)×") }
-        let hints = term.pronunciations + term.aliases
-        if !hints.isEmpty {
-            parts.append("also fixes: " + hints.joined(separator: ", "))
-        }
-        return parts.joined(separator: " · ")
-    }
+    private var hints: [String] { term.pronunciations + term.aliases }
 }
 
 struct ReplacementRuleRow: View {
@@ -61,49 +41,33 @@ struct ReplacementRuleRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
-            Image(systemName: rule.isEnabled ? "arrow.right" : "pause")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(rule.isEnabled ? Theme.brand : Theme.muted)
-                .frame(width: 24, height: 24)
-                .background(Theme.surfaceSubtle, in: RoundedRectangle(cornerRadius: 6))
-
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 8) {
-                    Text(rule.match)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Theme.muted)
-                    Text(rule.replacement)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.brand)
-                }
-                Text(replacementMetadata(rule))
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.muted)
+            HStack(spacing: 8) {
+                Text(rule.match)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Theme.inkMuted)
+                    .lineLimit(2)
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.inkFaint)
+                Text(rule.replacement)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(2)
             }
-            Spacer()
+            Spacer(minLength: 8)
+            if !rule.isEnabled { MemoryChip(text: "Paused") }
+            MemoryMeta(language: rule.language, usageCount: rule.usageCount)
             Button(action: onToggleEnabled) {
                 Image(systemName: rule.isEnabled ? "pause" : "play.fill")
             }
             .buttonStyle(PremiumIconButtonStyle())
-            .help(rule.isEnabled ? "Pause correction" : "Resume correction")
+            .help(rule.isEnabled ? "Pause fix" : "Resume fix")
             Button(action: onDelete) { Image(systemName: "trash") }
                 .buttonStyle(PremiumIconButtonStyle())
-                .help("Remove correction")
+                .help("Remove fix")
         }
         .opacity(rule.isEnabled ? 1 : 0.58)
-        .padding(14)
-        .background(Theme.surface)
-        .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
-    }
-
-    private func replacementMetadata(_ rule: ReplacementRule) -> String {
-        var parts = [matchModeTitle(rule.matchMode), languageTitle(rule.language)]
-        if rule.usageCount > 0 { parts.append("used \(rule.usageCount) times") }
-        if !rule.isEnabled { parts.append("paused") }
-        return parts.joined(separator: " · ")
+        .memoryRowChrome()
     }
 }
 
@@ -113,26 +77,75 @@ struct MemorySnippetRow: View {
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(snippet.trigger)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.ink)
+                    .lineLimit(1)
                 Text(snippet.expansion)
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.muted)
                     .lineLimit(3)
             }
-            Spacer()
+            Spacer(minLength: 8)
+            if !snippet.isEnabled { MemoryChip(text: "Paused") }
+            MemoryMeta(language: snippet.language, usageCount: snippet.usageCount)
             Button(action: onToggleEnabled) {
                 Image(systemName: snippet.isEnabled ? "pause" : "play.fill")
             }
             .buttonStyle(PremiumIconButtonStyle())
+            .help(snippet.isEnabled ? "Pause snippet" : "Resume snippet")
             Button(action: onDelete) { Image(systemName: "trash") }
                 .buttonStyle(PremiumIconButtonStyle())
+                .help("Remove snippet")
         }
         .opacity(snippet.isEnabled ? 1 : 0.58)
-        .padding(.vertical, 8)
+        .memoryRowChrome()
+    }
+}
+
+/// Language (when scoped) and usage count, shared by every row.
+private struct MemoryMeta: View {
+    let language: MemoryLanguage
+    let usageCount: Int
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if language != .auto { MemoryChip(text: language.displayName) }
+            if usageCount > 0 {
+                Text(usageCount == 1 ? "1 use" : "\(usageCount) uses")
+                    .font(.system(size: 12).monospacedDigit())
+                    .foregroundStyle(Theme.inkMuted)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+        }
+    }
+}
+
+private struct MemoryChip: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(Theme.inkMuted)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Theme.sunken, in: Capsule())
+    }
+}
+
+private extension View {
+    func memoryRowChrome() -> some View {
+        padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surface)
+            .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
     }
 }
 
@@ -154,25 +167,5 @@ struct MemorySuggestionRow: View {
                 .tint(Theme.brand)
                 .clickableCursor()
         }
-    }
-}
-
-private func languageTitle(_ language: MemoryLanguage) -> String {
-    language.rawValue == "auto" ? "Any language" : language.displayName
-}
-
-private func priorityTitle(_ priority: MemoryPriority) -> String {
-    switch priority {
-    case .normal: return "Normal priority"
-    case .high: return "High priority"
-    case .always: return "Always include"
-    }
-}
-
-private func matchModeTitle(_ mode: ReplacementMatchMode) -> String {
-    switch mode {
-    case .exactPhrase: return "Exact phrase"
-    case .caseInsensitivePhrase: return "Case-insensitive"
-    case .wordBoundaryPhrase: return "Word boundary"
     }
 }

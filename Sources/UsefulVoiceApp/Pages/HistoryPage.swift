@@ -7,29 +7,41 @@ struct HistoryPage: View {
     @EnvironmentObject private var toasts: AppToastCenter
 
     @State private var query = ""
-    @State private var selectedID: UUID?
+    @State private var language: String?
+    @State private var expandedID: UUID?
     @State private var showClearConfirm = false
     @State private var correctionRecord: DictationRecord?
     @State private var correctionObserved = ""
     @State private var correctionCorrected = ""
 
+    private static let columnWidth: CGFloat = 1100
+
     var body: some View {
-        // Filter and group once per render. These used to be computed properties
-        // read from inside every row, so a library of n records cost O(n²) filter
-        // passes per render — the main reason the Library page felt heavy.
+        // Filter and group once per render, never inside a row: rows are lazy and
+        // only read their own record, so 1,000 entries stay cheap.
         _ = viewModel.recent.count
-        let records = viewModel.historyStore.search(query)
-        let selected = selectedRecord(in: records)
+        let all = viewModel.historyStore.all()
+        let languages = Set(all.compactMap(\.language)).sorted()
+        let records = filtered(languages: languages)
         let groups = grouped(records)
-        return FillRemainingHeightLayout(spacing: 22) {
-            header
-            workspace(records: records, selected: selected, groups: groups)
+        return VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 16) {
+                header(isEmpty: all.isEmpty)
+                if !all.isEmpty { toolbar(languages: languages, shown: records.count, total: all.count) }
+            }
+            .padding(.horizontal, 32)
+            .padding(.top, 20)
+            .padding(.bottom, 12)
+            .pageColumn(maxWidth: Self.columnWidth)
+
+            if records.isEmpty {
+                emptyState(hasRecords: !all.isEmpty)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                list(groups)
+            }
         }
-        .padding(.horizontal, 32)
-        .padding(.top, 20)
-        .padding(.bottom, 32)
-        .frame(maxWidth: 1180, maxHeight: .infinity, alignment: .topLeading)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.surface)
         .confirmationDialog(
             "Delete all transcripts? This cannot be undone.",
@@ -38,7 +50,8 @@ struct HistoryPage: View {
         ) {
             Button("Delete all transcripts", role: .destructive) {
                 viewModel.historyStore.clear()
-                selectedID = nil
+                expandedID = nil
+                language = nil
                 viewModel.refreshRecent()
                 toasts.show("Library cleared", kind: .info)
             }
@@ -47,232 +60,217 @@ struct HistoryPage: View {
         .sheet(item: $correctionRecord) { record in correctionSheet(record) }
     }
 
-    private func selectedRecord(in records: [DictationRecord]) -> DictationRecord? {
-        if let selectedID, let selected = records.first(where: { $0.id == selectedID }) {
-            return selected
-        }
-        return records.first
+    private func filtered(languages: [String]) -> [DictationRecord] {
+        let found = viewModel.historyStore.search(query)
+        // A filter whose language no longer exists (deleted entries) shows everything.
+        guard let language, languages.contains(language) else { return found }
+        return found.filter { $0.language == language }
     }
 
-    private var header: some View {
-        CommandPageHeader(
-            title: "Library"
-        ) {
+    private func header(isEmpty: Bool) -> some View {
+        CommandPageHeader(title: "Library") {
             BrandedMenuButton(help: "Library options") {
                 Button("Delete all transcripts", role: .destructive) { showClearConfirm = true }
-                    .disabled(viewModel.historyStore.all().isEmpty)
+                    .disabled(isEmpty)
             }
         }
     }
 
-    private func workspace(records: [DictationRecord],
-                           selected: DictationRecord?,
-                           groups: [(day: Date, records: [DictationRecord])]) -> some View {
-        HStack(alignment: .top, spacing: 18) {
-            transcriptList(records: records, selected: selected, groups: groups)
-                .frame(width: 300)
-            transcriptDetail(selected)
-                .frame(maxWidth: .infinity)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .layoutPriority(1)
-    }
-
-    private func transcriptList(records: [DictationRecord],
-                                selected: DictationRecord?,
-                                groups: [(day: Date, records: [DictationRecord])]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private func toolbar(languages: [String], shown: Int, total: Int) -> some View {
+        HStack(spacing: 10) {
             PremiumSearchField(placeholder: "Search transcripts", text: $query)
-
-            if records.isEmpty {
-                CommandEmptyState(
-                    icon: query.isEmpty ? "text.page" : "magnifyingglass",
-                    title: query.isEmpty ? "No transcripts yet" : "No matching transcripts",
-                    detail: query.isEmpty
-                        ? "Your next dictation will appear here automatically."
-                        : "Try a shorter word or a different spelling."
-                )
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 16) {
-                        ForEach(groups, id: \.day) { group in
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(dayTitle(group.day))
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(Theme.muted)
-                                    .padding(.horizontal, 4)
-                                VStack(spacing: 4) {
-                                    ForEach(group.records) { record in
-                                        transcriptRow(record, isSelected: selected?.id == record.id)
-                                    }
-                                }
-                            }
+            if languages.count > 1 {
+                Menu {
+                    Picker("Language", selection: $language) {
+                        Text("All languages").tag(String?.none)
+                        ForEach(languages, id: \.self) { code in
+                            Text(code).tag(String?.some(code))
                         }
                     }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(language ?? "All languages")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Theme.ink)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Theme.inkFaint)
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(height: 36)
+                    .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .clickableCursor()
+            }
+            Text(shown == total ? "\(total)" : "\(shown) of \(total)")
+                .font(.system(size: 12).monospacedDigit())
+                .foregroundStyle(Theme.inkMuted)
+                .fixedSize()
+        }
+    }
+
+    private func emptyState(hasRecords: Bool) -> some View {
+        CommandEmptyState(
+            icon: hasRecords ? "magnifyingglass" : "text.page",
+            title: hasRecords ? "No matching transcripts" : "No transcripts yet",
+            detail: hasRecords ? "Try a shorter word." : "Your next dictation will appear here."
+        )
+        .padding(32)
+    }
+
+    private func list(_ groups: [(day: Date, records: [DictationRecord])]) -> some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 10, pinnedViews: [.sectionHeaders]) {
+                ForEach(groups, id: \.day) { group in
+                    Section {
+                        ForEach(group.records) { record in
+                            row(record, expanded: expandedID == record.id)
+                        }
+                    } header: {
+                        Text(dayTitle(group.day))
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.inkMuted)
+                            .padding(.top, 10)
+                            .padding(.bottom, 4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Theme.surface)
+                    }
+                }
+            }
+            .padding(.horizontal, 32)
+            .padding(.bottom, 32)
+            .pageColumn(maxWidth: Self.columnWidth)
+        }
+    }
+
+    private func row(_ record: DictationRecord, expanded: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Text(meta(record))
+                    .font(.system(size: 12).monospacedDigit())
+                    .foregroundStyle(Theme.inkMuted)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Button { copy(record.text) } label: { Image(systemName: "doc.on.doc") }
+                    .buttonStyle(PremiumIconButtonStyle())
+                    .help("Copy transcript")
+                Button {
+                    viewModel.sendToScratchpad(record)
+                    toasts.show("Sent to notes")
+                } label: { Image(systemName: "note.text.badge.plus") }
+                    .buttonStyle(PremiumIconButtonStyle())
+                    .help("Send to notes")
+                BrandedMenuButton(help: "More actions") {
+                    Button("Learn correction") { beginCorrection(record) }
+                    Button("Reprocess") {
+                        viewModel.reprocessHistoryWithLanguageMemory(record)
+                        toasts.show("Reprocessing…", kind: .info)
+                    }
+                    Divider()
+                    Button("Delete", role: .destructive) { delete(record) }
+                }
+                Button { toggle(record.id) } label: {
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                }
+                .buttonStyle(PremiumIconButtonStyle())
+                .help(expanded ? "Collapse" : "Expand")
+            }
+
+            if expanded {
+                Text(record.text)
+                    .font(.system(size: 15))
+                    .foregroundStyle(Theme.ink)
+                    .lineSpacing(5)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                expandedDetails(record)
+            } else {
+                Text(record.text)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { toggle(record.id) }
+                    .clickableCursor()
             }
         }
         .padding(14)
-        .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .frame(maxHeight: .infinity)
-    }
-
-    private func transcriptRow(_ record: DictationRecord, isSelected: Bool) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            Button {
-                selectedID = record.id
-            } label: {
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack {
-                        Text(time(record.createdAt))
-                            .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                            .foregroundStyle(isSelected ? Theme.brand : Theme.muted)
-                        Spacer()
-                        if let duration = record.durationSeconds {
-                            Text(durationText(duration))
-                                .font(.system(size: 10).monospacedDigit())
-                                .foregroundStyle(Theme.muted)
-                        }
-                    }
-                    Text(record.text)
-                        .font(.system(size: 13))
-                        .foregroundStyle(Theme.ink)
-                        .lineLimit(3)
-                        .multilineTextAlignment(.leading)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .buttonStyle(.plain)
-            .clickableCursor()
-
-            Button {
-                copy(record.text)
-            } label: {
-                Image(systemName: "doc.on.doc")
-            }
-            .buttonStyle(PremiumIconButtonStyle())
-            .help("Copy transcript")
-        }
-        .padding(10)
         .background(
-            isSelected ? Theme.surface : Color.clear,
-            in: RoundedRectangle(cornerRadius: 9)
+            expanded ? Theme.surface : Theme.sunken.opacity(0.55),
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 9)
-                .strokeBorder(isSelected ? Theme.line : Color.clear, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(expanded ? Theme.lineStrong : Theme.line, lineWidth: 1)
         )
     }
 
-    private func transcriptDetail(_ selected: DictationRecord?) -> some View {
-        Group {
-            if let record = selected {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        detailHeader(record)
-                        Text(record.text)
-                            .font(.system(size: 17))
-                            .foregroundStyle(Theme.ink)
-                            .lineSpacing(6)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        Divider().overlay(Theme.line)
-                        detailActions(record)
-                        technicalDetails(record)
-                    }
-                    .padding(24)
+    @ViewBuilder
+    private func expandedDetails(_ record: DictationRecord) -> some View {
+        if let raw = record.rawText, !raw.isEmpty, raw != record.text {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 12) {
+                    compareBlock("Original", raw)
+                    compareBlock("Formatted", record.text)
                 }
-            } else {
-                CommandEmptyState(
-                    icon: "text.page",
-                    title: "Select a transcript",
-                    detail: "Choose an item from the library to read or reuse it."
-                )
+                VStack(spacing: 12) {
+                    compareBlock("Original", raw)
+                    compareBlock("Formatted", record.text)
+                }
             }
         }
-        .frame(maxHeight: .infinity, alignment: .top)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
-    }
-
-    private func detailHeader(_ record: DictationRecord) -> some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(fullDate(record.createdAt))
-                    .font(.system(size: 20, weight: .semibold))
-                    .tracking(-0.2)
-                    .foregroundStyle(Theme.ink)
-                Text([record.language, record.durationSeconds.map(durationText)].compactMap { $0 }.joined(separator: " · "))
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.muted)
-            }
-            Spacer()
-            Button("Copy") { copy(record.text) }
-                .buttonStyle(.bordered)
-                .tint(Theme.brand)
-                .clickableCursor()
-        }
-    }
-
-    private func detailActions(_ record: DictationRecord) -> some View {
-        WrappingHStack(horizontalSpacing: 10, verticalSpacing: 8) {
-            Button("Learn correction") { beginCorrection(record) }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.brand)
-                .clickableCursor()
-            Button("Send to notes") {
-                viewModel.sendToScratchpad(record)
-                toasts.show("Sent to notes")
-            }
-            .buttonStyle(.bordered)
-            .tint(Theme.brand)
-            .clickableCursor()
-            Button("Reprocess") {
-                viewModel.reprocessHistoryWithLanguageMemory(record)
-                toasts.show("Reprocessing…", kind: .info)
-            }
-            .buttonStyle(.bordered)
-            .tint(Theme.brand)
-            .clickableCursor()
-            Button("Delete", role: .destructive) { delete(record) }
-                .buttonStyle(.borderless)
-                .clickableCursor()
+        WrappingHStack(horizontalSpacing: 18, verticalSpacing: 6) {
+            detailLine("Provider", record.provider)
+            if let model = record.modelDeployment, !model.isEmpty { detailLine("Model", model) }
+            if let mode = record.mode { detailLine("Mode", mode == .formatted ? "Formatted" : "Raw") }
+            detailLine("Dictionary matches", "\(memoryCount(record))")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func technicalDetails(_ record: DictationRecord) -> some View {
-        DisclosureGroup("Details") {
-            VStack(alignment: .leading, spacing: 12) {
-                if let raw = record.rawText, raw != record.text, !raw.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Original transcript")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Theme.muted)
-                        Text(raw)
-                            .font(.system(size: 12))
-                            .foregroundStyle(Theme.muted)
-                            .textSelection(.enabled)
-                    }
-                }
-                detailLine("Provider", record.provider)
-                if let model = record.modelDeployment, !model.isEmpty { detailLine("Model", model) }
-                detailLine("Dictionary matches", "\(memoryCount(record))")
-            }
-            .padding(.top, 10)
+    private func compareBlock(_ title: String, _ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.inkMuted)
+            Text(text)
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.ink)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .font(.system(size: 12, weight: .medium))
-        .foregroundStyle(Theme.muted)
+        .padding(12)
+        .frame(minWidth: 240, maxWidth: .infinity, alignment: .topLeading)
+        .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func detailLine(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(label).foregroundStyle(Theme.muted)
-            Spacer()
+        HStack(spacing: 6) {
+            Text(label).foregroundStyle(Theme.inkMuted)
             Text(value).foregroundStyle(Theme.ink).textSelection(.enabled)
         }
         .font(.system(size: 12))
+    }
+
+    private func toggle(_ id: UUID) {
+        expandedID = expandedID == id ? nil : id
+    }
+
+    private func meta(_ record: DictationRecord) -> String {
+        let words = record.text.split(whereSeparator: \.isWhitespace).count
+        var parts = [time(record.createdAt)]
+        if let language = record.language { parts.append(language) }
+        if let duration = record.durationSeconds { parts.append(durationText(duration)) }
+        parts.append(words == 1 ? "1 word" : "\(words) words")
+        return parts.joined(separator: " · ")
     }
 
     private func correctionSheet(_ record: DictationRecord) -> some View {
@@ -287,11 +285,11 @@ struct HistoryPage: View {
                 .foregroundStyle(Theme.ink)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Heard").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+                Text("Heard").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.inkMuted)
                 TextField("What Useful Voice heard", text: $correctionObserved).premiumInputChrome()
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text("Write instead").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+                Text("Write instead").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.inkMuted)
                 TextField("Correct spelling", text: $correctionCorrected).premiumInputChrome()
             }
 
@@ -299,7 +297,7 @@ struct HistoryPage: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Will learn")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Theme.muted)
+                        .foregroundStyle(Theme.inkMuted)
                     ForEach(Array(preview.enumerated()), id: \.offset) { _, pair in
                         HStack(spacing: 8) {
                             Text(pair.observed)
@@ -307,7 +305,7 @@ struct HistoryPage: View {
                                 .foregroundStyle(Theme.ink)
                             Image(systemName: "arrow.right")
                                 .font(.system(size: 10))
-                                .foregroundStyle(Theme.muted)
+                                .foregroundStyle(Theme.inkMuted)
                             Text(pair.corrected)
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(Theme.brand)
@@ -370,7 +368,7 @@ struct HistoryPage: View {
 
     private func delete(_ record: DictationRecord) {
         viewModel.historyStore.delete(id: record.id)
-        if selectedID == record.id { selectedID = nil }
+        if expandedID == record.id { expandedID = nil }
         viewModel.refreshRecent()
         toasts.show("Transcript deleted", kind: .info)
     }
@@ -394,7 +392,6 @@ struct HistoryPage: View {
     }
 
     private func time(_ date: Date) -> String { date.formatted(date: .omitted, time: .shortened) }
-    private func fullDate(_ date: Date) -> String { date.formatted(date: .abbreviated, time: .shortened) }
 
     private func durationText(_ seconds: Double) -> String {
         if seconds < 60 { return "\(Int(seconds.rounded())) sec" }

@@ -10,6 +10,7 @@ import {
   DETECTION_CODES,
   supportsSpokenPunctuation as supportsSpokenPunctuationCode,
 } from './languages.js';
+import { applyTranscriptStyle } from '../formatting/transcriptStyle.js';
 
 export interface DeepgramConfig {
   apiKey: string;
@@ -210,9 +211,10 @@ export function buildRequest({ audioBytes, hint, config }: BuildRequestOptions):
 
   params.set('smart_format', config.smartFormat ? 'true' : 'false');
   if (config.smartFormat) {
-    // Smart Format only *guarantees* punctuation and paragraphs; numerals are
-    // documented as available "for select languages" on non-English models.
-    params.set('numerals', 'true');
+    // `numerals` is deliberately not sent: it turns every spoken number into
+    // digits ("the first" -> "the 1st"). Smart Format alone writes English small
+    // numbers and ordinals as words. German digitises regardless; see
+    // `transcriptStyle`.
   }
   if (config.spokenPunctuation && supportsSpokenPunctuation(hint.language)) {
     // The docs are explicit that punctuation must also be enabled:
@@ -258,8 +260,12 @@ interface DeepgramResponse {
   metadata?: { duration?: number };
 }
 
-/** Extract the transcript from a Deepgram pre-recorded response. */
-export function parseResponse(payload: unknown): Transcript {
+/**
+ * Extract the transcript from a Deepgram pre-recorded response. `style` applies
+ * number style in the detected language, else the pinned one; it is passed only when
+ * formatting is on, so a raw transcript stays raw.
+ */
+export function parseResponse(payload: unknown, style?: { pinnedLanguage: string }): Transcript {
   if (typeof payload !== 'object' || payload === null) {
     throw new ProviderError('malformedResponse', 'The transcription service returned an unexpected response.');
   }
@@ -270,8 +276,11 @@ export function parseResponse(payload: unknown): Transcript {
     body.results?.duration ??
     body.metadata?.duration ??
     null;
+  const trimmed = typeof text === 'string' ? text.trim() : '';
   return {
-    text: typeof text === 'string' ? text.trim() : '',
+    text: style
+      ? applyTranscriptStyle(trimmed, channel?.detected_language ?? style.pinnedLanguage)
+      : trimmed,
     durationSeconds: typeof duration === 'number' && Number.isFinite(duration) ? duration : null,
     detectedLanguage: channel?.detected_language ?? null,
   };
@@ -412,7 +421,7 @@ export async function transcribe(options: TranscribeOptions): Promise<Transcript
       throw new ProviderError('cancelled', 'Transcription was cancelled.');
     }
     try {
-      return await attemptOnce(request, audio, doFetch, options.signal);
+      return await attemptOnce(request, audio, doFetch, options.signal, config.smartFormat ? hint.language : null);
     } catch (error) {
       const providerError = toProviderError(error);
       lastError = providerError;
@@ -431,6 +440,7 @@ async function attemptOnce(
   audio: Uint8Array,
   doFetch: typeof fetch,
   signal: AbortSignal | undefined,
+  styleLanguage: string | null,
 ): Promise<Transcript> {
   const timeoutSignal = AbortSignal.timeout(request.deadlineSeconds * 1000);
   const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
@@ -480,7 +490,7 @@ async function attemptOnce(
   } catch {
     throw new ProviderError('malformedResponse', 'The transcription service returned invalid JSON.');
   }
-  return parseResponse(payload);
+  return parseResponse(payload, styleLanguage === null ? undefined : { pinnedLanguage: styleLanguage });
 }
 
 function isAbortError(error: unknown): boolean {

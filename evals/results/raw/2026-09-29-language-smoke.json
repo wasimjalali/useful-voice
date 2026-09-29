@@ -1,0 +1,116 @@
+[
+  {
+    "code": "es",
+    "voice": "Paulina",
+    "spoken": "mañana tenemos una reunión a las diez y necesitamos revisar el presupuesto",
+    "got": "Mañana tenemos una reunión a las 10 y necesitamos revisar el presupuesto."
+  },
+  {
+    "code": "fr",
+    "voice": "Thomas",
+    "spoken": "demain nous avons une réunion à dix heures et nous devons revoir le budget",
+    "got": "Demain nous avons une réunion à 10 heures et nous devons revoir le budget."
+  },
+  {
+    "code": "it",
+    "voice": "Alice",
+    "spoken": "domani abbiamo una riunione alle dieci e dobbiamo rivedere il budget",
+    "got": "Domani abbiamo una riunione alle 10 e dobbiamo rivedere il budget."
+  },
+  {
+    "code": "pt",
+    "voice": "Luciana",
+    "spoken": "amanhã temos uma reunião às dez horas e precisamos revisar o orçamento",
+    "got": "Amanhã temos 1 reunião às 10 horas e precisamos revisar o orçamento."
+  },
+  {
+    "code": "nl",
+    "voice": "Xander",
+    "spoken": "morgen hebben we een vergadering om tien uur en we moeten het budget bekijken",
+    "got": "Morgen hebben we een vergadering om 10 uur en we moeten het budget bekijken."
+  },
+  {
+    "code": "sv",
+    "voice": "Alva",
+    "spoken": "imorgon har vi ett möte klockan tio och vi behöver granska budgeten",
+    "got": "Imorgon har vi ett möte klockan 10 och vi behöver granska budgeten."
+  },
+  {
+    "code": "da",
+    "voice": "Sara",
+    "spoken": "i morgen har vi et møde klokken ti og vi skal gennemgå budgettet",
+    "got": "Morgen har vi et møde klokken 10, og vi skal gennemgå budgettet."
+  },
+  {
+    "code": "fi",
+    "voice": "Satu",
+    "spoken": "huomenna meillä on kokous kymmeneltä ja meidän täytyy tarkistaa budjetti",
+    "got": ""
+  },
+  {
+    "code": "pl",
+    "voice": "Zosia",
+    "spoken": "jutro mamy spotkanie o dziesiątej i musimy przejrzeć budżet",
+    "got": "Jutro mamy spotkanie o dziesięć:zero I musimy przejrzeć budżet"
+  },
+  {
+    "code": "ru",
+    "voice": "Milena",
+    "spoken": "завтра у нас встреча в десять часов и нам нужно проверить бюджет",
+    "got": "Завтра у нас встреча в 10 часов и нам нужно проверить бюджет."
+  },
+  {
+    "code": "tr",
+    "voice": "Yelda",
+    "spoken": "yarın saat onda bir toplantımız var ve bütçeyi gözden geçirmemiz gerekiyor",
+    "got": "Yarın saat onda bir toplantımız var ve bütçeyi gözden geçirmemiz gerekiyor."
+  },
+  {
+    "code": "ja",
+    "voice": "Kyoko",
+    "spoken": "明日は十時に会議があります。予算を確認する必要があります",
+    "got": "明日は十時に会議があります。予算を確認する必要があります。"
+  },
+  {
+    "code": "ko",
+    "voice": "Yuna",
+    "spoken": "내일 열 시에 회의가 있고 예산을 검토해야 합니다",
+    "got": "내일 10 시에 회의가 있고 예산을 검토해야 합니다."
+  },
+  {
+    "code": "zh",
+    "voice": "Tingting",
+    "spoken": "明天上午十点有一个会议，我们需要审查预算",
+    "got": "明天上午10点有一个会议我们需要审查预算。"
+  },
+  {
+    "code": "hi",
+    "voice": "Lekha",
+    "spoken": "कल सुबह दस बजे हमारी बैठक है और हमें बजट की समीक्षा करनी है",
+    "got": "कल सुबह दस बजे हमारी बैठक है और हमें budget की समीक्षा करनी है."
+  },
+  {
+    "code": "id",
+    "voice": "Damayanti",
+    "spoken": "besok kita ada rapat jam sepuluh dan kita perlu memeriksa anggaran",
+    "got": "Besok kita ada rapat jam sepuluh dan kita perlu memeriksa anggaran."
+  },
+  {
+    "code": "cs",
+    "voice": "Zuzana",
+    "spoken": "zítra máme schůzku v deset hodin a musíme zkontrolovat rozpočet",
+    "got": "Zítra máme schůzku v deset hodin a musíme zkontrolovat rozpočet."
+  },
+  {
+    "code": "el",
+    "voice": "Melina",
+    "spoken": "αύριο έχουμε συνάντηση στις δέκα και πρέπει να εξετάσουμε τον προϋπολογισμό",
+    "got": "Αύριο έχουμε συνάντηση στις δέκα και πρέπει να εξετάσουμε τον προϋπολογισμό"
+  },
+  {
+    "code": "ro",
+    "voice": "Ioana",
+    "spoken": "mâine avem o întâlnire la ora zece și trebuie să revizuim bugetul",
+    "got": "Mâine avem o întâlnire la ora 10 și trebuie să revizuim bugetul."
+  }
+]

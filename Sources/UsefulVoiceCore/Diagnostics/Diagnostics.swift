@@ -139,7 +139,7 @@ public final class Diagnostics: @unchecked Sendable {
         let nsError = error as NSError
         var message = "\(nsError.domain) \(nsError.code): \(nsError.localizedDescription)"
         if let context, !context.isEmpty {
-            message = "\(context) — \(message)"
+            message = "\(context): \(message)"
         }
         record(level: .error, category: category, message: message)
     }

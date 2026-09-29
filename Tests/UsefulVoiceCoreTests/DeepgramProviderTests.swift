@@ -126,10 +126,12 @@ import Foundation
 
     // MARK: - Formatting parameters
 
-    @Test func testNumeralsAccompanySmartFormat() throws {
-        // smart_format only guarantees punctuation and paragraphs; numerals are
-        // language-dependent, so they are requested explicitly.
-        #expect(try query(smartFormat: true).contains("numerals=true"))
+    @Test func testNumeralsAreNeverRequested() throws {
+        // numerals=true turned "the first" into "the 1st" and "three people" into
+        // "3 people". Smart Format alone keeps dates, times and money as digits.
+        let smart = try query(smartFormat: true)
+        #expect(smart.contains("smart_format=true"))
+        #expect(!smart.contains("numerals"))
     }
 
     @Test func testNumeralsAreNotSentWhenFormattingIsOff() throws {

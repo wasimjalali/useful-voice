@@ -145,12 +145,12 @@ public final class DeepgramProvider: TranscriptionProvider, @unchecked Sendable 
         var items = [URLQueryItem(name: "model", value: config.model)]
         Self.appendLanguageParameters(to: &items, pin: hint.languagePin)
         if config.smartFormat {
+            // `numerals` is deliberately not sent. It turns every spoken number
+            // into digits ("the first" -> "the 1st", "three people" -> "3
+            // people"). Smart Format alone writes English small numbers and
+            // ordinals as words and keeps dates, times and money as digits. German
+            // Smart Format digitises regardless; see `TranscriptStyle`.
             items.append(URLQueryItem(name: "smart_format", value: "true"))
-            // Smart Format only *guarantees* punctuation and paragraphs. Numerals
-            // are documented as available "for select languages" on non-English
-            // models, and German is one of them, so asking explicitly removes a
-            // language-dependent ambiguity rather than relying on the default.
-            items.append(URLQueryItem(name: "numerals", value: "true"))
         }
         if config.spokenPunctuation, Self.supportsSpokenPunctuation(hint.languagePin) {
             // The docs are explicit that punctuation must also be enabled:
@@ -229,7 +229,8 @@ public final class DeepgramProvider: TranscriptionProvider, @unchecked Sendable 
         var attempt = 0
         while true {
             do {
-                return try await attemptOnce(request: request, byteCount: audioData.count)
+                return try await attemptOnce(request: request, byteCount: audioData.count,
+                                             pin: hint.languagePin)
             } catch let error as ProviderError where attempt < Self.retryBackoff.count {
                 guard case .http(let status, _) = error, Self.isRetryable(status: status) else {
                     throw error
@@ -242,7 +243,8 @@ public final class DeepgramProvider: TranscriptionProvider, @unchecked Sendable 
     }
 
     /// One attempt: send the request, classify the response.
-    private func attemptOnce(request: URLRequest, byteCount: Int) async throws -> Transcript {
+    private func attemptOnce(request: URLRequest, byteCount: Int,
+                             pin: LanguagePin) async throws -> Transcript {
         let data: Data
         let response: URLResponse
         do {
@@ -275,7 +277,7 @@ public final class DeepgramProvider: TranscriptionProvider, @unchecked Sendable 
                 throw ProviderError.http(http.statusCode, body + suffix)
             }
         }
-        return try Self.parse(data)
+        return try Self.parse(data, pin: pin, styleNumbers: config.smartFormat)
     }
 
     /// The parts of a Deepgram response this app reads.
@@ -300,14 +302,20 @@ public final class DeepgramProvider: TranscriptionProvider, @unchecked Sendable 
         let results: Results
     }
 
-    static func parse(_ data: Data) throws -> Transcript {
+    /// `styleNumbers` applies `TranscriptStyle` in the language Deepgram detected,
+    /// else the pinned one. Off when formatting is off, so a raw transcript stays raw.
+    static func parse(_ data: Data, pin: LanguagePin = .auto,
+                      styleNumbers: Bool = false) throws -> Transcript {
         guard let decoded = try? JSONDecoder().decode(Response.self, from: data),
               let channel = decoded.results.channels.first,
               let transcript = channel.alternatives.first?.transcript else {
             throw ProviderError.badResponse
         }
+        let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         return Transcript(
-            text: transcript.trimmingCharacters(in: .whitespacesAndNewlines),
+            text: styleNumbers
+                ? TranscriptStyle.apply(to: text, language: channel.detected_language ?? pin.rawValue)
+                : text,
             detectedLanguage: channel.detected_language,
             durationSeconds: decoded.metadata?.duration)
     }

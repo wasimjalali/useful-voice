@@ -174,7 +174,7 @@ class UsefulVoiceApp {
     try {
       app.setLoginItemSettings(plan.settings);
     } catch (error) {
-      this.diagnostics.log('login', `${context}: could not update the login entry — ${(error as Error).message}`);
+      this.diagnostics.log('login', `${context}: could not update the login entry: ${(error as Error).message}`);
       return;
     }
 
@@ -1412,13 +1412,13 @@ if (process.argv.includes('--self-test')) {
     try {
       result = await runSelfTest();
     } catch (error) {
-      writeReport([`FAIL  self-test threw — ${(error as Error).message}`]);
+      writeReport([`FAIL  self-test threw: ${(error as Error).message}`]);
       app.exit(1);
       return;
     }
     clearTimeout(watchdog);
     const lines = result.checks.map(
-      (check) => `${check.ok ? 'PASS' : 'FAIL'}  ${check.name} — ${check.detail}`,
+      (check) => `${check.ok ? 'PASS' : 'FAIL'}  ${check.name}: ${check.detail}`,
     );
     lines.push(result.ok ? 'SELF-TEST OK' : 'SELF-TEST FAILED');
     writeReport(lines);

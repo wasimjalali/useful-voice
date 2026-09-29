@@ -64,7 +64,7 @@ probe() {
 echo "== auto-detection request (the whole set in one request, as the app sends it)"
 URL="https://api.deepgram.com/v1/listen?model=nova-3"
 for c in $CODES; do URL="$URL&detect_language=$c"; done
-URL="$URL&smart_format=true&numerals=true&tag=useful-voice"
+URL="$URL&smart_format=true&tag=useful-voice"
 echo "   $(echo "$CODES" | wc -w | tr -d ' ') detection codes, URL ${#URL} characters"
 probe "auto (full set)" "$URL"
 

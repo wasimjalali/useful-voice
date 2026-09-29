@@ -1,0 +1,1081 @@
+{
+  "variant": "candidate",
+  "params": {
+    "smart_format": "true"
+  },
+  "passed": 68,
+  "total": 83,
+  "rows": [
+    {
+      "id": "en-ordinal-first",
+      "lang": "en",
+      "spoken": "the first numbers look good",
+      "expected": "The first numbers look good.",
+      "tags": [
+        "ordinal"
+      ],
+      "got": "The first numbers look good.",
+      "pass": true
+    },
+    {
+      "id": "en-ordinal-list",
+      "lang": "en",
+      "spoken": "this is the second time and the third attempt",
+      "expected": "This is the second time and the third attempt.",
+      "tags": [
+        "ordinal"
+      ],
+      "got": "This is the second time and the third attempt.",
+      "pass": true
+    },
+    {
+      "id": "en-small-number",
+      "lang": "en",
+      "spoken": "three people joined the call",
+      "expected": "Three people joined the call.",
+      "tags": [
+        "small-number"
+      ],
+      "got": "Three people joined the call.",
+      "pass": true
+    },
+    {
+      "id": "en-two-questions",
+      "lang": "en",
+      "spoken": "I have two questions and one idea",
+      "expected": "I have two questions and one idea.",
+      "tags": [
+        "small-number"
+      ],
+      "got": "I have two questions and one idea.",
+      "pass": true
+    },
+    {
+      "id": "en-quantity-size",
+      "lang": "en",
+      "spoken": "the file is three point five gigabytes",
+      "expected": "The file is 3.5 gigabytes.",
+      "tags": [
+        "quantity"
+      ],
+      "got": "The file is 3.5 gigabytes.",
+      "pass": true
+    },
+    {
+      "id": "en-time-date",
+      "lang": "en",
+      "spoken": "the meeting is at ten thirty on March fifth",
+      "expected": "The meeting is at 10:30 on March 5th.",
+      "tags": [
+        "time",
+        "date"
+      ],
+      "accept": [
+        "The meeting is at 10:30 on March 5."
+      ],
+      "got": "The meeting is at 10:30 on March 5.",
+      "pass": true
+    },
+    {
+      "id": "en-money",
+      "lang": "en",
+      "spoken": "it costs forty euros",
+      "expected": "It costs 40 euros.",
+      "tags": [
+        "money"
+      ],
+      "accept": [
+        "It costs €40."
+      ],
+      "got": "It costs €40.",
+      "pass": true
+    },
+    {
+      "id": "en-version",
+      "lang": "en",
+      "spoken": "we upgraded to version two",
+      "expected": "We upgraded to version 2.",
+      "tags": [
+        "version"
+      ],
+      "got": "We upgraded to version two.",
+      "pass": false
+    },
+    {
+      "id": "en-model-gpt",
+      "lang": "en",
+      "spoken": "we tested GPT five on the branch",
+      "expected": "We tested GPT 5 on the branch.",
+      "tags": [
+        "code"
+      ],
+      "accept": [
+        "We tested GPT-5 on the branch."
+      ],
+      "got": "We tested GPT-five on the branch.",
+      "pass": false
+    },
+    {
+      "id": "en-question",
+      "lang": "en",
+      "spoken": "did you send the report to Anna",
+      "expected": "Did you send the report to Anna?",
+      "tags": [
+        "question",
+        "name"
+      ],
+      "got": "Did you send the report to Anna?",
+      "pass": true
+    },
+    {
+      "id": "en-list",
+      "lang": "en",
+      "spoken": "we need milk, eggs and bread from the shop",
+      "expected": "We need milk, eggs and bread from the shop.",
+      "tags": [
+        "list"
+      ],
+      "accept": [
+        "We need milk, eggs, and bread from the shop."
+      ],
+      "got": "We need milk, eggs, and bread from the shop.",
+      "pass": true
+    },
+    {
+      "id": "en-greeting",
+      "lang": "en",
+      "spoken": "hi team, the build is green",
+      "expected": "Hi team, the build is green.",
+      "tags": [
+        "greeting"
+      ],
+      "accept": [
+        "Hi, team, the build is green.",
+        "Hi, team. The build is green."
+      ],
+      "got": "Hi, team. The build is green.",
+      "pass": true
+    },
+    {
+      "id": "en-two-sentences",
+      "lang": "en",
+      "spoken": "the deploy finished and now we can start testing",
+      "expected": "The deploy finished and now we can start testing.",
+      "tags": [
+        "capitalisation"
+      ],
+      "got": "The deploy finished and now we can start testing.",
+      "pass": true
+    },
+    {
+      "id": "en-name-mid",
+      "lang": "en",
+      "spoken": "please ask Sarah and Tom about the budget on Monday",
+      "expected": "Please ask Sarah and Tom about the budget on Monday.",
+      "tags": [
+        "name",
+        "date"
+      ],
+      "got": "Please ask Sarah and Tom about the budget on Monday.",
+      "pass": true
+    },
+    {
+      "id": "en-ordinal-and-count",
+      "lang": "en",
+      "spoken": "the second draft has three sections and twelve pages",
+      "expected": "The second draft has three sections and 12 pages.",
+      "tags": [
+        "ordinal",
+        "small-number",
+        "quantity"
+      ],
+      "got": "The second draft has three sections and 12 pages.",
+      "pass": true
+    },
+    {
+      "id": "de-ordinal-first",
+      "lang": "de",
+      "spoken": "das erste Kapitel ist fertig",
+      "expected": "Das erste Kapitel ist fertig.",
+      "tags": [
+        "ordinal"
+      ],
+      "got": "Das 1. Kapitel ist fertig.",
+      "pass": false
+    },
+    {
+      "id": "de-ordinal-list",
+      "lang": "de",
+      "spoken": "das ist das zweite Mal und der dritte Versuch",
+      "expected": "Das ist das zweite Mal und der dritte Versuch.",
+      "tags": [
+        "ordinal"
+      ],
+      "known_gap": "der/die ordinals: gender and number are unknown, so the digit is kept",
+      "got": "Das ist das 2. Mal und der 3. Versuch.",
+      "pass": false
+    },
+    {
+      "id": "de-small-number",
+      "lang": "de",
+      "spoken": "es waren drei Leute dabei",
+      "expected": "Es waren drei Leute dabei.",
+      "tags": [
+        "small-number"
+      ],
+      "got": "Es waren 3 Leute dabei.",
+      "pass": false
+    },
+    {
+      "id": "de-two-questions",
+      "lang": "de",
+      "spoken": "ich habe zwei Fragen und eine Idee",
+      "expected": "Ich habe zwei Fragen und eine Idee.",
+      "tags": [
+        "small-number"
+      ],
+      "got": "Ich habe 2 Fragen und eine Idee.",
+      "pass": false
+    },
+    {
+      "id": "de-date-time",
+      "lang": "de",
+      "spoken": "das Treffen ist am fünften März und beginnt gegen zehn Uhr",
+      "expected": "Das Treffen ist am fünften März und beginnt gegen 10 Uhr.",
+      "tags": [
+        "date",
+        "time"
+      ],
+      "note": "Deepgram German keeps 'am fünften März' as words; only the clock time becomes digits.",
+      "got": "Das Treffen ist am fünften März und beginnt gegen 10 Uhr.",
+      "pass": true
+    },
+    {
+      "id": "de-money",
+      "lang": "de",
+      "spoken": "das kostet vierzig Euro",
+      "expected": "Das kostet 40 Euro.",
+      "tags": [
+        "money"
+      ],
+      "accept": [
+        "Das kostet 40 €.",
+        "Das kostet 40€."
+      ],
+      "got": "Das kostet 40 Euro.",
+      "pass": true
+    },
+    {
+      "id": "de-quantity-size",
+      "lang": "de",
+      "spoken": "die Datei ist drei Komma fünf Gigabyte groß",
+      "expected": "Die Datei ist 3,5 Gigabyte groß.",
+      "tags": [
+        "quantity"
+      ],
+      "got": "Die Datei ist 3.5 Gigabyte groß.",
+      "pass": false
+    },
+    {
+      "id": "de-version",
+      "lang": "de",
+      "spoken": "wir haben auf Version zwei aktualisiert",
+      "expected": "Wir haben auf Version 2 aktualisiert.",
+      "tags": [
+        "version"
+      ],
+      "got": "Wir haben auf Version 2 aktualisiert.",
+      "pass": true
+    },
+    {
+      "id": "de-question",
+      "lang": "de",
+      "spoken": "hast du den Bericht an Anna geschickt",
+      "expected": "Hast du den Bericht an Anna geschickt?",
+      "tags": [
+        "question",
+        "name"
+      ],
+      "accept": [
+        "Hast Du den Bericht an Anna geschickt?"
+      ],
+      "got": "Hast Du den Bericht an Anna geschickt?",
+      "pass": true
+    },
+    {
+      "id": "de-list",
+      "lang": "de",
+      "spoken": "wir brauchen Milch, Eier und Brot aus dem Laden",
+      "expected": "Wir brauchen Milch, Eier und Brot aus dem Laden.",
+      "tags": [
+        "list",
+        "capitalisation"
+      ],
+      "got": "Wir brauchen Milch, Eier und Brot aus dem Laden.",
+      "pass": true
+    },
+    {
+      "id": "de-greeting",
+      "lang": "de",
+      "spoken": "hallo Team, der Bericht ist fertig",
+      "expected": "Hallo Team, der Bericht ist fertig.",
+      "tags": [
+        "greeting"
+      ],
+      "accept": [
+        "Hallo, Team, der Bericht ist fertig.",
+        "Hallo, Team. Der Bericht ist fertig."
+      ],
+      "got": "Hallo Team, der Bericht ist fertig.",
+      "pass": true
+    },
+    {
+      "id": "de-two-sentences",
+      "lang": "de",
+      "spoken": "das Deployment ist fertig und jetzt können wir mit dem Testen anfangen",
+      "expected": "Das Deployment ist fertig und jetzt können wir mit dem Testen anfangen.",
+      "tags": [
+        "capitalisation"
+      ],
+      "got": "Das Deployment ist fertig und jetzt können wir mit dem Testen anfangen.",
+      "pass": true
+    },
+    {
+      "id": "de-ordinal-and-count",
+      "lang": "de",
+      "spoken": "der zweite Entwurf hat drei Abschnitte und zwölf Seiten",
+      "expected": "Der zweite Entwurf hat drei Abschnitte und 12 Seiten.",
+      "tags": [
+        "ordinal",
+        "small-number",
+        "quantity"
+      ],
+      "known_gap": "der/die ordinals: gender and number are unknown, so the digit is kept",
+      "got": "Der 2. Entwurf hat 3 Abschnitte und 12 Seiten.",
+      "pass": false
+    },
+    {
+      "id": "en-year",
+      "lang": "en",
+      "spoken": "we launched in twenty twenty four",
+      "expected": "We launched in 2024.",
+      "tags": [
+        "date"
+      ],
+      "got": "We launched in 2024.",
+      "pass": true
+    },
+    {
+      "id": "en-percent",
+      "lang": "en",
+      "spoken": "revenue grew fifty percent",
+      "expected": "Revenue grew 50%.",
+      "accept": [
+        "Revenue grew 50 percent."
+      ],
+      "tags": [
+        "quantity"
+      ],
+      "got": "Revenue grew 50%.",
+      "pass": true
+    },
+    {
+      "id": "en-large",
+      "lang": "en",
+      "spoken": "we shipped one hundred and twenty units",
+      "expected": "We shipped 120 units.",
+      "tags": [
+        "quantity"
+      ],
+      "got": "We shipped 120 units.",
+      "pass": true
+    },
+    {
+      "id": "en-ordinal-place",
+      "lang": "en",
+      "spoken": "she finished in fifth place",
+      "expected": "She finished in fifth place.",
+      "tags": [
+        "ordinal"
+      ],
+      "got": "She finished in fifth place.",
+      "pass": true
+    },
+    {
+      "id": "en-hey-name",
+      "lang": "en",
+      "spoken": "hey Sarah, can you check this",
+      "expected": "Hey, Sarah, can you check this?",
+      "accept": [
+        "Hey Sarah, can you check this?",
+        "Hey, Sarah. Can you check this?"
+      ],
+      "tags": [
+        "greeting",
+        "question",
+        "name"
+      ],
+      "got": "Hey, Sarah. Can you check this?",
+      "pass": true
+    },
+    {
+      "id": "de-year",
+      "lang": "de",
+      "spoken": "wir haben im Jahr zweitausendvierundzwanzig gestartet",
+      "expected": "Wir haben im Jahr 2024 gestartet.",
+      "tags": [
+        "date"
+      ],
+      "got": "Wir haben im Jahr 2024 gestartet.",
+      "pass": true
+    },
+    {
+      "id": "de-percent",
+      "lang": "de",
+      "spoken": "der Umsatz liegt bei fünfzig Prozent",
+      "expected": "Der Umsatz liegt bei 50 %.",
+      "accept": [
+        "Der Umsatz liegt bei 50 Prozent.",
+        "Der Umsatz liegt bei 50%."
+      ],
+      "tags": [
+        "quantity"
+      ],
+      "got": "Der Umsatz liegt bei 50 Prozent.",
+      "pass": true
+    },
+    {
+      "id": "de-ordinal-am",
+      "lang": "de",
+      "spoken": "am zweiten Tag hat es geregnet",
+      "expected": "Am zweiten Tag hat es geregnet.",
+      "tags": [
+        "ordinal"
+      ],
+      "got": "Am zweiten Tag hat es geregnet.",
+      "pass": true
+    },
+    {
+      "id": "de-ordinal-die",
+      "lang": "de",
+      "spoken": "die dritte Runde war die beste",
+      "expected": "Die dritte Runde war die beste.",
+      "tags": [
+        "ordinal"
+      ],
+      "known_gap": "der/die ordinals: gender and number are unknown, so the digit is kept",
+      "got": "Die 3. Runde war die beste.",
+      "pass": false
+    },
+    {
+      "id": "de-model-gpt",
+      "lang": "de",
+      "spoken": "wir haben GPT fünf getestet",
+      "expected": "Wir haben GPT 5 getestet.",
+      "accept": [
+        "Wir haben GPT-5 getestet."
+      ],
+      "tags": [
+        "code"
+      ],
+      "got": "Wir haben GPT 5 getestet.",
+      "pass": true
+    },
+    {
+      "id": "neg-en-version-caps",
+      "lang": "en",
+      "spoken": "version two is out and GPT five is faster",
+      "expected": "Version 2 is out and GPT 5 is faster.",
+      "accept": [
+        "Version 2 is out and GPT-5 is faster."
+      ],
+      "tags": [
+        "must-stay-digit"
+      ],
+      "got": "Version two is out and GPT-five is faster.",
+      "pass": false
+    },
+    {
+      "id": "neg-en-time-money",
+      "lang": "en",
+      "spoken": "the ticket costs twenty five dollars and the call is at three thirty",
+      "expected": "The ticket costs $25 and the call is at 3:30.",
+      "tags": [
+        "must-stay-digit"
+      ],
+      "accept": [
+        "The ticket costs $25 and the call is at 03:30."
+      ],
+      "got": "The ticket costs $25 and the call is at 03:30.",
+      "pass": true
+    },
+    {
+      "id": "neg-de-version",
+      "lang": "de",
+      "spoken": "Version zwei ist draußen und Kapitel drei fehlt noch",
+      "expected": "Version 2 ist draußen und Kapitel 3 fehlt noch.",
+      "tags": [
+        "must-stay-digit"
+      ],
+      "got": "Version 2 ist draußen und Kapitel 3 fehlt noch.",
+      "pass": true
+    },
+    {
+      "id": "neg-de-date-range",
+      "lang": "de",
+      "spoken": "der Workshop läuft vom zweiten bis zum vierten Mai",
+      "expected": "Der Workshop läuft vom 2. bis zum 4. Mai.",
+      "accept": [
+        "Der Workshop läuft vom zweiten bis zum vierten Mai."
+      ],
+      "tags": [
+        "must-stay-digit"
+      ],
+      "got": "Der Workshop läuft vom zweiten bis zum vierten Mai.",
+      "pass": true
+    },
+    {
+      "id": "neg-de-uhr-euro",
+      "lang": "de",
+      "spoken": "das Ticket kostet zwei Euro und der Zug fährt gegen drei Uhr",
+      "expected": "Das Ticket kostet 2 Euro und der Zug fährt gegen 3 Uhr.",
+      "tags": [
+        "must-stay-digit"
+      ],
+      "got": "Das Ticket kostet 2 Euro und der Zug fährt gegen 3 Uhr.",
+      "pass": true
+    },
+    {
+      "id": "neg-de-decimal-version",
+      "lang": "de",
+      "spoken": "wir nutzen Android vierzehn Komma zwei und iOS siebzehn Komma vier",
+      "expected": "Wir nutzen Android 14.2 und iOS 17.4.",
+      "tags": [
+        "must-stay-digit"
+      ],
+      "got": "Wir nutzen Android 14.2 und iOS 17.4.",
+      "pass": true
+    },
+    {
+      "id": "en2-fourth-quarter",
+      "lang": "en",
+      "spoken": "the fourth quarter numbers look good",
+      "expected": "The fourth quarter numbers look good.",
+      "tags": [
+        "ordinal"
+      ],
+      "got": "The fourth quarter numbers look good.",
+      "pass": true
+    },
+    {
+      "id": "en2-places",
+      "lang": "en",
+      "spoken": "she came in second place and he came in third",
+      "expected": "She came in second place and he came in third.",
+      "tags": [
+        "ordinal"
+      ],
+      "voice": "Daniel",
+      "got": "She came in second place and he came in third.",
+      "pass": true
+    },
+    {
+      "id": "en2-tenth",
+      "lang": "en",
+      "spoken": "this is the tenth time I asked",
+      "expected": "This is the tenth time I asked.",
+      "tags": [
+        "ordinal"
+      ],
+      "accept": [
+        "This is the 10th time I asked."
+      ],
+      "got": "This is the tenth time I asked.",
+      "pass": true
+    },
+    {
+      "id": "en2-twenty-first",
+      "lang": "en",
+      "spoken": "we are on the twenty first floor",
+      "expected": "We are on the 21st floor.",
+      "tags": [
+        "ordinal"
+      ],
+      "accept": [
+        "We are on the twenty first floor.",
+        "We are on the twenty-first floor."
+      ],
+      "got": "We are on the 21st Floor.",
+      "pass": false
+    },
+    {
+      "id": "en2-five-minutes",
+      "lang": "en",
+      "spoken": "I need five minutes",
+      "expected": "I need five minutes.",
+      "tags": [
+        "small-number"
+      ],
+      "got": "I need five minutes.",
+      "pass": true
+    },
+    {
+      "id": "en2-eleven",
+      "lang": "en",
+      "spoken": "there are eleven open tickets",
+      "expected": "There are 11 open tickets.",
+      "tags": [
+        "quantity"
+      ],
+      "got": "There are 11 open tickets.",
+      "pass": true
+    },
+    {
+      "id": "en2-pages",
+      "lang": "en",
+      "spoken": "the report is one hundred and fifty pages long",
+      "expected": "The report is 150 pages long.",
+      "tags": [
+        "quantity"
+      ],
+      "voice": "Daniel",
+      "got": "The report is 150 pages long.",
+      "pass": true
+    },
+    {
+      "id": "en2-dollars",
+      "lang": "en",
+      "spoken": "it will cost about two thousand five hundred dollars",
+      "expected": "It will cost about $2,500.",
+      "tags": [
+        "money"
+      ],
+      "accept": [
+        "It will cost about 2,500 dollars.",
+        "It will cost about $2500."
+      ],
+      "got": "It will cost about $2,500.",
+      "pass": true
+    },
+    {
+      "id": "en2-million",
+      "lang": "en",
+      "spoken": "the total is three point five million",
+      "expected": "The total is 3.5 million.",
+      "tags": [
+        "quantity"
+      ],
+      "accept": [
+        "The total is 3,500,000."
+      ],
+      "got": "The total is 3,500,000.",
+      "pass": true
+    },
+    {
+      "id": "en2-percent",
+      "lang": "en",
+      "spoken": "we grew forty two percent last year",
+      "expected": "We grew 42% last year.",
+      "tags": [
+        "quantity"
+      ],
+      "accept": [
+        "We grew 42 percent last year."
+      ],
+      "voice": "Daniel",
+      "got": "We grew 42% last year.",
+      "pass": true
+    },
+    {
+      "id": "en2-date-ordinal",
+      "lang": "en",
+      "spoken": "the deadline is Friday the twelfth of June",
+      "expected": "The deadline is Friday the 12th of June.",
+      "tags": [
+        "date",
+        "ordinal"
+      ],
+      "accept": [
+        "The deadline is Friday the twelfth of June.",
+        "The deadline is Friday, the 12th of June.",
+        "The deadline is Friday, June 12."
+      ],
+      "got": "The deadline is Friday, June 12.",
+      "pass": true
+    },
+    {
+      "id": "en2-time-am",
+      "lang": "en",
+      "spoken": "the flight leaves at seven forty five a m",
+      "expected": "The flight leaves at 7:45 AM.",
+      "tags": [
+        "time"
+      ],
+      "accept": [
+        "The flight leaves at 7:45 a.m.",
+        "The flight leaves at 7:45 AM"
+      ],
+      "got": "The flight leaves at 07:45AM.",
+      "pass": false
+    },
+    {
+      "id": "en2-phone",
+      "lang": "en",
+      "spoken": "call me at five five five one two three four",
+      "expected": "Call me at 555-1234.",
+      "tags": [
+        "phone"
+      ],
+      "accept": [
+        "Call me at 555 1234.",
+        "Call me at 5551234."
+      ],
+      "got": "Call me at 555-1234.",
+      "pass": true
+    },
+    {
+      "id": "en2-email",
+      "lang": "en",
+      "spoken": "my email is john at example dot com",
+      "expected": "My email is john@example.com.",
+      "tags": [
+        "email"
+      ],
+      "got": "My email is john@example.com.",
+      "pass": true
+    },
+    {
+      "id": "en2-url",
+      "lang": "en",
+      "spoken": "check the docs at example dot com slash pricing",
+      "expected": "Check the docs at example.com/pricing.",
+      "tags": [
+        "url"
+      ],
+      "voice": "Daniel",
+      "got": "Check the docs at example.com/pricing.",
+      "pass": true
+    },
+    {
+      "id": "en2-brands",
+      "lang": "en",
+      "spoken": "we use GitHub and Slack every day",
+      "expected": "We use GitHub and Slack every day.",
+      "tags": [
+        "name"
+      ],
+      "got": "We use GitHub and Slack every day.",
+      "pass": true
+    },
+    {
+      "id": "en2-iphone",
+      "lang": "en",
+      "spoken": "I bought an iPhone fifteen yesterday",
+      "expected": "I bought an iPhone 15 yesterday.",
+      "tags": [
+        "code"
+      ],
+      "got": "I bought an iPhone 15 yesterday.",
+      "pass": true
+    },
+    {
+      "id": "en2-http-404",
+      "lang": "en",
+      "spoken": "the API returns a four oh four",
+      "expected": "The API returns a 404.",
+      "tags": [
+        "code"
+      ],
+      "accept": [
+        "The API returns a 404 error.",
+        "The API returns a four zero four."
+      ],
+      "got": "The API returns a four zero four.",
+      "pass": true
+    },
+    {
+      "id": "en2-hey-sarah",
+      "lang": "en",
+      "spoken": "hey Sarah are you free tomorrow",
+      "expected": "Hey, Sarah, are you free tomorrow?",
+      "tags": [
+        "greeting",
+        "question"
+      ],
+      "accept": [
+        "Hey Sarah, are you free tomorrow?",
+        "Hey, Sarah. Are you free tomorrow?"
+      ],
+      "got": "Hey, Sarah. Are you free tomorrow?",
+      "pass": true
+    },
+    {
+      "id": "en2-but-comma",
+      "lang": "en",
+      "spoken": "we shipped the feature but the tests are still failing",
+      "expected": "We shipped the feature, but the tests are still failing.",
+      "tags": [
+        "comma"
+      ],
+      "accept": [
+        "We shipped the feature but the tests are still failing."
+      ],
+      "got": "We shipped the feature but the tests are still failing.",
+      "pass": true
+    },
+    {
+      "id": "en2-two-part-question",
+      "lang": "en",
+      "spoken": "what time does the meeting start and who is joining",
+      "expected": "What time does the meeting start and who is joining?",
+      "tags": [
+        "question"
+      ],
+      "accept": [
+        "What time does the meeting start, and who is joining?"
+      ],
+      "voice": "Daniel",
+      "got": "What time does the meeting start and who is joining?",
+      "pass": true
+    },
+    {
+      "id": "en2-contractions",
+      "lang": "en",
+      "spoken": "I don't think that's right but let's check",
+      "expected": "I don't think that's right, but let's check.",
+      "tags": [
+        "comma"
+      ],
+      "accept": [
+        "I don't think that's right but let's check."
+      ],
+      "got": "I don't think that's right, but let's check.",
+      "pass": true
+    },
+    {
+      "id": "en2-acronyms",
+      "lang": "en",
+      "spoken": "the CEO said the AI team will double in size",
+      "expected": "The CEO said the AI team will double in size.",
+      "tags": [
+        "name"
+      ],
+      "got": "The CEO said the AI team will double in size.",
+      "pass": true
+    },
+    {
+      "id": "en2-versions-range",
+      "lang": "en",
+      "spoken": "the team is moving from version two point one to version three",
+      "expected": "The team is moving from version 2.1 to version 3.",
+      "tags": [
+        "version"
+      ],
+      "got": "The team is moving from version 2.1 to version three.",
+      "pass": false
+    },
+    {
+      "id": "en2-date-time",
+      "lang": "en",
+      "spoken": "the meeting is on the twenty third of March at three p m",
+      "expected": "The meeting is on the 23rd of March at 3 p.m.",
+      "tags": [
+        "date",
+        "time"
+      ],
+      "accept": [
+        "The meeting is on the twenty third of March at 3 p.m.",
+        "The meeting is on the twenty-third of March at 3 p.m.",
+        "The meeting is on the 23rd of March at 3 PM.",
+        "The meeting is on the March 23 at 3 PM."
+      ],
+      "got": "The meeting is on the March 23 at 3PM.",
+      "pass": false
+    },
+    {
+      "id": "en2-duration",
+      "lang": "en",
+      "spoken": "it took two hours and thirty minutes",
+      "expected": "It took two hours and 30 minutes.",
+      "tags": [
+        "quantity"
+      ],
+      "accept": [
+        "It took 2 hours and 30 minutes.",
+        "It took two hours and thirty minutes."
+      ],
+      "got": "It took two hours and thirty minutes.",
+      "pass": true
+    },
+    {
+      "id": "en2-degrees",
+      "lang": "en",
+      "spoken": "the temperature was twenty degrees",
+      "expected": "The temperature was 20 degrees.",
+      "tags": [
+        "quantity"
+      ],
+      "accept": [
+        "The temperature was 20°."
+      ],
+      "voice": "Daniel",
+      "got": "The temperature was 20 degrees.",
+      "pass": true
+    },
+    {
+      "id": "en2-pets",
+      "lang": "en",
+      "spoken": "I have two cats and three dogs",
+      "expected": "I have two cats and three dogs.",
+      "tags": [
+        "small-number"
+      ],
+      "got": "I have two cats and three dogs.",
+      "pass": true
+    },
+    {
+      "id": "en2-ordinal-series",
+      "lang": "en",
+      "spoken": "the first second and third drafts are done",
+      "expected": "The first, second and third drafts are done.",
+      "tags": [
+        "ordinal"
+      ],
+      "accept": [
+        "The first, second, and third drafts are done.",
+        "The first second and third drafts are done."
+      ],
+      "got": "The first, second, and third drafts are done.",
+      "pass": true
+    },
+    {
+      "id": "en2-pr-number",
+      "lang": "en",
+      "spoken": "please review ticket number forty two",
+      "expected": "Please review ticket number 42.",
+      "tags": [
+        "code"
+      ],
+      "accept": [
+        "Please review ticket number #42."
+      ],
+      "got": "Please review ticket number 42.",
+      "pass": true
+    },
+    {
+      "id": "en2-q3",
+      "lang": "en",
+      "spoken": "our Q three revenue was ten million dollars",
+      "expected": "Our Q3 revenue was $10 million.",
+      "tags": [
+        "money"
+      ],
+      "accept": [
+        "Our Q3 revenue was 10 million dollars.",
+        "Our Q3 revenue was $10,000,000."
+      ],
+      "got": "Our Q3 revenue was $10,000,000",
+      "pass": false
+    },
+    {
+      "id": "en2-age",
+      "lang": "en",
+      "spoken": "he is twenty five years old",
+      "expected": "He is 25 years old.",
+      "tags": [
+        "quantity"
+      ],
+      "voice": "Daniel",
+      "got": "He is 25 years old.",
+      "pass": true
+    },
+    {
+      "id": "en2-recipe",
+      "lang": "en",
+      "spoken": "add three eggs and two cups of flour",
+      "expected": "Add three eggs and two cups of flour.",
+      "tags": [
+        "small-number"
+      ],
+      "got": "Add three eggs and two cups of flour.",
+      "pass": true
+    },
+    {
+      "id": "en2-days",
+      "lang": "en",
+      "spoken": "there are seven days in a week",
+      "expected": "There are seven days in a week.",
+      "tags": [
+        "small-number"
+      ],
+      "got": "There are seven days in a week.",
+      "pass": true
+    },
+    {
+      "id": "en2-paragraph",
+      "lang": "en",
+      "spoken": "thanks for the update. I will review it tonight. can we talk tomorrow morning",
+      "expected": "Thanks for the update. I will review it tonight. Can we talk tomorrow morning?",
+      "tags": [
+        "capitalisation",
+        "question"
+      ],
+      "got": "Thanks for the update. I will review it tonight. Can we talk tomorrow morning?",
+      "pass": true
+    },
+    {
+      "id": "en2-names",
+      "lang": "en",
+      "spoken": "Sarah Johnson is meeting Maria Gonzalez in Berlin on Monday",
+      "expected": "Sarah Johnson is meeting Maria Gonzalez in Berlin on Monday.",
+      "tags": [
+        "name"
+      ],
+      "voice": "Daniel",
+      "got": "Sarah Johnson is meeting Maria Gonzalez in Berlin on Monday.",
+      "pass": true
+    },
+    {
+      "id": "en2-ordinal-tenth-floor",
+      "lang": "en",
+      "spoken": "the tenth item on the list is missing",
+      "expected": "The tenth item on the list is missing.",
+      "tags": [
+        "ordinal"
+      ],
+      "accept": [
+        "The 10th item on the list is missing."
+      ],
+      "got": "The tenth item on the list is missing.",
+      "pass": true
+    },
+    {
+      "id": "en2-thousand",
+      "lang": "en",
+      "spoken": "our app has twelve thousand users",
+      "expected": "Our app has 12,000 users.",
+      "tags": [
+        "quantity"
+      ],
+      "accept": [
+        "We have 12000 users."
+      ],
+      "got": "Our app has 12,000 users.",
+      "pass": true
+    },
+    {
+      "id": "en2-zero-one",
+      "lang": "en",
+      "spoken": "there is one bug left and zero blockers",
+      "expected": "There is one bug left and zero blockers.",
+      "tags": [
+        "small-number"
+      ],
+      "accept": [
+        "There is 1 bug left and 0 blockers."
+      ],
+      "got": "There is one bug left and zero blockers.",
+      "pass": true
+    }
+  ]
+}

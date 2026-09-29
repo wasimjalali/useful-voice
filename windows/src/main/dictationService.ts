@@ -410,7 +410,7 @@ export class DictationService {
     this.deps.onCompleted?.(outcome);
 
     if (!delivered.delivered && delivered.clipboardFallback) {
-      this.setState('idle', 'Copied to your clipboard — press Ctrl+V to paste it.');
+      this.setState('idle', 'Copied to your clipboard. Press Ctrl+V to paste it.');
       return;
     }
     this.setState('idle');

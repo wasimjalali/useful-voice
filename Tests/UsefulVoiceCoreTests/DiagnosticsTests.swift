@@ -100,7 +100,7 @@ struct DiagnosticsTests {
         )
 
         let message = diagnostics.entries().first?.message ?? ""
-        #expect(message.hasPrefix("saving dictionary — "))
+        #expect(message.hasPrefix("saving dictionary: "))
         #expect(message.contains("513"))
     }
 

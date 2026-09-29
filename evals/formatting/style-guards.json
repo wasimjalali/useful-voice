@@ -1,0 +1,845 @@
+{
+ "note": "Inputs that must stay untouched (false-positive guards from the PR 27 review) and a few that must change. Read by TranscriptStyleEvalTests.swift and windows/tests/transcriptStyle.test.ts.",
+ "cases": [
+  {
+   "lang": "en",
+   "input": "Call the API one more time.",
+   "expected": "Call the API one more time."
+  },
+  {
+   "lang": "en",
+   "input": "Ask the AI one question.",
+   "expected": "Ask the AI one question."
+  },
+  {
+   "lang": "en",
+   "input": "The CSS two days ago.",
+   "expected": "The CSS two days ago."
+  },
+  {
+   "lang": "en",
+   "input": "CEO one day.",
+   "expected": "CEO one day."
+  },
+  {
+   "lang": "en",
+   "input": "NO one knows.",
+   "expected": "NO one knows."
+  },
+  {
+   "lang": "en",
+   "input": "Our version one users are happy.",
+   "expected": "Our version one users are happy."
+  },
+  {
+   "lang": "en",
+   "input": "We saw version one-two.",
+   "expected": "We saw version one-two."
+  },
+  {
+   "lang": "en",
+   "input": "We upgraded to version two.",
+   "expected": "We upgraded to version 2."
+  },
+  {
+   "lang": "en",
+   "input": "Version two is out.",
+   "expected": "Version 2 is out."
+  },
+  {
+   "lang": "en",
+   "input": "GPT-five is faster.",
+   "expected": "GPT-5 is faster."
+  },
+  {
+   "lang": "de",
+   "input": "Auf iOS 17.4 läuft es.",
+   "expected": "Auf iOS 17.4 läuft es."
+  },
+  {
+   "lang": "de",
+   "input": "Unter macOS 14.5 läuft es.",
+   "expected": "Unter macOS 14.5 läuft es."
+  },
+  {
+   "lang": "de",
+   "input": "Das Modell gpt-4.5 ist neu.",
+   "expected": "Das Modell gpt-4.5 ist neu."
+  },
+  {
+   "lang": "de",
+   "input": "Siehe 2.3 im Handbuch.",
+   "expected": "Siehe 2.3 im Handbuch."
+  },
+  {
+   "lang": "de",
+   "input": "Wir treffen uns um 10.30 Uhr.",
+   "expected": "Wir treffen uns um 10.30 Uhr."
+  },
+  {
+   "lang": "de",
+   "input": "Am 1.5.2026 um 10.30 Uhr.",
+   "expected": "Am 1.5.2026 um 10.30 Uhr."
+  },
+  {
+   "lang": "de",
+   "input": "Er zahlt 5 € pro Monat.",
+   "expected": "Er zahlt 5 € pro Monat."
+  },
+  {
+   "lang": "de",
+   "input": "Das sind 2 % mehr.",
+   "expected": "Das sind 2 % mehr."
+  },
+  {
+   "lang": "de",
+   "input": "Es kostet € 2.",
+   "expected": "Es kostet € 2."
+  },
+  {
+   "lang": "de",
+   "input": "Siehe § 3 im Vertrag.",
+   "expected": "Siehe § 3 im Vertrag."
+  },
+  {
+   "lang": "de",
+   "input": "Es waren 2 - 3 Leute.",
+   "expected": "Es waren 2 - 3 Leute."
+  },
+  {
+   "lang": "de",
+   "input": "Das dauert von 2 – 3 Tagen.",
+   "expected": "Das dauert von 2 – 3 Tagen."
+  },
+  {
+   "lang": "de",
+   "input": "Es kamen ca. 3 Leute.",
+   "expected": "Es kamen ca. 3 Leute."
+  },
+  {
+   "lang": "de",
+   "input": "Zum Beispiel z. B. 3 Sachen.",
+   "expected": "Zum Beispiel z. B. 3 Sachen."
+  },
+  {
+   "lang": "de",
+   "input": "Siehe vgl. 2 im Text.",
+   "expected": "Siehe vgl. 2 im Text."
+  },
+  {
+   "lang": "de",
+   "input": "Das ist Nr. 5 in der Liste.",
+   "expected": "Das ist Nr. 5 in der Liste."
+  },
+  {
+   "lang": "de",
+   "input": "Tel. 5 ist besetzt.",
+   "expected": "Tel. 5 ist besetzt."
+  },
+  {
+   "lang": "de",
+   "input": "Wir treffen uns am 2.Mai.",
+   "expected": "Wir treffen uns am 2.Mai."
+  },
+  {
+   "lang": "de",
+   "input": "Sie wohnt im 3.OG.",
+   "expected": "Sie wohnt im 3.OG."
+  },
+  {
+   "lang": "de",
+   "input": "Es waren 2, 3 und 4 Leute.",
+   "expected": "Es waren 2, 3 und 4 Leute."
+  },
+  {
+   "lang": "de",
+   "input": "Das sind 5 kWh.",
+   "expected": "Das sind 5 kWh."
+  },
+  {
+   "lang": "de",
+   "input": "Das sind 2 Mio. Euro.",
+   "expected": "Das sind 2 Mio. Euro."
+  },
+  {
+   "lang": "de",
+   "input": "Das ergibt 2 + 2.",
+   "expected": "Das ergibt 2 + 2."
+  },
+  {
+   "lang": "de",
+   "input": "Das ergibt 3 x 4.",
+   "expected": "Das ergibt 3 x 4."
+  },
+  {
+   "lang": "de",
+   "input": "Wir treffen uns um 9.",
+   "expected": "Wir treffen uns um 9."
+  },
+  {
+   "lang": "de",
+   "input": "Am 3.5. um 10 Uhr.",
+   "expected": "Am 3.5. um 10 Uhr."
+  },
+  {
+   "lang": "de",
+   "input": "Der 2. Weltkrieg endete 1945.",
+   "expected": "Der 2. Weltkrieg endete 1945."
+  },
+  {
+   "lang": "de",
+   "input": "Vom 2. bis 5. März.",
+   "expected": "Vom 2. bis 5. März."
+  },
+  {
+   "lang": "de",
+   "input": "Das kostet 3.500 Euro.",
+   "expected": "Das kostet 3.500 Euro."
+  },
+  {
+   "lang": "de",
+   "input": "Heute ist der 10.5.2026.",
+   "expected": "Heute ist der 10.5.2026."
+  },
+  {
+   "lang": "de",
+   "input": "Siehe Kapitel 3.",
+   "expected": "Siehe Kapitel 3."
+  },
+  {
+   "lang": "de",
+   "input": "Wir nutzen Windows 11.",
+   "expected": "Wir nutzen Windows 11."
+  },
+  {
+   "lang": "de",
+   "input": "Sie hat ein iPhone 15.",
+   "expected": "Sie hat ein iPhone 15."
+  },
+  {
+   "lang": "de",
+   "input": "Siehe Seite 2.",
+   "expected": "Siehe Seite 2."
+  },
+  {
+   "lang": "de",
+   "input": "Das ist Version 3.5.",
+   "expected": "Das ist Version 3.5."
+  },
+  {
+   "lang": "de",
+   "input": "Wir nutzen Python 3.12.",
+   "expected": "Wir nutzen Python 3.12."
+  },
+  {
+   "lang": "de",
+   "input": "GPT-4.5 ist neu.",
+   "expected": "GPT-4.5 ist neu."
+  },
+  {
+   "lang": "de",
+   "input": "Llama-3.1 ist neu.",
+   "expected": "Llama-3.1 ist neu."
+  },
+  {
+   "lang": "de",
+   "input": "Ich habe 2 Katzen.",
+   "expected": "Ich habe zwei Katzen."
+  },
+  {
+   "lang": "de",
+   "input": "Es ist in 2 Wochen soweit.",
+   "expected": "Es ist in zwei Wochen soweit."
+  },
+  {
+   "lang": "de",
+   "input": "Das war zum 1. Mal so.",
+   "expected": "Das war zum 1. Mal so."
+  },
+  {
+   "lang": "de",
+   "input": "Die Datei ist 3.5 Gigabyte groß.",
+   "expected": "Die Datei ist 3,5 Gigabyte groß."
+  },
+  {
+   "lang": "de",
+   "input": "Es dauert 1.5 Stunden.",
+   "expected": "Es dauert 1,5 Stunden."
+  },
+  {
+   "lang": "de",
+   "input": "Fertig. 3 Leute kamen.",
+   "expected": "Fertig. 3 Leute kamen."
+  },
+  {
+   "lang": "de",
+   "input": "Das 1. Kapitel ist fertig.",
+   "expected": "Das erste Kapitel ist fertig."
+  },
+  {
+   "lang": "en",
+   "input": "The version one would expect is old.",
+   "expected": "The version one would expect is old."
+  },
+  {
+   "lang": "en",
+   "input": "The version one should use is two.",
+   "expected": "The version one should use is two."
+  },
+  {
+   "lang": "en",
+   "input": "Version one has to install.",
+   "expected": "Version one has to install."
+  },
+  {
+   "lang": "en",
+   "input": "A TWO-one lead.",
+   "expected": "A TWO-one lead."
+  },
+  {
+   "lang": "en",
+   "input": "OK-one more thing.",
+   "expected": "OK-one more thing."
+  },
+  {
+   "lang": "de",
+   "input": "Auf iOS 9 läuft es nicht.",
+   "expected": "Auf iOS 9 läuft es nicht."
+  },
+  {
+   "lang": "de",
+   "input": "Ein iPad 2 ist alt.",
+   "expected": "Ein iPad 2 ist alt."
+  },
+  {
+   "lang": "de",
+   "input": "Das iPhone 7 Pro ist neu.",
+   "expected": "Das iPhone 7 Pro ist neu."
+  },
+  {
+   "lang": "de",
+   "input": "Bitte inkl. 3 Getränke.",
+   "expected": "Bitte inkl. 3 Getränke."
+  },
+  {
+   "lang": "de",
+   "input": "Evtl. 3 Leute.",
+   "expected": "Evtl. 3 Leute."
+  },
+  {
+   "lang": "de",
+   "input": "Wir wohnen in der Hauptstr. 3 in Berlin.",
+   "expected": "Wir wohnen in der Hauptstr. 3 in Berlin."
+  },
+  {
+   "lang": "de",
+   "input": "Wir sehen uns am 3. Danach essen wir.",
+   "expected": "Wir sehen uns am 3. Danach essen wir."
+  },
+  {
+   "lang": "de",
+   "input": "Es dauert 2 bis 3 Tage.",
+   "expected": "Es dauert 2 bis 3 Tage."
+  },
+  {
+   "lang": "de",
+   "input": "Es steht 2 : 1.",
+   "expected": "Es steht 2 : 1."
+  },
+  {
+   "lang": "de",
+   "input": "Der Wert stieg von 2.5 auf 3.5 Prozent.",
+   "expected": "Der Wert stieg von 2.5 auf 3.5 Prozent."
+  },
+  {
+   "lang": "de",
+   "input": "Es kamen 3 oder 4 Tage.",
+   "expected": "Es kamen 3 oder 4 Tage."
+  },
+  {
+   "lang": "de",
+   "input": "Wir spielen gegen den 1. FC Köln.",
+   "expected": "Wir spielen gegen den 1. FC Köln."
+  },
+  {
+   "lang": "de",
+   "input": "Am 3. Okt. war es so.",
+   "expected": "Am 3. Okt. war es so."
+  },
+  {
+   "lang": "de",
+   "input": "Vom 3. auf den 4. Oktober.",
+   "expected": "Vom 3. auf den 4. Oktober."
+  },
+  {
+   "lang": "de",
+   "input": "Kapitel 3 und 4 fehlen.",
+   "expected": "Kapitel 3 und 4 fehlen."
+  },
+  {
+   "lang": "de",
+   "input": "Es steht 5 zu 3.",
+   "expected": "Es steht 5 zu 3."
+  },
+  {
+   "lang": "de",
+   "input": "3 Leute waren dabei.",
+   "expected": "Drei Leute waren dabei."
+  },
+  {
+   "lang": "de",
+   "input": "Er hat 2 Hunde und 3 Katzen.",
+   "expected": "Er hat 2 Hunde und 3 Katzen."
+  },
+  {
+   "lang": "de",
+   "input": "Hallo! 2 Leute kommen später.",
+   "expected": "Hallo! Zwei Leute kommen später."
+  },
+  {
+   "lang": "en",
+   "input": "Version two and three are out.",
+   "expected": "Version two and three are out."
+  },
+  {
+   "lang": "en",
+   "input": "Version one or two.",
+   "expected": "Version one or two."
+  },
+  {
+   "lang": "en",
+   "input": "In that version two are missing.",
+   "expected": "In that version two are missing."
+  },
+  {
+   "lang": "de",
+   "input": "Wir haben 3 Äpfel, 4 Birnen und 5 Bananen.",
+   "expected": "Wir haben 3 Äpfel, 4 Birnen und 5 Bananen."
+  },
+  {
+   "lang": "de",
+   "input": "Ich habe 2 Hunde, 3 Katzen und 4 Fische.",
+   "expected": "Ich habe 2 Hunde, 3 Katzen und 4 Fische."
+  },
+  {
+   "lang": "de",
+   "input": "Er hat 2, sie hat 3.",
+   "expected": "Er hat 2, sie hat 3."
+  },
+  {
+   "lang": "de",
+   "input": "Ich habe 2 Fragen oder 3.",
+   "expected": "Ich habe 2 Fragen oder 3."
+  },
+  {
+   "lang": "de",
+   "input": "Es sind 3 statt 4.",
+   "expected": "Es sind 3 statt 4."
+  },
+  {
+   "lang": "de",
+   "input": "Mit 2 mal 3 Metern.",
+   "expected": "Mit 2 mal 3 Metern."
+  },
+  {
+   "lang": "de",
+   "input": "Nach 3 kommt 4.",
+   "expected": "Nach 3 kommt 4."
+  },
+  {
+   "lang": "de",
+   "input": "Schon 5 vor 12.",
+   "expected": "Schon 5 vor 12."
+  },
+  {
+   "lang": "de",
+   "input": "Die 7 ist meine Glückszahl.",
+   "expected": "Die 7 ist meine Glückszahl."
+  },
+  {
+   "lang": "de",
+   "input": "Nimm die 4 zum Bahnhof.",
+   "expected": "Nimm die 4 zum Bahnhof."
+  },
+  {
+   "lang": "de",
+   "input": "Die 3 ist besser als die 4.",
+   "expected": "Die 3 ist besser als die 4."
+  },
+  {
+   "lang": "de",
+   "input": "Sie ist im 5. Das merkt man.",
+   "expected": "Sie ist im 5. Das merkt man."
+  },
+  {
+   "lang": "de",
+   "input": "Wir sind beim 2. Dann kommt das 3.",
+   "expected": "Wir sind beim 2. Dann kommt das 3."
+  },
+  {
+   "lang": "de",
+   "input": "Wir gewinnen mit 5 : 4.",
+   "expected": "Wir gewinnen mit 5 : 4."
+  },
+  {
+   "lang": "de",
+   "input": "Ich zahle nur 5 CHF.",
+   "expected": "Ich zahle nur 5 CHF."
+  },
+  {
+   "lang": "de",
+   "input": "Ruf mich unter 5 an.",
+   "expected": "Ruf mich unter 5 an."
+  },
+  {
+   "lang": "de",
+   "input": "Plan A und 2 sind gut.",
+   "expected": "Plan A und 2 sind gut."
+  },
+  {
+   "lang": "en",
+   "input": "Upgrade from version one to version two.",
+   "expected": "Upgrade from version one to version two."
+  },
+  {
+   "lang": "en",
+   "input": "I like version one and version two.",
+   "expected": "I like version one and version two."
+  },
+  {
+   "lang": "en",
+   "input": "Version one, two, and three are deprecated.",
+   "expected": "Version one, two, and three are deprecated."
+  },
+  {
+   "lang": "en",
+   "input": "That's the version one is supposed to install.",
+   "expected": "That's the version one is supposed to install."
+  },
+  {
+   "lang": "en",
+   "input": "Please update to version one.",
+   "expected": "Please update to version 1."
+  },
+  {
+   "lang": "de",
+   "input": "Sie hat 2 Kinder, 11 und 7 Jahre alt.",
+   "expected": "Sie hat 2 Kinder, 11 und 7 Jahre alt."
+  },
+  {
+   "lang": "de",
+   "input": "Ich habe 2 Fragen zu den Seiten 14 und 5 im Skript.",
+   "expected": "Ich habe 2 Fragen zu den Seiten 14 und 5 im Skript."
+  },
+  {
+   "lang": "de",
+   "input": "Treffen wir uns mit 2 Leuten um 11 oder 3?",
+   "expected": "Treffen wir uns mit 2 Leuten um 11 oder 3?"
+  },
+  {
+   "lang": "de",
+   "input": "Die Party ist am Samstag, den 5. Kommst du?",
+   "expected": "Die Party ist am Samstag, den 5. Kommst du?"
+  },
+  {
+   "lang": "de",
+   "input": "Das Meeting ist am Dienstag, den 3. Bring bitte die Unterlagen mit.",
+   "expected": "Das Meeting ist am Dienstag, den 3. Bring bitte die Unterlagen mit."
+  },
+  {
+   "lang": "de",
+   "input": "Es kostet täglich 10.30 h.",
+   "expected": "Es kostet täglich 10.30 h."
+  },
+  {
+   "lang": "de",
+   "input": "Die Sitzung ist am Freitag, dem 3. Kommst du?",
+   "expected": "Die Sitzung ist am Freitag, dem 3. Kommst du?"
+  },
+  {
+   "lang": "de",
+   "input": "Wir treffen uns am Freitag, dem 3. Viele Grüße.",
+   "expected": "Wir treffen uns am Freitag, dem 3. Viele Grüße."
+  },
+  {
+   "lang": "de",
+   "input": "Meine Oma wohnt im 4. Kannst du ihr helfen?",
+   "expected": "Meine Oma wohnt im 4. Kannst du ihr helfen?"
+  },
+  {
+   "lang": "de",
+   "input": "Das ist schon das 3. Ehrlich gesagt nervt es.",
+   "expected": "Das ist schon das 3. Ehrlich gesagt nervt es."
+  },
+  {
+   "lang": "de",
+   "input": "Ich habe 2 bzw. 3 Kinder.",
+   "expected": "Ich habe 2 bzw. 3 Kinder."
+  },
+  {
+   "lang": "de",
+   "input": "Das ist im 2. bzw. 3. Quartal fällig.",
+   "expected": "Das ist im 2. bzw. 3. Quartal fällig."
+  },
+  {
+   "lang": "de",
+   "input": "Ich habe 2 Kinder u. 3 Enkel.",
+   "expected": "Ich habe 2 Kinder u. 3 Enkel."
+  },
+  {
+   "lang": "de",
+   "input": "Ich brauche 2.5 Kilo Mehl und 3.5 Kilo Zucker.",
+   "expected": "Ich brauche 2,5 Kilo Mehl und 3,5 Kilo Zucker."
+  },
+  {
+   "lang": "de",
+   "input": "Das kostet 1.5 Liter Wasser oder 2.5 Liter Saft.",
+   "expected": "Das kostet 1,5 Liter Wasser oder 2,5 Liter Saft."
+  },
+  {
+   "lang": "de",
+   "input": "Das ist im 2. Quartal fällig.",
+   "expected": "Das ist im zweiten Quartal fällig."
+  },
+  {
+   "lang": "de",
+   "input": "Er wohnt im 3. Stock.",
+   "expected": "Er wohnt im dritten Stock."
+  },
+  {
+   "lang": "en",
+   "input": "The flight leaves at 07:45AM.",
+   "expected": "The flight leaves at 7:45 AM."
+  },
+  {
+   "lang": "en",
+   "input": "The meeting is at 3PM.",
+   "expected": "The meeting is at 3 PM."
+  },
+  {
+   "lang": "en",
+   "input": "Call me at 10 am or 4 pm.",
+   "expected": "Call me at 10 am or 4 pm."
+  },
+  {
+   "lang": "en",
+   "input": "The train leaves at 07:45 sharp.",
+   "expected": "The train leaves at 07:45 sharp."
+  },
+  {
+   "lang": "en",
+   "input": "We are on the 21st Floor.",
+   "expected": "We are on the 21st floor."
+  },
+  {
+   "lang": "en",
+   "input": "She lives on 5th Avenue near 1st Street.",
+   "expected": "She lives on 5th Avenue near 1st Street."
+  },
+  {
+   "lang": "en",
+   "input": "Our q three revenue was up.",
+   "expected": "Our Q3 revenue was up."
+  },
+  {
+   "lang": "en",
+   "input": "Q1 was slow but Q2 was fine.",
+   "expected": "Q1 was slow but Q2 was fine."
+  },
+  {
+   "lang": "en",
+   "input": "Is there a Q and A after the talk?",
+   "expected": "Is there a Q and A after the talk?"
+  },
+  {
+   "lang": "de",
+   "input": "Wir haben noch 2 Rechner mit Windows XP und 7 im Büro.",
+   "expected": "Wir haben noch 2 Rechner mit Windows XP und 7 im Büro."
+  },
+  {
+   "lang": "de",
+   "input": "Ich habe 2 Anmerkungen zu § 5a und 6 BGB.",
+   "expected": "Ich habe 2 Anmerkungen zu § 5a und 6 BGB."
+  },
+  {
+   "lang": "de",
+   "input": "Die Abgabe ist bis zum 5. Mal sehen, ob wir das schaffen.",
+   "expected": "Die Abgabe ist bis zum 5. Mal sehen, ob wir das schaffen."
+  },
+  {
+   "lang": "de",
+   "input": "Wir sehen uns am Freitag, dem 3. Mal schauen, wer kommt.",
+   "expected": "Wir sehen uns am Freitag, dem 3. Mal schauen, wer kommt."
+  },
+  {
+   "lang": "de",
+   "input": "Die Rechnung kommt bis zum 3. Klasse, danke!",
+   "expected": "Die Rechnung kommt bis zum 3. Klasse, danke!"
+  },
+  {
+   "lang": "de",
+   "input": "Wir haben 2 Hunde bzw. Welpen und 3 Katzen.",
+   "expected": "Wir haben 2 Hunde bzw. Welpen und 3 Katzen."
+  },
+  {
+   "lang": "de",
+   "input": "Wir brauchen 2 Zimmer inkl. Küche und 3 Betten.",
+   "expected": "Wir brauchen 2 Zimmer inkl. Küche und 3 Betten."
+  },
+  {
+   "lang": "de",
+   "input": "Das sind 5 mg und 3 GHz.",
+   "expected": "Das sind 5 mg und 3 GHz."
+  },
+  {
+   "lang": "en",
+   "input": "The ticket costs $25",
+   "expected": "The ticket costs $25."
+  },
+  {
+   "lang": "en",
+   "input": "Our budget is $5 million",
+   "expected": "Our budget is $5 million."
+  },
+  {
+   "lang": "en",
+   "input": "How much is it, $25?",
+   "expected": "How much is it, $25?"
+  },
+  {
+   "lang": "en",
+   "input": "The price is $25.",
+   "expected": "The price is $25."
+  },
+  {
+   "lang": "en",
+   "input": "Send 500 dollars",
+   "expected": "Send 500 dollars"
+  },
+  {
+   "lang": "en",
+   "input": "Press Q two times to open the menu.",
+   "expected": "Press Q two times to open the menu."
+  },
+  {
+   "lang": "en",
+   "input": "Hit the Q three times.",
+   "expected": "Hit the Q three times."
+  },
+  {
+   "lang": "en",
+   "input": "I got a Q two lines down.",
+   "expected": "I got a Q two lines down."
+  },
+  {
+   "lang": "en",
+   "input": "We closed the deal in Q two.",
+   "expected": "We closed the deal in Q2."
+  },
+  {
+   "lang": "en",
+   "input": "She lives at 21st Place NW.",
+   "expected": "She lives at 21st Place NW."
+  },
+  {
+   "lang": "en",
+   "input": "Rupert Murdoch ran 21st Century Fox.",
+   "expected": "Rupert Murdoch ran 21st Century Fox."
+  },
+  {
+   "lang": "en",
+   "input": "The 13th Floor Elevators played tonight.",
+   "expected": "The 13th Floor Elevators played tonight."
+  },
+  {
+   "lang": "en",
+   "input": "The 7th Day Adventist Church is downtown.",
+   "expected": "The 7th Day Adventist Church is downtown."
+  },
+  {
+   "lang": "en",
+   "input": "He is a 2nd Year Student.",
+   "expected": "He is a 2nd Year Student."
+  },
+  {
+   "lang": "en",
+   "input": "Flight UA 007 PM departure.",
+   "expected": "Flight UA 007 PM departure."
+  },
+  {
+   "lang": "en",
+   "input": "The 2FA code is 080 PM.",
+   "expected": "The 2FA code is 080 PM."
+  },
+  {
+   "lang": "en",
+   "input": "The ID is A007AM.",
+   "expected": "The ID is A007AM."
+  },
+  {
+   "lang": "en",
+   "input": "Did you pay the $25",
+   "expected": "Did you pay the $25"
+  },
+  {
+   "lang": "en",
+   "input": "It costs $1,000,",
+   "expected": "It costs $1,000,"
+  },
+  {
+   "lang": "en",
+   "input": "Tip: $5",
+   "expected": "Tip: $5"
+  },
+  {
+   "lang": "en",
+   "input": "Rent is $1,200",
+   "expected": "Rent is $1,200"
+  },
+  {
+   "lang": "en",
+   "input": "Take a look at https://example.com/pricing/$25",
+   "expected": "Take a look at https://example.com/pricing/$25"
+  },
+  {
+   "lang": "en",
+   "input": "Press Q two to quit.",
+   "expected": "Press Q two to quit."
+  },
+  {
+   "lang": "en",
+   "input": "Ask Q one to help.",
+   "expected": "Ask Q one to help."
+  },
+  {
+   "lang": "en",
+   "input": "Thanks. Did you pay $25",
+   "expected": "Thanks. Did you pay $25"
+  },
+  {
+   "lang": "en",
+   "input": "Thanks for the update. The fee is $25",
+   "expected": "Thanks for the update. The fee is $25."
+  },
+  {
+   "lang": "en",
+   "input": "Route 05 AM.",
+   "expected": "Route 05 AM."
+  },
+  {
+   "lang": "en",
+   "input": "Costs 1,010 AM.",
+   "expected": "Costs 1,010 AM."
+  },
+  {
+   "lang": "en",
+   "input": "It costs $3PM.",
+   "expected": "It costs $3PM."
+  },
+  {
+   "lang": "en",
+   "input": "Meeting at 07:45 AM sharp.",
+   "expected": "Meeting at 7:45 AM sharp."
+  }
+ ]
+}

@@ -81,7 +81,7 @@ Fixed by `TranscriptStyle`:
 ## Review round
 
 Two reviewers (Opus 5.5 on the styling logic, Sonnet 5.5 on request, tests and sweep) ran on PR 27,
-seven times. Pass one: seven high false positives in the first version (acronym plus number
+eight times. Pass one: seven high false positives in the first version (acronym plus number
 rewritten, "iOS 17.4" and "10.30 Uhr" turned into commas, money and symbols, spaced ranges,
 capitals after abbreviations, a Swift/TS difference). Pass two, on the stricter rules: five more
 highs from the German small-number rule guessing too widely ("iOS 9", "inkl. 3", half-converted
@@ -110,6 +110,13 @@ times" became "Q2 times", "21st Place NW" and "21st Century Fox" lost a capital,
 limiting "Q" to real quarter contexts, dropping street and title nouns from the ordinal list and
 requiring that no capitalised word follows, keeping times out of longer numbers and codes, and adding
 the closing full stop only to a one-line sentence of four or more words that is not a question.
+Pass eight (Sonnet only, on the owner's instruction to skip Opus): two Sonnet reviewers at high effort,
+one on the English rules and one on the closing full stop, plus a Sonnet check of the eval files. No
+highs. The lows worth fixing were: "Press Q two to quit" (dropped "to", "and" and "or" as quarter
+followers), leading zeros stripped from "05 AM" (now only from a clock time with minutes), a time after a
+comma or currency symbol, the question check looking only at the first word (now the last sentence),
+and only "\n" counting as a newline (now every line break). Two lows were left: a partial conversion in
+"Q one or two" and "3rd Time" losing a capital when Deepgram omits the full stop before it.
 
 Each pass fixed its findings and then changed the design instead of piling on exceptions:
 

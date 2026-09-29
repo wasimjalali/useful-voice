@@ -12,6 +12,7 @@ import Foundation
 ///
 /// Every rule leaves the text alone when it is unsure: a wrong digit is better
 /// than a wrong word. Nothing here adds, drops or reorders what was said.
+/// `windows/src/core/formatting/transcriptStyle.ts` mirrors this file rule for rule.
 public enum TranscriptStyle {
     public static func apply(to text: String, language: String?) -> String {
         guard let code = language?.lowercased() else { return text }
@@ -28,13 +29,17 @@ public enum TranscriptStyle {
     ]
 
     /// "version two" -> "version 2", "GPT-five" -> "GPT-5". The number after the
-    /// word "version" or an all-caps product code is a name, not a quantity.
+    /// word "version" or a hyphenated all-caps product code is a name, not a
+    /// quantity. "version" only counts when the number ends the phrase ("version two
+    /// is out"), so "version one users" is left as spoken. A bare acronym followed by
+    /// a number ("the API one more time") is never touched.
     static func english(_ text: String) -> String {
         let words = "one|two|three|four|five|six|seven|eight|nine|ten"
-        var result = replacing(#"\b([Vv]ersion)(\s+)(\#(words))\b"#, in: text) {
+        let verbs = "is|was|are|were|will|has|had|and|or|to|in|for|with|from|works|shipped|came|comes|did|does|can|should|would"
+        var result = replacing(#"\b([Vv]ersion)(\s+)(\#(words))(?=\s*(?:[.,;:!?)]|$)|\s+(?:\#(verbs))\b)"#, in: text) {
             "\($0[1])\($0[2])\(englishNumbers[$0[3]] ?? $0[3])"
         }
-        result = replacing(#"\b([A-Z]{2,5})([- ])(\#(words))\b"#, in: result) {
+        result = replacing(#"\b([A-Z]{2,5})(-)(\#(words))\b(?!-)"#, in: result) {
             "\($0[1])\($0[2])\(englishNumbers[$0[3]] ?? $0[3])"
         }
         return result
@@ -61,45 +66,72 @@ public enum TranscriptStyle {
         "januar", "jänner", "februar", "märz", "april", "mai", "juni", "juli", "august",
         "september", "oktober", "november", "dezember",
     ]
-    /// A digit before one of these is a measurement or a clock time, so it stays.
+    /// A digit before one of these is a measurement, a price or a clock time, so it stays.
     private static let units: Set<String> = [
         "uhr", "euro", "cent", "dollar", "franken", "pfund", "prozent", "grad",
         "gigabyte", "megabyte", "kilobyte", "terabyte", "gb", "mb", "kb", "tb",
         "kilometer", "km", "meter", "m", "zentimeter", "cm", "millimeter", "mm",
         "kilogramm", "kg", "gramm", "g", "liter", "l", "ml", "watt", "volt",
+        "kwh", "ps", "h", "std", "min", "mio", "mrd", "x",
     ]
-    /// A digit or decimal after one of these is a date ("am 3.5.") or a range.
-    private static let dateLeadIns: Set<String> = ["am", "bis", "ab", "vom", "seit", "zum", "dem"]
+    /// The only words after which "3.5" becomes "3,5". Deliberately not "Uhr": "10.30 Uhr"
+    /// is a time. A decimal anywhere else could be a section number or a version.
+    private static let decimalUnits: Set<String> = units.subtracting(["uhr", "x"]).union([
+        "stunden", "minuten", "sekunden", "tage", "tagen", "wochen", "monate", "monaten",
+        "jahre", "jahren", "millionen", "milliarden", "tonnen", "kilo", "prozentpunkte",
+    ])
+    /// A digit after one of these is a date, a clock time or a range ("am 3.5.",
+    /// "um 9", "von 2 bis 3"), so it stays.
+    private static let dateOrClockLeadIns: Set<String> = [
+        "am", "bis", "ab", "vom", "seit", "zum", "dem", "um", "gegen", "von", "zwischen", "x",
+    ]
+    private static let symbolsAfter = Set("%€$£°§+×*=÷-–/")
+    private static let symbolsBefore = Set("€$£§#№-–—/+×*=÷")
 
     static func german(_ text: String) -> String {
         germanSmallNumbers(germanDecimals(text))
     }
 
-    /// "3.5" -> "3,5". Left alone after a capitalised word ("Version 3.5",
-    /// "iOS 17.4") and after a date lead-in ("am 3.5").
+    /// "3.5 Gigabyte" -> "3,5 Gigabyte". Only before a unit or quantity word, and not
+    /// after a capitalised word, digit or hyphen ("Version 3.5", "GPT-4.5").
     private static func germanDecimals(_ text: String) -> String {
-        replacing(#"(?<![\w.,])(\d+)\.(\d{1,2})(?![\w.,])"#, in: text, using: { groups, context in
+        replacing(#"(?<![\w.,\-])(\d+)\.(\d{1,2})(?![\w.,])"#, in: text, using: { groups, context in
+            guard let next = context.nextWord, decimalUnits.contains(next.lowercased()) else { return nil }
             let prev = context.previousWord
             if let prev, prev.first?.isUppercase == true || prev.contains(where: \.isNumber) { return nil }
-            if let prev, dateLeadIns.contains(prev.lowercased()) { return nil }
+            if let prev, dateOrClockLeadIns.contains(prev.lowercased()) { return nil }
             return "\(groups[1]),\(groups[2])"
         })
     }
 
     /// "2 Fragen" -> "zwei Fragen", "das 1. Kapitel" -> "das erste Kapitel".
     private static func germanSmallNumbers(_ text: String) -> String {
-        replacing(#"(?<![\w.,:/+\-–%€$£#@])(\d)(\.)?(?![\w:/%°€$£+\-–]|[.,]\d)"#, in: text, using: { groups, context in
+        replacing(#"(?<![\w.,:/+\-–%€$£#@])(\d)(\.)?(?![\w:/%°€$£+\-–]|[.,]\d|\.\p{L})"#, in: text, using: { groups, context in
             let digit = Int(groups[1]) ?? 0
             let ordinal = !groups[2].isEmpty
             let before = context.before.trimmingCharacters(in: .whitespaces)
             let after = context.after
-            // Lists and ranges of digits ("1, 2, 3", "2 3", "5 - 7") stay digits.
-            if before.last?.isNumber == true || before.hasSuffix(",") && before.dropLast().last?.isNumber == true { return nil }
             let afterTrimmed = after.drop(while: { $0 == " " })
-            if let first = afterTrimmed.first, first.isNumber || "-–/".contains(first) { return nil }
-            if afterTrimmed.hasPrefix(",") && afterTrimmed.dropFirst().drop(while: { $0 == " " }).first?.isNumber == true { return nil }
 
-            let atSentenceStart = before.isEmpty || ".!?".contains(before.last!)
+            // Lists, ranges, sums and scores of digits stay digits.
+            if before.last?.isNumber == true { return nil }
+            if before.hasSuffix(","), before.dropLast().last?.isNumber == true { return nil }
+            if let last = before.last, symbolsBefore.contains(last) { return nil }
+            if let first = afterTrimmed.first, first.isNumber || symbolsAfter.contains(first) { return nil }
+            if afterTrimmed.hasPrefix(","), afterTrimmed.dropFirst().drop(while: { $0 == " " }).first?.isNumber == true { return nil }
+            if context.previousWord.map({ ["und", "oder"].contains($0.lowercased()) }) == true,
+               before.range(of: #"\d[,\s]*(und|oder)$"#, options: [.regularExpression, .caseInsensitive]) != nil { return nil }
+
+            // Sentence start unless the full stop belongs to an abbreviation
+            // ("ca. 3", "Nr. 5", "z. B. 3"), which is left alone.
+            var atSentenceStart = before.isEmpty
+            if let last = before.last, ".!?".contains(last) {
+                if last == "." {
+                    let wordBeforeDot = String(before.dropLast().reversed().prefix(while: { $0.isLetter }).reversed())
+                    if wordBeforeDot.count <= 3 { return nil }
+                }
+                atSentenceStart = true
+            }
 
             if ordinal {
                 // Needs a following word; "3." at the end of a sentence is ambiguous.
@@ -111,7 +143,10 @@ public enum TranscriptStyle {
                 return stem + ending
             }
             guard let word = germanCardinals[digit] else { return nil }
-            if !atSentenceStart, let prev = context.previousWord, prev.first?.isUppercase == true { return nil }
+            if !atSentenceStart, let prev = context.previousWord {
+                if prev.first?.isUppercase == true { return nil }
+                if dateOrClockLeadIns.contains(prev.lowercased()) { return nil }
+            }
             if let next = context.nextWord, units.contains(next.lowercased()) { return nil }
             return atSentenceStart ? word.prefix(1).uppercased() + word.dropFirst() : word
         })

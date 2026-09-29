@@ -1,0 +1,280 @@
+{
+ "note": "Inputs that must stay untouched (false-positive guards from the PR 27 review) and a few that must change. Read by TranscriptStyleEvalTests.swift and windows/tests/transcriptStyle.test.ts.",
+ "cases": [
+  {
+   "lang": "en",
+   "input": "Call the API one more time.",
+   "expected": "Call the API one more time."
+  },
+  {
+   "lang": "en",
+   "input": "Ask the AI one question.",
+   "expected": "Ask the AI one question."
+  },
+  {
+   "lang": "en",
+   "input": "The CSS two days ago.",
+   "expected": "The CSS two days ago."
+  },
+  {
+   "lang": "en",
+   "input": "CEO one day.",
+   "expected": "CEO one day."
+  },
+  {
+   "lang": "en",
+   "input": "NO one knows.",
+   "expected": "NO one knows."
+  },
+  {
+   "lang": "en",
+   "input": "Our version one users are happy.",
+   "expected": "Our version one users are happy."
+  },
+  {
+   "lang": "en",
+   "input": "We saw version one-two.",
+   "expected": "We saw version one-two."
+  },
+  {
+   "lang": "en",
+   "input": "We upgraded to version two.",
+   "expected": "We upgraded to version 2."
+  },
+  {
+   "lang": "en",
+   "input": "Version two is out.",
+   "expected": "Version 2 is out."
+  },
+  {
+   "lang": "en",
+   "input": "GPT-five is faster.",
+   "expected": "GPT-5 is faster."
+  },
+  {
+   "lang": "de",
+   "input": "Auf iOS 17.4 läuft es.",
+   "expected": "Auf iOS 17.4 läuft es."
+  },
+  {
+   "lang": "de",
+   "input": "Unter macOS 14.5 läuft es.",
+   "expected": "Unter macOS 14.5 läuft es."
+  },
+  {
+   "lang": "de",
+   "input": "Das Modell gpt-4.5 ist neu.",
+   "expected": "Das Modell gpt-4.5 ist neu."
+  },
+  {
+   "lang": "de",
+   "input": "Siehe 2.3 im Handbuch.",
+   "expected": "Siehe 2.3 im Handbuch."
+  },
+  {
+   "lang": "de",
+   "input": "Wir treffen uns um 10.30 Uhr.",
+   "expected": "Wir treffen uns um 10.30 Uhr."
+  },
+  {
+   "lang": "de",
+   "input": "Am 1.5.2026 um 10.30 Uhr.",
+   "expected": "Am 1.5.2026 um 10.30 Uhr."
+  },
+  {
+   "lang": "de",
+   "input": "Er zahlt 5 € pro Monat.",
+   "expected": "Er zahlt 5 € pro Monat."
+  },
+  {
+   "lang": "de",
+   "input": "Das sind 2 % mehr.",
+   "expected": "Das sind 2 % mehr."
+  },
+  {
+   "lang": "de",
+   "input": "Es kostet € 2.",
+   "expected": "Es kostet € 2."
+  },
+  {
+   "lang": "de",
+   "input": "Siehe § 3 im Vertrag.",
+   "expected": "Siehe § 3 im Vertrag."
+  },
+  {
+   "lang": "de",
+   "input": "Es waren 2 - 3 Leute.",
+   "expected": "Es waren 2 - 3 Leute."
+  },
+  {
+   "lang": "de",
+   "input": "Das dauert von 2 – 3 Tagen.",
+   "expected": "Das dauert von 2 – 3 Tagen."
+  },
+  {
+   "lang": "de",
+   "input": "Es kamen ca. 3 Leute.",
+   "expected": "Es kamen ca. 3 Leute."
+  },
+  {
+   "lang": "de",
+   "input": "Zum Beispiel z. B. 3 Sachen.",
+   "expected": "Zum Beispiel z. B. 3 Sachen."
+  },
+  {
+   "lang": "de",
+   "input": "Siehe vgl. 2 im Text.",
+   "expected": "Siehe vgl. 2 im Text."
+  },
+  {
+   "lang": "de",
+   "input": "Das ist Nr. 5 in der Liste.",
+   "expected": "Das ist Nr. 5 in der Liste."
+  },
+  {
+   "lang": "de",
+   "input": "Tel. 5 ist besetzt.",
+   "expected": "Tel. 5 ist besetzt."
+  },
+  {
+   "lang": "de",
+   "input": "Wir treffen uns am 2.Mai.",
+   "expected": "Wir treffen uns am 2.Mai."
+  },
+  {
+   "lang": "de",
+   "input": "Sie wohnt im 3.OG.",
+   "expected": "Sie wohnt im 3.OG."
+  },
+  {
+   "lang": "de",
+   "input": "Es waren 2, 3 und 4 Leute.",
+   "expected": "Es waren 2, 3 und 4 Leute."
+  },
+  {
+   "lang": "de",
+   "input": "Das sind 5 kWh.",
+   "expected": "Das sind 5 kWh."
+  },
+  {
+   "lang": "de",
+   "input": "Das sind 2 Mio. Euro.",
+   "expected": "Das sind 2 Mio. Euro."
+  },
+  {
+   "lang": "de",
+   "input": "Das ergibt 2 + 2.",
+   "expected": "Das ergibt 2 + 2."
+  },
+  {
+   "lang": "de",
+   "input": "Das ergibt 3 x 4.",
+   "expected": "Das ergibt 3 x 4."
+  },
+  {
+   "lang": "de",
+   "input": "Wir treffen uns um 9.",
+   "expected": "Wir treffen uns um 9."
+  },
+  {
+   "lang": "de",
+   "input": "Am 3.5. um 10 Uhr.",
+   "expected": "Am 3.5. um 10 Uhr."
+  },
+  {
+   "lang": "de",
+   "input": "Der 2. Weltkrieg endete 1945.",
+   "expected": "Der 2. Weltkrieg endete 1945."
+  },
+  {
+   "lang": "de",
+   "input": "Vom 2. bis 5. März.",
+   "expected": "Vom 2. bis 5. März."
+  },
+  {
+   "lang": "de",
+   "input": "Das kostet 3.500 Euro.",
+   "expected": "Das kostet 3.500 Euro."
+  },
+  {
+   "lang": "de",
+   "input": "Heute ist der 10.5.2026.",
+   "expected": "Heute ist der 10.5.2026."
+  },
+  {
+   "lang": "de",
+   "input": "Siehe Kapitel 3.",
+   "expected": "Siehe Kapitel 3."
+  },
+  {
+   "lang": "de",
+   "input": "Wir nutzen Windows 11.",
+   "expected": "Wir nutzen Windows 11."
+  },
+  {
+   "lang": "de",
+   "input": "Sie hat ein iPhone 15.",
+   "expected": "Sie hat ein iPhone 15."
+  },
+  {
+   "lang": "de",
+   "input": "Siehe Seite 2.",
+   "expected": "Siehe Seite 2."
+  },
+  {
+   "lang": "de",
+   "input": "Das ist Version 3.5.",
+   "expected": "Das ist Version 3.5."
+  },
+  {
+   "lang": "de",
+   "input": "Wir nutzen Python 3.12.",
+   "expected": "Wir nutzen Python 3.12."
+  },
+  {
+   "lang": "de",
+   "input": "GPT-4.5 ist neu.",
+   "expected": "GPT-4.5 ist neu."
+  },
+  {
+   "lang": "de",
+   "input": "Llama-3.1 ist neu.",
+   "expected": "Llama-3.1 ist neu."
+  },
+  {
+   "lang": "de",
+   "input": "Ich habe 2 Katzen.",
+   "expected": "Ich habe zwei Katzen."
+  },
+  {
+   "lang": "de",
+   "input": "Es ist in 2 Wochen soweit.",
+   "expected": "Es ist in zwei Wochen soweit."
+  },
+  {
+   "lang": "de",
+   "input": "Das war zum 1. Mal so.",
+   "expected": "Das war zum ersten Mal so."
+  },
+  {
+   "lang": "de",
+   "input": "Die Datei ist 3.5 Gigabyte groß.",
+   "expected": "Die Datei ist 3,5 Gigabyte groß."
+  },
+  {
+   "lang": "de",
+   "input": "Es dauert 1.5 Stunden.",
+   "expected": "Es dauert 1,5 Stunden."
+  },
+  {
+   "lang": "de",
+   "input": "Fertig. 3 Leute kamen.",
+   "expected": "Fertig. Drei Leute kamen."
+  },
+  {
+   "lang": "de",
+   "input": "Das 1. Kapitel ist fertig.",
+   "expected": "Das erste Kapitel ist fertig."
+  }
+ ]
+}

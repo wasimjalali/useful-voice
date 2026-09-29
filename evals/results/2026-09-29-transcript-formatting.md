@@ -51,14 +51,31 @@ draft has three sections and 12 pages", "I have two questions and one idea").
 
 Fixed by `TranscriptStyle`:
 
-- English: "version two" becomes "version 2", "GPT-five" becomes "GPT-5". Dropping
-  `numerals` had turned these into words, so this keeps them as names.
+- English: "version two is out" becomes "version 2 is out", "GPT-five" becomes "GPT-5".
+  Dropping `numerals` had turned these into words, so this keeps them as names. Narrow on
+  purpose: a bare acronym plus a number ("call the API one more time") and "version one users"
+  are left as spoken.
 - German small numbers and ordinals: "2 Fragen" becomes "zwei Fragen" and "das 1. Kapitel" becomes
   "das erste Kapitel".
-- German decimals: "3.5 Gigabyte" becomes "3,5 Gigabyte".
+- German decimals: "3.5 Gigabyte" becomes "3,5 Gigabyte". Only before a unit or quantity
+  word, never before "Uhr" (a time) or after a capitalised word, digit or hyphen ("iOS 17.4",
+  "GPT-4.5", "10.30 Uhr" stay).
+
+## Review round
+
+Two reviewers (Opus 5.5 on the styling logic, Sonnet 5.5 on request, tests and sweep) ran on PR 27.
+Opus found seven high false positives in the first version: acronyms plus a number rewritten
+("the API one more time" became "API 1 more time"), German decimals turning "iOS 17.4" and
+"10.30 Uhr" into commas, money and symbols ("5 €", "2 %", "§ 3"), spaced ranges, capitals
+after abbreviations ("ca. Drei Leute"), and a Swift/TS difference on "GPT-4.5". All were fixed by
+making the rules stricter and are pinned by `evals/formatting/style-guards.json` (55 inputs,
+run by both the Swift and the Windows tests). Sonnet's two lows (weak known-gap assertion,
+READMEs) led to a stricter assertion. READMEs are docs, not app text, and were not swept.
 
 ## Decisions
 
+- A digit right after a sentence-initial word ("In 2 Wochen") stays, because that word is
+  capitalised and could be a noun. Safe miss.
 - German ordinals after "der" and "die" stay as digits ("die 3. Runde"). The ending depends
   on gender and number, and a wrong ending would change a word the speaker said. These are the
   3 cases marked `known_gap`.

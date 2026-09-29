@@ -38,9 +38,30 @@ struct TranscriptStyleEvalTests {
     @Test func knownGapsStayDigitsRatherThanGuessAnEnding() throws {
         for row in try rows() where row.known_gap != nil {
             let styled = TranscriptStyle.apply(to: row.got, language: row.lang)
-            // Never a wrongly inflected ordinal: either the digit stays or it is correct.
-            #expect(!styled.contains("erste ") || row.expected.contains("erste "), "\(row.id): \(styled)")
+            // "der 3." and "die 3." have no certain ending, so the digit must survive.
+            let regex = try NSRegularExpression(pattern: #"\b(?:[Dd]er|[Dd]ie) \d\."#)
+            let gaps = regex.matches(in: row.got, range: NSRange(row.got.startIndex..., in: row.got))
+                .compactMap { Range($0.range, in: row.got).map { String(row.got[$0]) } }
+            #expect(!gaps.isEmpty, "\(row.id) has no der/die ordinal")
+            for gap in gaps { #expect(styled.contains(gap), "\(row.id): \(styled)") }
         }
+    }
+
+    private struct Guard: Decodable { let lang: String; let input: String; let expected: String }
+    private struct Guards: Decodable { let cases: [Guard] }
+
+    /// False positives found in review (acronyms, versions, times, money, ranges,
+    /// abbreviations) plus a few that must change. Same file as the Windows test.
+    @Test func guardCasesKeepTheirDigitsAndChangeOnlyWhatIsSafe() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let data = try Data(contentsOf: root.appendingPathComponent("evals/formatting/style-guards.json"))
+        var failures: [String] = []
+        for c in try JSONDecoder().decode(Guards.self, from: data).cases {
+            let styled = TranscriptStyle.apply(to: c.input, language: c.lang)
+            if styled != c.expected { failures.append("\(c.input) -> \(styled), want \(c.expected)") }
+        }
+        #expect(failures.isEmpty, "\(failures.joined(separator: "\n"))")
     }
 
     @Test func unknownLanguageIsLeftUntouched() {

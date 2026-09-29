@@ -1,6 +1,9 @@
-# Transcript formatting: ordinals, small numbers and German numbers
+# Transcript formatting: English first, plus German numbers
 
 Date: 2026-09-29. Branch: `fix/transcript-formatting`.
+
+English is the primary language, so it has the widest coverage here. German is secondary and
+its rules are deliberately cautious.
 
 ## Question
 
@@ -20,10 +23,13 @@ select languages". In practice German Smart Format digitises with or without `nu
 
 ## What ran
 
-- Script: `evals/formatting/run_eval.py`. Dataset: `evals/formatting/cases.json` (44 spoken
-  sentences, 22 English and 22 German: ordinals, small numbers, quantities, dates, money,
-  versions, model names, questions, lists, names, greetings, and 6 "must stay digit" cases).
-- Audio is synthesised with macOS `say` (Samantha for English, Anna for German), 16 kHz mono WAV.
+- Script: `evals/formatting/run_eval.py`. Dataset: `evals/formatting/cases.json` (83 spoken
+  sentences, 61 English and 22 German: ordinals, small numbers, quantities, dates, times, money,
+  phone numbers, emails, URLs, versions, model names, questions, lists, names, greetings,
+  multi-sentence dictation, and 6 "must stay digit" cases).
+- Audio is synthesised with macOS `say` (Samantha and Daniel for English, Anna for German), 16 kHz
+  mono WAV. A few sentences were reworded after the first run when the synthetic voice, not the
+  formatting, was at fault (a dropped "We", "pool request", a mangled surname).
 - Request: Nova-3, pinned `language=en` / `language=de`, the query string the app sends.
 - Commands:
   - `python3 evals/formatting/run_eval.py --variant baseline  --out evals/results/raw/2026-09-29-formatting-baseline.json`
@@ -32,25 +38,34 @@ select languages". In practice German Smart Format digitises with or without `nu
     real post-processor (`TranscriptStyle`) over the recorded `candidate` output.
 - Baseline is `smart_format=true&numerals=true` (the app before the fix). Candidate is
   `smart_format=true`.
-- Cost: each 44-sentence run is about 2 to 3 audio minutes and there were about 8 runs, so
-  under $0.10 at the Nova-3 pay-as-you-go rate (estimate, not read from the billing page).
+- Cost: a full run is about 4 to 6 audio minutes and there were about 10 runs including partial
+  ones, so roughly $0.25 at the Nova-3 pay-as-you-go rate (estimate, not read from the billing page).
 
 ## Numbers
 
 | Stage | Pass |
 |---|---|
-| Baseline (before the fix) | 29 / 44 |
-| Candidate, Deepgram output only (`numerals` dropped) | 34 / 44 |
-| Candidate after `TranscriptStyle` (what the app now delivers) | 41 / 44 (asserted by `recordedDeepgramOutputEndsUpAsExpected`) |
+| Baseline (before the fix) | 56 / 83 |
+| Candidate, Deepgram output only (`numerals` dropped) | 68 / 83 |
+| Candidate after `TranscriptStyle` (what the app now delivers) | 80 / 83 (asserted by `recordedDeepgramOutputEndsUpAsExpected`) |
 
-The 3 that still differ are all the same documented gap (below). Nothing that was a digit on purpose
-regressed: versions, model names, money, times, percentages, decimals and years all pass.
+The 3 that still differ are all the same documented German gap (below). Nothing that was a digit
+on purpose regressed: versions, model names, money, times, percentages, decimals and years all pass.
+All 61 English sentences pass after `TranscriptStyle`.
 
 Fixed by dropping `numerals`: every English ordinal and small number ("the first", "the second
 draft has three sections and 12 pages", "I have two questions and one idea").
 
 Fixed by `TranscriptStyle`:
 
+- English times: "07:45AM" becomes "7:45 AM" and "3PM" becomes "3 PM" (no leading zero, a space
+  before AM or PM). Deepgram writes them glued together.
+- English ordinal nouns: "the 21st Floor" becomes "the 21st floor". Deepgram capitalises the noun
+  after a digit ordinal; only a list of common nouns is lowercased, so "5th Avenue" and
+  "1st Street" keep their capital.
+- English quarters: "q three" becomes "Q3".
+- English closing full stop: "The ticket costs $25" becomes "The ticket costs $25." Deepgram drops it
+  after a currency amount. Only when the whole text ends on the amount with no punctuation.
 - English: "version two is out" becomes "version 2 is out", "GPT-five" becomes "GPT-5".
   Dropping `numerals` had turned these into words, so this keeps them as names. Narrow on
   purpose: a bare acronym plus a number ("call the API one more time") and "version one users"
@@ -64,7 +79,7 @@ Fixed by `TranscriptStyle`:
 ## Review round
 
 Two reviewers (Opus 5.5 on the styling logic, Sonnet 5.5 on request, tests and sweep) ran on PR 27,
-five times. Pass one: seven high false positives in the first version (acronym plus number
+six times. Pass one: seven high false positives in the first version (acronym plus number
 rewritten, "iOS 17.4" and "10.30 Uhr" turned into commas, money and symbols, spaced ranges,
 capitals after abbreviations, a Swift/TS difference). Pass two, on the stricter rules: five more
 highs from the German small-number rule guessing too widely ("iOS 9", "inkl. 3", half-converted
@@ -81,6 +96,12 @@ such as "bzw." splitting a sentence so "zwei bzw. 3" came out half converted, mi
 "3.5" in one sentence). Fixed by letting an ordinal convert only before a short list of nouns
 ("Mal", "Kapitel", "Stock", "Quartal" and so on), counting a full stop as a sentence end only
 before a capital letter or a line end, and giving decimals the same all-or-nothing rule.
+Pass six (German only, English matched): three highs ("Windows XP und 7" continuing a quantity from a
+label, "bis zum 5. Mal sehen" read as an ordinal, "bzw. Welpen" splitting a sentence) and missing unit
+abbreviations. Fixed by dropping "und" and "oder" as quantity continuations, removing "Mal" and
+"Klasse" from the ordinal nouns, and ending a sentence at a full stop only after a word of five or
+more letters. Since English is the primary language and German is not, these fixes chose the
+safest option each time (the digit stays) rather than covering more German.
 
 Each pass fixed its findings and then changed the design instead of piling on exceptions:
 
@@ -89,13 +110,20 @@ Each pass fixed its findings and then changed the design instead of piling on ex
 2. All or nothing per sentence. If any single digit in a sentence cannot be converted safely,
    none of that sentence's single digits are, so a list, range or score is never half converted.
 3. Ordinals convert only after das, dem, des, im, zum, zur, beim and only before a listed noun
-   ("Mal", "Kapitel", "Stock", "Quartal"). A date or a number that ends a sentence never matches.
+   ("Kapitel", "Stock", "Quartal", "Jahr"). A date or a number that ends a sentence never matches.
 
-Every finding is pinned as an input in `evals/formatting/style-guards.json` (121 inputs, run by
+Every finding is pinned as an input in `evals/formatting/style-guards.json` (143 inputs, run by
 both the Swift and the Windows tests, which also assert their counts, so an emptied file fails).
 READMEs are docs, not app text, and were not swept.
 
 ## Decisions
+
+English, left as Deepgram writes it (correct, only a different style):
+
+- "three point five million" comes out as "3,500,000", "twenty three of March" as "March 23",
+  "two hours and thirty minutes" keeps "thirty", "four oh four" becomes "four zero four".
+- Other English punctuation (commas before "but", question marks, capital after a full stop) was
+  right on every sentence where the synthetic voice paused naturally.
 
 - A German digit stays unless a quantity word precedes it, or it opens the text, and a
   sentence with any digit that cannot convert keeps all of its single digits. So "Fertig. 3

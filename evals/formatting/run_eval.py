@@ -34,8 +34,8 @@ def api_key():
     return key
 
 
-def synth(text, lang, path):
-    subprocess.run(["say", "-v", VOICES[lang], "-o", str(path), "--file-format=WAVE",
+def synth(text, voice, path):
+    subprocess.run(["say", "-v", voice, "-o", str(path), "--file-format=WAVE",
                     "--data-format=LEI16@16000", text], check=True)
 
 
@@ -64,7 +64,7 @@ def main():
             rows.append({**c, "got": previous[c["id"]]["got"], "pass": previous[c["id"]]["pass"]})
             continue
         wav = tmp / f"{c['id']}.wav"
-        synth(c["spoken"], c["lang"], wav)
+        synth(c["spoken"], c.get("voice", VOICES[c["lang"]]), wav)
         got = transcribe(wav, c["lang"], VARIANTS[args.variant], key)
         ok = got in [c["expected"], *c.get("accept", [])]
         rows.append({**c, "got": got, "pass": ok})

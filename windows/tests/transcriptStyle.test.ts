@@ -21,7 +21,7 @@ const rows: Row[] = JSON.parse(
 
 describe('applyTranscriptStyle on recorded Deepgram output', () => {
   it('ends up as expected', () => {
-    expect(rows).toHaveLength(44);
+    expect(rows).toHaveLength(83);
     const failures = rows
       .filter((row) => !row.known_gap)
       .map((row) => ({ row, styled: applyTranscriptStyle(row.got, row.lang) }))
@@ -45,7 +45,7 @@ describe('applyTranscriptStyle on recorded Deepgram output', () => {
     const { cases } = JSON.parse(
       readFileSync(new URL('../../evals/formatting/style-guards.json', import.meta.url), 'utf8'),
     ) as { cases: { lang: string; input: string; expected: string }[] };
-    expect(cases).toHaveLength(121);
+    expect(cases).toHaveLength(143);
     const failures = cases
       .map((c) => ({ c, styled: applyTranscriptStyle(c.input, c.lang) }))
       .filter(({ c, styled }) => styled !== c.expected)

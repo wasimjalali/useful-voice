@@ -55,13 +55,33 @@ function english(text: string): string {
       )
       .replace(new RegExp(`${start}(one)${edge}${notAList}(?=\\s*(?:[.,;:!?)]|$))`, 'gu'), toDigit);
   }
-  return result.replace(
+  result = result.replace(
     new RegExp(
       `(?<![\\p{L}\\p{N}_])(?!(?:ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN)-)([A-Z]{3,5})(-)(${ENGLISH_WORDS})(?![\\p{L}\\p{N}_])(?!-)`,
       'gu',
     ),
     (_m, code: string, sep: string, n: string) => `${code}${sep}${ENGLISH_NUMBERS[n]}`,
   );
+  // "07:45AM" -> "7:45 AM", "3PM" -> "3 PM": no leading zero and a space before AM or PM.
+  result = result.replace(
+    /(?<![\d:.])(0?)(\d{1,2})(:[0-5]\d)?\s?([AaPp][Mm])(?![A-Za-z])/gu,
+    (_m, _zero: string, hour: string, minutes: string | undefined, meridiem: string) =>
+      `${hour}${minutes ?? ''} ${meridiem}`,
+  );
+  // "the 21st Floor" -> "the 21st floor": Deepgram capitalises the noun after a digit
+  // ordinal. Only common nouns, so "5th Avenue" and "1st Street" keep their capital.
+  result = result.replace(
+    /\b(\d+(?:st|nd|rd|th))(\s+)(Floor|Place|Time|Quarter|Draft|Edition|Anniversary|Item|Day|Century|Grade|Row|Chapter|Attempt|Round|Session|Birthday|Year|Week|Month|Half|Semester)\b/gu,
+    (_m, ordinal: string, space: string, noun: string) => `${ordinal}${space}${noun.toLowerCase()}`,
+  );
+  // "q three" -> "Q3".
+  result = result.replace(
+    new RegExp(`(?<![\\p{L}\\p{N}_])[Qq][ -](${ENGLISH_WORDS.split('|').slice(0, 4).join('|')})(?![\\p{L}\\p{N}_])`, 'gu'),
+    (_m, n: string) => `Q${ENGLISH_NUMBERS[n]}`,
+  );
+  // Deepgram drops the closing full stop after a currency amount ("costs $25"). Only when
+  // the whole text ends on the amount with no punctuation at all.
+  return result.replace(/([$€£]\s?\d[\d,]*(?:\.\d+)?(?:\s(?:million|billion|thousand))?)$/u, '$1.');
 }
 
 const GERMAN_CARDINALS: Record<number, string> = {
@@ -90,6 +110,7 @@ const UNITS = new Set([
   'kilometer', 'km', 'meter', 'm', 'zentimeter', 'cm', 'millimeter', 'mm',
   'kilogramm', 'kg', 'gramm', 'g', 'liter', 'l', 'ml', 'watt', 'volt',
   'kwh', 'ps', 'h', 'std', 'min', 'mio', 'mrd', 'x', 'chf', 'eur', 'usd', 'gbp', 'tsd', 'pkt',
+  'mg', 'ghz', 'mhz', 'khz', 'hz', 'kw', 'mw', 'kv', 'ppm', 'dpi', 'fps', 'mbit', 'gbit', 'mbps', 'gbps',
 ]);
 /**
  * The only words after which "3.5" becomes "3,5". Deliberately not "Uhr": "10.30 Uhr"
@@ -128,12 +149,12 @@ const RANGE_FOLLOWERS = new Set([
  * An ordinal becomes a word only before one of these nouns. "im 4. Kannst du ihr helfen?"
  * and "Freitag, dem 3. Kommst du?" are a number that ended a sentence and a date, and a
  * capitalised word after "N." cannot tell them apart from a noun, so anything not on this
- * list keeps its digit.
+ * list keeps its digit. "Mal" and "Klasse" are not listed because "bis zum 5. Mal sehen,
+ * ..." and "am 3. Klasse, danke!" are sentences.
  */
 const ORDINAL_NOUNS = new Set([
-  'mal', 'kapitel', 'stock', 'stockwerk', 'etage', 'platz', 'versuch', 'anlauf', 'quartal',
-  'jahr', 'jahrhundert', 'semester', 'runde', 'klasse', 'auflage', 'satz', 'schritt',
-  'woche', 'monat',
+  'kapitel', 'stock', 'stockwerk', 'etage', 'platz', 'versuch', 'anlauf', 'quartal',
+  'jahr', 'jahrhundert', 'semester', 'runde', 'auflage', 'satz', 'schritt', 'woche', 'monat',
 ]);
 const SYMBOLS_AFTER = new Set('%€$£°§+×*=÷-–/:');
 const SYMBOLS_BEFORE = new Set('€$£§#№-–—/+×*=÷:');
@@ -173,11 +194,12 @@ const SMALL_NUMBER_PATTERN = new RegExp(
   'gu',
 );
 /**
- * A full stop ends a sentence only before a capital letter or a line end, so an
- * abbreviation ("bzw. 3", "u. 3") does not split a sentence in two. A full stop right
- * after a digit is an ordinal dot.
+ * A full stop ends a sentence only after a word of five or more letters and before a
+ * capital letter or a line end, so an abbreviation ("bzw. Welpen", "inkl. Küche", "z. B.
+ * Boskop", "u. a. Siemens") does not split a sentence in two. "!" and "?" always end one.
+ * A full stop right after a digit is an ordinal dot.
  */
-const SENTENCE_BOUNDARY = /(?<!\d)[.!?]+(?=\s+\p{Lu}|\s*\n|\s*$)/gu;
+const SENTENCE_BOUNDARY = /(?<!\d)(?:[!?]+|(?<=\p{L}{5})\.+)(?=\s+\p{Lu}|\s*\n|\s*$)/gu;
 
 /**
  * "3.5 Gigabyte" -> "3,5 Gigabyte". Only before a unit or quantity word, and not after a
@@ -207,8 +229,8 @@ function germanDecimals(text: string): string {
  * ranges, scores and "die 3 ... die 4" from coming out half converted.
  */
 function germanSmallNumbers(text: string): string {
-  return allOrNothing(text, SMALL_NUMBER_PATTERN, (match, before, after, afterConverted) =>
-    smallNumberWord(Number(match[1]), match[2] !== undefined, before, after, afterConverted),
+  return allOrNothing(text, SMALL_NUMBER_PATTERN, (match, before, after) =>
+    smallNumberWord(Number(match[1]), match[2] !== undefined, before, after),
   );
 }
 
@@ -255,7 +277,6 @@ function smallNumberWord(
   ordinal: boolean,
   rawBefore: string,
   after: string,
-  afterConvertedNumber: boolean,
 ): string | null {
   const before = rawBefore.replace(TRAILING_BLANKS, '');
   const afterTrimmed = after.replace(/^ +/u, '');
@@ -293,10 +314,9 @@ function smallNumberWord(
   if (word === undefined) return null;
   if (!atSentenceStart) {
     if (!prev) return null;
-    const lower = prev.toLowerCase();
-    // "und" and "oder" continue a quantity only after one that already converted.
-    const continuesQuantity = (lower === 'und' || lower === 'oder') && afterConvertedNumber;
-    if (!QUANTITY_LEAD_INS.has(lower) && !continuesQuantity) return null;
+    // "und" and "oder" never continue a quantity: the number before them may be a label
+    // ("§ 5a und 6", "Windows XP und 7") that never converted.
+    if (!QUANTITY_LEAD_INS.has(prev.toLowerCase())) return null;
   }
   const next = nextWord(after);
   if (next && (UNITS.has(next.toLowerCase()) || RANGE_FOLLOWERS.has(next.toLowerCase()))) return null;

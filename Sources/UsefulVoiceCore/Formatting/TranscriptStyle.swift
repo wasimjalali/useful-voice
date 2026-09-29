@@ -54,6 +54,24 @@ public enum TranscriptStyle {
         result = replacing(#"\b(?!(?:ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN)-)([A-Z]{3,5})(-)(\#(words))\b(?!-)"#, in: result) {
             "\($0[1])\($0[2])\(englishNumbers[$0[3]] ?? $0[3])"
         }
+        // "07:45AM" -> "7:45 AM", "3PM" -> "3 PM": no leading zero and a space before AM or PM.
+        result = replacing(#"(?<![\d:.])(0?)(\d{1,2})(:[0-5]\d)?\s?([AaPp][Mm])(?![A-Za-z])"#, in: result) {
+            "\($0[2])\($0[3]) \($0[4])"
+        }
+        // "the 21st Floor" -> "the 21st floor": Deepgram capitalises the noun after a digit
+        // ordinal. Only common nouns, so "5th Avenue" and "1st Street" keep their capital.
+        result = replacing(#"\b(\d+(?:st|nd|rd|th))(\s+)(Floor|Place|Time|Quarter|Draft|Edition|Anniversary|Item|Day|Century|Grade|Row|Chapter|Attempt|Round|Session|Birthday|Year|Week|Month|Half|Semester)\b"#, in: result) {
+            "\($0[1])\($0[2])\($0[3].lowercased())"
+        }
+        // "q three" -> "Q3".
+        result = replacing(#"(?<![\p{L}\p{N}_])[Qq][ -](one|two|three|four)(?![\p{L}\p{N}_])"#, in: result) {
+            "Q\(englishNumbers[$0[1]] ?? $0[1])"
+        }
+        // Deepgram drops the closing full stop after a currency amount ("costs $25").
+        // Only when the whole text ends on the amount with no punctuation at all.
+        result = replacing(#"([$€£]\s?\d[\d,]*(?:\.\d+)?(?:\s(?:million|billion|thousand))?)$"#, in: result) {
+            "\($0[1])."
+        }
         return result
     }
 
@@ -84,6 +102,7 @@ public enum TranscriptStyle {
         "kilometer", "km", "meter", "m", "zentimeter", "cm", "millimeter", "mm",
         "kilogramm", "kg", "gramm", "g", "liter", "l", "ml", "watt", "volt",
         "kwh", "ps", "h", "std", "min", "mio", "mrd", "x", "chf", "eur", "usd", "gbp", "tsd", "pkt",
+        "mg", "ghz", "mhz", "khz", "hz", "kw", "mw", "kv", "ppm", "dpi", "fps", "mbit", "gbit", "mbps", "gbps",
     ]
     /// The only words after which "3.5" becomes "3,5". Deliberately not "Uhr": "10.30 Uhr"
     /// is a time. A decimal anywhere else could be a section number or a version.
@@ -114,11 +133,11 @@ public enum TranscriptStyle {
     /// An ordinal becomes a word only before one of these nouns. "im 4. Kannst du ihr
     /// helfen?" and "Freitag, dem 3. Kommst du?" are a number that ended a sentence and
     /// a date, and a capitalised word after "N." cannot tell them apart from a noun, so
-    /// anything not on this list keeps its digit.
+    /// anything not on this list keeps its digit. "Mal" and "Klasse" are not listed
+    /// because "bis zum 5. Mal sehen, ..." and "am 3. Klasse, danke!" are sentences.
     private static let ordinalNouns: Set<String> = [
-        "mal", "kapitel", "stock", "stockwerk", "etage", "platz", "versuch", "anlauf", "quartal",
-        "jahr", "jahrhundert", "semester", "runde", "klasse", "auflage", "satz", "schritt",
-        "woche", "monat",
+        "kapitel", "stock", "stockwerk", "etage", "platz", "versuch", "anlauf", "quartal",
+        "jahr", "jahrhundert", "semester", "runde", "auflage", "satz", "schritt", "woche", "monat",
     ]
     private static let symbolsAfter = Set("%€$£°§+×*=÷-–/:")
     private static let symbolsBefore = Set("€$£§#№-–—/+×*=÷:")
@@ -130,10 +149,11 @@ public enum TranscriptStyle {
     private static let decimalPattern = #"(?<![\w.,\-])(\d+)\.(\d{1,2})(?![\w.,])"#
     private static let smallNumberPattern =
         #"(?<![\w.,:/+\-–%€$£#@])(\d)(\.)?(?![\w:/%°€$£+\-–]|[.,]\d|\.\p{L})"#
-    /// A full stop ends a sentence only before a capital letter or a line end, so an
-    /// abbreviation ("bzw. 3", "u. 3") does not split a sentence in two. A full stop
-    /// right after a digit is an ordinal dot.
-    private static let sentenceBoundaryPattern = #"(?<!\d)[.!?]+(?=\s+\p{Lu}|\s*\n|\s*$)"#
+    /// A full stop ends a sentence only after a word of five or more letters and before
+    /// a capital letter or a line end, so an abbreviation ("bzw. Welpen", "inkl. Küche",
+    /// "z. B. Boskop", "u. a. Siemens") does not split a sentence in two. "!" and "?"
+    /// always end one. A full stop right after a digit is an ordinal dot.
+    private static let sentenceBoundaryPattern = #"(?<!\d)(?:[!?]+|(?<=\p{L}{5})\.+)(?=\s+\p{Lu}|\s*\n|\s*$)"#
 
     /// "3.5 Gigabyte" -> "3,5 Gigabyte". Only before a unit or quantity word, and not
     /// after a capitalised word, digit or hyphen ("Version 3.5", "GPT-4.5"). All or
@@ -158,12 +178,11 @@ public enum TranscriptStyle {
     /// into a word safely, none of that sentence's single digits are. That is what
     /// keeps lists, ranges, scores and "die 3 ... die 4" from coming out half converted.
     private static func germanSmallNumbers(_ text: String) -> String {
-        allOrNothing(smallNumberPattern, in: text) { match, ns, context, afterConverted in
+        allOrNothing(smallNumberPattern, in: text) { match, ns, context, _ in
             smallNumberWord(
                 digit: Int(ns.substring(with: match.range(at: 1))) ?? 0,
                 ordinal: match.range(at: 2).location != NSNotFound,
-                context: context,
-                afterConvertedNumber: afterConverted)
+                context: context)
         }
     }
 
@@ -208,8 +227,7 @@ public enum TranscriptStyle {
     }
 
     /// The word for one digit, or nil when it must stay a digit.
-    private static func smallNumberWord(digit: Int, ordinal: Bool, context: MatchContext,
-                                        afterConvertedNumber: Bool) -> String? {
+    private static func smallNumberWord(digit: Int, ordinal: Bool, context: MatchContext) -> String? {
         let before = context.before.trimmingCharacters(in: .whitespaces)
         let after = context.after
         let afterTrimmed = after.drop(while: { $0 == " " })
@@ -240,10 +258,9 @@ public enum TranscriptStyle {
         guard let word = germanCardinals[digit] else { return nil }
         if !atSentenceStart {
             guard let prev = context.previousWord else { return nil }
-            let lower = prev.lowercased()
-            // "und" and "oder" continue a quantity only after one that already converted.
-            let continuesQuantity = ["und", "oder"].contains(lower) && afterConvertedNumber
-            guard quantityLeadIns.contains(lower) || continuesQuantity else { return nil }
+            // "und" and "oder" never continue a quantity: the number before them may be a
+            // label ("§ 5a und 6", "Windows XP und 7") that never converted.
+            guard quantityLeadIns.contains(prev.lowercased()) else { return nil }
         }
         if let next = context.nextWord, units.contains(next.lowercased()) || rangeFollowers.contains(next.lowercased()) { return nil }
         return atSentenceStart ? word.prefix(1).uppercased() + word.dropFirst() : word

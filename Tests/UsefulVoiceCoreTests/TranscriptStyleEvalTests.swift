@@ -26,7 +26,7 @@ struct TranscriptStyleEvalTests {
 
     @Test func recordedDeepgramOutputEndsUpAsExpected() throws {
         var failures: [String] = []
-        #expect(try rows().count == 44)
+        #expect(try rows().count == 83)
         for row in try rows() where row.known_gap == nil {
             let styled = TranscriptStyle.apply(to: row.got, language: row.lang)
             if ![row.expected] .appending(contentsOf: row.accept ?? []).contains(styled) {
@@ -60,7 +60,7 @@ struct TranscriptStyleEvalTests {
         let data = try Data(contentsOf: root.appendingPathComponent("evals/formatting/style-guards.json"))
         var failures: [String] = []
         let guards = try JSONDecoder().decode(Guards.self, from: data).cases
-        #expect(guards.count == 121)
+        #expect(guards.count == 143)
         for c in guards {
             let styled = TranscriptStyle.apply(to: c.input, language: c.lang)
             if styled != c.expected { failures.append("\(c.input) -> \(styled), want \(c.expected)") }

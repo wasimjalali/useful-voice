@@ -254,7 +254,7 @@
   {
    "lang": "de",
    "input": "Das war zum 1. Mal so.",
-   "expected": "Das war zum ersten Mal so."
+   "expected": "Das war zum 1. Mal so."
   },
   {
    "lang": "de",
@@ -389,7 +389,7 @@
   {
    "lang": "de",
    "input": "Er hat 2 Hunde und 3 Katzen.",
-   "expected": "Er hat zwei Hunde und drei Katzen."
+   "expected": "Er hat 2 Hunde und 3 Katzen."
   },
   {
    "lang": "de",
@@ -605,6 +605,116 @@
    "lang": "de",
    "input": "Er wohnt im 3. Stock.",
    "expected": "Er wohnt im dritten Stock."
+  },
+  {
+   "lang": "en",
+   "input": "The flight leaves at 07:45AM.",
+   "expected": "The flight leaves at 7:45 AM."
+  },
+  {
+   "lang": "en",
+   "input": "The meeting is at 3PM.",
+   "expected": "The meeting is at 3 PM."
+  },
+  {
+   "lang": "en",
+   "input": "Call me at 10 am or 4 pm.",
+   "expected": "Call me at 10 am or 4 pm."
+  },
+  {
+   "lang": "en",
+   "input": "The train leaves at 07:45 sharp.",
+   "expected": "The train leaves at 07:45 sharp."
+  },
+  {
+   "lang": "en",
+   "input": "We are on the 21st Floor.",
+   "expected": "We are on the 21st floor."
+  },
+  {
+   "lang": "en",
+   "input": "She lives on 5th Avenue near 1st Street.",
+   "expected": "She lives on 5th Avenue near 1st Street."
+  },
+  {
+   "lang": "en",
+   "input": "Our q three revenue was up.",
+   "expected": "Our Q3 revenue was up."
+  },
+  {
+   "lang": "en",
+   "input": "Q1 was slow but Q2 was fine.",
+   "expected": "Q1 was slow but Q2 was fine."
+  },
+  {
+   "lang": "en",
+   "input": "Is there a Q and A after the talk?",
+   "expected": "Is there a Q and A after the talk?"
+  },
+  {
+   "lang": "de",
+   "input": "Wir haben noch 2 Rechner mit Windows XP und 7 im Büro.",
+   "expected": "Wir haben noch 2 Rechner mit Windows XP und 7 im Büro."
+  },
+  {
+   "lang": "de",
+   "input": "Ich habe 2 Anmerkungen zu § 5a und 6 BGB.",
+   "expected": "Ich habe 2 Anmerkungen zu § 5a und 6 BGB."
+  },
+  {
+   "lang": "de",
+   "input": "Die Abgabe ist bis zum 5. Mal sehen, ob wir das schaffen.",
+   "expected": "Die Abgabe ist bis zum 5. Mal sehen, ob wir das schaffen."
+  },
+  {
+   "lang": "de",
+   "input": "Wir sehen uns am Freitag, dem 3. Mal schauen, wer kommt.",
+   "expected": "Wir sehen uns am Freitag, dem 3. Mal schauen, wer kommt."
+  },
+  {
+   "lang": "de",
+   "input": "Die Rechnung kommt bis zum 3. Klasse, danke!",
+   "expected": "Die Rechnung kommt bis zum 3. Klasse, danke!"
+  },
+  {
+   "lang": "de",
+   "input": "Wir haben 2 Hunde bzw. Welpen und 3 Katzen.",
+   "expected": "Wir haben 2 Hunde bzw. Welpen und 3 Katzen."
+  },
+  {
+   "lang": "de",
+   "input": "Wir brauchen 2 Zimmer inkl. Küche und 3 Betten.",
+   "expected": "Wir brauchen 2 Zimmer inkl. Küche und 3 Betten."
+  },
+  {
+   "lang": "de",
+   "input": "Das sind 5 mg und 3 GHz.",
+   "expected": "Das sind 5 mg und 3 GHz."
+  },
+  {
+   "lang": "en",
+   "input": "The ticket costs $25",
+   "expected": "The ticket costs $25."
+  },
+  {
+   "lang": "en",
+   "input": "Our budget is $5 million",
+   "expected": "Our budget is $5 million."
+  },
+  {
+   "lang": "en",
+   "input": "How much is it, $25?",
+   "expected": "How much is it, $25?"
+  },
+  {
+   "lang": "en",
+   "input": "The price is $25.",
+   "expected": "The price is $25."
+  },
+  {
+   "lang": "en",
+   "input": "Send 500 dollars",
+   "expected": "Send 500 dollars"
   }
  ]
 }

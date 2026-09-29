@@ -83,11 +83,6 @@ const ORDINAL_ENDINGS: Record<string, string> = {
   dem: 'en', des: 'en',
   im: 'en', zum: 'en', beim: 'en', zur: 'en',
 };
-const MONTHS = new Set([
-  'januar', 'jänner', 'februar', 'märz', 'april', 'mai', 'juni', 'juli', 'august',
-  'september', 'oktober', 'november', 'dezember',
-  'jan', 'feb', 'mär', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'okt', 'nov', 'dez',
-]);
 /** A digit before one of these is a measurement, a price or a clock time, so it stays. */
 const UNITS = new Set([
   'uhr', 'euro', 'cent', 'dollar', 'franken', 'pfund', 'prozent', 'grad',
@@ -130,15 +125,15 @@ const RANGE_FOLLOWERS = new Set([
   'mal', 'plus', 'minus', 'durch', 'kommt',
 ]);
 /**
- * A word that starts the next sentence. An ordinal followed by one is a date or a number
- * that ended a sentence ("im 5. Das merkt man."), not "im fünften Das".
+ * An ordinal becomes a word only before one of these nouns. "im 4. Kannst du ihr helfen?"
+ * and "Freitag, dem 3. Kommst du?" are a number that ended a sentence and a date, and a
+ * capitalised word after "N." cannot tell them apart from a noun, so anything not on this
+ * list keeps its digit.
  */
-const SENTENCE_STARTERS = new Set([
-  'das', 'der', 'die', 'er', 'sie', 'es', 'wir', 'ihr', 'ich', 'du', 'man', 'dann', 'danach',
-  'dort', 'hier', 'also', 'aber', 'doch', 'jetzt', 'heute', 'morgen', 'später', 'zuerst',
-  'wenn', 'weil', 'dass', 'ob', 'wie', 'was', 'wer', 'wo', 'wann', 'warum', 'nun', 'nur',
-  'noch', 'schon', 'ja', 'nein', 'vielleicht', 'leider', 'bitte', 'danke', 'ok', 'okay',
-  'gut', 'dabei', 'davor', 'zuletzt', 'zum', 'im', 'am', 'in',
+const ORDINAL_NOUNS = new Set([
+  'mal', 'kapitel', 'stock', 'stockwerk', 'etage', 'platz', 'versuch', 'anlauf', 'quartal',
+  'jahr', 'jahrhundert', 'semester', 'runde', 'klasse', 'auflage', 'satz', 'schritt',
+  'woche', 'monat',
 ]);
 const SYMBOLS_AFTER = new Set('%€$£°§+×*=÷-–/:');
 const SYMBOLS_BEFORE = new Set('€$£§#№-–—/+×*=÷:');
@@ -172,28 +167,37 @@ function nextWord(after: string): string | null {
   return match ? match[1]! : null;
 }
 
-/**
- * "3.5 Gigabyte" -> "3,5 Gigabyte". Only before a unit or quantity word, and not after
- * a capitalised word, digit or hyphen ("Version 3.5", "GPT-4.5").
- */
-function germanDecimals(text: string): string {
-  const pattern = new RegExp(`(?<!${W}|[.,\\-])(\\d+)\\.(\\d{1,2})(?!${W}|[.,])`, 'gu');
-  return text.replace(pattern, (match, whole: string, fraction: string, offset: number) => {
-    const next = nextWord(text.slice(offset + match.length));
-    if (!next || !DECIMAL_UNITS.has(next.toLowerCase())) return match;
-    const prev = previousWord(text.slice(0, offset));
-    if (prev && (/^\p{Lu}/u.test(prev) || /\p{N}/u.test(prev))) return match;
-    if (prev && DATE_OR_RANGE_LEAD_INS.has(prev.toLowerCase())) return match;
-    return `${whole},${fraction}`;
-  });
-}
-
+const DECIMAL_PATTERN = new RegExp(`(?<!${W}|[.,\\-])(\\d+)\\.(\\d{1,2})(?!${W}|[.,])`, 'gu');
 const SMALL_NUMBER_PATTERN = new RegExp(
   `(?<!${W}|[.,:/+\\-–%€$£#@])(\\d)(\\.)?(?!${W}|[:/%°€$£+\\-–]|[.,]\\d|\\.\\p{L})`,
   'gu',
 );
-// A full stop right after a digit is an ordinal dot, not a sentence end.
-const SENTENCE_BOUNDARY = /(?<!\d)[.!?]+(?=\s|$)/gu;
+/**
+ * A full stop ends a sentence only before a capital letter or a line end, so an
+ * abbreviation ("bzw. 3", "u. 3") does not split a sentence in two. A full stop right
+ * after a digit is an ordinal dot.
+ */
+const SENTENCE_BOUNDARY = /(?<!\d)[.!?]+(?=\s+\p{Lu}|\s*\n|\s*$)/gu;
+
+/**
+ * "3.5 Gigabyte" -> "3,5 Gigabyte". Only before a unit or quantity word, and not after a
+ * capitalised word, digit or hyphen ("Version 3.5", "GPT-4.5"). All or nothing per
+ * sentence, like the small numbers, so one sentence never mixes "2,5 Kilo" with "3.5 Kilo".
+ */
+function germanDecimals(text: string): string {
+  return allOrNothing(text, DECIMAL_PATTERN, (match, before, after, afterConverted) => {
+    const next = nextWord(after);
+    if (!next || !DECIMAL_UNITS.has(next.toLowerCase())) return null;
+    const prev = previousWord(before);
+    if (prev) {
+      if (/^\p{Lu}/u.test(prev) || /\p{N}/u.test(prev)) return null;
+      const lower = prev.toLowerCase();
+      const continuesQuantity = (lower === 'und' || lower === 'oder') && afterConverted;
+      if (DATE_OR_RANGE_LEAD_INS.has(lower) && !continuesQuantity) return null;
+    }
+    return `${match[1]},${match[2]}`;
+  });
+}
 
 /**
  * "2 Fragen" -> "zwei Fragen", "das 1. Kapitel" -> "das erste Kapitel".
@@ -203,7 +207,22 @@ const SENTENCE_BOUNDARY = /(?<!\d)[.!?]+(?=\s|$)/gu;
  * ranges, scores and "die 3 ... die 4" from coming out half converted.
  */
 function germanSmallNumbers(text: string): string {
-  const matches = [...text.matchAll(SMALL_NUMBER_PATTERN)];
+  return allOrNothing(text, SMALL_NUMBER_PATTERN, (match, before, after, afterConverted) =>
+    smallNumberWord(Number(match[1]), match[2] !== undefined, before, after, afterConverted),
+  );
+}
+
+/**
+ * Decides every match of `pattern` in order, then applies the replacements of a sentence
+ * only if none of its matches was refused (`decide` returned null). `decide` also learns
+ * whether an earlier match in the same sentence converted.
+ */
+function allOrNothing(
+  text: string,
+  pattern: RegExp,
+  decide: (match: RegExpMatchArray, before: string, after: string, afterConverted: boolean) => string | null,
+): string {
+  const matches = [...text.matchAll(pattern)];
   if (matches.length === 0) return text;
   const boundaries = [...text.matchAll(SENTENCE_BOUNDARY)].map((m) => m.index! + m[0].length);
 
@@ -211,9 +230,8 @@ function germanSmallNumbers(text: string): string {
   const decisions = matches.map((match) => {
     const start = match.index!;
     const chunk = boundaries.filter((boundary) => boundary <= start).length;
-    const replacement = smallNumberWord(
-      Number(match[1]),
-      match[2] !== undefined,
+    const replacement = decide(
+      match,
       text.slice(0, start),
       text.slice(start + match[0].length),
       converted.has(chunk),
@@ -267,10 +285,7 @@ function smallNumberWord(
     const ending = prev ? ORDINAL_ENDINGS[prev.toLowerCase()] : undefined;
     const stem = GERMAN_ORDINAL_STEMS[digit];
     if (!next || ending === undefined || stem === undefined) return null;
-    const lower = next.toLowerCase();
-    if (MONTHS.has(lower) || SENTENCE_STARTERS.has(lower) || ['bis', 'und', 'oder'].includes(lower)) return null;
-    // "gegen den 1. FC Köln": an all-capitals word is a name, not a noun.
-    if ([...next].length > 1 && next === next.toUpperCase()) return null;
+    if (!ORDINAL_NOUNS.has(next.toLowerCase())) return null;
     return stem + ending;
   }
 

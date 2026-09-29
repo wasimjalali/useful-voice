@@ -550,6 +550,61 @@
    "lang": "de",
    "input": "Es kostet täglich 10.30 h.",
    "expected": "Es kostet täglich 10.30 h."
+  },
+  {
+   "lang": "de",
+   "input": "Die Sitzung ist am Freitag, dem 3. Kommst du?",
+   "expected": "Die Sitzung ist am Freitag, dem 3. Kommst du?"
+  },
+  {
+   "lang": "de",
+   "input": "Wir treffen uns am Freitag, dem 3. Viele Grüße.",
+   "expected": "Wir treffen uns am Freitag, dem 3. Viele Grüße."
+  },
+  {
+   "lang": "de",
+   "input": "Meine Oma wohnt im 4. Kannst du ihr helfen?",
+   "expected": "Meine Oma wohnt im 4. Kannst du ihr helfen?"
+  },
+  {
+   "lang": "de",
+   "input": "Das ist schon das 3. Ehrlich gesagt nervt es.",
+   "expected": "Das ist schon das 3. Ehrlich gesagt nervt es."
+  },
+  {
+   "lang": "de",
+   "input": "Ich habe 2 bzw. 3 Kinder.",
+   "expected": "Ich habe 2 bzw. 3 Kinder."
+  },
+  {
+   "lang": "de",
+   "input": "Das ist im 2. bzw. 3. Quartal fällig.",
+   "expected": "Das ist im 2. bzw. 3. Quartal fällig."
+  },
+  {
+   "lang": "de",
+   "input": "Ich habe 2 Kinder u. 3 Enkel.",
+   "expected": "Ich habe 2 Kinder u. 3 Enkel."
+  },
+  {
+   "lang": "de",
+   "input": "Ich brauche 2.5 Kilo Mehl und 3.5 Kilo Zucker.",
+   "expected": "Ich brauche 2,5 Kilo Mehl und 3,5 Kilo Zucker."
+  },
+  {
+   "lang": "de",
+   "input": "Das kostet 1.5 Liter Wasser oder 2.5 Liter Saft.",
+   "expected": "Das kostet 1,5 Liter Wasser oder 2,5 Liter Saft."
+  },
+  {
+   "lang": "de",
+   "input": "Das ist im 2. Quartal fällig.",
+   "expected": "Das ist im zweiten Quartal fällig."
+  },
+  {
+   "lang": "de",
+   "input": "Er wohnt im 3. Stock.",
+   "expected": "Er wohnt im dritten Stock."
   }
  ]
 }

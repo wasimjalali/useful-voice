@@ -77,11 +77,6 @@ public enum TranscriptStyle {
         "dem": "en", "des": "en",
         "im": "en", "zum": "en", "beim": "en", "zur": "en",
     ]
-    private static let months: Set<String> = [
-        "januar", "jänner", "februar", "märz", "april", "mai", "juni", "juli", "august",
-        "september", "oktober", "november", "dezember",
-        "jan", "feb", "mär", "apr", "jun", "jul", "aug", "sep", "sept", "okt", "nov", "dez",
-    ]
     /// A digit before one of these is a measurement, a price or a clock time, so it stays.
     private static let units: Set<String> = [
         "uhr", "euro", "cent", "dollar", "franken", "pfund", "prozent", "grad",
@@ -116,14 +111,14 @@ public enum TranscriptStyle {
         "bis", "von", "gegen", "zu", "auf", "und", "oder", "statt", "anstatt", "vor", "nach",
         "mal", "plus", "minus", "durch", "kommt",
     ]
-    /// A word that starts the next sentence. An ordinal followed by one is a date or a
-    /// number that ended a sentence ("im 5. Das merkt man."), not "im fünften Das".
-    private static let sentenceStarters: Set<String> = [
-        "das", "der", "die", "er", "sie", "es", "wir", "ihr", "ich", "du", "man", "dann", "danach",
-        "dort", "hier", "also", "aber", "doch", "jetzt", "heute", "morgen", "später", "zuerst",
-        "wenn", "weil", "dass", "ob", "wie", "was", "wer", "wo", "wann", "warum", "nun", "nur",
-        "noch", "schon", "ja", "nein", "vielleicht", "leider", "bitte", "danke", "ok", "okay",
-        "gut", "dabei", "davor", "zuletzt", "zum", "im", "am", "in",
+    /// An ordinal becomes a word only before one of these nouns. "im 4. Kannst du ihr
+    /// helfen?" and "Freitag, dem 3. Kommst du?" are a number that ended a sentence and
+    /// a date, and a capitalised word after "N." cannot tell them apart from a noun, so
+    /// anything not on this list keeps its digit.
+    private static let ordinalNouns: Set<String> = [
+        "mal", "kapitel", "stock", "stockwerk", "etage", "platz", "versuch", "anlauf", "quartal",
+        "jahr", "jahrhundert", "semester", "runde", "klasse", "auflage", "satz", "schritt",
+        "woche", "monat",
     ]
     private static let symbolsAfter = Set("%€$£°§+×*=÷-–/:")
     private static let symbolsBefore = Set("€$£§#№-–—/+×*=÷:")
@@ -132,20 +127,30 @@ public enum TranscriptStyle {
         germanSmallNumbers(germanDecimals(text))
     }
 
-    /// "3.5 Gigabyte" -> "3,5 Gigabyte". Only before a unit or quantity word, and not
-    /// after a capitalised word, digit or hyphen ("Version 3.5", "GPT-4.5").
-    private static func germanDecimals(_ text: String) -> String {
-        replacing(#"(?<![\w.,\-])(\d+)\.(\d{1,2})(?![\w.,])"#, in: text, using: { groups, context in
-            guard let next = context.nextWord, decimalUnits.contains(next.lowercased()) else { return nil }
-            let prev = context.previousWord
-            if let prev, prev.first?.isUppercase == true || prev.contains(where: \.isNumber) { return nil }
-            if let prev, dateOrRangeLeadIns.contains(prev.lowercased()) { return nil }
-            return "\(groups[1]),\(groups[2])"
-        })
-    }
-
+    private static let decimalPattern = #"(?<![\w.,\-])(\d+)\.(\d{1,2})(?![\w.,])"#
     private static let smallNumberPattern =
         #"(?<![\w.,:/+\-–%€$£#@])(\d)(\.)?(?![\w:/%°€$£+\-–]|[.,]\d|\.\p{L})"#
+    /// A full stop ends a sentence only before a capital letter or a line end, so an
+    /// abbreviation ("bzw. 3", "u. 3") does not split a sentence in two. A full stop
+    /// right after a digit is an ordinal dot.
+    private static let sentenceBoundaryPattern = #"(?<!\d)[.!?]+(?=\s+\p{Lu}|\s*\n|\s*$)"#
+
+    /// "3.5 Gigabyte" -> "3,5 Gigabyte". Only before a unit or quantity word, and not
+    /// after a capitalised word, digit or hyphen ("Version 3.5", "GPT-4.5"). All or
+    /// nothing per sentence, like the small numbers, so one sentence never mixes
+    /// "2,5 Kilo" with "3.5 Kilo".
+    private static func germanDecimals(_ text: String) -> String {
+        allOrNothing(decimalPattern, in: text) { match, ns, context, afterConverted in
+            guard let next = context.nextWord, decimalUnits.contains(next.lowercased()) else { return nil }
+            if let prev = context.previousWord {
+                if prev.first?.isUppercase == true || prev.contains(where: \.isNumber) { return nil }
+                let lower = prev.lowercased()
+                let continuesQuantity = ["und", "oder"].contains(lower) && afterConverted
+                if dateOrRangeLeadIns.contains(lower), !continuesQuantity { return nil }
+            }
+            return "\(ns.substring(with: match.range(at: 1))),\(ns.substring(with: match.range(at: 2)))"
+        }
+    }
 
     /// "2 Fragen" -> "zwei Fragen", "das 1. Kapitel" -> "das erste Kapitel".
     ///
@@ -153,16 +158,31 @@ public enum TranscriptStyle {
     /// into a word safely, none of that sentence's single digits are. That is what
     /// keeps lists, ranges, scores and "die 3 ... die 4" from coming out half converted.
     private static func germanSmallNumbers(_ text: String) -> String {
-        guard let regex = try? NSRegularExpression(pattern: smallNumberPattern),
-              let boundary = try? NSRegularExpression(pattern: #"(?<!\d)[.!?]+(?=\s|$)"#) else {
-            assertionFailure("invalid small-number pattern")
+        allOrNothing(smallNumberPattern, in: text) { match, ns, context, afterConverted in
+            smallNumberWord(
+                digit: Int(ns.substring(with: match.range(at: 1))) ?? 0,
+                ordinal: match.range(at: 2).location != NSNotFound,
+                context: context,
+                afterConvertedNumber: afterConverted)
+        }
+    }
+
+    /// Decides every match of `pattern` in order, then applies the replacements of a
+    /// sentence only if none of its matches was refused (`decide` returned nil).
+    /// `decide` also learns whether an earlier match in the same sentence converted.
+    private static func allOrNothing(
+        _ pattern: String, in text: String,
+        decide: (NSTextCheckingResult, NSString, MatchContext, Bool) -> String?
+    ) -> String {
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let boundary = try? NSRegularExpression(pattern: sentenceBoundaryPattern) else {
+            assertionFailure("invalid pattern \(pattern)")
             return text
         }
         let ns = text as NSString
         let full = NSRange(location: 0, length: ns.length)
         let matches = regex.matches(in: text, range: full)
         guard !matches.isEmpty else { return text }
-        // A full stop right after a digit is an ordinal dot, not a sentence end.
         let boundaries = boundary.matches(in: text, range: full).map { $0.range.location + $0.range.length }
 
         struct Decision { let range: NSRange; let replacement: String?; let chunk: Int }
@@ -173,11 +193,7 @@ public enum TranscriptStyle {
             let context = MatchContext(
                 before: ns.substring(to: match.range.location),
                 after: ns.substring(from: match.range.location + match.range.length))
-            let replacement = smallNumberWord(
-                digit: Int(ns.substring(with: match.range(at: 1))) ?? 0,
-                ordinal: match.range(at: 2).location != NSNotFound,
-                context: context,
-                afterConvertedNumber: converted.contains(chunk))
+            let replacement = decide(match, ns, context, converted.contains(chunk))
             if replacement != nil { converted.insert(chunk) }
             decisions.append(Decision(range: match.range, replacement: replacement, chunk: chunk))
         }
@@ -218,10 +234,7 @@ public enum TranscriptStyle {
             guard after.first == " ", let next = context.nextWord,
                   let ending = context.previousWord.flatMap({ ordinalEndings[$0.lowercased()] }),
                   let stem = germanOrdinalStems[digit] else { return nil }
-            let lower = next.lowercased()
-            if months.contains(lower) || sentenceStarters.contains(lower) || ["bis", "und", "oder"].contains(lower) { return nil }
-            // "gegen den 1. FC Köln": an all-capitals word is a name, not a noun.
-            if next.count > 1, next == next.uppercased() { return nil }
+            guard ordinalNouns.contains(next.lowercased()) else { return nil }
             return stem + ending
         }
         guard let word = germanCardinals[digit] else { return nil }

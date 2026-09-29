@@ -64,7 +64,7 @@ Fixed by `TranscriptStyle`:
 ## Review round
 
 Two reviewers (Opus 5.5 on the styling logic, Sonnet 5.5 on request, tests and sweep) ran on PR 27,
-four times. Pass one: seven high false positives in the first version (acronym plus number
+five times. Pass one: seven high false positives in the first version (acronym plus number
 rewritten, "iOS 17.4" and "10.30 Uhr" turned into commas, money and symbols, spaced ranges,
 capitals after abbreviations, a Swift/TS difference). Pass two, on the stricter rules: five more
 highs from the German small-number rule guessing too widely ("iOS 9", "inkl. 3", half-converted
@@ -76,6 +76,11 @@ before a new sentence, English "version two and three"). Pass four, on the all-o
 "version one to version two" half converted). Fixed by blocking und/oder after any number,
 dropping "den" from the ordinal articles, and converting "version" only when it is the sole
 version in the text.
+Pass five: three more highs ("Freitag, dem 3. Kommst du?" losing its full stop, an abbreviation
+such as "bzw." splitting a sentence so "zwei bzw. 3" came out half converted, mixed "2,5" and
+"3.5" in one sentence). Fixed by letting an ordinal convert only before a short list of nouns
+("Mal", "Kapitel", "Stock", "Quartal" and so on), counting a full stop as a sentence end only
+before a capital letter or a line end, and giving decimals the same all-or-nothing rule.
 
 Each pass fixed its findings and then changed the design instead of piling on exceptions:
 
@@ -83,10 +88,10 @@ Each pass fixed its findings and then changed the design instead of piling on ex
    "in", "mit", "für" and so on), or at the very start of the text. Determiners are not on it.
 2. All or nothing per sentence. If any single digit in a sentence cannot be converted safely,
    none of that sentence's single digits are, so a list, range or score is never half converted.
-3. Ordinals convert only after das, den, dem, des, im, zum, zur, beim, and not before a month,
-   a word that starts a sentence, or an all-capitals name.
+3. Ordinals convert only after das, dem, des, im, zum, zur, beim and only before a listed noun
+   ("Mal", "Kapitel", "Stock", "Quartal"). A date or a number that ends a sentence never matches.
 
-Every finding is pinned as an input in `evals/formatting/style-guards.json` (110 inputs, run by
+Every finding is pinned as an input in `evals/formatting/style-guards.json` (121 inputs, run by
 both the Swift and the Windows tests, which also assert their counts, so an emptied file fails).
 READMEs are docs, not app text, and were not swept.
 

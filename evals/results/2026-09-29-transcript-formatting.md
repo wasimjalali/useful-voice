@@ -64,24 +64,34 @@ Fixed by `TranscriptStyle`:
 ## Review round
 
 Two reviewers (Opus 5.5 on the styling logic, Sonnet 5.5 on request, tests and sweep) ran on PR 27,
-twice. Pass one: seven high false positives in the first version (acronym plus number rewritten,
-"iOS 17.4" and "10.30 Uhr" turned into commas, money and symbols, spaced ranges, capitals after
-abbreviations, a Swift/TS difference). Pass two, on the stricter rules: five more highs, nearly
-all from the German small-number rule guessing too widely ("iOS 9", "inkl. 3", half-converted
-ranges, an ordinal swallowing a sentence end, "the version one would expect").
+three times. Pass one: seven high false positives in the first version (acronym plus number
+rewritten, "iOS 17.4" and "10.30 Uhr" turned into commas, money and symbols, spaced ranges,
+capitals after abbreviations, a Swift/TS difference). Pass two, on the stricter rules: five more
+highs from the German small-number rule guessing too widely ("iOS 9", "inkl. 3", half-converted
+ranges, an ordinal swallowing a sentence end, "the version one would expect"). Pass three, on the
+allowlist redesign: six more highs at the edges of the same heuristic (half-converted lists,
+sentence-final digits, more range words, label numbers after determiners like "Die 7", ordinals
+before a new sentence, English "version two and three").
 
-The fix for pass two was a design change, not more exceptions: a German digit becomes a word only
-after a short list of words that take a quantity ("habe", "sind", "in", "mit", "für" and so on),
-or at the very start of the text. Everything else keeps Deepgram's digit. Ordinals no longer use
-"am" or "vom" (usually dates). All findings are pinned as inputs in
-`evals/formatting/style-guards.json` (79 inputs, run by both the Swift and the Windows tests,
-which also fail if the counts change or a file is empty). READMEs are docs, not app text, and
-were not swept.
+Each pass fixed its findings and then changed the design instead of piling on exceptions:
+
+1. A German digit becomes a word only after a short list of quantity words ("habe", "sind",
+   "in", "mit", "für" and so on), or at the very start of the text. Determiners are not on it.
+2. All or nothing per sentence. If any single digit in a sentence cannot be converted safely,
+   none of that sentence's single digits are, so a list, range or score is never half converted.
+3. Ordinals convert only after das, den, dem, des, im, zum, zur, beim, and not before a month,
+   a word that starts a sentence, or an all-capitals name.
+
+Every finding is pinned as an input in `evals/formatting/style-guards.json` (99 inputs, run by
+both the Swift and the Windows tests, which also fail if the counts change or a file is empty).
+READMEs are docs, not app text, and were not swept.
 
 ## Decisions
 
-- A German digit stays unless a quantity word precedes it, or it opens the text. So
-  "Fertig. 3 Leute kamen." and "In 2 Wochen ist es soweit." keep the digit. Safe misses.
+- A German digit stays unless a quantity word precedes it, or it opens the text, and a
+  sentence with any digit that cannot convert keeps all of its single digits. So "Fertig. 3
+  Leute kamen.", "Der 2. Entwurf hat 3 Abschnitte" and "Er hat 2, sie hat 3." keep their digits.
+  These are safe misses: a digit is better than a wrong or half-converted word.
 - German ordinals after "der" and "die" stay as digits ("die 3. Runde"). The ending depends
   on gender and number, and a wrong ending would change a word the speaker said. These are the
   3 cases marked `known_gap`.

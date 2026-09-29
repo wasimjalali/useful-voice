@@ -45,7 +45,7 @@ describe('applyTranscriptStyle on recorded Deepgram output', () => {
     const { cases } = JSON.parse(
       readFileSync(new URL('../../evals/formatting/style-guards.json', import.meta.url), 'utf8'),
     ) as { cases: { lang: string; input: string; expected: string }[] };
-    expect(cases).toHaveLength(79);
+    expect(cases).toHaveLength(99);
     const failures = cases
       .map((c) => ({ c, styled: applyTranscriptStyle(c.input, c.lang) }))
       .filter(({ c, styled }) => styled !== c.expected)

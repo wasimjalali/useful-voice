@@ -395,6 +395,106 @@
    "lang": "de",
    "input": "Hallo! 2 Leute kommen später.",
    "expected": "Hallo! Zwei Leute kommen später."
+  },
+  {
+   "lang": "en",
+   "input": "Version two and three are out.",
+   "expected": "Version two and three are out."
+  },
+  {
+   "lang": "en",
+   "input": "Version one or two.",
+   "expected": "Version one or two."
+  },
+  {
+   "lang": "en",
+   "input": "In that version two are missing.",
+   "expected": "In that version two are missing."
+  },
+  {
+   "lang": "de",
+   "input": "Wir haben 3 Äpfel, 4 Birnen und 5 Bananen.",
+   "expected": "Wir haben 3 Äpfel, 4 Birnen und 5 Bananen."
+  },
+  {
+   "lang": "de",
+   "input": "Ich habe 2 Hunde, 3 Katzen und 4 Fische.",
+   "expected": "Ich habe 2 Hunde, 3 Katzen und 4 Fische."
+  },
+  {
+   "lang": "de",
+   "input": "Er hat 2, sie hat 3.",
+   "expected": "Er hat 2, sie hat 3."
+  },
+  {
+   "lang": "de",
+   "input": "Ich habe 2 Fragen oder 3.",
+   "expected": "Ich habe 2 Fragen oder 3."
+  },
+  {
+   "lang": "de",
+   "input": "Es sind 3 statt 4.",
+   "expected": "Es sind 3 statt 4."
+  },
+  {
+   "lang": "de",
+   "input": "Mit 2 mal 3 Metern.",
+   "expected": "Mit 2 mal 3 Metern."
+  },
+  {
+   "lang": "de",
+   "input": "Nach 3 kommt 4.",
+   "expected": "Nach 3 kommt 4."
+  },
+  {
+   "lang": "de",
+   "input": "Schon 5 vor 12.",
+   "expected": "Schon 5 vor 12."
+  },
+  {
+   "lang": "de",
+   "input": "Die 7 ist meine Glückszahl.",
+   "expected": "Die 7 ist meine Glückszahl."
+  },
+  {
+   "lang": "de",
+   "input": "Nimm die 4 zum Bahnhof.",
+   "expected": "Nimm die 4 zum Bahnhof."
+  },
+  {
+   "lang": "de",
+   "input": "Die 3 ist besser als die 4.",
+   "expected": "Die 3 ist besser als die 4."
+  },
+  {
+   "lang": "de",
+   "input": "Sie ist im 5. Das merkt man.",
+   "expected": "Sie ist im 5. Das merkt man."
+  },
+  {
+   "lang": "de",
+   "input": "Wir sind beim 2. Dann kommt das 3.",
+   "expected": "Wir sind beim 2. Dann kommt das 3."
+  },
+  {
+   "lang": "de",
+   "input": "Wir gewinnen mit 5 : 4.",
+   "expected": "Wir gewinnen mit 5 : 4."
+  },
+  {
+   "lang": "de",
+   "input": "Ich zahle nur 5 CHF.",
+   "expected": "Ich zahle nur 5 CHF."
+  },
+  {
+   "lang": "de",
+   "input": "Ruf mich unter 5 an.",
+   "expected": "Ruf mich unter 5 an."
+  },
+  {
+   "lang": "de",
+   "input": "Plan A und 2 sind gut.",
+   "expected": "Plan A und 2 sind gut."
   }
  ]
 }

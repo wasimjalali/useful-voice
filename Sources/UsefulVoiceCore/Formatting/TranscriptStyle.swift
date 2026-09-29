@@ -31,13 +31,13 @@ public enum TranscriptStyle {
     /// "version two" -> "version 2", "GPT-five" -> "GPT-5". The number after the
     /// word "version" or a hyphenated all-caps product code is a name, not a
     /// quantity. "version" only counts when the number ends the phrase or is followed
-    /// by a plain linking word ("version two is out"), so "version one users" and
-    /// "the version one would expect" are left as spoken. A bare acronym followed by
+    /// by "is" or "was" ("version two is out"), so "version one users", "the version
+    /// one would expect" and "version two and three" are left as spoken. A bare acronym followed by
     /// a number ("the API one more time") is never touched.
     static func english(_ text: String) -> String {
         let words = "one|two|three|four|five|six|seven|eight|nine|ten"
-        let verbs = "is|was|are|were|and|or|to|for|with|from|in"
-        var result = replacing(#"\b([Vv]ersion)(\s+)(\#(words))(?=\s*(?:[.,;:!?)]|$)|\s+(?:\#(verbs))\b)"#, in: text) {
+        let verbs = "is|was"
+        var result = replacing(#"\b([Vv]ersion)(\s+)(\#(words))(?!\s*,?\s*(?:and|or)\s+(?:\#(words))\b)(?=\s*(?:[.,;:!?)]|$)|\s+(?:\#(verbs))\b)"#, in: text) {
             "\($0[1])\($0[2])\(englishNumbers[$0[3]] ?? $0[3])"
         }
         result = replacing(#"\b(?!(?:ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN)-)([A-Z]{3,5})(-)(\#(words))\b(?!-)"#, in: result) {
@@ -76,7 +76,7 @@ public enum TranscriptStyle {
         "gigabyte", "megabyte", "kilobyte", "terabyte", "gb", "mb", "kb", "tb",
         "kilometer", "km", "meter", "m", "zentimeter", "cm", "millimeter", "mm",
         "kilogramm", "kg", "gramm", "g", "liter", "l", "ml", "watt", "volt",
-        "kwh", "ps", "h", "std", "min", "mio", "mrd", "x",
+        "kwh", "ps", "h", "std", "min", "mio", "mrd", "x", "chf", "eur", "usd", "gbp", "tsd", "pkt",
     ]
     /// The only words after which "3.5" becomes "3,5". Deliberately not "Uhr": "10.30 Uhr"
     /// is a time. A decimal anywhere else could be a section number or a version.
@@ -92,18 +92,29 @@ public enum TranscriptStyle {
     ]
     /// A small cardinal becomes a word only after one of these, which clearly take a
     /// quantity ("habe 2 Katzen", "in 2 Wochen"). After anything else it could be a
-    /// product ("iOS 9", "iPad 2"), a street number, a version or one half of a range,
-    /// and the digit stays. A capitalised first word never counts.
+    /// product ("iOS 9", "iPad 2"), a label ("die 7"), a street number, a version or
+    /// one half of a range, and the digit stays. Determiners are left out on purpose.
     private static let quantityLeadIns: Set<String> = [
         "habe", "hast", "hat", "haben", "habt", "hatte", "hatten", "sind", "waren", "gibt", "gab",
         "brauche", "brauchst", "braucht", "brauchen", "nur", "noch", "schon", "bereits", "mit", "für",
-        "in", "nach", "vor", "seit", "über", "unter", "alle", "die", "diese", "meine", "unsere",
-        "seine", "ihre", "etwa", "ungefähr", "fast", "knapp", "genau", "sogar", "und", "oder",
+        "in", "nach", "vor", "seit", "über", "etwa", "ungefähr", "fast", "knapp", "genau", "sogar",
     ]
-    /// A bare number before one of these is half of a range, score or comparison.
-    private static let rangeFollowers: Set<String> = ["bis", "von", "gegen", "zu", "auf", "und", "oder"]
-    private static let symbolsAfter = Set("%€$£°§+×*=÷-–/")
-    private static let symbolsBefore = Set("€$£§#№-–—/+×*=÷")
+    /// A bare number before one of these is half of a range, score, sum or comparison.
+    private static let rangeFollowers: Set<String> = [
+        "bis", "von", "gegen", "zu", "auf", "und", "oder", "statt", "anstatt", "vor", "nach",
+        "mal", "plus", "minus", "durch", "kommt",
+    ]
+    /// A word that starts the next sentence. An ordinal followed by one is a date or a
+    /// number that ended a sentence ("im 5. Das merkt man."), not "im fünften Das".
+    private static let sentenceStarters: Set<String> = [
+        "das", "der", "die", "er", "sie", "es", "wir", "ihr", "ich", "du", "man", "dann", "danach",
+        "dort", "hier", "also", "aber", "doch", "jetzt", "heute", "morgen", "später", "zuerst",
+        "wenn", "weil", "dass", "ob", "wie", "was", "wer", "wo", "wann", "warum", "nun", "nur",
+        "noch", "schon", "ja", "nein", "vielleicht", "leider", "bitte", "danke", "ok", "okay",
+        "gut", "dabei", "davor", "zuletzt", "zum", "im", "am", "in",
+    ]
+    private static let symbolsAfter = Set("%€$£°§+×*=÷-–/:")
+    private static let symbolsBefore = Set("€$£§#№-–—/+×*=÷:")
 
     static func german(_ text: String) -> String {
         germanSmallNumbers(germanDecimals(text))
@@ -121,47 +132,93 @@ public enum TranscriptStyle {
         })
     }
 
+    private static let smallNumberPattern =
+        #"(?<![\w.,:/+\-–%€$£#@])(\d)(\.)?(?![\w:/%°€$£+\-–]|[.,]\d|\.\p{L})"#
+
     /// "2 Fragen" -> "zwei Fragen", "das 1. Kapitel" -> "das erste Kapitel".
+    ///
+    /// All or nothing per sentence: if any single digit in a sentence cannot be turned
+    /// into a word safely, none of that sentence's single digits are. That is what
+    /// keeps lists, ranges, scores and "die 3 ... die 4" from coming out half converted.
     private static func germanSmallNumbers(_ text: String) -> String {
-        replacing(#"(?<![\w.,:/+\-–%€$£#@])(\d)(\.)?(?![\w:/%°€$£+\-–]|[.,]\d|\.\p{L})"#, in: text, using: { groups, context in
-            let digit = Int(groups[1]) ?? 0
-            let ordinal = !groups[2].isEmpty
-            let before = context.before.trimmingCharacters(in: .whitespaces)
-            let after = context.after
-            let afterTrimmed = after.drop(while: { $0 == " " })
+        guard let regex = try? NSRegularExpression(pattern: smallNumberPattern),
+              let boundary = try? NSRegularExpression(pattern: #"(?<!\d)[.!?]+(?=\s|$)"#) else {
+            assertionFailure("invalid small-number pattern")
+            return text
+        }
+        let ns = text as NSString
+        let full = NSRange(location: 0, length: ns.length)
+        let matches = regex.matches(in: text, range: full)
+        guard !matches.isEmpty else { return text }
+        // A full stop right after a digit is an ordinal dot, not a sentence end.
+        let boundaries = boundary.matches(in: text, range: full).map { $0.range.location + $0.range.length }
 
-            // Lists, ranges, sums and scores of digits stay digits.
-            if before.last?.isNumber == true { return nil }
-            if before.hasSuffix(","), before.dropLast().last?.isNumber == true { return nil }
-            if let last = before.last, symbolsBefore.contains(last) { return nil }
-            if let first = afterTrimmed.first, first.isNumber || symbolsAfter.contains(first) { return nil }
-            if afterTrimmed.hasPrefix(","), afterTrimmed.dropFirst().drop(while: { $0 == " " }).first?.isNumber == true { return nil }
-            if context.previousWord.map({ ["und", "oder"].contains($0.lowercased()) }) == true,
-               before.range(of: #"\d[,\s]*(und|oder)$"#, options: [.regularExpression, .caseInsensitive]) != nil { return nil }
-
-            // Sentence start counts only at the very start of the text or after "!" or "?".
-            // After a full stop the previous word may be an abbreviation ("inkl. 3",
-            // "Hauptstr. 3", "ca. 3"), so a digit there stays.
-            let atSentenceStart = before.isEmpty || before.last == "!" || before.last == "?"
-
-            if ordinal {
-                // Needs a following word; "3." at the end of a sentence is ambiguous.
-                guard after.first == " ", let next = context.nextWord,
-                      let ending = context.previousWord.flatMap({ ordinalEndings[$0.lowercased()] }),
-                      let stem = germanOrdinalStems[digit] else { return nil }
-                let lower = next.lowercased()
-                if months.contains(lower) || ["bis", "und", "oder"].contains(lower) { return nil }
-                // "gegen den 1. FC Köln": an all-capitals word is a name, not a noun.
-                if next.count > 1, next == next.uppercased() { return nil }
-                return stem + ending
+        struct Decision { let range: NSRange; let replacement: String?; let chunk: Int }
+        var decisions: [Decision] = []
+        var converted = Set<Int>()
+        for match in matches {
+            let chunk = boundaries.filter { $0 <= match.range.location }.count
+            let context = MatchContext(
+                before: ns.substring(to: match.range.location),
+                after: ns.substring(from: match.range.location + match.range.length))
+            let replacement = smallNumberWord(
+                digit: Int(ns.substring(with: match.range(at: 1))) ?? 0,
+                ordinal: match.range(at: 2).location != NSNotFound,
+                context: context,
+                afterConvertedNumber: converted.contains(chunk))
+            if replacement != nil { converted.insert(chunk) }
+            decisions.append(Decision(range: match.range, replacement: replacement, chunk: chunk))
+        }
+        let blocked = Set(decisions.filter { $0.replacement == nil }.map(\.chunk))
+        var result = ns
+        for decision in decisions.reversed() where !blocked.contains(decision.chunk) {
+            if let replacement = decision.replacement {
+                result = result.replacingCharacters(in: decision.range, with: replacement) as NSString
             }
-            guard let word = germanCardinals[digit] else { return nil }
-            if !atSentenceStart {
-                guard let prev = context.previousWord, quantityLeadIns.contains(prev.lowercased()) else { return nil }
-            }
-            if let next = context.nextWord, units.contains(next.lowercased()) || rangeFollowers.contains(next.lowercased()) { return nil }
-            return atSentenceStart ? word.prefix(1).uppercased() + word.dropFirst() : word
-        })
+        }
+        return result as String
+    }
+
+    /// The word for one digit, or nil when it must stay a digit.
+    private static func smallNumberWord(digit: Int, ordinal: Bool, context: MatchContext,
+                                        afterConvertedNumber: Bool) -> String? {
+        let before = context.before.trimmingCharacters(in: .whitespaces)
+        let after = context.after
+        let afterTrimmed = after.drop(while: { $0 == " " })
+
+        // Lists, ranges, sums and scores of digits stay digits.
+        if before.last?.isNumber == true { return nil }
+        if before.hasSuffix(","), before.dropLast().last?.isNumber == true { return nil }
+        if let last = before.last, symbolsBefore.contains(last) { return nil }
+        if let first = afterTrimmed.first, first.isNumber || symbolsAfter.contains(first) { return nil }
+        if afterTrimmed.hasPrefix(","), afterTrimmed.dropFirst().drop(while: { $0 == " " }).first?.isNumber == true { return nil }
+
+        // Sentence start counts only at the very start of the text or after "!" or "?".
+        // After a full stop the previous word may be an abbreviation ("inkl. 3",
+        // "Hauptstr. 3", "ca. 3"), so a digit there stays.
+        let atSentenceStart = before.isEmpty || before.last == "!" || before.last == "?"
+
+        if ordinal {
+            // Needs a following word; "3." at the end of a sentence is ambiguous.
+            guard after.first == " ", let next = context.nextWord,
+                  let ending = context.previousWord.flatMap({ ordinalEndings[$0.lowercased()] }),
+                  let stem = germanOrdinalStems[digit] else { return nil }
+            let lower = next.lowercased()
+            if months.contains(lower) || sentenceStarters.contains(lower) || ["bis", "und", "oder"].contains(lower) { return nil }
+            // "gegen den 1. FC Köln": an all-capitals word is a name, not a noun.
+            if next.count > 1, next == next.uppercased() { return nil }
+            return stem + ending
+        }
+        guard let word = germanCardinals[digit] else { return nil }
+        if !atSentenceStart {
+            guard let prev = context.previousWord else { return nil }
+            let lower = prev.lowercased()
+            // "und" and "oder" continue a quantity only after one that already converted.
+            let continuesQuantity = ["und", "oder"].contains(lower) && afterConvertedNumber
+            guard quantityLeadIns.contains(lower) || continuesQuantity else { return nil }
+        }
+        if let next = context.nextWord, units.contains(next.lowercased()) || rangeFollowers.contains(next.lowercased()) { return nil }
+        return atSentenceStart ? word.prefix(1).uppercased() + word.dropFirst() : word
     }
 
     // MARK: Regex helper

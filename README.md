@@ -8,7 +8,7 @@
 
 A fast, personal voice-dictation app for macOS and Windows. Tap a hotkey anywhere, speak in English or German, and the transcript lands at your cursor. Powered by Deepgram Nova-3 for fast, accurate speech-to-text.
 
-Useful Voice records, transcribes, applies your personal dictionary and inserts the result at your cursor with a clipboard backup. The main window focuses on five clear areas: Dictate, Library, Dictionary, Notes and Settings.
+Useful Voice records, transcribes, applies your personal dictionary and inserts the result at your cursor with a clipboard backup. On macOS the main window has six areas: Dictate, Dictionary, Insights, Notes, Library and Settings. The Windows app keeps its earlier layout.
 
 ![Useful Voice Dictate page with the microphone ready.](docs/images/dictate.png)
 
@@ -52,6 +52,7 @@ Use **Test connection** in Settings to run a tiny redacted transcription probe b
 - Learning uses an OpenWhispr-style correction learner (word-level LCS + edit distance) so multi-word edits can teach several pairs at once.
 - Use **Notes** for local dictated notes with search, pins, auto-save, tags, Markdown copy, JSON backup/restore and append-latest-dictation.
 - In **Library**, search, copy, send a dictation to Notes, reprocess retained audio or teach a correction into the dictionary.
+- **Insights** shows words dictated, time dictating, words per minute, time saved versus typing, your streak and when you dictate, for 7 days, 30 days or all time. The totals live in their own small file (`usage-stats.json`), so clearing Library does not reset them.
 
 ## Transcription model
 

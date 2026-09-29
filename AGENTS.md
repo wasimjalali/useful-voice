@@ -25,6 +25,21 @@ or Electron defect. Run Electron commands with the sentinel unset:
 cd windows && env -u ELECTRON_RUN_AS_NODE npm run verify
 ```
 
+## Screenshots without stealing focus
+
+Any page can be rendered offscreen, at any window size, with no window and no focus change:
+
+```sh
+UV_START_SECTION=insights UV_SNAPSHOT="$PWD/ui-insights.png@1280x860" \
+  dist/UsefulVoice.app/Contents/MacOS/Sadaa
+```
+
+`UV_START_SECTION` is a sidebar section's raw value (`home`, `languageMemory`, `insights`,
+`scratchpad`, `history`, `settings`). Another running copy of the app makes the new process exit
+immediately (single-instance guard), so quit it first. The pages show your real data, so keep
+screenshots out of commits. Build the bundle first (`make bundle`). A snapshot run also creates
+`usage-stats.json` in the real data folder if it does not exist yet, the same as a normal launch.
+
 ## Repo conventions
 
 - Squash-merge PRs (`gh pr merge --squash`); never commit to `main` directly.

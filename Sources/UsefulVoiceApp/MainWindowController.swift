@@ -41,6 +41,36 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// Renders the window's content to a PNG without showing a window or taking focus, so
+    /// a page can be checked at any width while someone is working in another app. Used by
+    /// `UV_SNAPSHOT` (see AppDelegate), not by normal launches.
+    func snapshot(viewModel: UsefulVoiceViewModel, settings: AppSettings,
+                  size: NSSize, to url: URL, completion: @escaping (Bool) -> Void) {
+        let hosting = NSHostingView(rootView: RootView(viewModel: viewModel, settings: settings))
+        let offscreen = NSWindow(contentRect: NSRect(origin: .zero, size: size),
+                                 styleMask: [.borderless], backing: .buffered, defer: false)
+        offscreen.contentView = hosting
+        hosting.frame = NSRect(origin: .zero, size: size)
+        // Give SwiftUI a moment to run onAppear work and lay the page out.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            hosting.layoutSubtreeIfNeeded()
+            guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {
+                completion(false)
+                return
+            }
+            hosting.cacheDisplay(in: hosting.bounds, to: rep)
+            // The image shows real notes and dictations, so only the owner may read it.
+            guard let png = rep.representation(using: .png, properties: [:]),
+                  (try? png.write(to: url, options: .atomic)) != nil,
+                  (try? FileManager.default.setAttributes([.posixPermissions: 0o600],
+                                                          ofItemAtPath: url.path)) != nil else {
+                completion(false)
+                return
+            }
+            completion(true)
+        }
+    }
+
     func windowWillClose(_ notification: Notification) {
         // Back to menu-bar-only. Window is kept (isReleasedWhenClosed=false) for reopen.
         NSApp.setActivationPolicy(.accessory)

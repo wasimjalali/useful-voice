@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let mainWindow = MainWindowController()
     private var viewModel: UsefulVoiceViewModel?
     private var history: DictationHistory?
+    private var usageStats: UsageStatsStore?
     private var languageMemory: LanguageMemoryStore?
     private var scratchpad: ScratchpadStore?
     private var controller: DictationController?
@@ -99,6 +100,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         chimes.isEnabled = { [settings] in settings.soundEffectsEnabled }
         setUpStatusItem()
         setUpController()
+        // `UV_SNAPSHOT=<png path>@<width>x<height>` renders the page named by
+        // `UV_START_SECTION` to a PNG and quits, with no window and no focus change.
+        if let spec = ProcessInfo.processInfo.environment["UV_SNAPSHOT"], let viewModel {
+            let parts = spec.split(separator: "@")
+            let dims = parts.last?.split(separator: "x").compactMap { Double($0) } ?? []
+            guard parts.count == 2, dims.count == 2 else {
+                fputs("UV_SNAPSHOT must look like /tmp/page.png@1280x860\n", stderr)
+                exit(2)
+            }
+            mainWindow.snapshot(viewModel: viewModel, settings: settings,
+                                size: NSSize(width: dims[0], height: dims[1]),
+                                to: URL(fileURLWithPath: String(parts[0]))) { ok in
+                exit(ok ? 0 : 1)
+            }
+            return
+        }
         requestPermissions()
         startHotkeys()
 
@@ -279,6 +296,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             fileURL: sadaaDir.appendingPathComponent("history.json"))
         self.history = history
 
+        let usageStats = UsageStatsStore(
+            fileURL: sadaaDir.appendingPathComponent("usage-stats.json"))
+        // Seed once from existing history, but only when history was read cleanly.
+        if history.loadOutcome.allowsWriting {
+            usageStats.seedIfFresh(from: history.all())
+        }
+        self.usageStats = usageStats
+
         let languageMemory = LanguageMemoryMigrator.migrateIfNeeded(
             memoryURL: sadaaDir.appendingPathComponent("language-memory.json"),
             dictionaryURL: sadaaDir.appendingPathComponent("dictionary.json"),
@@ -293,6 +318,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let viewModel = UsefulVoiceViewModel(
             settings: settings,
             history: history,
+            usageStats: usageStats,
             languageMemory: languageMemory,
             scratchpad: scratchpad,
             onToggle: { [weak self] in self?.toggleDictation() })
@@ -329,6 +355,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     snippetIDs: record.snippetIDs ?? []
                 )
                 self.history?.append(record)
+                self.usageStats?.record(record)
+                self.viewModel?.refreshUsage()
                 self.viewModel?.refreshLanguageMemory()
                 self.viewModel?.refreshRecent()
             },

@@ -43,7 +43,7 @@ select languages". In practice German Smart Format digitises with or without `nu
 | Candidate, Deepgram output only (`numerals` dropped) | 34 / 44 |
 | Candidate after `TranscriptStyle` (what the app now delivers) | 41 / 44 (asserted by `recordedDeepgramOutputEndsUpAsExpected`) |
 
-The 3 that still differ are one documented gap (below). Nothing that was a digit on purpose
+The 3 that still differ are all the same documented gap (below). Nothing that was a digit on purpose
 regressed: versions, model names, money, times, percentages, decimals and years all pass.
 
 Fixed by dropping `numerals`: every English ordinal and small number ("the first", "the second
@@ -64,14 +64,18 @@ Fixed by `TranscriptStyle`:
 ## Review round
 
 Two reviewers (Opus 5.5 on the styling logic, Sonnet 5.5 on request, tests and sweep) ran on PR 27,
-three times. Pass one: seven high false positives in the first version (acronym plus number
+four times. Pass one: seven high false positives in the first version (acronym plus number
 rewritten, "iOS 17.4" and "10.30 Uhr" turned into commas, money and symbols, spaced ranges,
 capitals after abbreviations, a Swift/TS difference). Pass two, on the stricter rules: five more
 highs from the German small-number rule guessing too widely ("iOS 9", "inkl. 3", half-converted
 ranges, an ordinal swallowing a sentence end, "the version one would expect"). Pass three, on the
 allowlist redesign: six more highs at the edges of the same heuristic (half-converted lists,
 sentence-final digits, more range words, label numbers after determiners like "Die 7", ordinals
-before a new sentence, English "version two and three").
+before a new sentence, English "version two and three"). Pass four, on the all-or-nothing design: three narrower highs
+("14 und 5" continuing a quantity, "Dienstag, den 5. Kommst du?" losing its full stop, English
+"version one to version two" half converted). Fixed by blocking und/oder after any number,
+dropping "den" from the ordinal articles, and converting "version" only when it is the sole
+version in the text.
 
 Each pass fixed its findings and then changed the design instead of piling on exceptions:
 
@@ -82,8 +86,8 @@ Each pass fixed its findings and then changed the design instead of piling on ex
 3. Ordinals convert only after das, den, dem, des, im, zum, zur, beim, and not before a month,
    a word that starts a sentence, or an all-capitals name.
 
-Every finding is pinned as an input in `evals/formatting/style-guards.json` (99 inputs, run by
-both the Swift and the Windows tests, which also fail if the counts change or a file is empty).
+Every finding is pinned as an input in `evals/formatting/style-guards.json` (110 inputs, run by
+both the Swift and the Windows tests, which also assert their counts, so an emptied file fails).
 READMEs are docs, not app text, and were not swept.
 
 ## Decisions

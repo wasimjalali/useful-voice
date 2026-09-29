@@ -28,29 +28,40 @@ const ENGLISH_WORDS = Object.keys(ENGLISH_NUMBERS).join('|');
 const ENGLISH_VERBS = 'is|was';
 
 /**
- * "version two" -> "version 2", "GPT-five" -> "GPT-5". The number after the word
- * "version" or a hyphenated all-caps product code is a name, not a quantity.
- * "version" only counts when the number ends the phrase or is followed by "is" or
- * "was" ("version two is out"), so "version one users", "the version one would
- * expect" and "version two and three" are left as spoken. A bare acronym followed by a number
- * ("the API one more time") is never touched.
+ * "version two" -> "version 2", "GPT-five" -> "GPT-5". The number after the word "version"
+ * or a hyphenated all-caps product code is a name, not a quantity. "version" only counts
+ * when it is the only "version <number>" in the text and the number ends the phrase
+ * ("version two is out"), so pairs and lists ("version one to version two", "version one,
+ * two and three"), "version one users" and "the version one would expect" are left as
+ * spoken. "one" is also the pronoun, so it needs punctuation after it. A bare acronym
+ * followed by a number ("the API one more time") is never touched.
  */
 function english(text: string): string {
-  return text
-    .replace(
-      new RegExp(
-        `(?<![\\p{L}\\p{N}_])([Vv]ersion)(\\s+)(${ENGLISH_WORDS})(?!\\s*,?\\s*(?:and|or)\\s+(?:${ENGLISH_WORDS})(?![\\p{L}\\p{N}_]))(?=\\s*(?:[.,;:!?)]|$)|\\s+(?:${ENGLISH_VERBS})(?![\\p{L}\\p{N}_]))`,
-        'gu',
-      ),
-      (_m, word: string, space: string, n: string) => `${word}${space}${ENGLISH_NUMBERS[n]}`,
-    )
-    .replace(
-      new RegExp(
-        `(?<![\\p{L}\\p{N}_])(?!(?:ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN)-)([A-Z]{3,5})(-)(${ENGLISH_WORDS})(?![\\p{L}\\p{N}_])(?!-)`,
-        'gu',
-      ),
-      (_m, code: string, sep: string, n: string) => `${code}${sep}${ENGLISH_NUMBERS[n]}`,
-    );
+  const others = 'two|three|four|five|six|seven|eight|nine|ten';
+  const edge = '(?![\\p{L}\\p{N}_])';
+  const notAList =
+    `(?!\\s*,?\\s*(?:and|or)\\s+(?:${ENGLISH_WORDS})${edge})(?!\\s*,\\s*(?:${ENGLISH_WORDS})${edge})`;
+  const start = '(?<![\\p{L}\\p{N}_])([Vv]ersion)(\\s+)';
+  const toDigit = (_m: string, word: string, space: string, n: string): string =>
+    `${word}${space}${ENGLISH_NUMBERS[n]}`;
+
+  let result = text;
+  const versions = text.match(new RegExp(`(?<![\\p{L}\\p{N}_])[Vv]ersion\\s+(?:${ENGLISH_WORDS})${edge}`, 'gu'));
+  if (versions?.length === 1) {
+    result = result
+      .replace(
+        new RegExp(`${start}(${others})${edge}${notAList}(?=\\s*(?:[.,;:!?)]|$)|\\s+(?:${ENGLISH_VERBS})${edge})`, 'gu'),
+        toDigit,
+      )
+      .replace(new RegExp(`${start}(one)${edge}${notAList}(?=\\s*(?:[.,;:!?)]|$))`, 'gu'), toDigit);
+  }
+  return result.replace(
+    new RegExp(
+      `(?<![\\p{L}\\p{N}_])(?!(?:ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN)-)([A-Z]{3,5})(-)(${ENGLISH_WORDS})(?![\\p{L}\\p{N}_])(?!-)`,
+      'gu',
+    ),
+    (_m, code: string, sep: string, n: string) => `${code}${sep}${ENGLISH_NUMBERS[n]}`,
+  );
 }
 
 const GERMAN_CARDINALS: Record<number, string> = {
@@ -63,13 +74,13 @@ const GERMAN_ORDINAL_STEMS: Record<number, string> = {
 /**
  * Words after which an ordinal has a certain ending. Only the unambiguous articles
  * are listed: "der" and "die" can be masculine, feminine or plural, and a wrong
- * ending would change a word the speaker said. "am" and "vom" are left out on
- * purpose: "am 3." is usually a date that ends a sentence ("am 3. Danach essen wir."),
- * and a date is not an ordinal to spell out.
+ * ending would change a word the speaker said. "am", "vom" and "den" are left out on
+ * purpose: "am 3." and "Dienstag, den 3." are dates that often end a sentence ("den 5.
+ * Kommst du?"), and a date is not an ordinal to spell out.
  */
 const ORDINAL_ENDINGS: Record<string, string> = {
   das: 'e',
-  den: 'en', dem: 'en', des: 'en',
+  dem: 'en', des: 'en',
   im: 'en', zum: 'en', beim: 'en', zur: 'en',
 };
 const MONTHS = new Set([
@@ -90,7 +101,7 @@ const UNITS = new Set([
  * is a time. A decimal anywhere else could be a section number or a version.
  */
 const DECIMAL_UNITS = new Set([
-  ...[...UNITS].filter((unit) => unit !== 'uhr' && unit !== 'x'),
+  ...[...UNITS].filter((unit) => unit !== 'uhr' && unit !== 'x' && unit !== 'h'),
   'stunden', 'minuten', 'sekunden', 'tage', 'tagen', 'wochen', 'monate', 'monaten',
   'jahre', 'jahren', 'millionen', 'milliarden', 'tonnen', 'kilo', 'prozentpunkte',
 ]);
@@ -240,6 +251,9 @@ function smallNumberWord(
   const first = afterTrimmed[0];
   if (first !== undefined && (isNumber(first) || SYMBOLS_AFTER.has(first))) return null;
   if (afterTrimmed.startsWith(',') && isNumber(afterTrimmed.slice(1).replace(/^ +/u, '')[0])) return null;
+
+  // "14 und 5", "11 oder 3": one half of a pair of numbers, whatever their length.
+  if (/\d[\d.,:]*\s*(und|oder)$/iu.test(before)) return null;
 
   // Sentence start counts only at the very start of the text or after "!" or "?".
   // After a full stop the previous word may be an abbreviation ("inkl. 3",

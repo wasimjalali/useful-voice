@@ -495,6 +495,61 @@
    "lang": "de",
    "input": "Plan A und 2 sind gut.",
    "expected": "Plan A und 2 sind gut."
+  },
+  {
+   "lang": "en",
+   "input": "Upgrade from version one to version two.",
+   "expected": "Upgrade from version one to version two."
+  },
+  {
+   "lang": "en",
+   "input": "I like version one and version two.",
+   "expected": "I like version one and version two."
+  },
+  {
+   "lang": "en",
+   "input": "Version one, two, and three are deprecated.",
+   "expected": "Version one, two, and three are deprecated."
+  },
+  {
+   "lang": "en",
+   "input": "That's the version one is supposed to install.",
+   "expected": "That's the version one is supposed to install."
+  },
+  {
+   "lang": "en",
+   "input": "Please update to version one.",
+   "expected": "Please update to version 1."
+  },
+  {
+   "lang": "de",
+   "input": "Sie hat 2 Kinder, 11 und 7 Jahre alt.",
+   "expected": "Sie hat 2 Kinder, 11 und 7 Jahre alt."
+  },
+  {
+   "lang": "de",
+   "input": "Ich habe 2 Fragen zu den Seiten 14 und 5 im Skript.",
+   "expected": "Ich habe 2 Fragen zu den Seiten 14 und 5 im Skript."
+  },
+  {
+   "lang": "de",
+   "input": "Treffen wir uns mit 2 Leuten um 11 oder 3?",
+   "expected": "Treffen wir uns mit 2 Leuten um 11 oder 3?"
+  },
+  {
+   "lang": "de",
+   "input": "Die Party ist am Samstag, den 5. Kommst du?",
+   "expected": "Die Party ist am Samstag, den 5. Kommst du?"
+  },
+  {
+   "lang": "de",
+   "input": "Das Meeting ist am Dienstag, den 3. Bring bitte die Unterlagen mit.",
+   "expected": "Das Meeting ist am Dienstag, den 3. Bring bitte die Unterlagen mit."
+  },
+  {
+   "lang": "de",
+   "input": "Es kostet täglich 10.30 h.",
+   "expected": "Es kostet täglich 10.30 h."
   }
  ]
 }

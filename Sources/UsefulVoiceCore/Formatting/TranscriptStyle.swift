@@ -30,15 +30,26 @@ public enum TranscriptStyle {
 
     /// "version two" -> "version 2", "GPT-five" -> "GPT-5". The number after the
     /// word "version" or a hyphenated all-caps product code is a name, not a
-    /// quantity. "version" only counts when the number ends the phrase or is followed
-    /// by "is" or "was" ("version two is out"), so "version one users", "the version
-    /// one would expect" and "version two and three" are left as spoken. A bare acronym followed by
-    /// a number ("the API one more time") is never touched.
+    /// quantity. "version" only counts when it is the only "version <number>" in the
+    /// text and the number ends the phrase ("version two is out"), so pairs and lists
+    /// ("version one to version two", "version one, two and three"), "version one
+    /// users" and "the version one would expect" are left as spoken. "one" is also the
+    /// pronoun, so it needs punctuation after it. A bare acronym followed by a number
+    /// ("the API one more time") is never touched.
     static func english(_ text: String) -> String {
         let words = "one|two|three|four|five|six|seven|eight|nine|ten"
-        let verbs = "is|was"
-        var result = replacing(#"\b([Vv]ersion)(\s+)(\#(words))(?!\s*,?\s*(?:and|or)\s+(?:\#(words))\b)(?=\s*(?:[.,;:!?)]|$)|\s+(?:\#(verbs))\b)"#, in: text) {
-            "\($0[1])\($0[2])\(englishNumbers[$0[3]] ?? $0[3])"
+        let others = "two|three|four|five|six|seven|eight|nine|ten"
+        var result = text
+        let versions = #"\b[Vv]ersion\s+(?:\#(words))\b"#
+        if let count = try? NSRegularExpression(pattern: versions)
+            .numberOfMatches(in: text, range: NSRange(location: 0, length: (text as NSString).length)), count == 1 {
+            let notAList = #"(?!\s*,?\s*(?:and|or)\s+(?:\#(words))\b)(?!\s*,\s*(?:\#(words))\b)"#
+            result = replacing(#"\b([Vv]ersion)(\s+)(\#(others))\#(notAList)(?=\s*(?:[.,;:!?)]|$)|\s+(?:is|was)\b)"#, in: result) {
+                "\($0[1])\($0[2])\(englishNumbers[$0[3]] ?? $0[3])"
+            }
+            result = replacing(#"\b([Vv]ersion)(\s+)(one)\#(notAList)(?=\s*(?:[.,;:!?)]|$))"#, in: result) {
+                "\($0[1])\($0[2])\(englishNumbers[$0[3]] ?? $0[3])"
+            }
         }
         result = replacing(#"\b(?!(?:ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN)-)([A-Z]{3,5})(-)(\#(words))\b(?!-)"#, in: result) {
             "\($0[1])\($0[2])\(englishNumbers[$0[3]] ?? $0[3])"
@@ -58,11 +69,12 @@ public enum TranscriptStyle {
     /// Words after which an ordinal has a certain ending. Only the unambiguous
     /// articles are listed: "der" and "die" can be masculine, feminine or plural,
     /// and a wrong ending would change a word the speaker said.
-    /// "am" and "vom" are left out on purpose: "am 3." is usually a date that ends a
-    /// sentence ("am 3. Danach essen wir."), and a date is not an ordinal to spell out.
+    /// "am", "vom" and "den" are left out on purpose: "am 3." and "Dienstag, den 3." are
+    /// dates that often end a sentence ("den 5. Kommst du?"), and a date is not an
+    /// ordinal to spell out.
     private static let ordinalEndings = [
         "das": "e",
-        "den": "en", "dem": "en", "des": "en",
+        "dem": "en", "des": "en",
         "im": "en", "zum": "en", "beim": "en", "zur": "en",
     ]
     private static let months: Set<String> = [
@@ -80,7 +92,7 @@ public enum TranscriptStyle {
     ]
     /// The only words after which "3.5" becomes "3,5". Deliberately not "Uhr": "10.30 Uhr"
     /// is a time. A decimal anywhere else could be a section number or a version.
-    private static let decimalUnits: Set<String> = units.subtracting(["uhr", "x"]).union([
+    private static let decimalUnits: Set<String> = units.subtracting(["uhr", "x", "h"]).union([
         "stunden", "minuten", "sekunden", "tage", "tagen", "wochen", "monate", "monaten",
         "jahre", "jahren", "millionen", "milliarden", "tonnen", "kilo", "prozentpunkte",
     ])
@@ -192,6 +204,9 @@ public enum TranscriptStyle {
         if let last = before.last, symbolsBefore.contains(last) { return nil }
         if let first = afterTrimmed.first, first.isNumber || symbolsAfter.contains(first) { return nil }
         if afterTrimmed.hasPrefix(","), afterTrimmed.dropFirst().drop(while: { $0 == " " }).first?.isNumber == true { return nil }
+
+        // "14 und 5", "11 oder 3": one half of a pair of numbers, whatever their length.
+        if before.range(of: #"\d[\d.,:]*\s*(und|oder)$"#, options: [.regularExpression, .caseInsensitive]) != nil { return nil }
 
         // Sentence start counts only at the very start of the text or after "!" or "?".
         // After a full stop the previous word may be an abbreviation ("inkl. 3",

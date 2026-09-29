@@ -60,7 +60,7 @@ struct TranscriptStyleEvalTests {
         let data = try Data(contentsOf: root.appendingPathComponent("evals/formatting/style-guards.json"))
         var failures: [String] = []
         let guards = try JSONDecoder().decode(Guards.self, from: data).cases
-        #expect(guards.count == 99)
+        #expect(guards.count == 110)
         for c in guards {
             let styled = TranscriptStyle.apply(to: c.input, language: c.lang)
             if styled != c.expected { failures.append("\(c.input) -> \(styled), want \(c.expected)") }

@@ -1,0 +1,464 @@
+[
+ {
+  "id": "en-ordinal-first",
+  "lang": "en",
+  "spoken": "the first numbers look good",
+  "expected": "The first numbers look good.",
+  "tags": [
+   "ordinal"
+  ]
+ },
+ {
+  "id": "en-ordinal-list",
+  "lang": "en",
+  "spoken": "this is the second time and the third attempt",
+  "expected": "This is the second time and the third attempt.",
+  "tags": [
+   "ordinal"
+  ]
+ },
+ {
+  "id": "en-small-number",
+  "lang": "en",
+  "spoken": "three people joined the call",
+  "expected": "Three people joined the call.",
+  "tags": [
+   "small-number"
+  ]
+ },
+ {
+  "id": "en-two-questions",
+  "lang": "en",
+  "spoken": "I have two questions and one idea",
+  "expected": "I have two questions and one idea.",
+  "tags": [
+   "small-number"
+  ]
+ },
+ {
+  "id": "en-quantity-size",
+  "lang": "en",
+  "spoken": "the file is three point five gigabytes",
+  "expected": "The file is 3.5 gigabytes.",
+  "tags": [
+   "quantity"
+  ]
+ },
+ {
+  "id": "en-time-date",
+  "lang": "en",
+  "spoken": "the meeting is at ten thirty on March fifth",
+  "expected": "The meeting is at 10:30 on March 5th.",
+  "tags": [
+   "time",
+   "date"
+  ],
+  "accept": [
+   "The meeting is at 10:30 on March 5."
+  ]
+ },
+ {
+  "id": "en-money",
+  "lang": "en",
+  "spoken": "it costs forty euros",
+  "expected": "It costs 40 euros.",
+  "tags": [
+   "money"
+  ],
+  "accept": [
+   "It costs €40."
+  ]
+ },
+ {
+  "id": "en-version",
+  "lang": "en",
+  "spoken": "we upgraded to version two",
+  "expected": "We upgraded to version 2.",
+  "tags": [
+   "version"
+  ]
+ },
+ {
+  "id": "en-model-gpt",
+  "lang": "en",
+  "spoken": "we tested GPT five on the branch",
+  "expected": "We tested GPT 5 on the branch.",
+  "tags": [
+   "code"
+  ],
+  "accept": [
+   "We tested GPT-5 on the branch."
+  ]
+ },
+ {
+  "id": "en-question",
+  "lang": "en",
+  "spoken": "did you send the report to Anna",
+  "expected": "Did you send the report to Anna?",
+  "tags": [
+   "question",
+   "name"
+  ]
+ },
+ {
+  "id": "en-list",
+  "lang": "en",
+  "spoken": "we need milk, eggs and bread from the shop",
+  "expected": "We need milk, eggs and bread from the shop.",
+  "tags": [
+   "list"
+  ],
+  "accept": [
+   "We need milk, eggs, and bread from the shop."
+  ]
+ },
+ {
+  "id": "en-greeting",
+  "lang": "en",
+  "spoken": "hi team, the build is green",
+  "expected": "Hi team, the build is green.",
+  "tags": [
+   "greeting"
+  ],
+  "accept": [
+   "Hi, team, the build is green.",
+   "Hi, team. The build is green."
+  ]
+ },
+ {
+  "id": "en-two-sentences",
+  "lang": "en",
+  "spoken": "the deploy finished and now we can start testing",
+  "expected": "The deploy finished and now we can start testing.",
+  "tags": [
+   "capitalisation"
+  ]
+ },
+ {
+  "id": "en-name-mid",
+  "lang": "en",
+  "spoken": "please ask Sarah and Tom about the budget on Monday",
+  "expected": "Please ask Sarah and Tom about the budget on Monday.",
+  "tags": [
+   "name",
+   "date"
+  ]
+ },
+ {
+  "id": "en-ordinal-and-count",
+  "lang": "en",
+  "spoken": "the second draft has three sections and twelve pages",
+  "expected": "The second draft has three sections and 12 pages.",
+  "tags": [
+   "ordinal",
+   "small-number",
+   "quantity"
+  ]
+ },
+ {
+  "id": "de-ordinal-first",
+  "lang": "de",
+  "spoken": "das erste Kapitel ist fertig",
+  "expected": "Das erste Kapitel ist fertig.",
+  "tags": [
+   "ordinal"
+  ]
+ },
+ {
+  "id": "de-ordinal-list",
+  "lang": "de",
+  "spoken": "das ist das zweite Mal und der dritte Versuch",
+  "expected": "Das ist das zweite Mal und der dritte Versuch.",
+  "tags": [
+   "ordinal"
+  ],
+  "known_gap": "der/die ordinals: gender and number are unknown, so the digit is kept"
+ },
+ {
+  "id": "de-small-number",
+  "lang": "de",
+  "spoken": "es waren drei Leute dabei",
+  "expected": "Es waren drei Leute dabei.",
+  "tags": [
+   "small-number"
+  ]
+ },
+ {
+  "id": "de-two-questions",
+  "lang": "de",
+  "spoken": "ich habe zwei Fragen und eine Idee",
+  "expected": "Ich habe zwei Fragen und eine Idee.",
+  "tags": [
+   "small-number"
+  ]
+ },
+ {
+  "id": "de-date-time",
+  "lang": "de",
+  "spoken": "das Treffen ist am fünften März und beginnt gegen zehn Uhr",
+  "expected": "Das Treffen ist am fünften März und beginnt gegen 10 Uhr.",
+  "tags": [
+   "date",
+   "time"
+  ],
+  "note": "Deepgram German keeps 'am fünften März' as words; only the clock time becomes digits."
+ },
+ {
+  "id": "de-money",
+  "lang": "de",
+  "spoken": "das kostet vierzig Euro",
+  "expected": "Das kostet 40 Euro.",
+  "tags": [
+   "money"
+  ],
+  "accept": [
+   "Das kostet 40 €.",
+   "Das kostet 40€."
+  ]
+ },
+ {
+  "id": "de-quantity-size",
+  "lang": "de",
+  "spoken": "die Datei ist drei Komma fünf Gigabyte groß",
+  "expected": "Die Datei ist 3,5 Gigabyte groß.",
+  "tags": [
+   "quantity"
+  ]
+ },
+ {
+  "id": "de-version",
+  "lang": "de",
+  "spoken": "wir haben auf Version zwei aktualisiert",
+  "expected": "Wir haben auf Version 2 aktualisiert.",
+  "tags": [
+   "version"
+  ]
+ },
+ {
+  "id": "de-question",
+  "lang": "de",
+  "spoken": "hast du den Bericht an Anna geschickt",
+  "expected": "Hast du den Bericht an Anna geschickt?",
+  "tags": [
+   "question",
+   "name"
+  ],
+  "accept": [
+   "Hast Du den Bericht an Anna geschickt?"
+  ]
+ },
+ {
+  "id": "de-list",
+  "lang": "de",
+  "spoken": "wir brauchen Milch, Eier und Brot aus dem Laden",
+  "expected": "Wir brauchen Milch, Eier und Brot aus dem Laden.",
+  "tags": [
+   "list",
+   "capitalisation"
+  ]
+ },
+ {
+  "id": "de-greeting",
+  "lang": "de",
+  "spoken": "hallo Team, der Bericht ist fertig",
+  "expected": "Hallo Team, der Bericht ist fertig.",
+  "tags": [
+   "greeting"
+  ],
+  "accept": [
+   "Hallo, Team, der Bericht ist fertig.",
+   "Hallo, Team. Der Bericht ist fertig."
+  ]
+ },
+ {
+  "id": "de-two-sentences",
+  "lang": "de",
+  "spoken": "das Deployment ist fertig und jetzt können wir mit dem Testen anfangen",
+  "expected": "Das Deployment ist fertig und jetzt können wir mit dem Testen anfangen.",
+  "tags": [
+   "capitalisation"
+  ]
+ },
+ {
+  "id": "de-ordinal-and-count",
+  "lang": "de",
+  "spoken": "der zweite Entwurf hat drei Abschnitte und zwölf Seiten",
+  "expected": "Der zweite Entwurf hat drei Abschnitte und 12 Seiten.",
+  "tags": [
+   "ordinal",
+   "small-number",
+   "quantity"
+  ],
+  "known_gap": "der/die ordinals: gender and number are unknown, so the digit is kept"
+ },
+ {
+  "id": "en-year",
+  "lang": "en",
+  "spoken": "we launched in twenty twenty four",
+  "expected": "We launched in 2024.",
+  "tags": [
+   "date"
+  ]
+ },
+ {
+  "id": "en-percent",
+  "lang": "en",
+  "spoken": "revenue grew fifty percent",
+  "expected": "Revenue grew 50%.",
+  "accept": [
+   "Revenue grew 50 percent."
+  ],
+  "tags": [
+   "quantity"
+  ]
+ },
+ {
+  "id": "en-large",
+  "lang": "en",
+  "spoken": "we shipped one hundred and twenty units",
+  "expected": "We shipped 120 units.",
+  "tags": [
+   "quantity"
+  ]
+ },
+ {
+  "id": "en-ordinal-place",
+  "lang": "en",
+  "spoken": "she finished in fifth place",
+  "expected": "She finished in fifth place.",
+  "tags": [
+   "ordinal"
+  ]
+ },
+ {
+  "id": "en-hey-name",
+  "lang": "en",
+  "spoken": "hey Sarah, can you check this",
+  "expected": "Hey, Sarah, can you check this?",
+  "accept": [
+   "Hey Sarah, can you check this?",
+   "Hey, Sarah. Can you check this?"
+  ],
+  "tags": [
+   "greeting",
+   "question",
+   "name"
+  ]
+ },
+ {
+  "id": "de-year",
+  "lang": "de",
+  "spoken": "wir haben im Jahr zweitausendvierundzwanzig gestartet",
+  "expected": "Wir haben im Jahr 2024 gestartet.",
+  "tags": [
+   "date"
+  ]
+ },
+ {
+  "id": "de-percent",
+  "lang": "de",
+  "spoken": "der Umsatz liegt bei fünfzig Prozent",
+  "expected": "Der Umsatz liegt bei 50 %.",
+  "accept": [
+   "Der Umsatz liegt bei 50 Prozent.",
+   "Der Umsatz liegt bei 50%."
+  ],
+  "tags": [
+   "quantity"
+  ]
+ },
+ {
+  "id": "de-ordinal-am",
+  "lang": "de",
+  "spoken": "am zweiten Tag hat es geregnet",
+  "expected": "Am zweiten Tag hat es geregnet.",
+  "tags": [
+   "ordinal"
+  ]
+ },
+ {
+  "id": "de-ordinal-die",
+  "lang": "de",
+  "spoken": "die dritte Runde war die beste",
+  "expected": "Die dritte Runde war die beste.",
+  "tags": [
+   "ordinal"
+  ],
+  "known_gap": "der/die ordinals: gender and number are unknown, so the digit is kept"
+ },
+ {
+  "id": "de-model-gpt",
+  "lang": "de",
+  "spoken": "wir haben GPT fünf getestet",
+  "expected": "Wir haben GPT 5 getestet.",
+  "accept": [
+   "Wir haben GPT-5 getestet."
+  ],
+  "tags": [
+   "code"
+  ]
+ },
+ {
+  "id": "neg-en-version-caps",
+  "lang": "en",
+  "spoken": "version two is out and GPT five is faster",
+  "expected": "Version 2 is out and GPT 5 is faster.",
+  "accept": [
+   "Version 2 is out and GPT-5 is faster."
+  ],
+  "tags": [
+   "must-stay-digit"
+  ]
+ },
+ {
+  "id": "neg-en-time-money",
+  "lang": "en",
+  "spoken": "the ticket costs twenty five dollars and the call is at three thirty",
+  "expected": "The ticket costs $25 and the call is at 3:30.",
+  "tags": [
+   "must-stay-digit"
+  ],
+  "accept": [
+   "The ticket costs $25 and the call is at 03:30."
+  ]
+ },
+ {
+  "id": "neg-de-version",
+  "lang": "de",
+  "spoken": "Version zwei ist draußen und Kapitel drei fehlt noch",
+  "expected": "Version 2 ist draußen und Kapitel 3 fehlt noch.",
+  "tags": [
+   "must-stay-digit"
+  ]
+ },
+ {
+  "id": "neg-de-date-range",
+  "lang": "de",
+  "spoken": "der Workshop läuft vom zweiten bis zum vierten Mai",
+  "expected": "Der Workshop läuft vom 2. bis zum 4. Mai.",
+  "accept": [
+   "Der Workshop läuft vom zweiten bis zum vierten Mai."
+  ],
+  "tags": [
+   "must-stay-digit"
+  ]
+ },
+ {
+  "id": "neg-de-uhr-euro",
+  "lang": "de",
+  "spoken": "das Ticket kostet zwei Euro und der Zug fährt gegen drei Uhr",
+  "expected": "Das Ticket kostet 2 Euro und der Zug fährt gegen 3 Uhr.",
+  "tags": [
+   "must-stay-digit"
+  ]
+ },
+ {
+  "id": "neg-de-decimal-version",
+  "lang": "de",
+  "spoken": "wir nutzen Android vierzehn Komma zwei und iOS siebzehn Komma vier",
+  "expected": "Wir nutzen Android 14.2 und iOS 17.4.",
+  "tags": [
+   "must-stay-digit"
+  ]
+ }
+]

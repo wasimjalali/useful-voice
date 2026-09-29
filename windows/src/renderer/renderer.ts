@@ -806,7 +806,7 @@ function mountMain(): void {
         el(
           'p',
           { class: 'muted', style: 'margin:14px 0 0;line-height:1.55' as never },
-          'No words yet. Add the names, products and jargon you use — the recogniser will be told about them before each dictation.',
+          'No words yet. Add the names, products and jargon you use. The recogniser is told about them before each dictation.',
         ),
       );
       return card;
@@ -1470,7 +1470,7 @@ function mountMain(): void {
     // Keyterm Prompting separately. https://deepgram.com/pricing
     rows.append(
       el('p', { class: 'note' },
-        'Deepgram bills Keyterm Prompting separately from transcription \u2014 $0.0013 per minute '
+        'Deepgram bills Keyterm Prompting separately from transcription: $0.0013 per minute '
         + 'on pay-as-you-go, on top of $0.0043 per minute for Nova-3. That is about 30% more per '
         + 'minute while your dictionary is in use. Smart formatting and language detection are included.'),
     );

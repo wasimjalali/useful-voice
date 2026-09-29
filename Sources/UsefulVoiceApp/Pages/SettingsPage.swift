@@ -119,7 +119,7 @@ struct SettingsPage: View {
         if pin.isAuto {
             return "Detects the language as you speak, from \(DeepgramLanguageCatalog.all.count) supported languages"
         }
-        return "Transcribing \(pin.displayName) — say the language hotkey to change"
+        return "Transcribing \(pin.displayName). Use the language hotkey to change it."
     }
 
     private var generalSection: some View {
@@ -204,7 +204,7 @@ struct SettingsPage: View {
                 // request, and Deepgram bills Keyterm Prompting separately.
                 // https://deepgram.com/pricing
                 InlineNote(
-                    text: "Deepgram bills Keyterm Prompting separately from transcription — "
+                    text: "Deepgram bills Keyterm Prompting separately from transcription: "
                         + "$0.0013 per minute on pay-as-you-go, on top of $0.0043 per minute "
                         + "for Nova-3. That is about 30% more per minute while your dictionary "
                         + "is in use. Smart formatting and language detection are included."

@@ -133,15 +133,17 @@ describe('buildRequest', () => {
     expect(params.getAll('detect_language')).toEqual([]);
   });
 
-  it('asks for numerals alongside smart format', () => {
-    // smart_format only guarantees punctuation and paragraphs; numerals are
-    // language-dependent, so they are requested explicitly.
+  it('never asks for numerals', () => {
+    // numerals=true turned "the first" into "the 1st" and "three people" into
+    // "3 people". Smart Format alone keeps dates, times and money as digits.
     const request = buildRequest({
       audioBytes: 1000,
       hint: { language: 'de', keyterms: [] },
       config: { ...CONFIG, smartFormat: true },
     });
-    expect(new URL(request.url).searchParams.get('numerals')).toBe('true');
+    const params = new URL(request.url).searchParams;
+    expect(params.get('smart_format')).toBe('true');
+    expect(params.get('numerals')).toBeNull();
   });
 
   it('sends no numerals when formatting is off', () => {

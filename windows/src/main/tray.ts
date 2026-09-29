@@ -38,7 +38,7 @@ export class TrayController {
 
   create(): void {
     this.tray = new Tray(this.icon(false));
-    this.tray.setToolTip('Useful Voice — press your hotkey to dictate');
+    this.tray.setToolTip('Useful Voice: press your hotkey to dictate');
     // Left click opens the window: the most common reason to click the tray icon
     // is to see what the app is doing.
     this.tray.on('click', () => this.handlers.onOpenWindow('home'));
@@ -102,10 +102,10 @@ export class TrayController {
     this.tray.setContextMenu(Menu.buildFromTemplate(template));
     this.tray.setToolTip(
       this.state.recording
-        ? 'Useful Voice — recording'
+        ? 'Useful Voice: recording'
         : this.state.transcribing
-          ? 'Useful Voice — transcribing'
-          : 'Useful Voice — ready',
+          ? 'Useful Voice: transcribing'
+          : 'Useful Voice: ready',
     );
   }
 

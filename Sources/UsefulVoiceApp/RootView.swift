@@ -5,7 +5,7 @@ import UsefulVoiceCore
 /// Sections in the main window sidebar. String-raw + Identifiable makes it
 /// usable directly as the selection value for `ForEach`.
 enum SidebarSection: String, CaseIterable, Identifiable {
-    case home, languageMemory, scratchpad, history, settings
+    case home, languageMemory, insights, scratchpad, history, settings
 
     var id: String { rawValue }
 
@@ -13,6 +13,7 @@ enum SidebarSection: String, CaseIterable, Identifiable {
         switch self {
         case .home: return "Dictate"
         case .languageMemory: return "Dictionary"
+        case .insights: return "Insights"
         case .scratchpad: return "Notes"
         case .history: return "Library"
         case .settings: return "Settings"
@@ -23,6 +24,7 @@ enum SidebarSection: String, CaseIterable, Identifiable {
         switch self {
         case .home: return "waveform"
         case .languageMemory: return "character.book.closed"
+        case .insights: return "chart.bar.xaxis"
         case .scratchpad: return "note.text"
         case .history: return "text.page"
         case .settings: return "gearshape"
@@ -38,14 +40,20 @@ struct RootView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The section the rail highlights. Moves the instant you click, so the
     /// sidebar never feels laggy.
-    @State private var selection: SidebarSection = .home
+    @State private var selection: SidebarSection = RootView.startSection
     /// The section actually on the stage. Lags `selection` by the length of the
     /// exit fade so the old page can leave before the new one arrives.
-    @State private var displayed: SidebarSection = .home
+    @State private var displayed: SidebarSection = RootView.startSection
     @State private var pageOpacity: Double = 1
     @State private var pageOffset: CGFloat = 0
     @State private var pendingPageSwitch: DispatchWorkItem?
     @StateObject private var toasts = AppToastCenter()
+
+    /// Where the window opens. `UV_START_SECTION` (a section's raw value, for example
+    /// `insights`) lets a screenshot or a demo open on any page without clicking through.
+    private static let startSection: SidebarSection =
+        ProcessInfo.processInfo.environment["UV_START_SECTION"]
+            .flatMap(SidebarSection.init(rawValue:)) ?? .home
 
     var body: some View {
         HStack(spacing: 0) {
@@ -68,7 +76,7 @@ struct RootView: View {
             Spacer(minLength: 0)
             footer
         }
-        .padding(.top, 44)
+        .padding(.top, 40)
         .padding(.bottom, 12)
         .padding(.horizontal, 12)
         .frame(width: 232)
@@ -77,11 +85,11 @@ struct RootView: View {
     }
 
     private var brand: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             AppIconMark()
             Text("Useful Voice")
-                .font(.system(size: 14, weight: .bold))
-                .tracking(-0.4)
+                .font(.system(size: 17, weight: .bold))
+                .tracking(-0.5)
                 .foregroundStyle(Theme.ink)
         }
         .padding(.horizontal, 8)
@@ -171,7 +179,7 @@ struct RootView: View {
             detail
                 .opacity(pageOpacity)
                 .offset(y: pageOffset)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.surface)
@@ -190,6 +198,8 @@ struct RootView: View {
             HomePage(viewModel: viewModel)
         case .languageMemory:
             LanguageMemoryPage(viewModel: viewModel.languageMemory)
+        case .insights:
+            InsightsPage(viewModel: viewModel)
         case .scratchpad:
             ScratchpadPage(viewModel: viewModel)
         case .history:
@@ -210,12 +220,12 @@ private struct AppIconMark: View {
                     .interpolation(.high)
                     .scaledToFit()
             } else {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
                     .fill(Theme.ink)
             }
         }
-        .frame(width: 28, height: 28)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .frame(width: 44, height: 44)
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
     }
 
     private static let image: NSImage? = {

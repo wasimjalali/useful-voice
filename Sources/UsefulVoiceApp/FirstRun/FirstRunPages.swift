@@ -155,7 +155,7 @@ struct FREnginePage: View {
 
     private var rejected: Bool { model.keyCheck == .rejected }
     private var checking: Bool { model.keyCheck == .checking }
-    private var canConnect: Bool { !model.trimmedKey.isEmpty && !checking }
+    private var canConnect: Bool { !model.trimmedKey.isEmpty && !checking && !model.savingKey }
 
     private var keyRow: some View {
         HStack(spacing: 8) {
@@ -340,7 +340,7 @@ struct FRLocalDownloadPage: View {
         case stopped(received: Int64, kind: Stop)
     }
 
-    fileprivate enum Stop { case generic, disk, http, check, install }
+    enum Stop { case generic, disk, http, check, install }
 
     private var phase: Phase {
         let total = whisper.expectedBytes
@@ -391,8 +391,9 @@ struct FRLocalDownloadPage: View {
             FRHeader(step: 1, title: title(for: current))
             card(for: current)
             if case .stopped(let received, let kind) = current {
-                FRErrorBanner(text: stopMessage(received: received, kind: kind))
-                FRPrimaryButton(title: retryTitle(for: kind)) { model.startDownload(whisper) }
+                FRErrorBanner(text: Self.stopMessage(
+                    received: received, kind: kind, whisper: whisper, diskMessage: model.diskMessage))
+                FRPrimaryButton(title: Self.retryTitle(for: kind)) { model.startDownload(whisper) }
                 FRTextLink(title: "Use Deepgram instead", action: model.useDeepgramInstead)
                     .frame(maxWidth: .infinity)
             } else {
@@ -480,7 +481,7 @@ struct FRLocalDownloadPage: View {
         return "About \(Int((seconds / 60).rounded())) minutes left"
     }
 
-    private func retryTitle(for kind: Stop) -> String {
+    static func retryTitle(for kind: Stop) -> String {
         switch kind {
         case .check: return "Download again"
         case .http, .install: return "Try again"
@@ -488,10 +489,11 @@ struct FRLocalDownloadPage: View {
         }
     }
 
-    private func stopMessage(received: Int64, kind: Stop) -> String {
+    static func stopMessage(received: Int64, kind: Stop, whisper: WhisperModel,
+                            diskMessage: String?) -> String {
         switch kind {
         case .disk:
-            return model.diskMessage
+            return diskMessage
                 ?? "There isn't enough space on this Mac for \(whisper.shortName). Free up some space, then resume."
         case .http:
             return "Hugging Face couldn't send the file right now. Try again in a few minutes."
@@ -771,11 +773,17 @@ struct FRTryItPage: View {
     /// being checked. Sample numbers in a forced run.
     private func progress(of whisper: WhisperModel) -> (received: Int64, active: Bool, checking: Bool) {
         let total = whisper.expectedBytes
-        if model.forced { return (Int64(Double(total) * 0.62), true, false) }
+        if model.forced {
+            return model.preview == .tryItStopped
+                ? (Int64(Double(total) * 0.38), false, false)
+                : (Int64(Double(total) * 0.62), true, false)
+        }
         switch models.state(for: whisper) {
         case .downloading(let got, _): return (got, true, false)
         case .validating: return (total, true, true)
-        default: return (models.partialBytes(for: whisper), model.preparingDownload, false)
+        default:
+            let kept = max(models.partialBytes(for: whisper), models.installedBytes(for: whisper) ?? 0)
+            return (kept, model.preparingDownload, false)
         }
     }
 
@@ -784,13 +792,17 @@ struct FRTryItPage: View {
     private func waitingForModel(_ whisper: WhisperModel) -> some View {
         let total = whisper.expectedBytes
         let state = progress(of: whisper)
-        Text(state.active
-             ? "\(whisper.shortName) is still downloading. You can try it once it's ready."
-             : "\(whisper.shortName) isn't downloaded yet. You can try it once it's ready.")
-            .font(.system(size: 13))
-            .lineSpacing(3)
-            .foregroundStyle(Theme.inkMuted)
-            .fixedSize(horizontal: false, vertical: true)
+        let stop = model.downloadStop(of: whisper)
+        if let stop {
+            FRErrorBanner(text: FRLocalDownloadPage.stopMessage(
+                received: state.received, kind: stop, whisper: whisper, diskMessage: model.diskMessage))
+        } else {
+            Text("\(whisper.shortName) is still downloading. You can try it once it's ready.")
+                .font(.system(size: 13))
+                .lineSpacing(3)
+                .foregroundStyle(Theme.inkMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(whisper.shortName).font(.system(size: 14, weight: .semibold))
@@ -808,6 +820,11 @@ struct FRTryItPage: View {
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        if let stop {
+            FRPrimaryButton(title: FRLocalDownloadPage.retryTitle(for: stop)) {
+                model.resumeDownload(whisper)
+            }
+        }
         FRTextLink(title: "Skip for now") { model.go(.done) }
             .frame(maxWidth: .infinity)
     }

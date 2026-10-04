@@ -291,6 +291,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             controller?.cancel()
         }
         viewModel?.flushPendingEdits()
+        firstRun?.appWillTerminate()
         // Keep the bytes of any model download in flight: pause it so URLSession
         // hands back resume data, and give the write a bounded moment to land.
         modelManager?.pauseAllDownloads()

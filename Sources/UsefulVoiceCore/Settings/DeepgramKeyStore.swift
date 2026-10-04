@@ -26,6 +26,11 @@ public final class DeepgramKeyStore: @unchecked Sendable {
     private var loaded = false
     /// Set when a completed read failed for a reason other than "nothing stored".
     private var problem: String?
+    /// Which cache publishes still count (see `KeyPublishGate`). Guarded by `lock`.
+    private var gate = KeyPublishGate()
+    /// Keychain writes run here, one at a time, in the order they were requested.
+    private let writeQueue = DispatchQueue(label: "ai.karko.sadaa.deepgram-key-writes",
+                                           qos: .userInitiated)
 
     public init() {}
 
@@ -51,9 +56,10 @@ public final class DeepgramKeyStore: @unchecked Sendable {
     /// user authorization prompt. Returns the resolved key.
     @discardableResult
     public func load() -> String? {
+        let generation = beginRead()
         let lookup = Keychain.lookup(account: Self.account)
         recordLookupFailure(lookup)
-        store(lookup.value)
+        store(lookup.value, readGeneration: generation)
         return current
     }
 
@@ -80,9 +86,10 @@ public final class DeepgramKeyStore: @unchecked Sendable {
             if let problem { return .unavailable(problem) }
             return .absent
         }
+        let generation = beginRead()
         let lookup = Keychain.lookup(account: Self.account)
         recordLookupFailure(lookup)
-        store(lookup.value)
+        store(lookup.value, readGeneration: generation)
         return lookup
     }
 
@@ -113,11 +120,60 @@ public final class DeepgramKeyStore: @unchecked Sendable {
         return Keychain.exists(account: Self.account)
     }
 
-    /// Updates the cache after the user edits the key in Settings. Persisting to
-    /// the keychain stays the caller's job (it is a user action, where a prompt
-    /// is expected); this only refreshes what the pipeline reads.
-    public func update(_ value: String?) {
-        store(value)
+    /// Saves the key to the keychain and, once that succeeded, publishes it to the
+    /// cache the dictation pipeline reads. The only way to change the key.
+    ///
+    /// Writes run one at a time in the order they were requested, and each one
+    /// carries a generation, so a slow earlier write or a read that started before
+    /// it can never publish an older key over a newer save or a removal.
+    /// Throws when the keychain write fails; nothing is published then.
+    public func save(_ value: String) async throws {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let generation = beginWrite()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            writeQueue.async {
+                do {
+                    try Keychain.set(trimmed, account: Self.account)
+                    self.publish(trimmed, generation: generation)
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Deletes the key and clears the cache, in order with `save`.
+    public func remove() async {
+        let generation = beginWrite()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            writeQueue.async {
+                Keychain.delete(account: Self.account)
+                self.publish(nil, generation: generation)
+                continuation.resume()
+            }
+        }
+    }
+
+    /// Sets the cache directly, for tests. App code goes through `save` and `remove`.
+    func update(_ value: String?) {
+        store(value, readGeneration: beginRead())
+    }
+
+    private func beginWrite() -> UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return gate.beginWrite()
+    }
+
+    private func beginRead() -> UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return gate.latest
+    }
+
+    private func publish(_ value: String?, generation: UInt64) {
+        store(value, readGeneration: generation)
     }
 
     /// Forgets the cached value so the next `load()` re-reads the keychain.
@@ -128,11 +184,29 @@ public final class DeepgramKeyStore: @unchecked Sendable {
         lock.unlock()
     }
 
-    private func store(_ value: String?) {
+    /// Publishes to the cache unless a newer write has started since `readGeneration`.
+    private func store(_ value: String?, readGeneration: UInt64) {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         lock.lock()
+        defer { lock.unlock() }
+        guard gate.accepts(readGeneration) else { return }
         cached = (trimmed?.isEmpty ?? true) ? nil : trimmed
         loaded = true
-        lock.unlock()
+    }
+}
+
+/// The rule that keeps the key cache honest: every write takes a new generation,
+/// and a cache publish (from a write or from a keychain read) counts only while
+/// no newer write has started. Pure, so it is unit-tested without a keychain.
+struct KeyPublishGate {
+    private(set) var latest: UInt64 = 0
+
+    mutating func beginWrite() -> UInt64 {
+        latest += 1
+        return latest
+    }
+
+    func accepts(_ generation: UInt64) -> Bool {
+        generation == latest
     }
 }

@@ -54,6 +54,7 @@ struct FirstRunView: View {
                             .padding(.vertical, 4)
                     }
                     .buttonStyle(.plain)
+                    .disabled(model.savingKey)
                     .keyboardShortcut(.cancelAction)
                     .clickableCursor()
                     .padding(14)

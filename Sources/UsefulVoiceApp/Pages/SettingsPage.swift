@@ -61,11 +61,12 @@ struct SettingsPage: View {
         // so unsaved edits elsewhere on the page survive. (AppSettings is not
         // observable, so the end of the flow is the signal.)
         .onChange(of: firstRun.active) { _, active in
-            if !active {
-                hasDeepgramKey = DeepgramKeyStore.shared.isConfigured()
-                engine = settings.transcriptionEngine
-            }
+            if !active { syncFromFirstRun() }
         }
+        // A key saved mid-flow, or an engine put back when the window closed on
+        // a first launch, can land while the flow is still marked active.
+        .onChange(of: firstRun.keyConnected) { _, _ in syncFromFirstRun() }
+        .onChange(of: firstRun.engineRestoreCount) { _, _ in syncFromFirstRun() }
         // A key typed and abandoned must not sit in memory behind a closed editor.
         .onChange(of: changingDeepgramKey) { _, open in
             if !open { deepgramKey = "" }
@@ -416,11 +417,12 @@ struct SettingsPage: View {
             settingsButton("Save") { save() }
             if hasDeepgramKey {
                 settingsButton("Remove", role: .destructive) {
-                    Keychain.delete(account: DeepgramKeyStore.account)
-                    DeepgramKeyStore.shared.update(nil)
-                    hasDeepgramKey = false
-                    changingDeepgramKey = false
-                    viewModel.refreshConfig()
+                    Task { @MainActor in
+                        await DeepgramKeyStore.shared.remove()
+                        hasDeepgramKey = false
+                        changingDeepgramKey = false
+                        viewModel.refreshConfig()
+                    }
                 }
             }
         }
@@ -744,6 +746,11 @@ struct SettingsPage: View {
         )
     }
 
+    private func syncFromFirstRun() {
+        hasDeepgramKey = DeepgramKeyStore.shared.isConfigured()
+        engine = settings.transcriptionEngine
+    }
+
     private func load() {
         // Existence-only check: never returns or decrypts the key, so it cannot
         // block this main-thread SwiftUI update on an authorization prompt.
@@ -768,22 +775,27 @@ struct SettingsPage: View {
         settings.recordingsToKeep = recordingsToKeep
         settings.soundEffectsEnabled = soundEffectsEnabled
 
-        do {
-            let trimmedKey = deepgramKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedKey.isEmpty {
-                try Keychain.set(trimmedKey, account: DeepgramKeyStore.account)
-                // Keep the in-memory cache the dictation pipeline reads in step
-                // with the keychain, so the new key works without a relaunch.
-                DeepgramKeyStore.shared.update(trimmedKey)
+        let trimmedKey = deepgramKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else {
+            viewModel.refreshConfig()
+            saveMessage = "Settings saved"
+            return
+        }
+        // The store writes the keychain and refreshes the cache the dictation
+        // pipeline reads in one ordered step, so the new key works without a
+        // relaunch and a stale write can never overwrite a newer one.
+        Task { @MainActor in
+            do {
+                try await DeepgramKeyStore.shared.save(trimmedKey)
                 hasDeepgramKey = true
                 deepgramKey = ""
                 changingDeepgramKey = false
+                viewModel.refreshConfig()
+                saveMessage = "Settings saved"
+            } catch {
+                saveMessage = "Could not save the Keychain value"
+                saveIsError = true
             }
-            viewModel.refreshConfig()
-            saveMessage = "Settings saved"
-        } catch {
-            saveMessage = "Could not save the Keychain value"
-            saveIsError = true
         }
     }
 

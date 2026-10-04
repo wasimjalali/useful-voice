@@ -132,6 +132,16 @@ struct FREnginePage: View {
             if let message = keyMessage {
                 FRErrorBanner(text: message)
             }
+            if model.changingKey {
+                Button(action: model.keepCurrentKey) {
+                    Text("Keep current key")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.inkFaint)
+                        .underline()
+                }
+                .buttonStyle(.plain)
+                .clickableCursor()
+            }
         }
     }
 
@@ -153,6 +163,11 @@ struct FREnginePage: View {
                 .font(.system(size: 14))
                 .foregroundStyle(Theme.brandInk)
                 .focused($keyFocused)
+                // The field is inserted when "Change key" is pressed, after the
+                // request to focus it was already published, so ask again here.
+                .onAppear {
+                    if model.changingKey { DispatchQueue.main.async { keyFocused = true } }
+                }
                 .overlay(alignment: .leading) {
                     if model.keyText.isEmpty {
                         Text("Paste your API key")
@@ -194,6 +209,8 @@ struct FREnginePage: View {
             return "Couldn't reach Deepgram. Check your connection, then try again."
         case .failed(let reason):
             return "Couldn't check the key: \(reason)"
+        case .saveFailed:
+            return "Couldn't save the key to your Keychain. Try again."
         case .idle, .checking:
             return nil
         }
@@ -318,7 +335,7 @@ struct FRLocalDownloadPage: View {
         case stopped(received: Int64, kind: Stop)
     }
 
-    fileprivate enum Stop { case generic, disk, check }
+    fileprivate enum Stop { case generic, disk, http, check, install }
 
     private var phase: Phase {
         let total = whisper.expectedBytes
@@ -339,13 +356,14 @@ struct FRLocalDownloadPage: View {
             return .checking
         case .paused:
             return .stopped(received: partialBytes, kind: .generic)
-        case .failed(let message):
-            let lowered = message.lowercased()
-            if lowered.contains("space") { return .stopped(received: partialBytes, kind: .disk) }
-            if lowered.contains("validation") || lowered.contains("install") {
-                return .stopped(received: 0, kind: .check)
+        case .failed(_, let reason):
+            switch reason {
+            case .disk: return .stopped(received: partialBytes, kind: .disk)
+            case .network: return .stopped(received: partialBytes, kind: .generic)
+            case .http: return .stopped(received: partialBytes, kind: .http)
+            case .validation: return .stopped(received: 0, kind: .check)
+            case .install: return .stopped(received: 0, kind: .install)
             }
-            return .stopped(received: partialBytes, kind: .generic)
         case .idle:
             return models.availability(of: whisper) == .usable
                 ? .ready
@@ -360,12 +378,12 @@ struct FRLocalDownloadPage: View {
     var body: some View {
         let current = phase
         FRColumn {
-            FRBackLink { model.go(.engine) }
+            FRBackLink(action: model.cancelDownload)
             FRHeader(step: 1, title: title(for: current))
             card(for: current)
             if case .stopped(let received, let kind) = current {
                 FRErrorBanner(text: stopMessage(received: received, kind: kind))
-                FRPrimaryButton(title: "Resume download") { model.startDownload(whisper) }
+                FRPrimaryButton(title: retryTitle(for: kind)) { model.startDownload(whisper) }
                 FRTextLink(title: "Use Deepgram instead", action: model.useDeepgramInstead)
                     .frame(maxWidth: .infinity)
             } else {
@@ -376,7 +394,7 @@ struct FRLocalDownloadPage: View {
                         .foregroundStyle(Theme.inkMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                FRPrimaryButton(title: "Continue") { model.go(.microphone) }
+                FRPrimaryButton(title: "Continue", action: model.continueFromDownload)
                 if case .ready = current {} else {
                     FRTextLink(title: "Cancel download", action: model.cancelDownload)
                         .frame(maxWidth: .infinity)
@@ -453,13 +471,25 @@ struct FRLocalDownloadPage: View {
         return "About \(Int((seconds / 60).rounded())) minutes left"
     }
 
+    private func retryTitle(for kind: Stop) -> String {
+        switch kind {
+        case .check: return "Download again"
+        case .http, .install: return "Try again"
+        case .generic, .disk: return "Resume download"
+        }
+    }
+
     private func stopMessage(received: Int64, kind: Stop) -> String {
         switch kind {
         case .disk:
             return model.diskMessage
                 ?? "There isn't enough space on this Mac for \(whisper.shortName). Free up some space, then resume."
+        case .http:
+            return "Hugging Face couldn't send the file right now. Try again in a few minutes."
         case .check:
             return "The file didn't pass its check, so it was removed. Download it again."
+        case .install:
+            return "\(whisper.shortName) couldn't be set up on this Mac, so the download was removed. Try again."
         case .generic:
             return "The download stopped at \(Self.gb(received, unit: true)). Check your connection, then resume. What's downloaded so far is kept."
         }
@@ -529,7 +559,7 @@ struct FRMicrophonePage: View {
                 }
             }
             .foregroundStyle(Theme.ink)
-            FRLevelMeter(levels: model.micLevels)
+            FRLevelMeter(meter: model.meterLevels)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 16)
@@ -567,11 +597,13 @@ struct FRWaitingStatus: View {
 }
 
 struct FRLevelMeter: View {
-    let levels: [Float]
+    /// Observed here and nowhere else, so audio-rate updates redraw only the bars.
+    @ObservedObject var meter: MicLevels
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 3) {
-            ForEach(Array(levels.enumerated()), id: \.offset) { _, level in
+            ForEach(Array(meter.levels.enumerated()), id: \.offset) { _, level in
                 let height = max(4, CGFloat(level) * 28)
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .fill(height > 4 ? Theme.ink : FRColor.meterQuiet)
@@ -580,7 +612,7 @@ struct FRLevelMeter: View {
             Spacer(minLength: 0)
         }
         .frame(height: 32)
-        .animation(.linear(duration: 0.08), value: levels)
+        .animation(reduceMotion ? nil : .linear(duration: 0.08), value: meter.levels)
         .accessibilityElement()
         .accessibilityLabel("Input level")
     }
@@ -622,7 +654,6 @@ struct FRAccessibilityPage: View {
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            FRPrimaryButton(title: "Open System Settings", action: model.openAccessibilitySettings)
             if model.accessibilityGranted {
                 HStack(spacing: 8) {
                     CheckGlyph(size: 16)
@@ -631,31 +662,34 @@ struct FRAccessibilityPage: View {
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.success)
                 .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .combine)
+                FRPrimaryButton(title: "Continue") { model.go(.tryIt) }
             } else {
+                FRPrimaryButton(title: "Open System Settings", action: model.openAccessibilitySettings)
                 FRWaitingStatus()
             }
         }
     }
 }
 
-/// The System Settings switch drawn in the mockup. A picture, not a control.
+/// The System Settings switch drawn in the mockup: one capsule with a 2 pt ink
+/// border. A picture, not a control.
 private struct FRSwitchPicture: View {
     let on: Bool
 
     var body: some View {
-        ZStack(alignment: on ? .trailing : .leading) {
-            Capsule().fill(on ? Theme.ink : FRColor.toggleOff)
+        HStack(spacing: 0) {
+            if on { Spacer(minLength: 0) }
             Circle().fill(Color.white)
                 .frame(width: 18, height: 18)
                 .shadow(color: .black.opacity(0.2), radius: 1, y: 1)
-                .padding(2)
+            if !on { Spacer(minLength: 0) }
         }
-        .frame(width: 38, height: 22)
-        .padding(3)
-        .background(Capsule().fill(Color.white))
-        .overlay(Capsule().strokeBorder(on ? Color.clear : Theme.ink, lineWidth: 1.5)
-            .frame(width: 47, height: 31))
-        .frame(width: 47, height: 31)
+        .padding(.horizontal, 4)
+        .frame(width: 44, height: 26)
+        .background(Capsule().fill(on ? Theme.ink : FRColor.toggleOff))
+        .overlay(Capsule().inset(by: 1).stroke(Theme.ink, lineWidth: 2))
+        .clipShape(Capsule())
         .accessibilityElement()
         .accessibilityLabel(on ? "Switch, on" : "Switch, off")
     }
@@ -679,8 +713,8 @@ struct FRTryItPage: View {
                     if changingKey {
                         BrandedMenuPicker(
                             title: "Hotkey",
-                            selection: Binding(get: { viewModel.hotkeyKeycode },
-                                               set: { viewModel.setHotkeyKeycode($0) }),
+                            selection: Binding(get: { model.hotkeyKeycode },
+                                               set: { model.setHotkey($0) }),
                             options: HotkeyOption.all.map { ($0.label, $0.keycode) })
                             .frame(width: 170)
                     } else {
@@ -698,7 +732,7 @@ struct FRTryItPage: View {
                 HStack(spacing: 10) {
                     Text("Language").frame(maxWidth: .infinity, alignment: .leading)
                     LanguagePickerButton(selection: Binding(
-                        get: { viewModel.languagePin },
+                        get: { model.languagePin },
                         set: { model.setLanguage($0) }))
                         .frame(width: 190)
                 }
@@ -708,7 +742,7 @@ struct FRTryItPage: View {
             .font(.system(size: 14))
             .foregroundStyle(Theme.ink)
             .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .onChange(of: viewModel.hotkeyKeycode) { _, _ in changingKey = false }
+            .onChange(of: model.hotkeyKeycode) { _, _ in changingKey = false }
 
             pad
             if model.practiceWorked {
@@ -719,7 +753,7 @@ struct FRTryItPage: View {
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.success)
                 .accessibilityElement(children: .combine)
-                FRPrimaryButton(title: "Finish setup", action: model.finish)
+                FRPrimaryButton(title: "Finish setup") { model.go(.done) }
             } else {
                 if case .error(let text) = viewModel.dictationState {
                     FRErrorBanner(text: text)
@@ -803,7 +837,7 @@ struct FRDonePage: View {
 
     private func row(lead: AnyView, text: String) -> some View {
         HStack(spacing: 14) {
-            lead.frame(width: 76, alignment: .leading)
+            lead.frame(minWidth: 96, alignment: .leading)
             Text(text)
                 .font(.system(size: 14))
                 .foregroundStyle(Theme.ink)

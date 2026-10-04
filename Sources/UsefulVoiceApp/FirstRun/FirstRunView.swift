@@ -41,8 +41,23 @@ struct FirstRunView: View {
                             .opacity(opacity[layer.key] ?? 1)
                             .offset(x: offset[layer.key] ?? 0, y: yOffset[layer.key] ?? 0)
                             .allowsHitTesting(layer == layers.last && !moving)
+                            .disabled(layer != layers.last)
                             .accessibilityHidden(layer != layers.last)
                     }
+                }
+                if model.startedFromSettings {
+                    Button(action: model.closeSetup) {
+                        Text("Close")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.inkMuted)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.cancelAction)
+                    .clickableCursor()
+                    .padding(14)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))

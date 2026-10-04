@@ -60,7 +60,7 @@ Until an engine is configured, every dictation ends with the HUD saying "No tran
 
 ## Transcription engines
 
-Settings offers two engines behind the same provider pipeline — everything after transcription (formatting, dictionary corrections, language memory, history, insertion) works identically for both.
+Settings › Transcription lists Deepgram and each local Whisper model as one choice, all behind the same provider pipeline — everything after transcription (formatting, dictionary corrections, language memory, history, insertion) works identically for both.
 
 ### Deepgram (cloud)
 
@@ -68,7 +68,7 @@ Useful Voice uses Deepgram's **Nova-3** model. Auto-format (Deepgram's `smart_fo
 
 ### Whisper (local, on-device)
 
-Runs [whisper.cpp](https://github.com/ggml-org/whisper.cpp) with Metal GPU acceleration — no API key, and **audio never leaves your Mac**. Models are listed in Settings › Speech once you pick Whisper (local). Download one there (progress, pause and resume, checksum verification and delete are built in):
+Runs [whisper.cpp](https://github.com/ggml-org/whisper.cpp) with Metal GPU acceleration — no API key, and **audio never leaves your Mac**. Each model is a row in Settings › Transcription. Tap one that isn't downloaded to start its download, and tap it again once it's ready to switch to it (progress, pause and resume, checksum verification and delete are built in):
 
 | Model | Size | License | Notes |
 |---|---|---|---|

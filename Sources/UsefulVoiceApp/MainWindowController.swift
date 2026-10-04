@@ -11,6 +11,10 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     /// Tells the first-run flow when the window hides or shows, so its
     /// microphone meter never runs behind a closed window.
     var onVisibilityChange: ((Bool) -> Void)?
+    /// The window was closed (not just hidden), so the first-run flow can drop
+    /// any half-finished setup.
+    var onClose: (() -> Void)?
+    private var appVisibilityObservers: [NSObjectProtocol] = []
 
     func show(viewModel: UsefulVoiceViewModel, settings: AppSettings,
               firstRun: FirstRunModel) {
@@ -35,6 +39,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             window.delegate = self
             window.center()
             self.window = window
+            observeAppVisibility()
         }
         NSApp.setActivationPolicy(.regular)
         // Centre only on the first show. Re-centring on every open undid the
@@ -43,8 +48,34 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         if isFirstShow { window?.center() }
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        onVisibilityChange?(true)
+        reportVisibility()
     }
+
+    /// True while a person could see the window: on screen, not minimised, not
+    /// fully covered, and the app not hidden.
+    private var isVisibleToUser: Bool {
+        guard let window else { return false }
+        return window.isVisible && !window.isMiniaturized
+            && window.occlusionState.contains(.visible) && !NSApp.isHidden
+    }
+
+    private func reportVisibility() {
+        onVisibilityChange?(isVisibleToUser)
+    }
+
+    private func observeAppVisibility() {
+        let center = NotificationCenter.default
+        for name in [NSApplication.didHideNotification, NSApplication.didUnhideNotification] {
+            appVisibilityObservers.append(center.addObserver(
+                forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.reportVisibility() }
+            })
+        }
+    }
+
+    func windowDidMiniaturize(_ notification: Notification) { reportVisibility() }
+    func windowDidDeminiaturize(_ notification: Notification) { reportVisibility() }
+    func windowDidChangeOcclusionState(_ notification: Notification) { reportVisibility() }
 
     /// Renders the window's content to a PNG without showing a window or taking focus, so
     /// a page can be checked at any width while someone is working in another app. Used by
@@ -81,6 +112,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         // Back to menu-bar-only. Window is kept (isReleasedWhenClosed=false) for reopen.
         NSApp.setActivationPolicy(.accessory)
         onVisibilityChange?(false)
+        onClose?()
     }
 
     /// A standard document-sized window, clamped to the visible screen.

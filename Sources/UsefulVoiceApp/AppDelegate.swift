@@ -95,6 +95,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // reachable because `make run` leaves a live bundle in dist/ with the
         // same bundle identifier and signature as the /Applications copy.
         if SingleInstance.yieldToExistingInstance() { return }
+        // Settles the English default for new installs while an existing one
+        // stays on Auto-detect. Must run before anything reads the language.
+        // A forced first-run preview saves nothing, so it skips this too.
+        if !FirstRunGate.isForced(environment: ProcessInfo.processInfo.environment) {
+            settings.resolveLanguageDefault(hasPriorData: hasPriorData())
+        }
 
         // Recorded before the key cache is primed, because priming can block
         // indefinitely on a keychain authorization dialog. It previously ran only
@@ -146,6 +152,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// Whether this Mac has used the app before: history, usage stats or a
+    /// stored Deepgram key. The key check is presence only, so it never prompts.
+    private func hasPriorData() -> Bool {
+        let folder = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Sadaa")
+        let files = ["history.json", "usage-stats.json"]
+        return files.contains { FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path) }
+            || Keychain.exists(account: DeepgramKeyStore.account)
+    }
+
     /// Builds the first-run flow and wires it to the hotkey tap and the window.
     private func setUpFirstRun() {
         guard let viewModel else { return }
@@ -155,6 +172,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         mainWindow.onVisibilityChange = { [weak firstRun] visible in
             firstRun?.windowVisibilityChanged(visible)
+        }
+        mainWindow.onClose = { [weak firstRun] in
+            firstRun?.windowClosed()
         }
         self.firstRun = firstRun
     }

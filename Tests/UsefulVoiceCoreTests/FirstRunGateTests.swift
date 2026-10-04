@@ -54,4 +54,27 @@ struct FirstRunGateTests {
     @Test func completedFlagLivesUnderTheDocumentedKey() {
         #expect(FirstRunGate.completedKey == "uv.firstRunCompleted")
     }
+
+    /// Presence of a key or a usable model is enough, with no cache involved.
+    @Test func engineConfiguredFromKeyPresenceOrUsableModel() {
+        #expect(FirstRunGate.engineConfigured(keyStored: true, localModelUsable: false))
+        #expect(FirstRunGate.engineConfigured(keyStored: false, localModelUsable: true))
+        #expect(!FirstRunGate.engineConfigured(keyStored: false, localModelUsable: false))
+    }
+
+    private typealias Selection = FirstRunGate.EngineSelection
+    private let before = Selection(engine: .deepgram, modelID: "turbo")
+    private let after = Selection(engine: .whisperLocal, modelID: "large")
+
+    /// Abandoning with a model that never became usable puts the app back.
+    @Test func abandonedUnusableChoiceRestoresTheSnapshot() {
+        #expect(FirstRunGate.selectionAfterAbandon(
+            snapshot: before, current: after, currentUsable: false) == before)
+    }
+
+    /// A choice that can already dictate is kept.
+    @Test func abandonedUsableChoiceIsKept() {
+        #expect(FirstRunGate.selectionAfterAbandon(
+            snapshot: before, current: after, currentUsable: true) == after)
+    }
 }

@@ -63,6 +63,9 @@ struct RootView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.canvas)
+        // Under the flow nothing can be reached by VoiceOver or Tab.
+        .accessibilityHidden(firstRun.active)
+        .disabled(firstRun.active)
         .overlay {
             // Covers the sidebar too: setup is the only thing on screen.
             if firstRun.active {

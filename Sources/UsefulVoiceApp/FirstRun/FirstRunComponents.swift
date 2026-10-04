@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UsefulVoiceCore
 
@@ -107,21 +108,29 @@ struct ExternalArrowGlyph: View {
     }
 }
 
-/// The waiting spinner: a ring with a dark arc. Slower under Reduce Motion.
+/// The waiting spinner: a ring with a dark arc. Under Reduce Motion it is a
+/// still dot instead of a turning ring.
 struct WaitingSpinner: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var turn = false
 
     var body: some View {
-        Circle()
-            .stroke(Theme.rgb(0xD9, 0xD9, 0xD9), lineWidth: 2)
-            .overlay(Circle().trim(from: 0, to: 0.25).stroke(Theme.ink, lineWidth: 2))
-            .frame(width: 14, height: 14)
-            .rotationEffect(.degrees(turn ? 360 : 0))
-            .animation(.linear(duration: reduceMotion ? 2.4 : 0.8).repeatForever(autoreverses: false),
-                       value: turn)
-            .onAppear { turn = true }
-            .accessibilityHidden(true)
+        Group {
+            if reduceMotion {
+                Circle().fill(Theme.inkMuted).frame(width: 8, height: 8)
+                    .frame(width: 14, height: 14)
+            } else {
+                Circle()
+                    .stroke(Theme.rgb(0xD9, 0xD9, 0xD9), lineWidth: 2)
+                    .overlay(Circle().trim(from: 0, to: 0.25).stroke(Theme.ink, lineWidth: 2))
+                    .frame(width: 14, height: 14)
+                    .rotationEffect(.degrees(turn ? 360 : 0))
+                    .animation(.linear(duration: 0.8).repeatForever(autoreverses: false),
+                               value: turn)
+                    .onAppear { turn = true }
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 
@@ -178,6 +187,7 @@ struct FRPrimaryButton: View {
                 .background(Theme.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
+        .keyboardShortcut(.defaultAction)
         .opacity(enabled ? 1 : 0.4)
         .disabled(!enabled)
         .clickableCursor(enabled)
@@ -241,6 +251,14 @@ struct FRHeader: View {
 struct FRErrorBanner: View {
     let text: String
 
+    /// VoiceOver speaks the message when the banner appears.
+    private static func announce(_ text: String) {
+        NSAccessibility.post(
+            element: NSApp as Any, notification: .announcementRequested,
+            userInfo: [.announcement: text,
+                       .priority: NSAccessibilityPriorityLevel.high.rawValue])
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             AlertGlyph().padding(.top, 1)
@@ -256,6 +274,8 @@ struct FRErrorBanner: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.dangerSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityElement(children: .combine)
+        .onAppear { Self.announce(text) }
+        .onChange(of: text) { _, next in Self.announce(next) }
     }
 }
 

@@ -17,6 +17,11 @@ import UsefulVoiceCore
 ///   download starts and again from the failure text.
 /// - Switching engine mid-download: choosing Deepgram or the other model pauses
 ///   the running download first.
+/// - Half-saved engine: picking a Whisper model starts its download but the
+///   engine and model switch only once the file is usable. Cancel, Back, closing
+///   the window or Close from Settings drop the pending choice and put the
+///   engine back to what it was when the flow opened (unless the choice already
+///   works).
 /// - Microphone denied, then granted while the step is open: a one-second poll
 ///   moves on by itself.
 /// - Accessibility granted while the app is in the background: the same poll
@@ -33,7 +38,7 @@ final class FirstRunModel: ObservableObject {
 
     /// A state a screenshot can jump straight to.
     enum Preview: String {
-        case errKey, errDownload, errMic, tryItDone
+        case errKey, errDownload, errMic, tryItDone, accessibilityOn
     }
 
     enum KeyCheck: Equatable {
@@ -42,6 +47,8 @@ final class FirstRunModel: ObservableObject {
         case rejected
         case network
         case failed(String)
+        /// The key passed the check but the Keychain write failed.
+        case saveFailed
     }
 
     enum MicStatus: Equatable {
@@ -54,6 +61,8 @@ final class FirstRunModel: ObservableObject {
     @Published private(set) var page: Page = .welcome
     /// Bumped when the flow ends, so the window can land on Dictate.
     @Published private(set) var finishCount = 0
+    /// Opened from Settings "Run setup again": it can be closed without finishing.
+    @Published private(set) var startedFromSettings = false
 
     // Engine
     @Published var keyText = ""
@@ -67,7 +76,8 @@ final class FirstRunModel: ObservableObject {
 
     // Microphone
     @Published private(set) var micStatus: MicStatus = .notDetermined
-    @Published private(set) var micLevels: [Float] = Array(repeating: 0, count: FirstRunModel.meterBars)
+    /// Separate object so only the meter redraws at audio rate.
+    let meterLevels = MicLevels()
     @Published private(set) var micDeviceName = "Microphone"
 
     // Accessibility
@@ -104,6 +114,22 @@ final class FirstRunModel: ObservableObject {
     private var advanceWork: DispatchWorkItem?
     private var meter: MicLevelMeter?
     private var windowVisible = true
+    private var meterConfigObserver: AnyCancellable?
+    /// A failed meter start is not retried before this, so the 1 s poll does not
+    /// hammer a device that will not open.
+    private var meterRetryAfter = Date.distantPast
+    private var lastLevelPush = Date.distantPast
+    /// The key a running check is for, so editing the field cancels it.
+    private var keyUnderCheck: String?
+    /// What the app was set to when the flow opened.
+    private var snapshot: FirstRunGate.EngineSelection
+    /// A Whisper model the flow is downloading for. The engine switches to it
+    /// only once it is usable.
+    private var pendingLocal: WhisperModel?
+    /// Forced runs save nothing, so a language or key picked in Try it is shown
+    /// from these instead.
+    @Published private var previewLanguage: LanguagePin?
+    @Published private var previewHotkey: Int?
     private var recentBaseline: UUID?
     private var cancellables = Set<AnyCancellable>()
     private var awaitingClaim = false
@@ -129,9 +155,17 @@ final class FirstRunModel: ObservableObject {
         self.forced = forced
         self.offscreen = environment["UV_SNAPSHOT"] != nil
 
+        self.snapshot = FirstRunGate.EngineSelection(
+            engine: settings.transcriptionEngine, modelID: settings.localModelID)
+        // Key PRESENCE (attributes only, never prompts) or a usable local model.
+        // Never the key cache, which may not have loaded yet, and a stored key
+        // that cannot be read right now still counts as configured.
         let decision = FirstRunGate.decide(
             completed: defaults.bool(forKey: FirstRunGate.completedKey),
-            engineConfigured: viewModel.providerConfigured,
+            engineConfigured: FirstRunGate.engineConfigured(
+                keyStored: Keychain.exists(account: DeepgramKeyStore.account),
+                localModelUsable: viewModel.models.models.contains {
+                    viewModel.models.availability(of: $0) == .usable }),
             microphoneAuthorized: AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
             accessibilityTrusted: AXIsProcessTrusted(),
             forced: forced)
@@ -153,11 +187,14 @@ final class FirstRunModel: ObservableObject {
 
         // A forced run pretends to be a new Mac: whatever key is really saved
         // does not count, so the claim card shows as designed.
-        keyConnected = forced ? false : DeepgramKeyStore.shared.isConfigured()
-        micDeviceName = AVCaptureDevice.default(for: .audio)?.localizedName ?? "Microphone"
+        keyConnected = forced ? false : Keychain.exists(account: DeepgramKeyStore.account)
         applyPreview()
         if active { enter(start) }
 
+        viewModel.models.$availability
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.modelsChanged() }
+            .store(in: &cancellables)
         viewModel.$recent
             .receive(on: DispatchQueue.main)
             .sink { [weak self] recent in self?.recentChanged(recent) }
@@ -183,6 +220,7 @@ final class FirstRunModel: ObservableObject {
         case "errKey": return (.engine, .errKey)
         case "errDownload": return (.localDownload, .errDownload)
         case "errMic": return (.microphone, .errMic)
+        case "accessibilityOn": return (.accessibility, .accessibilityOn)
         default: return nil
         }
     }
@@ -201,9 +239,9 @@ final class FirstRunModel: ObservableObject {
         }
         if page == .microphone {
             micStatus = preview == .errMic ? .denied : .authorized
-            micLevels = Self.sampleLevels
+            meterLevels.levels = Self.sampleLevels
         }
-        if page == .accessibility { accessibilityGranted = false }
+        if page == .accessibility { accessibilityGranted = preview == .accessibilityOn }
     }
 
     /// The meter shape from the mockup, for offscreen renders.
@@ -217,8 +255,17 @@ final class FirstRunModel: ObservableObject {
         guard next != page else { return }
         let old = page
         leave(old)
+        // The key field is cleared on the way out unless the connected page is
+        // next (it shows the saved key as dots, never the text).
+        if old == .engine && next != .deepgramKey { clearKeyField() }
         page = next
         enter(next)
+    }
+
+    private func clearKeyField() {
+        keyText = ""
+        keyCheck = .idle
+        keyUnderCheck = nil
     }
 
     /// Reopens the flow from Welcome. Always saves normally.
@@ -230,7 +277,11 @@ final class FirstRunModel: ObservableObject {
         practiceText = ""
         practiceWorked = false
         accessibilityGranted = false
-        keyConnected = DeepgramKeyStore.shared.isConfigured()
+        keyConnected = Keychain.exists(account: DeepgramKeyStore.account)
+        snapshot = FirstRunGate.EngineSelection(
+            engine: settings.transcriptionEngine, modelID: settings.localModelID)
+        pendingLocal = nil
+        startedFromSettings = true
         page = .welcome
         active = true
         enter(.welcome)
@@ -245,14 +296,58 @@ final class FirstRunModel: ObservableObject {
     func finish() {
         markCompleted()
         leave(page)
+        clearKeyField()
+        // A download still running keeps going and switches the engine when it
+        // is usable. One that already stopped is not coming back on its own.
+        if let pending = pendingLocal {
+            switch models.state(for: pending) {
+            case .downloading, .validating: break
+            default: dropPendingLocal()
+            }
+        }
+        startedFromSettings = false
         finishCount += 1
         withAnimation(BrandMotion.easeOut(duration: 0.2)) { active = false }
+    }
+
+    /// Close from Settings "Run setup again". Drops any half-finished choice and
+    /// never touches the completed flag.
+    func closeSetup() {
+        guard active, startedFromSettings else { return }
+        leave(page)
+        clearKeyField()
+        dropPendingLocal()
+        startedFromSettings = false
+        withAnimation(BrandMotion.easeOut(duration: 0.2)) { active = false }
+    }
+
+    /// The window was closed with the flow still up.
+    func windowClosed() {
+        guard active, !frozen else { return }
+        if page == .done {
+            finish()
+        } else if startedFromSettings {
+            closeSetup()
+        } else {
+            // Back to Welcome with the engine as it was, so the next launch (or
+            // reopening) starts clean.
+            leave(page)
+            clearKeyField()
+            changingKey = false
+            dropPendingLocal()
+            page = .welcome
+            enter(.welcome)
+        }
     }
 
     private func enter(_ page: Page) {
         switch page {
         case .engine:
-            keyCheck = frozen ? keyCheck : .idle
+            if !frozen {
+                keyCheck = .idle
+                keyText = ""
+                changingKey = false
+            }
         case .localDownload:
             refreshModels()
         case .microphone:
@@ -262,9 +357,11 @@ final class FirstRunModel: ObservableObject {
             startPolling()
         case .accessibility:
             guard !frozen else { return }
-            accessibilityGranted = false
+            // Already trusted on entry (a Back from Try it, or granted earlier):
+            // show Allowed with a Continue button and do not move on by itself.
+            // Only a false to true flip during this visit auto-advances.
+            accessibilityGranted = AXIsProcessTrusted()
             startPolling()
-            pollTick()
         case .tryIt:
             recentBaseline = viewModel.recent.first?.id
             if !frozen { practiceWorked = false }
@@ -298,14 +395,30 @@ final class FirstRunModel: ObservableObject {
     }
 
     func changeKey() {
-        keyText = ""
-        keyCheck = .idle
+        clearKeyField()
         changingKey = true
         focusKeyRequest += 1
     }
 
+    /// Back out of "Change key" with the saved key untouched.
+    func keepCurrentKey() {
+        checkTask?.cancel()
+        checkTask = nil
+        clearKeyField()
+        changingKey = false
+    }
+
     func keyTextEdited() {
-        if case .checking = keyCheck { return }
+        if case .checking = keyCheck {
+            // The check is for the old text: stop it rather than save a key the
+            // field no longer shows.
+            guard trimmedKey != keyUnderCheck else { return }
+            checkTask?.cancel()
+            checkTask = nil
+            keyUnderCheck = nil
+            keyCheck = .idle
+            return
+        }
         if keyCheck != .idle { keyCheck = .idle }
     }
 
@@ -315,6 +428,7 @@ final class FirstRunModel: ObservableObject {
         let key = trimmedKey
         guard !key.isEmpty, keyCheck != .checking else { return }
         keyCheck = .checking
+        keyUnderCheck = key
         let language = viewModel.languagePin
         checkTask?.cancel()
         checkTask = Task { [weak self] in
@@ -329,6 +443,7 @@ final class FirstRunModel: ObservableObject {
                 await self.saveAcceptedKey(key)
                 return
             }
+            self.keyUnderCheck = nil
             switch result.failure {
             case .rejected: self.keyCheck = .rejected
             case .network: self.keyCheck = .network
@@ -348,17 +463,21 @@ final class FirstRunModel: ObservableObject {
                     return false
                 }
             }.value
-            guard !Task.isCancelled else { return }
             guard saved else {
-                keyCheck = .failed("Couldn't save the key to your Keychain. Try again.")
+                if !Task.isCancelled { keyCheck = .saveFailed }
                 return
             }
+            // The key is in the Keychain now, so the app must know it even when
+            // the person has already moved on. Cancellation only skips navigation.
             DeepgramKeyStore.shared.update(key)
+            keyConnected = true
+            guard !Task.isCancelled else { return }
             chooseEngine(.deepgram)
+        } else {
+            guard !Task.isCancelled else { return }
+            keyConnected = true
         }
-        keyText = ""
-        keyCheck = .idle
-        keyConnected = true
+        clearKeyField()
         changingKey = false
         go(.deepgramKey)
     }
@@ -371,7 +490,7 @@ final class FirstRunModel: ObservableObject {
 
     private func chooseEngine(_ engine: TranscriptionEngineChoice) {
         guard !forced else { return }
-        if engine == .deepgram { pauseRunningDownloads() }
+        if engine == .deepgram { dropPendingLocal(restoring: false) }
         settings.transcriptionEngine = engine
         viewModel.models.engineChanged(to: engine)
         viewModel.refreshConfig()
@@ -379,10 +498,10 @@ final class FirstRunModel: ObservableObject {
 
     /// Back to the engine page from "Use Deepgram instead": keep any saved key.
     func useDeepgramInstead() {
-        pauseRunningDownloads()
         if keyConnected {
             continueWithDeepgram()
         } else {
+            dropPendingLocal()
             go(.engine)
         }
     }
@@ -391,47 +510,123 @@ final class FirstRunModel: ObservableObject {
 
     var models: LocalModelManager { viewModel.models }
 
+    /// Picking a model starts its download. The engine and model switch only
+    /// when the file is usable (now, or the moment it finishes).
     func chooseLocal(_ model: WhisperModel) {
-        // Switching models while one downloads: stop the other first.
-        for other in models.models where other.id != model.id {
-            if case .downloading = models.state(for: other) { models.pause(other) }
-        }
         selectedModel = model
         downloadStart = nil
+        diskMessage = nil
         if !forced {
-            models.select(model)
-            chooseEngine(.whisperLocal)
-            if models.availability(of: model) != .usable {
+            // Switching models while one downloads: stop the other first.
+            for other in models.models where other.id != model.id {
+                if case .downloading = models.state(for: other) { models.pause(other) }
+            }
+            if models.availability(of: model) == .usable {
+                pendingLocal = nil
+                commitLocal(model)
+            } else {
+                pendingLocal = model
                 startDownload(model)
             }
         }
         go(.localDownload)
     }
 
+    /// Continue on the download page. Commits when the file is ready; otherwise
+    /// the choice stays pending and lands by itself when the download finishes.
+    func continueFromDownload() {
+        if !forced, models.availability(of: selectedModel) == .usable {
+            commitLocal(selectedModel)
+        }
+        go(.microphone)
+    }
+
+    private func commitLocal(_ model: WhisperModel) {
+        guard !forced, models.availability(of: model) == .usable else { return }
+        models.activate(model)
+        if pendingLocal?.id == model.id { pendingLocal = nil }
+        chooseEngine(.whisperLocal)
+    }
+
+    private func modelsChanged() {
+        guard let pending = pendingLocal, models.availability(of: pending) == .usable else { return }
+        commitLocal(pending)
+    }
+
+    /// Forgets the pending model, stops its download and, unless the current
+    /// choice already works, puts the engine back to what it was at the start.
+    private func dropPendingLocal(restoring: Bool = true) {
+        guard !forced else { return }
+        if pendingLocal != nil {
+            pauseRunningDownloads()
+            pendingLocal = nil
+        }
+        if restoring { restoreSnapshotIfUnusable() }
+    }
+
+    private func restoreSnapshotIfUnusable() {
+        guard !forced else { return }
+        let current = FirstRunGate.EngineSelection(
+            engine: settings.transcriptionEngine, modelID: settings.localModelID)
+        let usable: Bool
+        switch current.engine {
+        case .deepgram:
+            usable = Keychain.exists(account: DeepgramKeyStore.account)
+        case .whisperLocal:
+            usable = WhisperModelCatalog.model(forID: current.modelID)
+                .map { models.availability(of: $0) == .usable } ?? false
+        }
+        let target = FirstRunGate.selectionAfterAbandon(
+            snapshot: snapshot, current: current, currentUsable: usable)
+        guard target != current else { return }
+        if target.modelID != current.modelID,
+           let model = WhisperModelCatalog.model(forID: target.modelID) {
+            models.activate(model)
+        }
+        if target.engine != current.engine {
+            settings.transcriptionEngine = target.engine
+            models.engineChanged(to: target.engine)
+        }
+        viewModel.refreshConfig()
+    }
+
     func startDownload(_ model: WhisperModel) {
         if forced { return }
-        if let shortfall = diskShortfall(for: model) {
-            diskMessage = Self.diskMessage(shortfallBytes: shortfall, model: model)
-            return
+        switch models.state(for: model) {
+        case .downloading, .validating: return
+        default: break
         }
-        diskMessage = nil
-        downloadStart = nil
-        models.download(model)
+        let have = max(models.installedBytes(for: model) ?? 0, models.partialBytes(for: model))
+        diskTask?.cancel()
+        diskTask = Task { [weak self] in
+            // The capacity query touches the volume, so it runs off the main actor.
+            let shortfall = await Task.detached(priority: .userInitiated) {
+                Self.diskShortfall(needed: model.expectedBytes - have)
+            }.value
+            guard !Task.isCancelled, let self else { return }
+            if let shortfall {
+                self.diskMessage = Self.diskMessage(shortfallBytes: shortfall, model: model)
+                return
+            }
+            self.diskMessage = nil
+            self.downloadStart = nil
+            self.models.download(model)
+        }
     }
+
+    private var diskTask: Task<Void, Never>?
 
     /// Set when a download could not start for lack of space.
     @Published private(set) var diskMessage: String?
 
     /// How many bytes short the volume is, or nil when there is room.
-    private func diskShortfall(for model: WhisperModel) -> Int64? {
-        let have = models.installedBytes(for: model) ?? 0
-        let need = model.expectedBytes - have
+    nonisolated private static func diskShortfall(needed: Int64) -> Int64? {
         let home = FileManager.default.homeDirectoryForCurrentUser
         guard let free = try? home.resourceValues(
             forKeys: [.volumeAvailableCapacityForImportantUsageKey])
             .volumeAvailableCapacityForImportantUsage else { return nil }
         // Headroom for the checksum step and the OS itself.
-        let required = need + 512 * 1024 * 1024
+        let required = needed + 512 * 1024 * 1024
         return free >= required ? nil : required - free
     }
 
@@ -440,12 +635,18 @@ final class FirstRunModel: ObservableObject {
         return "There isn't enough space on this Mac for \(model.shortName). Free up about \(gb), then resume."
     }
 
+    /// Cancel download, and the Back link on the download page: nothing of the
+    /// half-made choice is kept.
     func cancelDownload() {
+        diskTask?.cancel()
         pauseRunningDownloads()
+        pendingLocal = nil
+        restoreSnapshotIfUnusable()
         go(.engine)
     }
 
     func pauseRunningDownloads() {
+        guard !forced else { return }
         for model in models.models {
             if case .downloading = models.state(for: model) { models.pause(model) }
         }
@@ -479,28 +680,53 @@ final class FirstRunModel: ObservableObject {
         default: next = .denied
         }
         micStatus = next
-        micDeviceName = AVCaptureDevice.default(for: .audio)?.localizedName ?? "Microphone"
+        // Read lazily, here, so opening the flow never touches the capture
+        // device. Assigned only when it changed.
+        let name = AVCaptureDevice.default(for: .audio)?.localizedName ?? "Microphone"
+        if name != micDeviceName { micDeviceName = name }
     }
 
     private func startMeter() {
-        guard !offscreen, !frozen, windowVisible, meter == nil else { return }
+        guard !offscreen, !frozen, windowVisible, meter == nil,
+              Date() >= meterRetryAfter else { return }
         let meter = MicLevelMeter()
         let ok = meter.start { [weak self] level in
             DispatchQueue.main.async { self?.pushLevel(level) }
         }
-        if ok { self.meter = meter }
+        guard ok else {
+            meterRetryAfter = Date().addingTimeInterval(5)
+            return
+        }
+        self.meter = meter
+        // The default input changed (headphones plugged in, say): the engine
+        // stops itself, so start again on the new device.
+        meterConfigObserver = NotificationCenter.default
+            .publisher(for: .AVAudioEngineConfigurationChange, object: meter.engine)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, self.page == .microphone else { return }
+                    self.stopMeter()
+                    self.refreshMic()
+                    if self.micStatus == .authorized { self.startMeter() }
+                }
+            }
     }
 
     private func stopMeter() {
+        meterConfigObserver = nil
         meter?.stop()
         meter = nil
-        if !frozen { micLevels = Array(repeating: 0, count: Self.meterBars) }
+        if !frozen { meterLevels.reset() }
     }
 
+    /// About 20 updates a second is plenty for a 24-bar meter.
     private func pushLevel(_ level: Float) {
         guard meter != nil else { return }
-        micLevels.insert(level, at: 0)
-        micLevels.removeLast()
+        let now = Date()
+        guard now.timeIntervalSince(lastLevelPush) >= 0.05 else { return }
+        lastLevelPush = now
+        meterLevels.push(level)
     }
 
     // MARK: - Accessibility
@@ -540,12 +766,17 @@ final class FirstRunModel: ObservableObject {
         case .microphone:
             let before = micStatus
             refreshMic()
-            if micStatus == .authorized, before == .denied {
+            if micStatus != .authorized {
+                // Access was revoked while the step is open: stop listening.
+                if meter != nil { stopMeter() }
+            } else if before == .denied {
+                // Flipped to allowed during this visit: move on by itself.
                 go(.accessibility)
-            } else if micStatus == .authorized, meter == nil {
+            } else if meter == nil {
                 startMeter()
             }
         case .accessibility:
+            // Only a flip from off to on during this visit moves on by itself.
             guard !accessibilityGranted, AXIsProcessTrusted() else { return }
             accessibilityGranted = true
             onAccessibilityGranted?()
@@ -574,16 +805,32 @@ final class FirstRunModel: ObservableObject {
         guard active else { return }
         if !visible {
             stopMeter()
-        } else if page == .microphone, micStatus == .authorized {
-            startMeter()
+            // Nobody can see the step, so no one-second poll either. Coming
+            // back to the app re-checks (see `appBecameActive`).
+            if page == .microphone { stopPolling() }
+        } else if page == .microphone {
+            startPolling()
+            if micStatus == .authorized { startMeter() }
+            pollTick()
         }
     }
 
     // MARK: - Try it
 
+    /// The language Try it shows. In a forced run the pick is only shown.
+    var languagePin: LanguagePin { previewLanguage ?? viewModel.languagePin }
+
     func setLanguage(_ pin: LanguagePin) {
+        guard !forced else { previewLanguage = pin; return }
         settings.languagePin = pin
         viewModel.refreshConfig()
+    }
+
+    var hotkeyKeycode: Int { previewHotkey ?? viewModel.hotkeyKeycode }
+
+    func setHotkey(_ keycode: Int) {
+        guard !forced else { previewHotkey = keycode; return }
+        viewModel.setHotkeyKeycode(keycode)
     }
 
     private func recentChanged(_ recent: [DictationRecord]) {
@@ -600,7 +847,7 @@ final class FirstRunModel: ObservableObject {
     }
 
     /// "Right ⌘" style label for the current dictation key.
-    var keyLabel: String { Self.shortKeyLabel(for: viewModel.hotkeyKeycode) }
+    var keyLabel: String { Self.shortKeyLabel(for: hotkeyKeycode) }
 
     static func shortKeyLabel(for keycode: Int) -> String {
         let label = HotkeyOption.label(for: keycode)
@@ -622,7 +869,7 @@ extension WhisperModel {
 /// Reads the default input's level while the microphone step is on screen.
 @MainActor
 final class MicLevelMeter {
-    private let engine = AVAudioEngine()
+    let engine = AVAudioEngine()
     private var running = false
 
     func start(onLevel: @escaping @Sendable (Float) -> Void) -> Bool {
@@ -662,5 +909,21 @@ final class MicLevelMeter {
             let db = 20 * log10(max(rms, 1e-6))
             onLevel(min(1, max(0, (db + 50) / 40)))
         }
+    }
+}
+
+/// The meter bars, kept out of `FirstRunModel` so only the meter redraws when
+/// audio arrives.
+@MainActor
+final class MicLevels: ObservableObject {
+    @Published var levels: [Float] = Array(repeating: 0, count: FirstRunModel.meterBars)
+
+    func push(_ level: Float) {
+        levels.insert(level, at: 0)
+        levels.removeLast()
+    }
+
+    func reset() {
+        levels = Array(repeating: 0, count: FirstRunModel.meterBars)
     }
 }

@@ -7,7 +7,31 @@ public enum ModelDownloadState: Equatable, Sendable {
     /// The file is down and the SHA-256 is being verified.
     case validating
     case paused(resumeAvailable: Bool)
-    case failed(String)
+    case failed(String, ModelDownloadFailureKind)
+}
+
+/// Why a download failed, so the UI can say something specific without
+/// parsing the message.
+public enum ModelDownloadFailureKind: Equatable, Sendable {
+    /// The disk is full.
+    case disk
+    /// The connection dropped or never came up.
+    case network
+    /// Hugging Face answered with a non-success status.
+    case http
+    /// The downloaded file failed its size, magic or checksum check.
+    case validation
+    /// The file could not be staged or moved into place.
+    case install
+
+    /// Maps a system error to a kind: out of space is the only one worth its own copy.
+    static func classify(_ error: Error) -> ModelDownloadFailureKind {
+        if error is URLError { return .network }
+        let ns = error as NSError
+        if (ns.domain == NSCocoaErrorDomain && ns.code == NSFileWriteOutOfSpaceError)
+            || (ns.domain == NSPOSIXErrorDomain && ns.code == Int(ENOSPC)) { return .disk }
+        return .install
+    }
 }
 
 /// Receives download events. Called on an arbitrary queue — the app-layer
@@ -57,13 +81,13 @@ public final class ModelDownloader: NSObject, URLSessionDownloadDelegate, @unche
     /// resume data, and a failure found while staging the file (HTTP status,
     /// move error).
     private var resumedTasks: Set<Int> = []
-    private var stageFailures: [Int: String] = [:]
+    private var stageFailures: [Int: (message: String, kind: ModelDownloadFailureKind)] = [:]
 
     private struct FinishedTask {
         let model: WhisperModel
         let token: UUID?
         let resumed: Bool
-        let stageFailure: String?
+        let stageFailure: (message: String, kind: ModelDownloadFailureKind)?
     }
 
     public init(store: LocalModelStore = LocalModelStore()) {
@@ -256,7 +280,7 @@ public final class ModelDownloader: NSObject, URLSessionDownloadDelegate, @unche
             if let http = downloadTask.response as? HTTPURLResponse,
                !(200..<300).contains(http.statusCode) {
                 stageFailures[id] =
-                    "Hugging Face returned HTTP \(http.statusCode). Try again later."
+                    ("Hugging Face returned HTTP \(http.statusCode). Try again later.", .http)
                 return
             }
             do {
@@ -266,7 +290,8 @@ public final class ModelDownloader: NSObject, URLSessionDownloadDelegate, @unche
                 FileProtection.restrict(staged, isDirectory: false)
             } catch {
                 stageFailures[id] =
-                    "could not stage the download: \(error.localizedDescription)"
+                    ("could not stage the download: \(error.localizedDescription)",
+                     ModelDownloadFailureKind.classify(error))
             }
         }
     }
@@ -302,7 +327,8 @@ public final class ModelDownloader: NSObject, URLSessionDownloadDelegate, @unche
                     return .relaunch
                 } else {
                     attempts.removeValue(forKey: model.id)
-                    emit(.failed(urlError?.localizedDescription ?? error.localizedDescription),
+                    emit(.failed(urlError?.localizedDescription ?? error.localizedDescription,
+                                 .classify(error)),
                          for: model)
                 }
                 return .nothing
@@ -311,7 +337,7 @@ public final class ModelDownloader: NSObject, URLSessionDownloadDelegate, @unche
             if let failure = finished.stageFailure {
                 store.clearDownloadState(for: model)
                 attempts.removeValue(forKey: model.id)
-                emit(.failed(failure), for: model)
+                emit(.failed(failure.message, failure.kind), for: model)
                 return .nothing
             }
 
@@ -334,17 +360,19 @@ public final class ModelDownloader: NSObject, URLSessionDownloadDelegate, @unche
         let store = self.store
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            let failure: String?
+            let failure: (message: String, kind: ModelDownloadFailureKind)?
             do {
                 try store.validateDownloadedFile(for: model)
                 failure = nil
             } catch let storeError as ModelStoreError {
                 switch storeError {
-                case .validationFailed(let reason): failure = "download failed validation: \(reason)"
-                case .activationFailed(let detail): failure = "could not install the model: \(detail)"
+                case .validationFailed(let reason):
+                    failure = ("download failed validation: \(reason)", .validation)
+                case .activationFailed(let detail):
+                    failure = ("could not install the model: \(detail)", .install)
                 }
             } catch {
-                failure = "could not install the model"
+                failure = ("could not install the model", .install)
             }
             self.lock.withLock {
                 guard self.attempts[model.id] == token else { return }
@@ -354,18 +382,18 @@ public final class ModelDownloader: NSObject, URLSessionDownloadDelegate, @unche
                         try store.commitDownloadedFile(for: model)
                     } catch let storeError as ModelStoreError {
                         if case .activationFailed(let detail) = storeError {
-                            message = "could not install the model: \(detail)"
+                            message = ("could not install the model: \(detail)", .install)
                         } else {
-                            message = "could not install the model"
+                            message = ("could not install the model", .install)
                         }
                     } catch {
-                        message = "could not install the model"
+                        message = ("could not install the model", .install)
                     }
                 }
                 self.attempts.removeValue(forKey: model.id)
                 if let message {
                     store.clearDownloadState(for: model)
-                    self.emit(.failed(message), for: model)
+                    self.emit(.failed(message.message, message.kind), for: model)
                 } else {
                     self.emit(.idle, for: model)
                 }

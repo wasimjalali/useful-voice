@@ -57,6 +57,10 @@ struct SettingsPage: View {
         }
         .background(Theme.surface)
         .onAppear(perform: load)
+        // A key typed and abandoned must not sit in memory behind a closed editor.
+        .onChange(of: changingDeepgramKey) { _, open in
+            if !open { deepgramKey = "" }
+        }
         .confirmationDialog(
             "Delete \(modelPendingDeletion?.displayName ?? "model")?",
             isPresented: Binding(
@@ -338,19 +342,44 @@ struct SettingsPage: View {
             .frame(width: 18, height: 18)
     }
 
+    /// Tapping Deepgram switches to it only when a key is saved; without one it
+    /// opens the key editor instead.
+    private func chooseDeepgram() {
+        if hasDeepgramKey {
+            engineBinding.wrappedValue = .deepgram
+        } else {
+            changingDeepgramKey = true
+        }
+    }
+
     private var deepgramRow: some View {
         let selected = engine == .deepgram
+        let detail = hasDeepgramKey ? "Cloud. Key saved in your Keychain." : "Cloud. Needs an API key."
         return HStack(spacing: 12) {
-            radio(selected)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Deepgram Nova-3")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-                Text(hasDeepgramKey ? "Cloud. Key saved in your Keychain." : "Cloud. Needs an API key.")
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Theme.muted)
+            // The choosing part is its own button, so Tab and VoiceOver reach it
+            // and the buttons on the right stay separate.
+            Button(action: chooseDeepgram) {
+                HStack(spacing: 12) {
+                    radio(selected)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Deepgram Nova-3")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
+                        Text(detail)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Theme.muted)
+                    }
+                    Spacer(minLength: 12)
+                }
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
             }
-            Spacer(minLength: 12)
+            .buttonStyle(.plain)
+            .clickableCursor()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Deepgram Nova-3. \(detail)")
+            .accessibilityValue(selected ? "Selected" : "Not selected")
+            .accessibilityAddTraits(selected ? [.isButton, .isSelected] : [.isButton])
             if hasDeepgramKey {
                 HStack(spacing: 6) {
                     CheckGlyph(size: 16)
@@ -366,10 +395,7 @@ struct SettingsPage: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(minHeight: 56)
-        .contentShape(Rectangle())
-        .onTapGesture { engineBinding.wrappedValue = .deepgram }
         .accessibilityElement(children: .contain)
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
     /// The key field behind "Change key": the new key is saved by Save settings
@@ -395,35 +421,51 @@ struct SettingsPage: View {
 
     private func modelRow(_ model: WhisperModel) -> some View {
         let selected = engine == .whisperLocal && models.isActive(model)
+        let detail = modelDetail(model)
         return HStack(spacing: 12) {
-            radio(selected)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(model.shortName)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-                Text(modelDetail(model))
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(modelDetailIsError(model) ? Theme.danger : Theme.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+            Button { chooseModel(model) } label: {
+                HStack(spacing: 12) {
+                    radio(selected)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(model.shortName)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
+                        Text(detail)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(modelDetailIsError(model) ? Theme.danger : Theme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 12)
+                }
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
             }
-            Spacer(minLength: 12)
+            .buttonStyle(.plain)
+            .clickableCursor()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(model.shortName). \(detail)")
+            .accessibilityValue(selected ? "Selected" : "Not selected")
+            .accessibilityAddTraits(selected ? [.isButton, .isSelected] : [.isButton])
             modelAccessory(model)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(minHeight: 56)
-        .contentShape(Rectangle())
-        .onTapGesture { chooseModel(model) }
         .accessibilityElement(children: .contain)
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
+    /// A model that is on this Mac becomes the engine. One that is not starts
+    /// downloading and switches nothing: it becomes the engine when you pick it
+    /// once it is ready.
     private func chooseModel(_ model: WhisperModel) {
-        if models.availability(of: model) == .usable {
-            models.activate(model)
-        } else {
-            models.select(model)
+        guard models.availability(of: model) == .usable else {
+            switch models.state(for: model) {
+            case .downloading, .validating: break
+            default: models.download(model)
+            }
+            return
         }
+        models.activate(model)
         engineBinding.wrappedValue = .whisperLocal
     }
 
@@ -438,7 +480,7 @@ struct SettingsPage: View {
             return Self.progressDescription(received: received, total: total)
         case .validating:
             return "Verifying checksum"
-        case .failed(let message):
+        case .failed(let message, _):
             return message
         case .paused, .idle:
             switch models.availability(of: model) {
@@ -726,6 +768,7 @@ struct SettingsPage: View {
                 DeepgramKeyStore.shared.update(trimmedKey)
                 hasDeepgramKey = true
                 deepgramKey = ""
+                changingDeepgramKey = false
             }
             viewModel.refreshConfig()
             saveMessage = "Settings saved"

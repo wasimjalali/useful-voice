@@ -14,9 +14,11 @@ open dist/UsefulVoice.app
 
 ## Model download and management
 
-- [ ] Settings › Transcription engine: switch to **Whisper (local)**. With no
-      model downloaded, the model rows in the Speech section show a download button and dictation
-      reports a clear "no model downloaded" error — never a silent failure.
+- [ ] Settings › Transcription: tap a **Whisper** model row. With no model
+      downloaded, the row shows a download button, tapping it starts the download without
+      switching engine, and dictation (on Deepgram) is unaffected. To see the error, pick a
+      model, delete it, and dictate with the local engine still selected: it reports a clear
+      "no model downloaded" error, never a silent failure.
 - [ ] Download **large-v3-turbo**. Progress bar advances continuously; the row
       shows size-on-disk growing or a final size (~1.6 GB) when done.
 - [ ] Interrupt a download mid-flight by turning Wi-Fi off, then retry. It

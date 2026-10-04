@@ -39,6 +39,16 @@ public enum FirstRunGate {
         keyStored || localModelUsable
     }
 
+    /// The same rule for the engine the app is set to: a Deepgram engine needs a
+    /// stored key, a local engine needs its ACTIVE model usable. Another model
+    /// being downloaded does not count, because dictation would still fail.
+    public static func engineConfigured(engine: TranscriptionEngineChoice,
+                                        keyStored: Bool,
+                                        activeModelUsable: Bool) -> Bool {
+        engineConfigured(keyStored: engine == .deepgram && keyStored,
+                         localModelUsable: engine == .whisperLocal && activeModelUsable)
+    }
+
     /// The engine and local model the app was using when the flow opened.
     public struct EngineSelection: Equatable, Sendable {
         public let engine: TranscriptionEngineChoice

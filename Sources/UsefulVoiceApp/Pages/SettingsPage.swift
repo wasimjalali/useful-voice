@@ -57,6 +57,15 @@ struct SettingsPage: View {
         }
         .background(Theme.surface)
         .onAppear(perform: load)
+        // The setup flow can change the engine and the key: re-read only those,
+        // so unsaved edits elsewhere on the page survive. (AppSettings is not
+        // observable, so the end of the flow is the signal.)
+        .onChange(of: firstRun.active) { _, active in
+            if !active {
+                hasDeepgramKey = DeepgramKeyStore.shared.isConfigured()
+                engine = settings.transcriptionEngine
+            }
+        }
         // A key typed and abandoned must not sit in memory behind a closed editor.
         .onChange(of: changingDeepgramKey) { _, open in
             if !open { deepgramKey = "" }

@@ -62,6 +62,22 @@ struct FirstRunGateTests {
         #expect(!FirstRunGate.engineConfigured(keyStored: false, localModelUsable: false))
     }
 
+    /// The local engine is set, its active model is not usable, another model is
+    /// downloaded, there is no key and the permissions are granted: dictation
+    /// would fail, so the flow shows. Another downloaded model is not an input.
+    @Test func unusableActiveModelWithAnotherDownloadedModelStillShows() {
+        let configured = FirstRunGate.engineConfigured(
+            engine: .whisperLocal, keyStored: false, activeModelUsable: false)
+        #expect(!configured)
+        #expect(decide(engine: configured, mic: true, ax: true) == .show)
+        #expect(FirstRunGate.engineConfigured(
+            engine: .whisperLocal, keyStored: false, activeModelUsable: true))
+        #expect(FirstRunGate.engineConfigured(
+            engine: .deepgram, keyStored: true, activeModelUsable: false))
+        #expect(!FirstRunGate.engineConfigured(
+            engine: .deepgram, keyStored: false, activeModelUsable: true))
+    }
+
     private typealias Selection = FirstRunGate.EngineSelection
     private let before = Selection(engine: .deepgram, modelID: "turbo")
     private let after = Selection(engine: .whisperLocal, modelID: "large")

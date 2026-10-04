@@ -43,7 +43,7 @@ screenshots out of commits. Build the bundle first (`make bundle`). A snapshot r
 First-run flow: `UV_FIRST_RUN=force` opens it over the window and saves nothing: no completed flag,
 engine, key, language, hotkey or download changes (downloads are not started or paused and the
 download page shows sample progress). Real permission prompts still appear. The key check still
-makes its network call. `UV_FIRST_RUN_STEP=<welcome|engine|deepgramKey|localDownload|microphone|accessibility|accessibilityOn|tryIt|tryItDone|done|errKey|errDownload|errMic>`
+makes its network call. `UV_FIRST_RUN_STEP=<welcome|engine|deepgramKey|localDownload|microphone|accessibility|accessibilityOn|tryIt|tryItDone|tryItDownloading|done|errKey|errDownload|errMic>`
 jumps to a step with sample data and freezes polling, and combines with `UV_SNAPSHOT`:
 
 ```sh

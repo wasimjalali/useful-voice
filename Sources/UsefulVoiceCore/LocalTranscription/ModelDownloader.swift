@@ -24,12 +24,25 @@ public enum ModelDownloadFailureKind: Equatable, Sendable {
     /// The file could not be staged or moved into place.
     case install
 
-    /// Maps a system error to a kind: out of space is the only one worth its own copy.
+    /// Maps a system error to a kind. Out of space is looked for through the whole
+    /// underlying-error chain first, because URLSession wraps a failed disk write
+    /// in a URLError. A URLError about file I/O without a disk-full cause is an
+    /// install problem, not the network.
     static func classify(_ error: Error) -> ModelDownloadFailureKind {
-        if error is URLError { return .network }
-        let ns = error as NSError
-        if (ns.domain == NSCocoaErrorDomain && ns.code == NSFileWriteOutOfSpaceError)
-            || (ns.domain == NSPOSIXErrorDomain && ns.code == Int(ENOSPC)) { return .disk }
+        var current: NSError? = error as NSError
+        var depth = 0
+        while let ns = current, depth < 8 {
+            if (ns.domain == NSCocoaErrorDomain && ns.code == NSFileWriteOutOfSpaceError)
+                || (ns.domain == NSPOSIXErrorDomain && ns.code == Int(ENOSPC)) { return .disk }
+            current = ns.userInfo[NSUnderlyingErrorKey] as? NSError
+            depth += 1
+        }
+        if let url = error as? URLError {
+            switch url.code {
+            case .cannotWriteToFile, .cannotCreateFile, .cannotMoveFile: return .install
+            default: return .network
+            }
+        }
         return .install
     }
 }

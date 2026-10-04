@@ -80,7 +80,7 @@ struct FirstRunView: View {
         case .localDownload: FRLocalDownloadPage(model: model, models: model.models)
         case .microphone: FRMicrophonePage(model: model)
         case .accessibility: FRAccessibilityPage(model: model)
-        case .tryIt: FRTryItPage(model: model, viewModel: model.viewModel)
+        case .tryIt: FRTryItPage(model: model, viewModel: model.viewModel, models: model.models)
         case .done: FRDonePage(model: model)
         }
     }

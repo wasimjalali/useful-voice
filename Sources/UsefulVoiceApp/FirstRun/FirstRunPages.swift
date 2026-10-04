@@ -50,7 +50,7 @@ struct FREnginePage: View {
                 .padding(.bottom, -6)
             VStack(spacing: 0) {
                 ForEach(models.models) { whisper in
-                    FRLocalRow(model: whisper) { model.chooseLocal(whisper) }
+                    FRLocalRow(model: whisper, enabled: !model.savingKey) { model.chooseLocal(whisper) }
                 }
             }
             .padding(3)
@@ -140,7 +140,8 @@ struct FREnginePage: View {
                         .underline()
                 }
                 .buttonStyle(.plain)
-                .clickableCursor()
+                .disabled(model.savingKey)
+                .clickableCursor(!model.savingKey)
             }
         }
     }
@@ -163,6 +164,7 @@ struct FREnginePage: View {
                 .font(.system(size: 14))
                 .foregroundStyle(Theme.brandInk)
                 .focused($keyFocused)
+                .disabled(model.savingKey)
                 // The field is inserted when "Change key" is pressed, after the
                 // request to focus it was already published, so ask again here.
                 .onAppear {
@@ -186,7 +188,7 @@ struct FREnginePage: View {
                 .onChange(of: model.focusKeyRequest) { _, _ in keyFocused = true }
                 .accessibilityLabel("Deepgram API key")
             Button(action: model.connect) {
-                Text(checking ? "Checking the key…" : "Connect")
+                Text(model.savingKey ? "Saving…" : checking ? "Checking the key…" : "Connect")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(canConnect ? Theme.ink : FRColor.quiet)
                     .padding(.horizontal, 16)
@@ -243,6 +245,7 @@ struct FREnginePage: View {
                         .background(Theme.brandInk, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .keyboardShortcut(.defaultAction)
                 .clickableCursor()
             }
         }
@@ -251,6 +254,7 @@ struct FREnginePage: View {
 
 private struct FRLocalRow: View {
     let model: WhisperModel
+    var enabled = true
     let action: () -> Void
     @State private var hovering = false
 
@@ -278,8 +282,9 @@ private struct FRLocalRow: View {
                         in: RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
         .buttonStyle(.plain)
+        .disabled(!enabled)
         .onHover { hovering = $0 }
-        .clickableCursor()
+        .clickableCursor(enabled)
         .accessibilityLabel("\(model.shortName). \(detail)")
     }
 }
@@ -345,6 +350,10 @@ struct FRLocalDownloadPage: View {
             return model.preview == .errDownload
                 ? .stopped(received: bytes, kind: .generic)
                 : .downloading(received: bytes, total: total)
+        }
+        // The capacity query is running: show the start, never a stopped state.
+        if model.preparingDownload, models.availability(of: whisper) != .usable {
+            return .downloading(received: 0, total: total)
         }
         if model.diskMessage != nil, models.availability(of: whisper) != .usable {
             return .stopped(received: models.installedBytes(for: whisper) ?? 0, kind: .disk)
@@ -427,7 +436,7 @@ struct FRLocalDownloadPage: View {
         case .downloading(let received, let whole):
             fraction = Double(received) / Double(max(whole, 1))
             trailing = "\(Self.gb(received)) of \(Self.gb(whole, unit: true))"
-            footer = timeLeft(received: received, total: whole)
+            footer = model.preparingDownload ? "Starting download" : timeLeft(received: received, total: whole)
         case .checking:
             fraction = 1
             trailing = "\(Self.gb(total, unit: true))"
@@ -700,6 +709,7 @@ private struct FRSwitchPicture: View {
 struct FRTryItPage: View {
     @ObservedObject var model: FirstRunModel
     @ObservedObject var viewModel: UsefulVoiceViewModel
+    @ObservedObject var models: LocalModelManager
     @FocusState private var padFocused: Bool
     @State private var changingKey = false
 
@@ -744,28 +754,86 @@ struct FRTryItPage: View {
             .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .onChange(of: model.hotkeyKeycode) { _, _ in changingKey = false }
 
-            pad
-            if model.practiceWorked {
-                HStack(spacing: 8) {
-                    CheckGlyph()
-                    Text("It worked. That's all there is to it.")
-                }
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.success)
-                .accessibilityElement(children: .combine)
-                FRPrimaryButton(title: "Finish setup") { model.go(.done) }
+            if let waiting = model.localPending {
+                waitingForModel(waiting)
             } else {
-                if case .error(let text) = viewModel.dictationState {
-                    FRErrorBanner(text: text)
-                    if viewModel.canRetry {
-                        FRPrimaryButton(title: "Retry", action: viewModel.retry)
-                    }
-                }
-                FRTextLink(title: "Skip for now") { model.go(.done) }
-                    .frame(maxWidth: .infinity)
+                practice
             }
         }
         .onAppear { padFocused = true }
+        // The committed model finished while this page is open: practice starts.
+        .onChange(of: model.localPending == nil) { _, ready in
+            if ready { padFocused = true }
+        }
+    }
+
+    /// How far the committed model is: bytes, whether it is moving, whether it is
+    /// being checked. Sample numbers in a forced run.
+    private func progress(of whisper: WhisperModel) -> (received: Int64, active: Bool, checking: Bool) {
+        let total = whisper.expectedBytes
+        if model.forced { return (Int64(Double(total) * 0.62), true, false) }
+        switch models.state(for: whisper) {
+        case .downloading(let got, _): return (got, true, false)
+        case .validating: return (total, true, true)
+        default: return (models.partialBytes(for: whisper), model.preparingDownload, false)
+        }
+    }
+
+    /// The committed local model is still downloading: say so, with its progress.
+    @ViewBuilder
+    private func waitingForModel(_ whisper: WhisperModel) -> some View {
+        let total = whisper.expectedBytes
+        let state = progress(of: whisper)
+        Text(state.active
+             ? "\(whisper.shortName) is still downloading. You can try it once it's ready."
+             : "\(whisper.shortName) isn't downloaded yet. You can try it once it's ready.")
+            .font(.system(size: 13))
+            .lineSpacing(3)
+            .foregroundStyle(Theme.inkMuted)
+            .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(whisper.shortName).font(.system(size: 14, weight: .semibold))
+                Spacer()
+                Text(state.checking ? "Checking the file"
+                     : "\(FRLocalDownloadPage.gb(state.received)) of \(FRLocalDownloadPage.gb(total, unit: true))")
+                    .font(.system(size: 14).monospacedDigit())
+                    .foregroundStyle(Theme.inkMuted)
+            }
+            .foregroundStyle(Theme.ink)
+            FRProgressTrack(fraction: Double(state.received) / Double(max(total, 1)),
+                            fill: state.active ? Theme.ink : Theme.inkFaint)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        FRTextLink(title: "Skip for now") { model.go(.done) }
+            .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var practice: some View {
+        pad
+        if model.practiceWorked {
+            HStack(spacing: 8) {
+                CheckGlyph()
+                Text("It worked. That's all there is to it.")
+            }
+            .font(.system(size: 13))
+            .foregroundStyle(Theme.success)
+            .accessibilityElement(children: .combine)
+            FRPrimaryButton(title: "Finish setup") { model.go(.done) }
+        } else {
+            if case .error(let text) = viewModel.dictationState {
+                FRErrorBanner(text: text)
+                if viewModel.canRetry {
+                    FRPrimaryButton(title: "Retry", action: viewModel.retry)
+                }
+            }
+            FRTextLink(title: "Skip for now") { model.go(.done) }
+                .frame(maxWidth: .infinity)
+        }
     }
 
     private var pad: some View {

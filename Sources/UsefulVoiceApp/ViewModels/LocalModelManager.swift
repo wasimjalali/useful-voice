@@ -118,8 +118,10 @@ final class LocalModelManager: ObservableObject {
 
     /// Makes the model the one local transcription uses. Takes effect on the
     /// next dictation; the engine lazily swaps contexts.
-    func activate(_ model: WhisperModel) {
-        guard availability(of: model) == .usable else { return }
+    /// `allowUnusable` is for the first-run flow, which commits a model that is
+    /// still downloading and restores the earlier one if setup is abandoned.
+    func activate(_ model: WhisperModel, allowUnusable: Bool = false) {
+        guard allowUnusable || availability(of: model) == .usable else { return }
         guard model.id != activeModelID else { return }
         deleteError = nil
         activeModelID = model.id

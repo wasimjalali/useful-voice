@@ -17,11 +17,12 @@ import UsefulVoiceCore
 ///   download starts and again from the failure text.
 /// - Switching engine mid-download: choosing Deepgram or the other model pauses
 ///   the running download first.
-/// - Half-saved engine: picking a Whisper model starts its download but the
-///   engine and model switch only once the file is usable. Cancel, Back, closing
-///   the window or Close from Settings drop the pending choice and put the
-///   engine back to what it was when the flow opened (unless the choice already
-///   works).
+/// - Half-saved engine: picking a Whisper row only starts its download. Continue
+///   on the download page commits the engine and that model, even while the file
+///   is still coming down. Cancel, Back, closing the window or Close from
+///   Settings drop the choice and put the engine back to what it was when the
+///   flow opened (unless the committed model already works). Nothing switches
+///   the engine after the flow ends, so a later Settings choice is never undone.
 /// - Microphone denied, then granted while the step is open: a one-second poll
 ///   moves on by itself.
 /// - Accessibility granted while the app is in the background: the same poll
@@ -38,7 +39,7 @@ final class FirstRunModel: ObservableObject {
 
     /// A state a screenshot can jump straight to.
     enum Preview: String {
-        case errKey, errDownload, errMic, tryItDone, accessibilityOn
+        case errKey, errDownload, errMic, tryItDone, tryItDownloading, accessibilityOn
     }
 
     enum KeyCheck: Equatable {
@@ -67,6 +68,9 @@ final class FirstRunModel: ObservableObject {
     // Engine
     @Published var keyText = ""
     @Published private(set) var keyCheck: KeyCheck = .idle
+    /// The Keychain write is running. It cannot be cancelled, so the key field,
+    /// Connect, Keep current key and the Whisper rows are off until it returns.
+    @Published private(set) var savingKey = false
     /// A key is saved (or, in a forced run, the check passed this run).
     @Published private(set) var keyConnected = false
     @Published var changingKey = false
@@ -123,8 +127,8 @@ final class FirstRunModel: ObservableObject {
     private var keyUnderCheck: String?
     /// What the app was set to when the flow opened.
     private var snapshot: FirstRunGate.EngineSelection
-    /// A Whisper model the flow is downloading for. The engine switches to it
-    /// only once it is usable.
+    /// The Whisper model the flow is downloading for. Set when a row is picked and
+    /// cleared when the flow ends, so it never outlives the flow.
     private var pendingLocal: WhisperModel?
     /// Forced runs save nothing, so a language or key picked in Try it is shown
     /// from these instead.
@@ -163,9 +167,10 @@ final class FirstRunModel: ObservableObject {
         let decision = FirstRunGate.decide(
             completed: defaults.bool(forKey: FirstRunGate.completedKey),
             engineConfigured: FirstRunGate.engineConfigured(
+                engine: settings.transcriptionEngine,
                 keyStored: Keychain.exists(account: DeepgramKeyStore.account),
-                localModelUsable: viewModel.models.models.contains {
-                    viewModel.models.availability(of: $0) == .usable }),
+                activeModelUsable: viewModel.models.availability(
+                    of: viewModel.models.activeModel) == .usable),
             microphoneAuthorized: AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
             accessibilityTrusted: AXIsProcessTrusted(),
             forced: forced)
@@ -191,10 +196,6 @@ final class FirstRunModel: ObservableObject {
         applyPreview()
         if active { enter(start) }
 
-        viewModel.models.$availability
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.modelsChanged() }
-            .store(in: &cancellables)
         viewModel.$recent
             .receive(on: DispatchQueue.main)
             .sink { [weak self] recent in self?.recentChanged(recent) }
@@ -216,6 +217,7 @@ final class FirstRunModel: ObservableObject {
         case "accessibility": return (.accessibility, nil)
         case "tryIt": return (.tryIt, nil)
         case "tryItDone": return (.tryIt, .tryItDone)
+        case "tryItDownloading": return (.tryIt, .tryItDownloading)
         case "done": return (.done, nil)
         case "errKey": return (.engine, .errKey)
         case "errDownload": return (.localDownload, .errDownload)
@@ -297,12 +299,20 @@ final class FirstRunModel: ObservableObject {
         markCompleted()
         leave(page)
         clearKeyField()
-        // A download still running keeps going and switches the engine when it
-        // is usable. One that already stopped is not coming back on its own.
+        // A download still running keeps going: the engine is already committed
+        // to it. One that never started or already stopped is not coming back on
+        // its own, so the engine goes back to what it was.
+        let wasPreparing = preparingDownload
+        cancelDiskTask()
         if let pending = pendingLocal {
             switch models.state(for: pending) {
-            case .downloading, .validating: break
-            default: dropPendingLocal()
+            case .downloading, .validating: pendingLocal = nil
+            default:
+                if wasPreparing || models.availability(of: pending) != .usable {
+                    dropPendingLocal()
+                } else {
+                    pendingLocal = nil
+                }
             }
         }
         startedFromSettings = false
@@ -314,8 +324,11 @@ final class FirstRunModel: ObservableObject {
     /// never touches the completed flag.
     func closeSetup() {
         guard active, startedFromSettings else { return }
+        // On the Done page Close and Esc finish, like "Open Useful Voice".
+        if page == .done { finish(); return }
         leave(page)
         clearKeyField()
+        cancelDiskTask()
         dropPendingLocal()
         startedFromSettings = false
         withAnimation(BrandMotion.easeOut(duration: 0.2)) { active = false }
@@ -334,6 +347,7 @@ final class FirstRunModel: ObservableObject {
             leave(page)
             clearKeyField()
             changingKey = false
+            cancelDiskTask()
             dropPendingLocal()
             page = .welcome
             enter(.welcome)
@@ -395,6 +409,7 @@ final class FirstRunModel: ObservableObject {
     }
 
     func changeKey() {
+        guard !savingKey else { return }
         clearKeyField()
         changingKey = true
         focusKeyRequest += 1
@@ -402,6 +417,7 @@ final class FirstRunModel: ObservableObject {
 
     /// Back out of "Change key" with the saved key untouched.
     func keepCurrentKey() {
+        guard !savingKey else { return }
         checkTask?.cancel()
         checkTask = nil
         clearKeyField()
@@ -426,7 +442,7 @@ final class FirstRunModel: ObservableObject {
     /// it only when Deepgram accepts it.
     func connect() {
         let key = trimmedKey
-        guard !key.isEmpty, keyCheck != .checking else { return }
+        guard !key.isEmpty, keyCheck != .checking, !savingKey else { return }
         keyCheck = .checking
         keyUnderCheck = key
         let language = viewModel.languagePin
@@ -454,6 +470,10 @@ final class FirstRunModel: ObservableObject {
 
     private func saveAcceptedKey(_ key: String) async {
         if !forced {
+            // The write cannot be cancelled: lock the controls until it returns,
+            // and never let a second one start.
+            guard !savingKey else { return }
+            savingKey = true
             // Off the main actor: the Keychain write can wait on securityd.
             let saved = await Task.detached(priority: .userInitiated) { () -> Bool in
                 do {
@@ -463,6 +483,7 @@ final class FirstRunModel: ObservableObject {
                     return false
                 }
             }.value
+            savingKey = false
             guard saved else {
                 if !Task.isCancelled { keyCheck = .saveFailed }
                 return
@@ -471,6 +492,7 @@ final class FirstRunModel: ObservableObject {
             // the person has already moved on. Cancellation only skips navigation.
             DeepgramKeyStore.shared.update(key)
             keyConnected = true
+            viewModel.refreshConfig()
             guard !Task.isCancelled else { return }
             chooseEngine(.deepgram)
         } else {
@@ -490,7 +512,10 @@ final class FirstRunModel: ObservableObject {
 
     private func chooseEngine(_ engine: TranscriptionEngineChoice) {
         guard !forced else { return }
-        if engine == .deepgram { dropPendingLocal(restoring: false) }
+        if engine == .deepgram {
+            cancelDiskTask()
+            dropPendingLocal(restoring: false)
+        }
         settings.transcriptionEngine = engine
         viewModel.models.engineChanged(to: engine)
         viewModel.refreshConfig()
@@ -501,6 +526,7 @@ final class FirstRunModel: ObservableObject {
         if keyConnected {
             continueWithDeepgram()
         } else {
+            cancelDiskTask()
             dropPendingLocal()
             go(.engine)
         }
@@ -510,9 +536,10 @@ final class FirstRunModel: ObservableObject {
 
     var models: LocalModelManager { viewModel.models }
 
-    /// Picking a model starts its download. The engine and model switch only
-    /// when the file is usable (now, or the moment it finishes).
+    /// Picking a model only starts its download. The engine and model are
+    /// committed by Continue on the download page.
     func chooseLocal(_ model: WhisperModel) {
+        guard !savingKey else { return }
         selectedModel = model
         downloadStart = nil
         diskMessage = nil
@@ -521,41 +548,29 @@ final class FirstRunModel: ObservableObject {
             for other in models.models where other.id != model.id {
                 if case .downloading = models.state(for: other) { models.pause(other) }
             }
-            if models.availability(of: model) == .usable {
-                pendingLocal = nil
-                commitLocal(model)
-            } else {
-                pendingLocal = model
-                startDownload(model)
-            }
+            pendingLocal = model
+            if models.availability(of: model) != .usable { startDownload(model) }
         }
         go(.localDownload)
     }
 
-    /// Continue on the download page. Commits when the file is ready; otherwise
-    /// the choice stays pending and lands by itself when the download finishes.
+    /// Continue on the download page commits the engine and this model right
+    /// away, even while the download is still running. Try it waits for the file.
     func continueFromDownload() {
-        if !forced, models.availability(of: selectedModel) == .usable {
-            commitLocal(selectedModel)
-        }
+        if !forced { commitLocal(selectedModel) }
         go(.microphone)
     }
 
     private func commitLocal(_ model: WhisperModel) {
-        guard !forced, models.availability(of: model) == .usable else { return }
-        models.activate(model)
-        if pendingLocal?.id == model.id { pendingLocal = nil }
+        guard !forced else { return }
+        models.activate(model, allowUnusable: true)
         chooseEngine(.whisperLocal)
-    }
-
-    private func modelsChanged() {
-        guard let pending = pendingLocal, models.availability(of: pending) == .usable else { return }
-        commitLocal(pending)
     }
 
     /// Forgets the pending model, stops its download and, unless the current
     /// choice already works, puts the engine back to what it was at the start.
     private func dropPendingLocal(restoring: Bool = true) {
+        cancelDiskTask()
         guard !forced else { return }
         if pendingLocal != nil {
             pauseRunningDownloads()
@@ -581,7 +596,7 @@ final class FirstRunModel: ObservableObject {
         guard target != current else { return }
         if target.modelID != current.modelID,
            let model = WhisperModelCatalog.model(forID: target.modelID) {
-            models.activate(model)
+            models.activate(model, allowUnusable: true)
         }
         if target.engine != current.engine {
             settings.transcriptionEngine = target.engine
@@ -598,12 +613,17 @@ final class FirstRunModel: ObservableObject {
         }
         let have = max(models.installedBytes(for: model) ?? 0, models.partialBytes(for: model))
         diskTask?.cancel()
+        preparingDownload = true
         diskTask = Task { [weak self] in
             // The capacity query touches the volume, so it runs off the main actor.
             let shortfall = await Task.detached(priority: .userInitiated) {
                 Self.diskShortfall(needed: model.expectedBytes - have)
             }.value
+            // A cancel (or a newer start) already reset `preparingDownload`.
             guard !Task.isCancelled, let self else { return }
+            self.preparingDownload = false
+            // The model must still be the one this flow is downloading for.
+            guard self.pendingLocal?.id == model.id else { return }
             if let shortfall {
                 self.diskMessage = Self.diskMessage(shortfallBytes: shortfall, model: model)
                 return
@@ -615,6 +635,16 @@ final class FirstRunModel: ObservableObject {
     }
 
     private var diskTask: Task<Void, Never>?
+
+    /// The disk capacity query is running, so the download page shows the
+    /// starting state instead of a stopped one.
+    @Published private(set) var preparingDownload = false
+
+    private func cancelDiskTask() {
+        diskTask?.cancel()
+        diskTask = nil
+        preparingDownload = false
+    }
 
     /// Set when a download could not start for lack of space.
     @Published private(set) var diskMessage: String?
@@ -638,7 +668,7 @@ final class FirstRunModel: ObservableObject {
     /// Cancel download, and the Back link on the download page: nothing of the
     /// half-made choice is kept.
     func cancelDownload() {
-        diskTask?.cancel()
+        cancelDiskTask()
         pauseRunningDownloads()
         pendingLocal = nil
         restoreSnapshotIfUnusable()
@@ -816,6 +846,15 @@ final class FirstRunModel: ObservableObject {
     }
 
     // MARK: - Try it
+
+    /// The committed local model when it is not usable yet: Try it waits for it
+    /// instead of letting a dictation fail. Nil once it is ready, or on Deepgram.
+    var localPending: WhisperModel? {
+        if forced { return preview == .tryItDownloading ? selectedModel : nil }
+        guard settings.transcriptionEngine == .whisperLocal else { return nil }
+        let active = models.activeModel
+        return models.availability(of: active) == .usable ? nil : active
+    }
 
     /// The language Try it shows. In a forced run the pick is only shown.
     var languagePin: LanguagePin { previewLanguage ?? viewModel.languagePin }

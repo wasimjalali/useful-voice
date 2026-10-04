@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let inserter = TextInserter()
     private let mainWindow = MainWindowController()
     private var viewModel: UsefulVoiceViewModel?
+    private var firstRun: FirstRunModel?
     private var history: DictationHistory?
     private var usageStats: UsageStatsStore?
     private var languageMemory: LanguageMemoryStore?
@@ -94,6 +95,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // reachable because `make run` leaves a live bundle in dist/ with the
         // same bundle identifier and signature as the /Applications copy.
         if SingleInstance.yieldToExistingInstance() { return }
+        // Settles the English default for new installs while an existing one
+        // stays on Auto-detect. Must run before anything reads the language.
+        // A forced first-run preview saves nothing, so it skips this too.
+        if !FirstRunGate.isForced(environment: ProcessInfo.processInfo.environment) {
+            settings.resolveLanguageDefault(hasPriorData: hasPriorData())
+        }
 
         // Recorded before the key cache is primed, because priming can block
         // indefinitely on a keychain authorization dialog. It previously ran only
@@ -102,10 +109,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         recordLaunchDiagnostic()
         ThinScrollbar.install()
         installMainMenu()
-        primeKeyCache()
+        // An offscreen render (`UV_SNAPSHOT`) never needs the key's value, only
+        // whether one exists, and reading it can raise a Keychain prompt in a
+        // differently signed copy of the app.
+        if ProcessInfo.processInfo.environment["UV_SNAPSHOT"] == nil { primeKeyCache() }
         chimes.isEnabled = { [settings] in settings.soundEffectsEnabled }
         setUpStatusItem()
         setUpController()
+        setUpFirstRun()
         // `UV_SNAPSHOT=<png path>@<width>x<height>` renders the page named by
         // `UV_START_SECTION` to a PNG and quits, with no window and no focus change.
         if let spec = ProcessInfo.processInfo.environment["UV_SNAPSHOT"], let viewModel {
@@ -115,14 +126,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 fputs("UV_SNAPSHOT must look like /tmp/page.png@1280x860\n", stderr)
                 exit(2)
             }
-            mainWindow.snapshot(viewModel: viewModel, settings: settings,
+            guard let firstRun else { exit(1) }
+            mainWindow.snapshot(viewModel: viewModel, settings: settings, firstRun: firstRun,
                                 size: NSSize(width: dims[0], height: dims[1]),
                                 to: URL(fileURLWithPath: String(parts[0]))) { ok in
                 exit(ok ? 0 : 1)
             }
             return
         }
-        requestPermissions()
+        // While the first-run flow is up, it asks for each permission at its own
+        // step, so nothing is requested here.
+        let firstRunActive = firstRun?.active == true
+        if !firstRunActive { requestPermissions() }
         startHotkeys()
 
         // Only open the window when the user asked for the app. A login-item or
@@ -130,8 +145,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // window here took focus with `activate(ignoringOtherApps: true)` on
         // every login, so the first keystrokes after logging in landed in
         // Useful Voice instead of the app the user was typing into.
-        if LaunchReason.current(from: notification) == .userInitiated {
+        // The exception is first run: setup has to be seen, so the window opens
+        // with the flow over it even on a login launch.
+        if firstRunActive || LaunchReason.current(from: notification) == .userInitiated {
             openMainWindow()
+        }
+    }
+
+    /// Whether this Mac has used the app before: history, usage stats or a
+    /// stored Deepgram key. The key check is presence only, so it never prompts.
+    private func hasPriorData() -> Bool {
+        let folder = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Sadaa")
+        let files = ["history.json", "usage-stats.json"]
+        return files.contains { FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path) }
+            || Keychain.exists(account: DeepgramKeyStore.account)
+    }
+
+    /// Builds the first-run flow and wires it to the hotkey tap and the window.
+    private func setUpFirstRun() {
+        guard let viewModel else { return }
+        let firstRun = FirstRunModel(settings: settings, viewModel: viewModel)
+        firstRun.onAccessibilityGranted = { [weak self] in
+            self?.accessibilityBecameTrusted()
+        }
+        mainWindow.onVisibilityChange = { [weak firstRun] visible in
+            firstRun?.windowVisibilityChanged(visible)
+        }
+        mainWindow.onClose = { [weak firstRun] in
+            firstRun?.windowClosed()
+        }
+        self.firstRun = firstRun
+    }
+
+    /// Accessibility was just granted in the first-run flow: start the tap now
+    /// instead of waiting for the next poll tick.
+    private func accessibilityBecameTrusted() {
+        guard viewModel?.hotkeyActive != true else { return }
+        if tryStartHotkeys() {
+            axPollTimer?.invalidate()
+            axPollTimer = nil
+        } else {
+            startAccessibilityPoll()
         }
     }
 
@@ -235,6 +291,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             controller?.cancel()
         }
         viewModel?.flushPendingEdits()
+        firstRun?.appWillTerminate()
         // Keep the bytes of any model download in flight: pause it so URLSession
         // hands back resume data, and give the write a bounded moment to land.
         modelManager?.pauseAllDownloads()
@@ -760,8 +817,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // Not Accessibility-trusted yet. Poll until the user grants it, then
         // start the tap without requiring a relaunch.
-        hud.show(.error("Enable Accessibility for Useful Voice in System Settings to use the hotkey."))
-        hud.hide(after: 6)
+        // The first-run flow has its own Accessibility step, so no pill there.
+        if firstRun?.active != true {
+            hud.show(.error("Enable Accessibility for Useful Voice in System Settings to use the hotkey."))
+            hud.hide(after: 6)
+        }
         startAccessibilityPoll()
     }
 
@@ -971,8 +1031,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func openMainWindow() {
-        if let viewModel {
-            mainWindow.show(viewModel: viewModel, settings: settings)
+        if let viewModel, let firstRun {
+            mainWindow.show(viewModel: viewModel, settings: settings, firstRun: firstRun)
         }
     }
 

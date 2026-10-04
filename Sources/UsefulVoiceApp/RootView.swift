@@ -36,6 +36,7 @@ enum SidebarSection: String, CaseIterable, Identifiable {
 struct RootView: View {
     @ObservedObject var viewModel: UsefulVoiceViewModel
     let settings: AppSettings
+    @ObservedObject var firstRun: FirstRunModel
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The section the rail highlights. Moves the instant you click, so the
@@ -62,6 +63,24 @@ struct RootView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.canvas)
+        // Under the flow nothing can be reached by VoiceOver or Tab.
+        .accessibilityHidden(firstRun.active)
+        .disabled(firstRun.active)
+        .overlay {
+            // Covers the sidebar too: setup is the only thing on screen.
+            if firstRun.active {
+                FirstRunView(model: firstRun)
+                    .transition(.opacity)
+            }
+        }
+        .onChange(of: firstRun.finishCount) { _, _ in
+            // Finishing lands on Dictate, whatever page was open before.
+            pendingPageSwitch?.cancel()
+            selection = .home
+            displayed = .home
+            pageOpacity = 1
+            pageOffset = 0
+        }
         .environmentObject(toasts)
         .tint(Theme.ink)
         .preferredColorScheme(.light)
@@ -205,7 +224,7 @@ struct RootView: View {
         case .history:
             HistoryPage(viewModel: viewModel)
         case .settings:
-            SettingsPage(settings: settings, viewModel: viewModel)
+            SettingsPage(settings: settings, viewModel: viewModel, firstRun: firstRun)
         }
     }
 }

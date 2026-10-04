@@ -266,12 +266,40 @@ public final class AppSettings {
         self.defaults = defaults
     }
 
+    /// Settles the language default once per install, before anything reads the
+    /// pin. An install that predates the English default and never saved a pin
+    /// was on Auto-detect, so it gets an explicit Auto; a new install keeps the
+    /// English default. `hasPriorData` is what only the app layer can see
+    /// (history, usage stats, a stored key).
+    public func resolveLanguageDefault(hasPriorData: Bool) {
+        let storedSetting = [Keys.silenceTimeout, Keys.recordingsToKeep, Keys.hotkeyKeycode,
+                             Keys.languageSwitchKeycode, Keys.formattingEnabled,
+                             Keys.spokenPunctuationEnabled, Keys.soundEffectsEnabled,
+                             Keys.lastExportFolder, Keys.transcriptionEngine,
+                             Keys.localModelID]
+            .contains { defaults.object(forKey: $0) != nil }
+        let outcome = LanguageDefault.outcome(
+            alreadyResolved: defaults.bool(forKey: LanguageDefault.resolvedKey),
+            storedPin: defaults.string(forKey: Keys.languagePin),
+            existingInstall: hasPriorData || storedSetting)
+        switch outcome {
+        case .nothing: return
+        case .markResolved: break
+        case .writeAutoAndMarkResolved: languagePin = .auto
+        }
+        defaults.set(true, forKey: LanguageDefault.resolvedKey)
+    }
+
     public var languagePin: LanguagePin {
-        // `init(code:)` rather than `init(rawValue:)`: it normalises an unset or
+        // `init(code:)` rather than `init(rawValue:)`: it normalises an
         // unrecognised stored value to auto. The raw initialiser is non-failable
         // now that the type is a struct over a string, so an empty default would
-        // have produced a pin naming no language at all.
-        get { LanguagePin(code: defaults.string(forKey: Keys.languagePin) ?? "") }
+        // have produced a pin naming no language at all. A value that was never
+        // saved defaults to English (new installs); a saved choice is kept.
+        get {
+            guard let stored = defaults.string(forKey: Keys.languagePin) else { return .en }
+            return LanguagePin(code: stored)
+        }
         set { defaults.set(newValue.rawValue, forKey: Keys.languagePin) }
     }
 

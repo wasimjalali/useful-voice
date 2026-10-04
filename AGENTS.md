@@ -40,6 +40,19 @@ immediately (single-instance guard), so quit it first. The pages show your real 
 screenshots out of commits. Build the bundle first (`make bundle`). A snapshot run also creates
 `usage-stats.json` in the real data folder if it does not exist yet, the same as a normal launch.
 
+First-run flow: `UV_FIRST_RUN=force` opens it over the window and saves nothing: no completed flag,
+engine, key, language, hotkey or download changes (downloads are not started or paused and the
+download page shows sample progress). Real permission prompts still appear. The key check still
+makes its network call. `UV_FIRST_RUN_STEP=<welcome|engine|deepgramKey|localDownload|microphone|accessibility|accessibilityOn|tryIt|tryItDone|tryItDownloading|tryItStopped|done|errKey|errDownload|errMic>`
+jumps to a step with sample data and freezes polling, and combines with `UV_SNAPSHOT`:
+
+```sh
+UV_FIRST_RUN=force UV_FIRST_RUN_STEP=engine UV_SNAPSHOT="$PWD/fr-engine.png@1040x680" \
+  dist/UsefulVoice.app/Contents/MacOS/Sadaa
+```
+
+A snapshot run skips the Keychain read at launch (it only needs to know a key exists).
+
 ## Repo conventions
 
 - Squash-merge PRs (`gh pr merge --squash`); never commit to `main` directly.

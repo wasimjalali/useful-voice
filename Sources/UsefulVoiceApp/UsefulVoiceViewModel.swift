@@ -13,7 +13,7 @@ final class UsefulVoiceViewModel: ObservableObject {
     /// What Home says when the provider is not ready, matched to the engine.
     @Published var providerSetupHint: String = "Add your Deepgram key in Settings"
     @Published var providerName: String = "Deepgram"
-    @Published var languagePin: LanguagePin = .auto
+    @Published var languagePin: LanguagePin = .en
     /// Whether the global hotkey tap is actually running (Accessibility granted).
     @Published var hotkeyActive: Bool = false
     @Published var hotkeyKeycode: Int = 54

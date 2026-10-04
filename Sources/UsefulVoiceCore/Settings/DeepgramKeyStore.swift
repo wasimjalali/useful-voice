@@ -16,18 +16,37 @@ import Foundation
 /// Provider construction then reads a cached value with no keychain call on any
 /// hot path. A small lock keeps that cache safe from every thread without
 /// forcing callers into `async`.
+///
+/// Ordering: every keychain read, write and delete of this item runs on one
+/// serial queue, and the cache (with `problem`) is written only on that queue,
+/// in the same step as the keychain operation it reflects. So the cache always
+/// matches what the last completed operation left in the keychain: a read can't
+/// interleave with a write, and a slow save can't land over a later removal.
 public final class DeepgramKeyStore: @unchecked Sendable {
     public static let shared = DeepgramKeyStore()
 
     public static let account = "deepgram-key"
 
+    private let backend: DeepgramKeyBackend
+    /// Owns every keychain operation on this item and every cache write.
+    private let queue = DispatchQueue(label: "ai.karko.sadaa.deepgram-key", qos: .userInitiated)
+
+    /// Guards the three fields below for readers on other threads. Written only
+    /// from `queue`.
     private let lock = NSLock()
     private var cached: String?
     private var loaded = false
     /// Set when a completed read failed for a reason other than "nothing stored".
     private var problem: String?
 
-    public init() {}
+    public convenience init() {
+        self.init(backend: KeychainKeyBackend(account: Self.account))
+    }
+
+    /// Injects the storage, so tests never touch the user's keychain.
+    init(backend: DeepgramKeyBackend) {
+        self.backend = backend
+    }
 
     /// The key as last read, or `nil` when none is configured. Never touches the
     /// keychain, so it returns immediately and is safe on any thread — including
@@ -45,20 +64,9 @@ public final class DeepgramKeyStore: @unchecked Sendable {
         return loaded
     }
 
-    /// Reads the key from the keychain and caches it.
-    ///
-    /// Call this off the main thread: the read may block on securityd or on a
-    /// user authorization prompt. Returns the resolved key.
-    @discardableResult
-    public func load() -> String? {
-        let lookup = Keychain.lookup(account: Self.account)
-        recordLookupFailure(lookup)
-        store(lookup.value)
-        return current
-    }
-
-    /// Why the last `load()` found no key, when the reason was not simply
-    /// "nothing stored". `nil` after a successful read or a genuine absence.
+    /// Why the last read found no key, when the reason was not simply "nothing
+    /// stored". `nil` after a successful read, a genuine absence, or a successful
+    /// save or removal.
     ///
     /// Exposed so the UI can say "your keychain is locked" instead of the
     /// misleading "no transcription provider configured".
@@ -68,71 +76,154 @@ public final class DeepgramKeyStore: @unchecked Sendable {
         return problem
     }
 
+    /// Reads the key from the keychain and caches it. Returns the cached key.
+    ///
+    /// Call this off the main thread: the read may block on securityd or on a
+    /// user authorization prompt, and it waits for any key change in flight.
+    @discardableResult
+    public func load() -> String? {
+        reload().value
+    }
+
+    /// Reads the keychain afresh, publishes the result, and returns it.
+    ///
+    /// Off the main thread only, for the same reasons as `load()`.
+    public func reload() -> Keychain.Lookup {
+        dispatchPrecondition(condition: .notOnQueue(queue))
+        return queue.sync { readAndPublish() }
+    }
+
+    /// Reads the keychain afresh without touching the cache.
+    ///
+    /// For checks such as Test connection: a locked keychain at that moment must
+    /// not wipe the key dictation is using. Ordered with key changes like every
+    /// other read. Off the main thread only, for the same reasons as `load()`.
+    public func peek() -> Keychain.Lookup {
+        dispatchPrecondition(condition: .notOnQueue(queue))
+        return queue.sync { backend.lookup() }
+    }
+
     /// Resolves the key, preferring the cache, and reports why it is missing.
     ///
     /// Used where the difference between absent and unreadable changes what the
-    /// user should do.
+    /// user should do. Off the main thread only: without a completed read it
+    /// reads the keychain.
     public func resolve() -> Keychain.Lookup {
-        if let cached, !cached.isEmpty { return .found(cached) }
-        if loaded {
-            // A completed read that produced nothing: absent and unreadable are
-            // distinguished by `problem`, which the read already recorded.
-            if let problem { return .unavailable(problem) }
-            return .absent
+        dispatchPrecondition(condition: .notOnQueue(queue))
+        return queue.sync {
+            let state = snapshot()
+            if let key = state.cached { return .found(key) }
+            if state.loaded {
+                // A completed read that produced nothing: absent and unreadable are
+                // distinguished by `problem`, which that read recorded.
+                if let problem = state.problem { return .unavailable(problem) }
+                return .absent
+            }
+            return readAndPublish()
         }
-        let lookup = Keychain.lookup(account: Self.account)
-        recordLookupFailure(lookup)
-        store(lookup.value)
-        return lookup
-    }
-
-    private func recordLookupFailure(_ lookup: Keychain.Lookup) {
-        let resolution: String?
-        switch lookup {
-        case .found:
-            resolution = nil
-        case .absent:
-            resolution = nil
-        case .unavailable(let reason):
-            resolution = reason
-            // Worth a log line: silent refusal to read a stored key is exactly
-            // the failure that produced unhelpful support conversations.
-            Diagnostics.shared.error("keychain", "could not read the Deepgram key: \(reason)")
-        }
-        lock.lock()
-        problem = resolution
-        lock.unlock()
     }
 
     /// True when a key is present, without decrypting it.
     ///
-    /// Uses `Keychain.exists` (no `kSecReturnData`), which never prompts, and
-    /// short-circuits on the cache when it is already loaded.
+    /// Uses an attributes-only existence check (no `kSecReturnData`), which never
+    /// prompts, and short-circuits on the cache when it is already loaded.
     public func isConfigured() -> Bool {
         if isLoaded { return !(current ?? "").isEmpty }
-        return Keychain.exists(account: Self.account)
+        return backend.exists()
     }
 
-    /// Updates the cache after the user edits the key in Settings. Persisting to
-    /// the keychain stays the caller's job (it is a user action, where a prompt
-    /// is expected); this only refreshes what the pipeline reads.
-    public func update(_ value: String?) {
-        store(value)
+    /// Saves the key to the keychain and, in the same step, publishes it to the
+    /// cache the dictation pipeline reads and clears any read problem. The only
+    /// way to change the key.
+    ///
+    /// Throws when the keychain write fails; the cache is left as it was.
+    public func save(_ value: String) async throws {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        try await perform {
+            try self.backend.write(trimmed)
+            self.publish(trimmed, problem: nil)
+        }
     }
 
-    /// Forgets the cached value so the next `load()` re-reads the keychain.
-    public func invalidate() {
-        lock.lock()
-        cached = nil
-        loaded = false
-        lock.unlock()
+    /// Deletes the key and, in the same step, clears the cache and any read
+    /// problem. Ordered with `save` and every read.
+    ///
+    /// Throws when the keychain refuses the delete (anything but success or
+    /// "nothing stored"); the cache is left as it was, since the key is still there.
+    public func remove() async throws {
+        try await perform {
+            try self.backend.delete()
+            self.publish(nil, problem: nil)
+        }
     }
 
-    private func store(_ value: String?) {
+    /// Runs `work` on the queue, in submission order. The submission happens
+    /// before the caller suspends, so calls made in order run in that order.
+    private func perform(_ work: @escaping @Sendable () throws -> Void) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            queue.async {
+                do {
+                    try work()
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Reads the keychain and publishes value and problem together. On `queue` only.
+    private func readAndPublish() -> Keychain.Lookup {
+        dispatchPrecondition(condition: .onQueue(queue))
+        let lookup = backend.lookup()
+        switch lookup {
+        case .found(let value):
+            publish(value, problem: nil)
+        case .absent:
+            publish(nil, problem: nil)
+        case .unavailable(let reason):
+            // Worth a log line: silent refusal to read a stored key is exactly
+            // the failure that produced unhelpful support conversations.
+            Diagnostics.shared.error("keychain", "could not read the Deepgram key: \(reason)")
+            publish(nil, problem: reason)
+        }
+        return lookup
+    }
+
+    /// The single cache write. On `queue` only, right after the keychain
+    /// operation it reflects.
+    private func publish(_ value: String?, problem newProblem: String?) {
+        dispatchPrecondition(condition: .onQueue(queue))
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         lock.lock()
+        defer { lock.unlock() }
         cached = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        problem = newProblem
         loaded = true
-        lock.unlock()
     }
+
+    private func snapshot() -> (cached: String?, loaded: Bool, problem: String?) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (cached, loaded, problem)
+    }
+}
+
+/// Where the key is stored. The real one is the login keychain; tests inject a
+/// fake so ordering can be checked without touching it.
+protocol DeepgramKeyBackend: Sendable {
+    func lookup() -> Keychain.Lookup
+    func write(_ value: String) throws
+    func delete() throws
+    /// Attributes only: must never decrypt, so it never prompts.
+    func exists() -> Bool
+}
+
+struct KeychainKeyBackend: DeepgramKeyBackend {
+    let account: String
+
+    func lookup() -> Keychain.Lookup { Keychain.lookup(account: account) }
+    func write(_ value: String) throws { try Keychain.set(value, account: account) }
+    func delete() throws { try Keychain.delete(account: account) }
+    func exists() -> Bool { Keychain.exists(account: account) }
 }

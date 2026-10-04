@@ -29,14 +29,16 @@ A waveform icon appears in the menu bar. No Dock icon.
 
 Requirements: macOS 14+, Apple Silicon, Command Line Tools (no full Xcode needed).
 
-## First-run setup (do this once)
+## First run
 
-1. **Microphone**: grant it when macOS prompts (or System Settings > Privacy & Security > Microphone).
-2. **Accessibility**: System Settings > Privacy & Security > Accessibility, enable Useful Voice. This powers the tap hotkeys AND inserting text at your cursor. The app polls for this, so once you grant it the hotkey starts working without a relaunch (no need to quit and reopen).
-3. **Pick a transcription engine** in Settings:
-   - **Deepgram (cloud)** — paste your Deepgram API key. Useful Voice transcribes with the Deepgram Nova-3 model.
-   - **Whisper (local)** — download a Whisper model from Settings and everything runs on-device. No API key, no account, no audio leaving the Mac.
-4. With Deepgram, turn **Auto-format transcript** on for punctuation, capitalization and formatted numbers, or off for raw text.
+The first launch opens a short setup that walks you through four steps:
+
+1. **Choose how it listens.** Deepgram Nova-3 in the cloud, or a Whisper model that runs on your Mac. New Deepgram accounts get $200 in free credit with no card needed: **Claim your $200** opens Deepgram's signup, then paste the API key it gives you.
+2. **Microphone.** Allow it when macOS asks.
+3. **Accessibility.** Turn on Useful Voice in System Settings > Privacy & Security > Accessibility. This powers the hotkey and typing at your cursor. The setup moves on by itself once it's on.
+4. **Try it once.** Tap your dictation key (Right Command by default) and speak into the practice box. New installs transcribe English; pick Auto-detect or another language from the menu.
+
+You can run it again from Settings > Setup. With Deepgram, **Auto-format transcript** in Settings adds punctuation, capitalization and formatted numbers.
 
 Your Deepgram API key is stored in the macOS Keychain, never in a file.
 
@@ -58,7 +60,7 @@ Until an engine is configured, every dictation ends with the HUD saying "No tran
 
 ## Transcription engines
 
-Settings offers two engines behind the same provider pipeline — everything after transcription (formatting, dictionary corrections, language memory, history, insertion) works identically for both.
+Settings › Transcription lists Deepgram and each local Whisper model as one choice, all behind the same provider pipeline — everything after transcription (formatting, dictionary corrections, language memory, history, insertion) works identically for both.
 
 ### Deepgram (cloud)
 
@@ -66,7 +68,7 @@ Useful Voice uses Deepgram's **Nova-3** model. Auto-format (Deepgram's `smart_fo
 
 ### Whisper (local, on-device)
 
-Runs [whisper.cpp](https://github.com/ggml-org/whisper.cpp) with Metal GPU acceleration — no API key, and **audio never leaves your Mac**. Models are listed in Settings › Speech once you pick Whisper (local). Download one there (progress, pause and resume, checksum verification and delete are built in):
+Runs [whisper.cpp](https://github.com/ggml-org/whisper.cpp) with Metal GPU acceleration — no API key, and **audio never leaves your Mac**. Each model is a row in Settings › Transcription. Tap one that isn't downloaded to start its download, and tap it again once it's ready to switch to it (progress, pause and resume, checksum verification and delete are built in):
 
 | Model | Size | License | Notes |
 |---|---|---|---|

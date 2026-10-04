@@ -6,17 +6,31 @@ public struct ProviderHealthResult: Equatable, Sendable {
     public let latencyMilliseconds: Int?
     public let message: String
     public let redactedEndpoint: String
+    /// Why a failed check failed, so a caller can tell a refused key from a
+    /// network problem. `nil` when the check passed.
+    public let failure: Failure?
+
+    public enum Failure: Equatable, Sendable {
+        /// The provider answered 401 or 403: the key was refused.
+        case rejected
+        /// The request never got an answer (offline, DNS, TLS, timeout).
+        case network
+        /// Anything else: an HTTP error, no credits, an unreadable response.
+        case other
+    }
 
     public init(providerName: String,
                 ok: Bool,
                 latencyMilliseconds: Int?,
                 message: String,
-                redactedEndpoint: String) {
+                redactedEndpoint: String,
+                failure: Failure? = nil) {
         self.providerName = providerName
         self.ok = ok
         self.latencyMilliseconds = latencyMilliseconds
         self.message = message
         self.redactedEndpoint = redactedEndpoint
+        self.failure = failure
     }
 }
 
@@ -61,7 +75,8 @@ public enum ProviderHealthCheck {
                 ok: false,
                 startedAt: startedAt,
                 finishedAt: now(),
-                message: describe(error)
+                message: describe(error),
+                failure: classify(error)
             )
         }
     }
@@ -82,14 +97,29 @@ public enum ProviderHealthCheck {
                               ok: Bool,
                               startedAt: Date,
                               finishedAt: Date,
-                              message: String) -> ProviderHealthResult {
+                              message: String,
+                              failure: ProviderHealthResult.Failure? = nil) -> ProviderHealthResult {
         ProviderHealthResult(
             providerName: providerName,
             ok: ok,
             latencyMilliseconds: Int(finishedAt.timeIntervalSince(startedAt) * 1000),
             message: sanitize(message),
-            redactedEndpoint: redactedEndpoint(endpoint)
+            redactedEndpoint: redactedEndpoint(endpoint),
+            failure: ok ? nil : (failure ?? .other)
         )
+    }
+
+    /// Sorts a provider error into what the user can act on.
+    static func classify(_ error: Error) -> ProviderHealthResult.Failure {
+        guard let provider = error as? ProviderError else { return .other }
+        switch provider {
+        case .http(let status, _) where status == 401 || status == 403:
+            return .rejected
+        case .timedOut, .transport:
+            return .network
+        default:
+            return .other
+        }
     }
 
     public static func sanitize(_ message: String) -> String {

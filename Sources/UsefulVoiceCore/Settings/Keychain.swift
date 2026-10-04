@@ -132,12 +132,17 @@ public enum Keychain {
         return SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess
     }
 
-    public static func delete(account: String) {
+    /// Deletes the item. Nothing stored counts as success; any other failure
+    /// throws, so a caller never reports a removal the keychain refused.
+    public static func delete(account: String) throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-        SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw KeychainError.unexpectedStatus(status)
+        }
     }
 }

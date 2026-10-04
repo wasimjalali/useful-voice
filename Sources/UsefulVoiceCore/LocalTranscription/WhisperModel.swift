@@ -100,7 +100,7 @@ public enum WhisperModelCatalog {
         provenanceURL: URL(string: "https://huggingface.co/openai/whisper-large-v3")!,
         languageCount: 99,
         isRecommended: false,
-        note: "Slower and needs more memory — on 8 GB Macs prefer Turbo"
+        note: "Slower and needs more memory. On 8 GB Macs, prefer Turbo"
     )
 
     /// Every offered model, in display order (recommended first).

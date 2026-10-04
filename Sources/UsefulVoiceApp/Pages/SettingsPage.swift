@@ -217,21 +217,6 @@ struct SettingsPage: View {
                 case .whisperLocal:
                     localContent
                 }
-
-                if engine == .deepgram {
-                    Divider().overlay(Theme.line)
-
-                    // Disclosed because it is charged and was previously invisible:
-                    // the app sends `keyterm` for every dictionary term, on every
-                    // request, and Deepgram bills Keyterm Prompting separately.
-                    // https://deepgram.com/pricing
-                    InlineNote(
-                        text: "Deepgram bills Keyterm Prompting separately from transcription: "
-                            + "$0.0013 per minute on pay-as-you-go, on top of $0.0043 per minute "
-                            + "for Nova-3. That is about 30% more per minute while your dictionary "
-                            + "is in use. Smart formatting and language detection are included."
-                    )
-                }
             }
         }
     }
@@ -241,7 +226,7 @@ struct SettingsPage: View {
         case .deepgram:
             return "Audio is transcribed by Deepgram's Nova-3 API"
         case .whisperLocal:
-            return "Transcribes on this Mac — no key, nothing leaves the device"
+            return "Transcribes on this Mac. No key, and nothing leaves the device"
         }
     }
 
@@ -297,7 +282,7 @@ struct SettingsPage: View {
             // request, and Deepgram bills Keyterm Prompting separately.
             // https://deepgram.com/pricing
             InlineNote(
-                text: "Deepgram bills Keyterm Prompting separately from transcription — "
+                text: "Deepgram bills Keyterm Prompting separately from transcription: "
                     + "$0.0013 per minute on pay-as-you-go, on top of $0.0043 per minute "
                     + "for Nova-3. That is about 30% more per minute while your dictionary "
                     + "is in use. Smart formatting and language detection are included."
@@ -323,8 +308,8 @@ struct SettingsPage: View {
 
             if models.availability(of: models.activeModel) != .usable {
                 InlineNote(
-                    text: "\(models.activeModel.displayName) is not downloaded yet — "
-                        + "dictation with the local engine will ask you to download it first."
+                    text: "\(models.activeModel.displayName) is not downloaded yet. "
+                        + "Dictation with the local engine will ask you to download it first."
                 )
             }
 

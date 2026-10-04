@@ -8,10 +8,12 @@ struct SettingsPage: View {
     /// The same manager instance the app layer wired up — observed here so
     /// download progress and availability redraw this page live.
     @ObservedObject private var models: LocalModelManager
+    @ObservedObject var firstRun: FirstRunModel
 
     @State private var engine: TranscriptionEngineChoice = .deepgram
     @State private var deepgramKey = ""
     @State private var hasDeepgramKey = false
+    @State private var changingDeepgramKey = false
     @State private var formattingEnabled = true
     @State private var spokenPunctuationEnabled = false
     /// Set when the user asks to delete a model, driving the confirmation.
@@ -28,9 +30,10 @@ struct SettingsPage: View {
     @State private var testResult: ProviderHealthResult?
     @StateObject private var diagnostics = DiagnosticsViewModel()
 
-    init(settings: AppSettings, viewModel: UsefulVoiceViewModel) {
+    init(settings: AppSettings, viewModel: UsefulVoiceViewModel, firstRun: FirstRunModel) {
         self.settings = settings
         self.viewModel = viewModel
+        self.firstRun = firstRun
         _models = ObservedObject(wrappedValue: viewModel.models)
     }
 
@@ -43,7 +46,7 @@ struct SettingsPage: View {
                 header
                 statusLine
                 generalSection
-                speechSection
+                transcriptionSection
                 dataSection
                 diagnosticsSection
             }
@@ -192,44 +195,6 @@ struct SettingsPage: View {
         }
     }
 
-    private var speechSection: some View {
-        settingsSection(title: "Speech") {
-            VStack(alignment: .leading, spacing: 16) {
-                settingsRow(
-                    "Transcription engine",
-                    detail: engineDetail
-                ) {
-                    BrandedMenuPicker(
-                        title: "Engine",
-                        selection: engineBinding,
-                        options: TranscriptionEngineChoice.allCases.map {
-                            ($0.displayName, $0)
-                        }
-                    )
-                    .frame(width: 190)
-                }
-
-                Divider().overlay(Theme.line)
-
-                switch engine {
-                case .deepgram:
-                    deepgramContent
-                case .whisperLocal:
-                    localContent
-                }
-            }
-        }
-    }
-
-    private var engineDetail: String {
-        switch engine {
-        case .deepgram:
-            return "Audio is transcribed by Deepgram's Nova-3 API"
-        case .whisperLocal:
-            return "Transcribes on this Mac. No key, and nothing leaves the device"
-        }
-    }
-
     private var engineBinding: Binding<TranscriptionEngineChoice> {
         Binding(
             get: { engine },
@@ -242,234 +207,282 @@ struct SettingsPage: View {
         )
     }
 
-    private var deepgramContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            secretField(
-                title: "Deepgram API key",
-                placeholder: hasDeepgramKey
-                    ? "Saved in Keychain. Enter a new key to replace it."
-                    : "Enter your Deepgram API key",
-                value: $deepgramKey,
-                hasSavedValue: hasDeepgramKey,
-                clear: {
-                    Keychain.delete(account: "deepgram-key")
-                    hasDeepgramKey = false
-                    viewModel.refreshConfig()
-                }
-            )
+    // MARK: - Transcription
 
-            Divider().overlay(Theme.line)
-
-            settingsRow(
-                "Auto-format transcript",
-                detail: "Adds punctuation, capitalization and formatted numbers"
-            ) {
-                Toggle("", isOn: $formattingEnabled).labelsHidden()
-            }
-
-            Divider().overlay(Theme.line)
-
-            settingsRow(
-                "Speak punctuation",
-                detail: "Say “period”, “comma” or “new line” to insert it. English only."
-            ) {
-                Toggle("", isOn: $spokenPunctuationEnabled).labelsHidden()
-            }
-
-            Divider().overlay(Theme.line)
-
-            // Disclosed because it is charged and was previously invisible:
-            // the app sends `keyterm` for every dictionary term, on every
-            // request, and Deepgram bills Keyterm Prompting separately.
-            // https://deepgram.com/pricing
-            InlineNote(
-                text: "Deepgram bills Keyterm Prompting separately from transcription: "
-                    + "$0.0013 per minute on pay-as-you-go, on top of $0.0043 per minute "
-                    + "for Nova-3. That is about 30% more per minute while your dictionary "
-                    + "is in use. Smart formatting and language detection are included."
-            )
-        }
-    }
-
-    // MARK: - Local models
-
-    /// The local branch: every catalog model with its download state, plus the
-    /// download prompt when the active model is missing — per the spec, the
-    /// prompt lives on the same screen as the engine choice.
-    private var localContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            ForEach(models.models) { model in
-                modelRow(model)
-                if model.id != models.models.last?.id {
+    /// The engine as a radio group: Deepgram, then each local model, each with
+    /// its own state and action on the right.
+    private var transcriptionSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            groupLabel("Transcription")
+            VStack(spacing: 0) {
+                deepgramRow
+                if changingDeepgramKey {
                     Divider().overlay(Theme.line)
+                    deepgramKeyEditor
+                }
+                ForEach(models.models) { model in
+                    Divider().overlay(Theme.line)
+                    modelRow(model)
                 }
             }
-
-            Divider().overlay(Theme.line)
+            .modifier(SettingsGroupChrome())
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Transcription engine")
 
             if let deleteError = models.deleteError {
                 Text(deleteError)
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.danger)
             }
-
-            if models.availability(of: models.activeModel) != .usable {
+            if engine == .whisperLocal {
+                if models.availability(of: models.activeModel) != .usable {
+                    InlineNote(
+                        text: "\(models.activeModel.displayName) is not downloaded yet. "
+                            + "Dictation with the local engine will ask you to download it first."
+                    )
+                }
                 InlineNote(
-                    text: "\(models.activeModel.displayName) is not downloaded yet. "
-                        + "Dictation with the local engine will ask you to download it first."
+                    text: "Local models format their own punctuation and capitalization. "
+                        + "Your dictionary still biases recognition and fixes mistakes afterwards. "
+                        + models.diskSummary + "."
                 )
             }
 
-            InlineNote(
-                text: "Local models format their own punctuation and capitalization. "
-                    + "Your dictionary still biases recognition and fixes mistakes afterwards. "
-                    + models.diskSummary + "."
-            )
+            if engine == .deepgram {
+                groupLabel("Formatting")
+                VStack(spacing: 0) {
+                    groupRow(title: "Auto-format transcript",
+                             detail: "Punctuation, capitals and numbers") {
+                        Toggle("", isOn: $formattingEnabled).labelsHidden()
+                    }
+                    Divider().overlay(Theme.line)
+                    groupRow(title: "Speak punctuation",
+                             detail: "Say “period”, “comma” or “new line” to insert it. English only.") {
+                        Toggle("", isOn: $spokenPunctuationEnabled).labelsHidden()
+                    }
+                }
+                .modifier(SettingsGroupChrome())
+                // Disclosed because it is charged and was previously invisible:
+                // the app sends `keyterm` for every dictionary term, on every
+                // request, and Deepgram bills Keyterm Prompting separately.
+                // https://deepgram.com/pricing
+                InlineNote(
+                    text: "Deepgram bills Keyterm Prompting separately from transcription: "
+                        + "$0.0013 per minute on pay-as-you-go, on top of $0.0043 per minute "
+                        + "for Nova-3. That is about 30% more per minute while your dictionary "
+                        + "is in use. Smart formatting and language detection are included."
+                )
+            }
+
+            groupLabel("Setup")
+            VStack(spacing: 0) {
+                groupRow(title: "Run setup again", detail: nil) {
+                    settingsButton("Open") { firstRun.restart() }
+                }
+            }
+            .modifier(SettingsGroupChrome())
         }
+    }
+
+    private func groupLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Theme.ink)
+            .padding(.top, 8)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func groupRow<Accessory: View>(
+        title: String,
+        detail: String?,
+        @ViewBuilder accessory: () -> Accessory
+    ) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                if let detail {
+                    Text(detail)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 12)
+            accessory()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(minHeight: 56)
+    }
+
+    private func settingsButton(_ title: String, role: ButtonRole? = nil,
+                                action: @escaping () -> Void) -> some View {
+        Button(role: role, action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(role == .destructive ? Theme.danger : Theme.ink)
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .clickableCursor()
+    }
+
+    private func radio(_ on: Bool) -> some View {
+        Circle()
+            .strokeBorder(on ? Theme.ink : Theme.inkFaint, lineWidth: on ? 5.5 : 1.5)
+            .background(Circle().fill(Theme.surface))
+            .frame(width: 18, height: 18)
+    }
+
+    private var deepgramRow: some View {
+        let selected = engine == .deepgram
+        return HStack(spacing: 12) {
+            radio(selected)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Deepgram Nova-3")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                Text(hasDeepgramKey ? "Cloud. Key saved in your Keychain." : "Cloud. Needs an API key.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.muted)
+            }
+            Spacer(minLength: 12)
+            if hasDeepgramKey {
+                HStack(spacing: 6) {
+                    CheckGlyph(size: 16)
+                    Text("Connected")
+                }
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.success)
+            }
+            settingsButton(hasDeepgramKey ? "Change key" : "Add key") {
+                changingDeepgramKey.toggle()
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(minHeight: 56)
+        .contentShape(Rectangle())
+        .onTapGesture { engineBinding.wrappedValue = .deepgram }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+
+    /// The key field behind "Change key": the new key is saved by Save settings
+    /// or the button here, and an existing key can be removed.
+    private var deepgramKeyEditor: some View {
+        HStack(spacing: 10) {
+            SecureField("Paste your API key", text: $deepgramKey)
+                .premiumInputChrome()
+            settingsButton("Save") { save() }
+            if hasDeepgramKey {
+                settingsButton("Remove", role: .destructive) {
+                    Keychain.delete(account: DeepgramKeyStore.account)
+                    DeepgramKeyStore.shared.update(nil)
+                    hasDeepgramKey = false
+                    changingDeepgramKey = false
+                    viewModel.refreshConfig()
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 
     private func modelRow(_ model: WhisperModel) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 8) {
-                Text(model.displayName)
-                    .font(.system(size: 13, weight: .medium))
+        let selected = engine == .whisperLocal && models.isActive(model)
+        return HStack(spacing: 12) {
+            radio(selected)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.shortName)
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.ink)
-                if model.isRecommended {
-                    Text("Recommended")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Theme.success)
-                }
-                Spacer(minLength: 8)
-                if models.isActive(model), models.availability(of: model) == .usable {
-                    HStack(spacing: 5) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Theme.success)
-                        Text("Active")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Theme.success)
-                    }
-                }
-            }
-
-            Text(modelMetadata(model))
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.muted)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if let note = model.note {
-                Text(note)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.muted)
+                Text(modelDetail(model))
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(modelDetailIsError(model) ? Theme.danger : Theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            modelControls(model)
+            Spacer(minLength: 12)
+            modelAccessory(model)
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(minHeight: 56)
+        .contentShape(Rectangle())
+        .onTapGesture { chooseModel(model) }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
-    /// "809M params · 99 languages · MIT · 1.6 GB on disk"
-    private func modelMetadata(_ model: WhisperModel) -> String {
-        var parts = [
-            "\(model.parameterCount) params",
-            "\(model.languageCount) languages",
-            model.licenseName,
-            model.sizeDescription,
-        ]
-        if let bytes = models.installedBytes(for: model) {
-            parts.append("\(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)) downloaded")
+    private func chooseModel(_ model: WhisperModel) {
+        if models.availability(of: model) == .usable {
+            models.activate(model)
+        } else {
+            models.select(model)
         }
-        return parts.joined(separator: " · ")
+        engineBinding.wrappedValue = .whisperLocal
+    }
+
+    private func modelDetailIsError(_ model: WhisperModel) -> Bool {
+        if case .failed = models.state(for: model) { return true }
+        return false
+    }
+
+    private func modelDetail(_ model: WhisperModel) -> String {
+        switch models.state(for: model) {
+        case .downloading(let received, let total):
+            return Self.progressDescription(received: received, total: total)
+        case .validating:
+            return "Verifying checksum"
+        case .failed(let message):
+            return message
+        case .paused, .idle:
+            switch models.availability(of: model) {
+            case .usable: return "On this Mac. \(model.gbDescription), downloaded."
+            case .invalid: return "On this Mac. The file failed its check."
+            case .missing: return "On this Mac. \(model.gbDescription)."
+            }
+        }
     }
 
     @ViewBuilder
-    private func modelControls(_ model: WhisperModel) -> some View {
-        let availability = models.availability(of: model)
+    private func modelAccessory(_ model: WhisperModel) -> some View {
         let state = models.state(for: model)
-
-        HStack(spacing: 10) {
-            switch state {
-            case .downloading(let received, let total):
-                ProgressView(value: Double(received), total: Double(max(total, 1)))
-                    .progressViewStyle(.linear)
-                    .frame(maxWidth: 200)
-                Text(Self.progressDescription(received: received, total: total))
-                    .font(.system(size: 11).monospacedDigit())
-                    .foregroundStyle(Theme.muted)
-                Button("Pause") { models.pause(model) }
-                    .buttonStyle(.borderless)
-                    .font(.system(size: 12, weight: .medium))
-                    .clickableCursor()
-            case .validating:
-                ProgressView()
-                    .controlSize(.small)
-                Text("Verifying checksum")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.muted)
-            case .paused(let resumeAvailable):
-                Button(resumeAvailable ? "Resume download" : "Download \(model.sizeDescription)") {
+        switch state {
+        case .downloading(let received, let total):
+            ProgressView(value: Double(received), total: Double(max(total, 1)))
+                .progressViewStyle(.linear)
+                .frame(width: 90)
+            settingsButton("Pause") { models.pause(model) }
+        case .validating:
+            ProgressView().controlSize(.small)
+        case .paused:
+            settingsButton(models.canResume(model) ? "Resume" : "Download") {
+                models.download(model)
+            }
+        case .failed:
+            settingsButton("Try again") { models.download(model) }
+        case .idle:
+            switch models.availability(of: model) {
+            case .usable:
+                settingsButton("Delete", role: .destructive) { modelPendingDeletion = model }
+            case .missing:
+                settingsButton(models.canResume(model) ? "Resume" : "Download") {
                     models.download(model)
                 }
-                .buttonStyle(.borderless)
-                .font(.system(size: 12, weight: .medium))
-                .clickableCursor()
-            case .failed(let message):
-                Text(message)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.danger)
-                    .lineLimit(2)
-                Button("Try again") { models.download(model) }
-                    .buttonStyle(.borderless)
-                    .font(.system(size: 12, weight: .medium))
-                    .clickableCursor()
-            case .idle:
-                switch availability {
-                case .usable:
-                    if !models.isActive(model) {
-                        Button("Use this model") { models.activate(model) }
-                            .buttonStyle(.borderless)
-                            .font(.system(size: 12, weight: .medium))
-                            .clickableCursor()
-                    }
-                    Button("Delete", role: .destructive) {
-                        modelPendingDeletion = model
-                    }
-                    .buttonStyle(.borderless)
-                    .font(.system(size: 12, weight: .medium))
-                    .clickableCursor()
-                case .missing:
-                    if models.canResume(model) {
-                        Button("Resume download") { models.download(model) }
-                            .buttonStyle(.borderless)
-                            .font(.system(size: 12, weight: .medium))
-                            .clickableCursor()
-                    } else {
-                        Button("Download \(model.sizeDescription)") { models.download(model) }
-                            .buttonStyle(.borderless)
-                            .font(.system(size: 12, weight: .medium))
-                            .clickableCursor()
-                    }
-                case .invalid:
-                    Button("Download again") { models.download(model) }
-                        .buttonStyle(.borderless)
-                        .font(.system(size: 12, weight: .medium))
-                        .clickableCursor()
-                    Button("Delete", role: .destructive) {
-                        modelPendingDeletion = model
-                    }
-                    .buttonStyle(.borderless)
-                    .font(.system(size: 12, weight: .medium))
-                    .clickableCursor()
-                }
+            case .invalid:
+                settingsButton("Download again") { models.download(model) }
+                settingsButton("Delete", role: .destructive) { modelPendingDeletion = model }
             }
-            Spacer(minLength: 0)
         }
     }
 
     private static func progressDescription(received: Int64, total: Int64) -> String {
-        let done = ByteCountFormatter.string(fromByteCount: received, countStyle: .file)
-        let whole = ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
-        return "\(done) of \(whole)"
+        "\(FRLocalDownloadPage.gb(received)) of \(FRLocalDownloadPage.gb(total, unit: true))"
     }
 
     private var dataSection: some View {
@@ -633,35 +646,6 @@ struct SettingsPage: View {
             }
             Spacer(minLength: 20)
             accessory()
-        }
-    }
-
-    private func secretField(
-        title: String,
-        placeholder: String,
-        value: Binding<String>,
-        hasSavedValue: Bool,
-        clear: @escaping () -> Void
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(title)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Theme.ink)
-                if hasSavedValue {
-                    Text("Stored in Keychain")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Theme.success)
-                }
-                Spacer()
-                if hasSavedValue {
-                    Button("Remove saved key", role: .destructive, action: clear)
-                        .buttonStyle(.borderless)
-                        .font(.system(size: 11))
-                        .clickableCursor()
-                }
-            }
-            SecureField(placeholder, text: value).premiumInputChrome()
         }
     }
 
@@ -842,5 +826,15 @@ struct SettingsPage: View {
     private func openPrivacyPane(_ pane: String) {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") else { return }
         NSWorkspace.shared.open(url)
+    }
+}
+
+/// The bordered rounded container the Transcription groups sit in.
+private struct SettingsGroupChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Theme.line, lineWidth: 1))
     }
 }

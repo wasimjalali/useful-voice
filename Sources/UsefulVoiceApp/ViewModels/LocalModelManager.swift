@@ -122,6 +122,17 @@ final class LocalModelManager: ObservableObject {
         onModelsChanged?(.activated(model))
     }
 
+    /// Makes the model the active one before its file exists, so the first-run
+    /// flow can pick a model and then download it. Dictation with the local
+    /// engine says "download it" until the file validates.
+    func select(_ model: WhisperModel) {
+        guard model.id != activeModelID else { return }
+        deleteError = nil
+        activeModelID = model.id
+        settings.localModelID = model.id
+        onModelsChanged?(.activated(model))
+    }
+
     func engineChanged(to engine: TranscriptionEngineChoice) {
         onEngineChanged?(engine)
     }

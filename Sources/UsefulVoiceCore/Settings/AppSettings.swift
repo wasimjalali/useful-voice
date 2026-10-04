@@ -267,11 +267,15 @@ public final class AppSettings {
     }
 
     public var languagePin: LanguagePin {
-        // `init(code:)` rather than `init(rawValue:)`: it normalises an unset or
+        // `init(code:)` rather than `init(rawValue:)`: it normalises an
         // unrecognised stored value to auto. The raw initialiser is non-failable
         // now that the type is a struct over a string, so an empty default would
-        // have produced a pin naming no language at all.
-        get { LanguagePin(code: defaults.string(forKey: Keys.languagePin) ?? "") }
+        // have produced a pin naming no language at all. A value that was never
+        // saved defaults to English (new installs); a saved choice is kept.
+        get {
+            guard let stored = defaults.string(forKey: Keys.languagePin) else { return .en }
+            return LanguagePin(code: stored)
+        }
         set { defaults.set(newValue.rawValue, forKey: Keys.languagePin) }
     }
 

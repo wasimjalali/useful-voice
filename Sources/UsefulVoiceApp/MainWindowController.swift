@@ -8,12 +8,16 @@ import UsefulVoiceCore
 @MainActor
 final class MainWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
+    /// Tells the first-run flow when the window hides or shows, so its
+    /// microphone meter never runs behind a closed window.
+    var onVisibilityChange: ((Bool) -> Void)?
 
-    func show(viewModel: UsefulVoiceViewModel, settings: AppSettings) {
+    func show(viewModel: UsefulVoiceViewModel, settings: AppSettings,
+              firstRun: FirstRunModel) {
         let isFirstShow = window == nil
         if isFirstShow {
             let hosting = NSHostingController(
-                rootView: RootView(viewModel: viewModel, settings: settings))
+                rootView: RootView(viewModel: viewModel, settings: settings, firstRun: firstRun))
             let window = NSWindow(contentViewController: hosting)
             window.title = "Useful Voice"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
@@ -39,14 +43,16 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         if isFirstShow { window?.center() }
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        onVisibilityChange?(true)
     }
 
     /// Renders the window's content to a PNG without showing a window or taking focus, so
     /// a page can be checked at any width while someone is working in another app. Used by
     /// `UV_SNAPSHOT` (see AppDelegate), not by normal launches.
     func snapshot(viewModel: UsefulVoiceViewModel, settings: AppSettings,
-                  size: NSSize, to url: URL, completion: @escaping (Bool) -> Void) {
-        let hosting = NSHostingView(rootView: RootView(viewModel: viewModel, settings: settings))
+                  firstRun: FirstRunModel, size: NSSize, to url: URL, completion: @escaping (Bool) -> Void) {
+        let hosting = NSHostingView(
+            rootView: RootView(viewModel: viewModel, settings: settings, firstRun: firstRun))
         let offscreen = NSWindow(contentRect: NSRect(origin: .zero, size: size),
                                  styleMask: [.borderless], backing: .buffered, defer: false)
         offscreen.contentView = hosting
@@ -74,6 +80,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         // Back to menu-bar-only. Window is kept (isReleasedWhenClosed=false) for reopen.
         NSApp.setActivationPolicy(.accessory)
+        onVisibilityChange?(false)
     }
 
     /// A standard document-sized window, clamped to the visible screen.

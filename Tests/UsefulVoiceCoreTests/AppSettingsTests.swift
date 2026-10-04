@@ -14,7 +14,7 @@ import Foundation
     }
 
     @Test func testDefaults() {
-        #expect(settings.languagePin == .auto)
+        #expect(settings.languagePin == .en)
         #expect(settings.silenceTimeout == 60)
         #expect(settings.recordingsToKeep == 10)
         #expect(settings.formattingEnabled == true)

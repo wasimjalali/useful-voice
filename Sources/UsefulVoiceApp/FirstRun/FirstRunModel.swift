@@ -369,7 +369,22 @@ final class FirstRunModel: ObservableObject {
     func appWillTerminate() {
         guard active, !frozen, !forced else { return }
         if page == .done {
+            let committed = settings.transcriptionEngine == .whisperLocal
+                ? WhisperModelCatalog.model(forID: settings.localModelID) : nil
+            let model = pendingLocal ?? committed
+            var stillDownloading = false
+            if let model {
+                switch models.state(for: model) {
+                case .downloading, .validating: stillDownloading = true
+                default: break
+                }
+            }
             finish()
+            // Quitting stops the download, so treat it as stopped.
+            if stillDownloading, let model {
+                pendingLocal = model
+                dropPendingLocal(requireUsableSnapshot: true)
+            }
         } else {
             cancelDiskTask()
             restoreSnapshotIfUnusable()
@@ -536,6 +551,14 @@ final class FirstRunModel: ObservableObject {
         if engine == .deepgram {
             cancelDiskTask()
             dropPendingLocal(restoring: false)
+            // The dropped choice may have left a model that can't dictate.
+            if settings.localModelID != snapshot.modelID,
+               let current = WhisperModelCatalog.model(forID: settings.localModelID),
+               models.availability(of: current) != .usable,
+               let original = WhisperModelCatalog.model(forID: snapshot.modelID) {
+                models.activate(original, allowUnusable: true)
+                engineRestoreCount += 1
+            }
         }
         settings.transcriptionEngine = engine
         viewModel.models.engineChanged(to: engine)
@@ -697,9 +720,14 @@ final class FirstRunModel: ObservableObject {
 
     /// Cancel download, and the Back link on the download page: nothing of the
     /// half-made choice is kept.
-    func cancelDownload() {
+    func cancelDownload(pausePending: Bool = false) {
         cancelDiskTask()
         pauseRunningDownloads()
+        // The Cancel download link stops the pending model whoever started it.
+        if pausePending, !forced, let pending = pendingLocal,
+           case .downloading = models.state(for: pending) {
+            models.pause(pending)
+        }
         pendingLocal = nil
         restoreSnapshotIfUnusable()
         go(.engine)

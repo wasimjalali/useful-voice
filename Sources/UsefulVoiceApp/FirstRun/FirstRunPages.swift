@@ -387,7 +387,7 @@ struct FRLocalDownloadPage: View {
     var body: some View {
         let current = phase
         FRColumn {
-            FRBackLink(action: model.cancelDownload)
+            FRBackLink(action: { model.cancelDownload() })
             FRHeader(step: 1, title: title(for: current))
             card(for: current)
             if case .stopped(let received, let kind) = current {
@@ -406,7 +406,7 @@ struct FRLocalDownloadPage: View {
                 }
                 FRPrimaryButton(title: "Continue", action: model.continueFromDownload)
                 if case .ready = current {} else {
-                    FRTextLink(title: "Cancel download", action: model.cancelDownload)
+                    FRTextLink(title: "Cancel download", action: { model.cancelDownload(pausePending: true) })
                         .frame(maxWidth: .infinity)
                 }
             }

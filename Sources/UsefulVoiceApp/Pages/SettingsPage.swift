@@ -14,6 +14,9 @@ struct SettingsPage: View {
     @State private var deepgramKey = ""
     @State private var hasDeepgramKey = false
     @State private var changingDeepgramKey = false
+    /// A key save or removal is running: the key controls and Save stay disabled
+    /// so a second click can't start another one.
+    @State private var savingKey = false
     @State private var formattingEnabled = true
     @State private var spokenPunctuationEnabled = false
     /// Set when the user asks to delete a model, driving the confirmation.
@@ -108,6 +111,7 @@ struct SettingsPage: View {
                     .tint(Theme.brand)
                     .controlSize(.large)
                     .clickableCursor()
+                    .disabled(savingKey)
             }
         }
     }
@@ -401,6 +405,7 @@ struct SettingsPage: View {
             settingsButton(hasDeepgramKey ? "Change key" : "Add key") {
                 changingDeepgramKey.toggle()
             }
+            .disabled(savingKey)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -414,16 +419,12 @@ struct SettingsPage: View {
         HStack(spacing: 10) {
             SecureField("Paste your API key", text: $deepgramKey)
                 .premiumInputChrome()
+                .disabled(savingKey)
             settingsButton("Save") { save() }
+                .disabled(savingKey)
             if hasDeepgramKey {
-                settingsButton("Remove", role: .destructive) {
-                    Task { @MainActor in
-                        await DeepgramKeyStore.shared.remove()
-                        hasDeepgramKey = false
-                        changingDeepgramKey = false
-                        viewModel.refreshConfig()
-                    }
-                }
+                settingsButton("Remove", role: .destructive) { removeKey() }
+                    .disabled(savingKey)
             }
         }
         .padding(.horizontal, 14)
@@ -766,6 +767,7 @@ struct SettingsPage: View {
     }
 
     private func save() {
+        guard !savingKey else { return }
         saveMessage = ""
         saveIsError = false
 
@@ -784,16 +786,41 @@ struct SettingsPage: View {
         // The store writes the keychain and refreshes the cache the dictation
         // pipeline reads in one ordered step, so the new key works without a
         // relaunch and a stale write can never overwrite a newer one.
+        savingKey = true
         Task { @MainActor in
+            defer { savingKey = false }
             do {
                 try await DeepgramKeyStore.shared.save(trimmedKey)
                 hasDeepgramKey = true
-                deepgramKey = ""
-                changingDeepgramKey = false
+                // Only the text that was saved is cleared: anything else in the
+                // field is a newer edit.
+                if deepgramKey.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedKey {
+                    deepgramKey = ""
+                    changingDeepgramKey = false
+                }
                 viewModel.refreshConfig()
                 saveMessage = "Settings saved"
             } catch {
                 saveMessage = "Could not save the Keychain value"
+                saveIsError = true
+            }
+        }
+    }
+
+    private func removeKey() {
+        guard !savingKey else { return }
+        saveMessage = ""
+        saveIsError = false
+        savingKey = true
+        Task { @MainActor in
+            defer { savingKey = false }
+            do {
+                try await DeepgramKeyStore.shared.remove()
+                hasDeepgramKey = false
+                changingDeepgramKey = false
+                viewModel.refreshConfig()
+            } catch {
+                saveMessage = "Couldn't remove the key from your Keychain. Try again."
                 saveIsError = true
             }
         }
@@ -815,8 +842,10 @@ struct SettingsPage: View {
             // is not the same as no key: reporting "Enter your Deepgram API key"
             // when the truth is a locked keychain sends the user to re-enter a
             // credential that is already there and fine.
+            // Through the store, so the read is ordered with key saves and
+            // removals and a fresh answer reaches the cache too.
             let lookup = await Task.detached(priority: .userInitiated) {
-                Keychain.lookup(account: DeepgramKeyStore.account)
+                DeepgramKeyStore.shared.reload()
             }.value
             let key = typed.isEmpty ? (lookup.value ?? "") : typed
             guard !key.isEmpty else {

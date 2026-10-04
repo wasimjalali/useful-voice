@@ -13,10 +13,27 @@ final class LocalModelManager: ObservableObject {
     /// The model the local engine will use.
     @Published private(set) var activeModelID: String
 
+    /// What changed, so the app layer can unload engine memory only when the
+    /// loaded model is actually affected.
+    enum Change {
+        case downloaded(WhisperModel)
+        case downloadFailed(WhisperModel)
+        case deleted(WhisperModel)
+        case activated(WhisperModel)
+    }
+
+    /// Set when the last delete could not remove every file, so the UI can say
+    /// the model is still on disk. Cleared by the next delete.
+    @Published private(set) var deleteError: String?
+
     /// Called after anything that could change provider usability: a download
     /// finished, a model was deleted, the active model switched. The app layer
     /// refreshes its status line and unloads stale engine memory here.
-    var onModelsChanged: (() -> Void)?
+    var onModelsChanged: ((Change) -> Void)?
+
+    /// Called when the user switches engine in Settings, so leaving local frees
+    /// the whisper context.
+    var onEngineChanged: ((TranscriptionEngineChoice) -> Void)?
 
     private let settings: AppSettings
     private let store: LocalModelStore
@@ -90,20 +107,32 @@ final class LocalModelManager: ObservableObject {
         guard model.id != activeModelID else { return }
         activeModelID = model.id
         settings.localModelID = model.id
-        onModelsChanged?()
+        onModelsChanged?(.activated(model))
+    }
+
+    func engineChanged(to engine: TranscriptionEngineChoice) {
+        onEngineChanged?(engine)
+    }
+
+    /// Pauses every running download and waits briefly for resume data to be
+    /// written. Called at app quit.
+    func pauseAllDownloads() {
+        downloader.pauseAll(timeout: 3)
     }
 
     func delete(_ model: WhisperModel) {
-        downloader.pause(model: model)
+        downloader.discard(model: model)
+        deleteError = nil
         do {
             try store.delete(model)
         } catch {
+            deleteError = "Could not delete \(model.displayName): \(error.localizedDescription)"
             Diagnostics.shared.error(
                 "models", "could not delete \(model.fileName): \(error.localizedDescription)")
         }
         downloadStates[model.id] = .idle
         refreshAvailability()
-        onModelsChanged?()
+        onModelsChanged?(.deleted(model))
     }
 
     /// A one-line summary for the status area, e.g. "2 models · 4.7 GB used".
@@ -125,10 +154,10 @@ extension LocalModelManager: ModelDownloadEvents {
             if state == .idle {
                 // Terminal success state: the file was validated and activated.
                 self.refreshAvailability()
-                self.onModelsChanged?()
+                self.onModelsChanged?(.downloaded(model))
             } else if case .failed = state {
                 self.refreshAvailability()
-                self.onModelsChanged?()
+                self.onModelsChanged?(.downloadFailed(model))
             }
         }
     }

@@ -6,10 +6,11 @@ import Foundation
 /// Everything runs on-device: no API key, no network, no audio leaving the Mac.
 /// The provider validates the model file before every dictation — a deleted or
 /// half-overwritten model fails with an actionable error rather than an engine
-/// crash — and lazily (re)loads the context when the active model file changes,
-/// so switching models mid-session is clean.
+/// crash. The engine loads (or swaps) the context inside the same call that
+/// decodes, so switching models mid-session is clean.
 public final class LocalWhisperProvider: TranscriptionProvider, @unchecked Sendable {
-    public let name = "Whisper (local)"
+    public static let providerName = "Whisper (local)"
+    public let name = LocalWhisperProvider.providerName
 
     /// The model this provider transcribes with, so the app layer can tell
     /// when a settings change requires a different provider.
@@ -17,17 +18,20 @@ public final class LocalWhisperProvider: TranscriptionProvider, @unchecked Senda
     private let engine: any LocalSpeechEngine
     private let store: LocalModelStore
 
-    /// Fires with each new segment's text as decoding produces it. Set by the
-    /// app layer to show partial results while a dictation is still processing;
-    /// the C callback already hops off the engine, this hop reaches the HUD.
-    public var onPartialResult: (@Sendable (String) -> Void)?
+    /// Fires with each new segment's text as decoding produces it. Fixed at
+    /// init so partials can never leak into another call: the app builds one
+    /// provider per dictation and passes a handler only for the live dictation
+    /// (reprocess and the health probe pass nil).
+    private let onPartialResult: (@Sendable (String) -> Void)?
 
     public init(model: WhisperModel,
                 engine: any LocalSpeechEngine,
-                store: LocalModelStore = LocalModelStore()) {
+                store: LocalModelStore = LocalModelStore(),
+                onPartialResult: (@Sendable (String) -> Void)? = nil) {
         self.model = model
         self.engine = engine
         self.store = store
+        self.onPartialResult = onPartialResult
     }
 
     /// The model's whisper language code for a pin, or nil for auto-detect.
@@ -48,17 +52,27 @@ public final class LocalWhisperProvider: TranscriptionProvider, @unchecked Senda
     /// Dictionary bias as a whisper initial prompt.
     ///
     /// whisper takes free-text `initial_prompt` rather than Deepgram's repeated
-    /// `keyterm` parameters, and uses at most 224 tokens of it — so the list is
-    /// joined and capped well under that budget, keeping whole words.
+    /// `keyterm` parameters, and keeps only the LAST 224 tokens of it. So the
+    /// words are chosen in priority order (the list's order) until the budget
+    /// is spent, then emitted in reverse: the highest-priority words end up
+    /// last, where truncation cannot reach them. Latin text costs about one
+    /// character per token-ish unit of budget; other scripts tokenize to
+    /// roughly one token per character, so each non-Latin character is charged
+    /// three, which keeps a Persian or Chinese list under the same 224 tokens.
     static func initialPrompt(from dictionaryWords: [String]) -> String? {
         let budget = 700
-        var prompt = ""
-        for word in dictionaryWords {
-            let candidate = prompt.isEmpty ? word : prompt + " " + word
-            if candidate.count > budget { break }
-            prompt = candidate
+        func cost(_ word: String) -> Int {
+            word.unicodeScalars.reduce(0) { $0 + ($1.value <= 0x24F ? 1 : 3) }
         }
-        return prompt.isEmpty ? nil : prompt
+        var chosen: [String] = []
+        var spent = 0
+        for word in dictionaryWords {
+            let next = spent + cost(word) + (chosen.isEmpty ? 0 : 1)
+            if next > budget { break }
+            chosen.append(word)
+            spent = next
+        }
+        return chosen.isEmpty ? nil : chosen.reversed().joined(separator: " ")
     }
 
     public func transcribe(audio: URL, hint: TranscriptionHint) async throws -> Transcript {
@@ -86,40 +100,30 @@ public final class LocalWhisperProvider: TranscriptionProvider, @unchecked Senda
             throw ProviderError.engineFailed("could not read the recording")
         }
 
-        // Load/reload only when the file on disk is not the loaded context —
-        // the common case (same model, next dictation) costs nothing.
-        if await engine.loadedModelURL != modelURL {
-            do {
-                try await engine.load(modelURL: modelURL)
-            } catch let error as LocalEngineError {
-                throw ProviderError.engineFailed(Self.describe(error))
-            } catch {
-                throw ProviderError.engineFailed("could not load the model")
-            }
-        }
-
         let options = LocalTranscriptionOptions(
             language: Self.whisperLanguageCode(for: hint.languagePin),
             initialPrompt: Self.initialPrompt(from: hint.dictionaryWords))
         do {
             let result = try await engine.transcribe(
-                samples: samples, options: options, onSegment: onPartialResult)
+                modelURL: modelURL, samples: samples, options: options,
+                onSegment: onPartialResult)
             return Transcript(
                 text: result.text,
                 detectedLanguage: result.detectedLanguage,
                 durationSeconds: result.durationSeconds)
         } catch let error as LocalEngineError {
-            throw ProviderError.engineFailed(Self.describe(error))
+            throw ProviderError.engineFailed(describe(error))
         } catch {
             throw ProviderError.engineFailed("local transcription failed")
         }
     }
 
-    private static func describe(_ error: LocalEngineError) -> String {
+    private func describe(_ error: LocalEngineError) -> String {
         switch error {
-        case .modelLoadFailed(let detail): return "model load failed: \(detail)"
-        case .notLoaded: return "no model is loaded"
-        case .transcriptionFailed(let status): return "engine returned status \(status)"
+        case .modelLoadFailed:
+            return "\(model.displayName) could not be loaded. Delete and download it again in Settings, or use Turbo on 8 GB Macs."
+        case .transcriptionFailed(let status):
+            return "Local transcription failed (code \(status)). Try again."
         }
     }
 }

@@ -35,12 +35,12 @@ Requirements: macOS 14+, Apple Silicon, Command Line Tools (no full Xcode needed
 2. **Accessibility**: System Settings > Privacy & Security > Accessibility, enable Useful Voice. This powers the tap hotkeys AND inserting text at your cursor. The app polls for this, so once you grant it the hotkey starts working without a relaunch (no need to quit and reopen).
 3. **Pick a transcription engine** in Settings:
    - **Deepgram (cloud)** — paste your Deepgram API key. Useful Voice transcribes with the Deepgram Nova-3 model.
-   - **Whisper (local)** — download one of the bundled-in-Settings Whisper models and everything runs on-device. No API key, no account, no audio leaving the Mac.
+   - **Whisper (local)** — download a Whisper model from Settings and everything runs on-device. No API key, no account, no audio leaving the Mac.
 4. Turn **Auto-format transcript** on for punctuation, capitalization and formatted numbers, or off for raw text.
 
 Your Deepgram API key is stored in the macOS Keychain, never in a file.
 
-Until an engine is configured, every dictation ends with the HUD saying "No transcription provider configured." Use **Test engine** in Settings to run a tiny transcription probe before you rely on it.
+Until an engine is configured, every dictation ends with the HUD saying "No transcription provider configured." Use **Test connection** in Settings to run a tiny transcription probe before you rely on it.
 
 ## Using it
 
@@ -66,14 +66,14 @@ Useful Voice uses Deepgram's **Nova-3** model. Auto-format (Deepgram's `smart_fo
 
 ### Whisper (local, on-device)
 
-Runs [whisper.cpp](https://github.com/ggml-org/whisper.cpp) with Metal GPU acceleration — no API key, and **audio never leaves your Mac**. Pick a model in Settings › Models and download it there (progress, checksum verification, and delete are built in):
+Runs [whisper.cpp](https://github.com/ggml-org/whisper.cpp) with Metal GPU acceleration — no API key, and **audio never leaves your Mac**. Models are listed in Settings › Speech once you pick Whisper (local). Download one there (progress, pause and resume, checksum verification and delete are built in):
 
 | Model | Size | License | Notes |
 |---|---|---|---|
-| `whisper-large-v3-turbo` | ~1.6 GB | MIT | **Recommended.** Near state-of-the-art accuracy at much higher speed. The right pick for most Macs — including 8 GB machines, where it transcribes at or faster than real time. |
+| `whisper-large-v3-turbo` | ~1.6 GB | MIT | **Recommended.** Near state-of-the-art accuracy at much higher speed. The right pick for most Macs, including 8 GB machines. |
 | `whisper-large-v3` | ~3.1 GB | Apache-2.0 | The most accurate option, but roughly 2× the memory and noticeably slower. Better suited to 16 GB+ Macs; on 8 GB machines prefer turbo. |
 
-Both models support **99 languages** with auto-detection, plus the language override in the menu bar — Persian/Dari included.
+Both models support **99 languages** with auto-detection, plus the language override in the menu bar. Persian is included.
 
 Model weights are the `ggml-*.bin` builds published by the whisper.cpp project on Hugging Face ([ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp)), converted from OpenAI's releases: [openai/whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo) (MIT) and [openai/whisper-large-v3](https://huggingface.co/openai/whisper-large-v3) (Apache-2.0). Weights land in `~/Library/Application Support/UsefulVoice/models/` and are verified against their SHA-256 before activation.
 

@@ -334,7 +334,11 @@ public final class DictationController {
             }
         }
 
-        recordDetectedLanguageCheck(rawDetected)
+        // The Nova-3 fallback check is Deepgram-specific: a local engine's
+        // codes (whisper's "yue") are not Deepgram detections.
+        if usedProvider != LocalWhisperProvider.providerName {
+            recordDetectedLanguageCheck(rawDetected)
+        }
 
         record(DictationRecord(
             text: finalText,

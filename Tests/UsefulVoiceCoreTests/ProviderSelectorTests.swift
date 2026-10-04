@@ -74,14 +74,18 @@ struct ProviderSelectorTests {
     }
 
     @Test func engineSettingsDefaultToDeepgramAndTurbo() {
-        let defaults = UserDefaults(suiteName: "provider-selector-\(UUID().uuidString)")!
+        let suite = "provider-selector-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
         let settings = AppSettings(defaults: defaults)
         #expect(settings.transcriptionEngine == .deepgram)
         #expect(settings.localModelID == WhisperModelCatalog.largeV3Turbo.id)
     }
 
     @Test func engineSettingsRoundTripAndRejectUnknownValues() {
-        let defaults = UserDefaults(suiteName: "provider-selector-\(UUID().uuidString)")!
+        let suite = "provider-selector-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
         let settings = AppSettings(defaults: defaults)
         settings.transcriptionEngine = .whisperLocal
         #expect(settings.transcriptionEngine == .whisperLocal)

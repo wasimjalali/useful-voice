@@ -32,8 +32,6 @@ public struct LocalTranscriptionResult: Sendable {
 public enum LocalEngineError: Error, Equatable {
     /// The model file could not be loaded into a context.
     case modelLoadFailed(String)
-    /// No model context is loaded (load() was never called or it failed).
-    case notLoaded
     /// whisper_full returned a non-zero status.
     case transcriptionFailed(Int)
 }
@@ -54,18 +52,22 @@ public protocol LocalSpeechEngine: Sendable {
     /// The model file currently loaded, if any.
     var loadedModelURL: URL? { get async }
 
-    /// Loads (or reloads) the model context. Calling with a different URL than
-    /// `loadedModelURL` frees the old context first, so switching models
-    /// mid-session releases the previous weights before allocating new ones.
-    func load(modelURL: URL) async throws
-
     /// Releases the model context and its memory.
     func unload() async
 
-    /// Transcribes 16 kHz mono float PCM. `onSegment` fires with each new text
-    /// segment as it is decoded, so the UI can show partial results while a
-    /// long dictation is still processing.
+    /// Transcribes 16 kHz mono float PCM with the model at `modelURL`.
+    ///
+    /// Loading is part of this one call, not a separate step: the engine loads
+    /// (or swaps to) `modelURL` when it is not the current context, then
+    /// decodes with no suspension point in between, so a concurrent `unload`
+    /// can never land between the load and the decode. A different URL than
+    /// `loadedModelURL` frees the old context first, so switching models
+    /// mid-session releases the previous weights before allocating new ones.
+    ///
+    /// `onSegment` fires with each new text segment as it is decoded, so the UI
+    /// can show partial results while a long dictation is still processing.
     func transcribe(
+        modelURL: URL,
         samples: [Float],
         options: LocalTranscriptionOptions,
         onSegment: (@Sendable (String) -> Void)?

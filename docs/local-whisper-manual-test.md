@@ -15,13 +15,16 @@ open dist/UsefulVoice.app
 ## Model download and management
 
 - [ ] Settings › Transcription engine: switch to **Whisper (local)**. With no
-      model downloaded, the Models section prompts for a download and dictation
+      model downloaded, the model rows in the Speech section show a download button and dictation
       reports a clear "no model downloaded" error — never a silent failure.
 - [ ] Download **large-v3-turbo**. Progress bar advances continuously; the row
       shows size-on-disk growing or a final size (~1.6 GB) when done.
-- [ ] Interrupt a download mid-flight (turn Wi-Fi off / kill the app), then
-      retry. The download resumes or restarts cleanly with no partial-file
-      corruption error.
+- [ ] Interrupt a download mid-flight by turning Wi-Fi off, then retry. It
+      resumes or restarts cleanly with no partial-file corruption error.
+- [ ] Quit the app (Cmd-Q) mid-download and relaunch: the row offers **Resume
+      download** and continues from the bytes already fetched (quit pauses the
+      download and saves resume data, waiting up to 3 seconds). A force-quit or
+      crash does not save resume data, so that download restarts from zero.
 - [ ] After download completes, the row shows "Active" only **after** checksum
       verification. (If you want to see the failure path, corrupt the file in
       `~/Library/Application Support/UsefulVoice/models/` and re-run activation
@@ -30,21 +33,21 @@ open dist/UsefulVoice.app
       exactly one shows "Active".
 - [ ] Delete large-v3: confirmation dialog appears; file disappears from
       `~/Library/Application Support/UsefulVoice/models/`; row returns to
-      "Download".
+      "Download 3.1 GB".
 - [ ] Re-download after delete works end-to-end.
 - [ ] Quit and relaunch: the active model and engine choice persist.
 
 ## Transcription — turbo (the default pick)
 
-- [ ] English dictation (~15 s spoken): transcript inserts at cursor; roughly
-      real-time or faster (≤ the length of the recording) on an M1/8 GB.
+- [ ] English dictation (~15 s spoken): transcript inserts at cursor. Note how long
+      transcription takes on an M1/8 GB for the record (no target set yet).
 - [ ] Partial results appear in the HUD while transcribing.
 - [ ] **Auto-detect** language: dictate English, then Persian — detected
       language follows the speech.
 - [ ] Language pin = **Persian**: Persian dictation transcribes correctly;
       Persian text inserts with correct RTL text.
-- [ ] Language pin = **Dari** (if offered) or Persian for Dari speech:
-      transcribes without error.
+- [ ] Dari is not in the language list: pin **Persian** and dictate Dari
+      speech; it transcribes without error.
 - [ ] Auto-format on: capitalization, punctuation, numbers applied to local
       transcripts the same as Deepgram's.
 - [ ] Dictionary word taught (a name or specialist spelling): correction
@@ -66,7 +69,7 @@ open dist/UsefulVoice.app
       diagnostics) and no audio or text from the first dictation is lost.
 - [ ] Switch back to Whisper; dictate; still works.
 - [ ] Deepgram regression: existing dictation, formatting, dictionary keyterms,
-      and **Test engine** probe all still work. API key flow unchanged (Settings
+      and the **Test connection** probe all still work. API key flow unchanged (Settings
       still shows the key field, key lives in Keychain only).
 - [ ] Retry path: Library › reprocess a retained recording under each engine.
 - [ ] Error paths: local selected + model deleted → graceful error, no crash;

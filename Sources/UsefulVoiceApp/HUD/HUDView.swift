@@ -78,7 +78,11 @@ struct HUDView: View {
                 .foregroundStyle(Theme.hudInk)
             KeyHint(label: "esc")
         case .transcribing(let partial):
-            status(Self.transcribingLabel(partial))
+            // A live preview gets a fixed width and truncates at its head (the
+            // newest words stay visible), so the pill does not resize with
+            // every partial.
+            status(Self.transcribingLabel(partial),
+                   fixedWidth: partial == nil ? nil : 260)
         case .delivering:
             status("Inserting")
         case .done:
@@ -125,7 +129,7 @@ struct HUDView: View {
 
     /// A working state: a spinner plus a quiet label. The recording state shows
     /// the full waveform, so these brief states stay minimal.
-    private func status(_ label: String) -> some View {
+    private func status(_ label: String, fixedWidth: CGFloat? = nil) -> some View {
         HStack(spacing: 8) {
             ProgressView()
                 .progressViewStyle(.circular)
@@ -134,6 +138,9 @@ struct HUDView: View {
             Text(label)
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.hudInk)
+                .lineLimit(1)
+                .truncationMode(.head)
+                .frame(width: fixedWidth, alignment: .leading)
         }
     }
 

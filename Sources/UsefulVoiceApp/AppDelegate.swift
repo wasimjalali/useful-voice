@@ -29,7 +29,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// currently selected model.
     private let modelStore = LocalModelStore()
     private let localEngine = WhisperCppEngine()
-    private var localProvider: LocalWhisperProvider?
     private var modelManager: LocalModelManager?
     private var recordingTimer: Timer?
     /// When the current recording began, so the pill can show elapsed mm:ss.
@@ -236,6 +235,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             controller?.cancel()
         }
         viewModel?.flushPendingEdits()
+        // Keep the bytes of any model download in flight: pause it so URLSession
+        // hands back resume data, and give the write a bounded moment to land.
+        modelManager?.pauseAllDownloads()
+    }
+
+    /// Frees the loaded whisper context only when it is no longer the active,
+    /// usable model: that model was deleted, replaced by a fresh download or
+    /// deactivated. Another model's download finishing or failing leaves the
+    /// loaded context alone.
+    private func unloadLocalEngineIfStale(after change: LocalModelManager.Change) {
+        let active = modelManager?.activeModel ?? WhisperModelCatalog.default
+        let activeURL = modelStore.fileURL(for: active)
+        let activeUsable = modelStore.availability(of: active) == .usable
+        let replacedURL: URL? = {
+            if case .downloaded(let model) = change { return modelStore.fileURL(for: model) }
+            return nil
+        }()
+        Task { [localEngine] in
+            guard let loaded = await localEngine.loadedModelURL else { return }
+            if loaded != activeURL || !activeUsable || loaded == replacedURL {
+                await localEngine.unload()
+            }
+        }
     }
 
     /// Useful Voice is an accessory app, so no menu bar is visible, but AppKit still
@@ -326,11 +348,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Settings page and a first download never race its creation.
         modelStore.prepare()
         let modelManager = LocalModelManager(settings: settings, store: modelStore)
-        modelManager.onModelsChanged = { [weak self] in
-            // A model was deleted or the active one switched: drop the loaded
-            // context so its memory is freed now, not at the next dictation.
-            Task { await self?.localEngine.unload() }
+        modelManager.onModelsChanged = { [weak self] change in
+            self?.unloadLocalEngineIfStale(after: change)
             self?.viewModel?.refreshConfig()
+        }
+        modelManager.onEngineChanged = { [weak self] engine in
+            // Leaving local frees the whisper context now; it reloads on demand
+            // if the user comes back.
+            guard engine == .deepgram, let self else { return }
+            Task { await self.localEngine.unload() }
         }
         self.modelManager = modelManager
 
@@ -346,7 +372,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let controller = DictationController(
             recorder: recorder,
-            providers: { [weak self] in self?.buildProviders() ?? [] },
+            providers: { [weak self] in self?.buildProviders(showPartials: true) ?? [] },
             store: store,
             hint: { [settings, languageMemory] in
                 TranscriptionHint(
@@ -618,7 +644,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// with "download it in Settings" instead of the generic no-provider error.
     /// Local is never silently swapped for Deepgram — choosing it means no
     /// audio leaves the machine.
-    private func buildProviders() -> [TranscriptionProvider] {
+    private func buildProviders(showPartials: Bool = false) -> [TranscriptionProvider] {
         let model = modelManager?.activeModel ?? WhisperModelCatalog.default
         let plan = ProviderSelector.resolve(
             engine: settings.transcriptionEngine,
@@ -635,7 +661,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 smartFormat: settings.formattingEnabled,
                 spokenPunctuation: settings.spokenPunctuationEnabled))]
         case .local(let model):
-            return [localProvider(for: model)]
+            return [localProvider(for: model, showPartials: showPartials)]
         case .needsDeepgramKey:
             // Same outcome the Deepgram path always had: the chain is empty and
             // the controller reports "No transcription provider configured".
@@ -647,24 +673,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// The provider for the active local model, rebuilt only when the selected
-    /// model changes (the engine context is shared and swaps lazily inside).
-    private func localProvider(for model: WhisperModel) -> LocalWhisperProvider {
-        if let localProvider, localProvider.model.id == model.id {
-            return localProvider
-        }
-        let provider = LocalWhisperProvider(
-            model: model, engine: localEngine, store: modelStore)
-        provider.onPartialResult = { [weak self] (text: String) in
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    guard self?.controller?.state == .transcribing else { return }
-                    self?.hud.show(.transcribing(partial: text))
+    /// A local provider for `model`. Cheap to build (the engine and its loaded
+    /// context are shared), so one is made per dictation: the live dictation
+    /// passes `showPartials` to drive the HUD, reprocess and the health probe
+    /// pass false, and partials can never leak from one call into another.
+    private func localProvider(for model: WhisperModel, showPartials: Bool) -> LocalWhisperProvider {
+        let onPartial: (@Sendable (String) -> Void)?
+        if showPartials {
+            onPartial = { [weak self] (text: String) in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        guard self?.controller?.state == .transcribing else { return }
+                        self?.hud.show(.transcribing(partial: text))
+                    }
                 }
             }
+        } else {
+            onPartial = nil
         }
-        localProvider = provider
-        return provider
+        return LocalWhisperProvider(
+            model: model, engine: localEngine, store: modelStore,
+            onPartialResult: onPartial)
     }
 
     private static func describeProviderError(_ error: ProviderError) -> String {
@@ -916,6 +945,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// change made on the Settings page is reflected here too.
     func menuWillOpen(_ menu: NSMenu) {
         formattingMenuItem?.state = settings.formattingEnabled ? .on : .off
+        // Smart formatting is a Deepgram option; local models format on their own.
+        formattingMenuItem?.isHidden = settings.transcriptionEngine == .whisperLocal
         syncLanguageMenu()
     }
 

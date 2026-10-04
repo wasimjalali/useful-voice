@@ -71,6 +71,7 @@ struct ModelFileValidatorTests {
         for model in WhisperModelCatalog.all {
             #expect(model.expectedBytes > 0)
             #expect(model.sha256.count == 64)
+            #expect(model.sha256.allSatisfy { $0.isHexDigit && !$0.isUppercase })
             #expect(model.downloadURL.host == "huggingface.co")
             #expect(model.downloadURL.lastPathComponent == model.fileName)
             #expect(model.languageCount == 99)
@@ -91,5 +92,46 @@ struct ModelFileValidatorTests {
         try Data("hello".utf8).write(to: url)
         #expect(try ModelFileValidator.sha256(fileURL: url)
                 == "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824")
+    }
+
+    /// A catalog-shaped model small enough to build on disk in a test; its
+    /// pinned digest is deliberately not the digest of anything we write.
+    private func smallModel(size: Int) -> WhisperModel {
+        WhisperModel(
+            id: "test-model", displayName: "Test Model", fileName: "ggml-test.bin",
+            downloadURL: URL(string: "https://huggingface.co/test/ggml-test.bin")!,
+            expectedBytes: Int64(size), sha256: String(repeating: "0", count: 64),
+            parameterCount: "1M", licenseName: "MIT",
+            licenseURL: URL(string: "https://opensource.org/license/mit")!,
+            provenanceURL: URL(string: "https://huggingface.co/test")!,
+            languageCount: 99, isRecommended: false, note: nil)
+    }
+
+    @Test func rightSizeAndMagicWithWrongContentFailsChecksum() throws {
+        let url = try modelFile(size: 1_000)
+        #expect(ModelFileValidator.validate(fileURL: url, expectedBytes: 1_000) == .valid)
+        #expect(ModelFileValidator.validateAfterDownload(fileURL: url, model: smallModel(size: 1_000))
+                == .checksumMismatch)
+    }
+
+    @Test func activatingABadFileLeavesNothingAtTheDestination() throws {
+        let dir = try tempDir()
+        let store = LocalModelStore(directory: dir)
+        let model = smallModel(size: 1_000)
+        var bytes = [UInt8]([0x6C, 0x6D, 0x67, 0x67])
+        bytes += [UInt8](repeating: 7, count: 1_000 - bytes.count)
+        try Data(bytes).write(to: store.partialURL(for: model))
+
+        #expect(throws: ModelStoreError.validationFailed("checksum mismatch")) {
+            try store.activateDownloadedFile(for: model)
+        }
+        #expect(!FileManager.default.fileExists(atPath: store.fileURL(for: model).path))
+        #expect(!FileManager.default.fileExists(atPath: store.partialURL(for: model).path))
+        #expect(store.availability(of: model) == .missing)
+    }
+
+    @Test func deletingAModelThatIsNotOnDiskDoesNotThrow() throws {
+        let store = LocalModelStore(directory: try tempDir())
+        try store.delete(smallModel(size: 1_000))
     }
 }

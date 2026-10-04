@@ -127,11 +127,22 @@ public final class LocalModelStore: @unchecked Sendable {
         try? fileManager.removeItem(at: resumeDataURL(for: model))
     }
 
-    /// Deletes the model file and any leftover download artifacts.
+    /// Deletes the model file and any leftover download artifacts. A file that
+    /// is already gone is fine; any other failure (permissions, a busy volume)
+    /// is attempted for every artifact, then the first one is thrown so the UI
+    /// can say the model is still on disk.
     public func delete(_ model: WhisperModel) throws {
-        try? fileManager.removeItem(at: fileURL(for: model))
-        try? fileManager.removeItem(at: partialURL(for: model))
-        try? fileManager.removeItem(at: resumeDataURL(for: model))
+        var firstError: Error?
+        for url in [fileURL(for: model), partialURL(for: model), resumeDataURL(for: model)] {
+            do {
+                try fileManager.removeItem(at: url)
+            } catch let error as CocoaError where error.code == .fileNoSuchFile {
+                continue
+            } catch {
+                firstError = firstError ?? error
+            }
+        }
+        if let firstError { throw firstError }
     }
 
     /// Drops resume state (the `.resume` blob and the `.partial` file) without
@@ -141,13 +152,23 @@ public final class LocalModelStore: @unchecked Sendable {
         try? fileManager.removeItem(at: resumeDataURL(for: model))
     }
 
-    public func saveResumeData(_ data: Data, for model: WhisperModel) {
-        try? data.write(to: resumeDataURL(for: model), options: .atomic)
+    /// Persists URLSession resume data. Throws when the write fails so the
+    /// caller never reports a resumable download that is not actually saved.
+    public func saveResumeData(_ data: Data, for model: WhisperModel) throws {
+        try data.write(to: resumeDataURL(for: model), options: .atomic)
         FileProtection.restrict(resumeDataURL(for: model), isDirectory: false)
     }
 
+    /// The saved resume blob, nil when there is none or it is empty.
     public func resumeData(for model: WhisperModel) -> Data? {
-        try? Data(contentsOf: resumeDataURL(for: model))
+        guard let data = try? Data(contentsOf: resumeDataURL(for: model)),
+              !data.isEmpty else { return nil }
+        return data
+    }
+
+    /// Drops only the saved resume blob.
+    public func clearResumeData(for model: WhisperModel) {
+        try? fileManager.removeItem(at: resumeDataURL(for: model))
     }
 
     private static func describe(_ validation: ModelFileValidation) -> String {

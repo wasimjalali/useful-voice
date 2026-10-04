@@ -13,8 +13,12 @@ public actor WhisperCppEngine: LocalSpeechEngine {
 
     public private(set) var loadedModelURL: URL?
     private var context: OpaquePointer?
+    private var idleTask: Task<Void, Never>?
+    private let idleUnloadAfter: Duration
 
-    public init() {}
+    public init(idleUnloadAfter: Duration = .seconds(10 * 60)) {
+        self.idleUnloadAfter = idleUnloadAfter
+    }
 
     /// The decoding params are configured for dictation, not translation:
     /// transcribe in the spoken language, timestamps on (harmless, and the
@@ -50,33 +54,16 @@ public actor WhisperCppEngine: LocalSpeechEngine {
         return (params, box)
     }
 
-    /// Ensures `modelURL` is the loaded context, loading or reloading as needed.
-    private func ensureLoaded(modelURL: URL) async throws {
-        if loadedModelURL == modelURL, context != nil { return }
-        try await load(modelURL: modelURL)
-    }
-
-    /// Works around a ggml-metal teardown bug in this XCFramework: Metal
-    /// residency sets keep freed buffers registered for a keep-alive window
-    /// (180 s), and `ggml_metal_device_free` asserts the set is empty during
-    /// static destruction at process exit — so quitting the app (or the test
-    /// runner) within 3 minutes of a transcription aborts with SIGABRT.
-    /// Disabling residency sets avoids the assert entirely; the buffers take
-    /// the normal decommit path instead. Set without overwrite so a user's
-    /// explicit environment still wins.
-    private static func prepareEnvironment() {
-        setenv("GGML_METAL_NO_RESIDENCY", "1", 0)
-    }
-
-    public func load(modelURL: URL) async throws {
+    /// Loads `modelURL` into a fresh context, freeing any previous one first.
+    /// Synchronous on purpose: `transcribe` calls it with no suspension point
+    /// before decoding.
+    private func load(modelURL: URL) throws {
         // Free first: holding two large contexts at once on a small-memory Mac
         // is exactly the thrash the bigger model must avoid.
         let previous = context
         context = nil
         loadedModelURL = nil
         if let previous { whisper_free(previous) }
-
-        Self.prepareEnvironment()
 
         var contextParams = whisper_context_default_params()
         contextParams.use_gpu = true       // Metal
@@ -93,43 +80,76 @@ public actor WhisperCppEngine: LocalSpeechEngine {
     }
 
     public func unload() async {
+        idleTask?.cancel()
+        idleTask = nil
         if let context { whisper_free(context) }
         context = nil
         loadedModelURL = nil
     }
 
+    /// Frees the context 10 minutes after the last transcription, so a model
+    /// that is no longer in use does not hold gigabytes for the rest of the
+    /// session. A later `transcribe` cancels the pending unload (and the next
+    /// one reloads on demand). Actor isolation means this can never run while
+    /// `whisper_full` is decoding.
+    private func scheduleIdleUnload() {
+        idleTask?.cancel()
+        let delay = idleUnloadAfter
+        idleTask = Task { [weak self] in
+            do { try await Task.sleep(for: delay) } catch { return }
+            await self?.unload()
+        }
+    }
+
     /// Loads the model when needed and transcribes. `whisper_full` blocks until
-    /// decoding finishes; the actor keeps that off the caller's thread.
+    /// decoding finishes; the actor keeps that off the caller's thread. There is
+    /// no `await` between the load and the decode, so nothing can unload the
+    /// context in between.
     public func transcribe(
+        modelURL: URL,
         samples: [Float],
         options: LocalTranscriptionOptions,
         onSegment: (@Sendable (String) -> Void)?
     ) async throws -> LocalTranscriptionResult {
-        guard let context, loadedModelURL != nil else {
-            throw LocalEngineError.notLoaded
+        idleTask?.cancel()
+        idleTask = nil
+        defer { scheduleIdleUnload() }
+
+        if loadedModelURL != modelURL || context == nil {
+            try load(modelURL: modelURL)
+        }
+        guard let context else {
+            throw LocalEngineError.modelLoadFailed(
+                "could not load \(modelURL.lastPathComponent)")
         }
         guard !samples.isEmpty else {
             return LocalTranscriptionResult(text: "", detectedLanguage: nil,
                                           durationSeconds: 0)
         }
 
-        var (params, box) = Self.makeParams(
+        let (baseParams, box) = Self.makeParams(
             language: options.language,
             initialPrompt: options.initialPrompt,
             onSegment: onSegment)
-        // The box is retained by this scope for the duration of the C call.
-        defer { _ = box }
+        var params = baseParams
 
         let languageCode = options.language ?? "auto"
         let promptText = options.initialPrompt ?? ""
-        let status: Int32 = languageCode.withCString { lang in
-            params.language = lang
-            params.detect_language = options.language == nil
-            return promptText.withCString { prompt in
-                params.initial_prompt = promptText.isEmpty ? nil : prompt
-                return samples.withUnsafeBufferPointer { buffer in
-                    whisper_full(context, params, buffer.baseAddress,
-                                 Int32(buffer.count))
+        // `detect_language` stays false: in whisper.cpp it means "detect the
+        // language and stop", which returns zero segments. Passing "auto" as
+        // the language already detects first and then transcribes.
+        params.detect_language = false
+        // The box must outlive the C call: the callback reads it through a raw
+        // pointer, so extend its lifetime explicitly.
+        let status: Int32 = withExtendedLifetime(box) {
+            languageCode.withCString { lang in
+                params.language = lang
+                return promptText.withCString { prompt in
+                    params.initial_prompt = promptText.isEmpty ? nil : prompt
+                    return samples.withUnsafeBufferPointer { buffer in
+                        whisper_full(context, params, buffer.baseAddress,
+                                     Int32(buffer.count))
+                    }
                 }
             }
         }

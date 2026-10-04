@@ -10,6 +10,8 @@ final class UsefulVoiceViewModel: ObservableObject {
     /// Bumped whenever the usage stats change, so the Insights page redraws.
     @Published var usageRevision = 0
     @Published var providerConfigured: Bool = false
+    /// What Home says when the provider is not ready, matched to the engine.
+    @Published var providerSetupHint: String = "Add your Deepgram key in Settings"
     @Published var providerName: String = "Deepgram"
     @Published var languagePin: LanguagePin = .auto
     /// Whether the global hotkey tap is actually running (Accessibility granted).
@@ -93,8 +95,12 @@ final class UsefulVoiceViewModel: ObservableObject {
         switch plan {
         case .deepgram, .local:
             providerConfigured = true
-        case .needsDeepgramKey, .needsModelDownload, .modelInvalid:
+        case .needsDeepgramKey:
             providerConfigured = false
+            providerSetupHint = "Add your Deepgram key in Settings"
+        case .needsModelDownload, .modelInvalid:
+            providerConfigured = false
+            providerSetupHint = "Download a model in Settings"
         }
         languagePin = settings.languagePin
         hotkeyKeycode = settings.hotkeyKeycode

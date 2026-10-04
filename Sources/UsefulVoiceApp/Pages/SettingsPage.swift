@@ -236,6 +236,7 @@ struct SettingsPage: View {
             set: { newValue in
                 engine = newValue
                 settings.transcriptionEngine = newValue
+                models.engineChanged(to: newValue)
                 viewModel.refreshConfig()
             }
         )
@@ -305,6 +306,12 @@ struct SettingsPage: View {
             }
 
             Divider().overlay(Theme.line)
+
+            if let deleteError = models.deleteError {
+                Text(deleteError)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.danger)
+            }
 
             if models.availability(of: models.activeModel) != .usable {
                 InlineNote(

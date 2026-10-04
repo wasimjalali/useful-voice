@@ -843,10 +843,13 @@ struct SettingsPage: View {
             // when the truth is a locked keychain sends the user to re-enter a
             // credential that is already there and fine.
             // Through the store, so the read is ordered with key saves and
-            // removals and a fresh answer reaches the cache too.
-            let lookup = await Task.detached(priority: .userInitiated) {
-                DeepgramKeyStore.shared.reload()
-            }.value
+            // removals, but as a peek: a test must never change the key dictation
+            // uses. A typed key is tested as is, with no keychain read at all.
+            let lookup: Keychain.Lookup = typed.isEmpty
+                ? await Task.detached(priority: .userInitiated) {
+                    DeepgramKeyStore.shared.peek()
+                }.value
+                : .absent
             let key = typed.isEmpty ? (lookup.value ?? "") : typed
             guard !key.isEmpty else {
                 let message: String

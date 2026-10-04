@@ -93,6 +93,16 @@ public final class DeepgramKeyStore: @unchecked Sendable {
         return queue.sync { readAndPublish() }
     }
 
+    /// Reads the keychain afresh without touching the cache.
+    ///
+    /// For checks such as Test connection: a locked keychain at that moment must
+    /// not wipe the key dictation is using. Ordered with key changes like every
+    /// other read. Off the main thread only, for the same reasons as `load()`.
+    public func peek() -> Keychain.Lookup {
+        dispatchPrecondition(condition: .notOnQueue(queue))
+        return queue.sync { backend.lookup() }
+    }
+
     /// Resolves the key, preferring the cache, and reports why it is missing.
     ///
     /// Used where the difference between absent and unreadable changes what the

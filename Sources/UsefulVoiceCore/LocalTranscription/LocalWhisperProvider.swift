@@ -55,24 +55,39 @@ public final class LocalWhisperProvider: TranscriptionProvider, @unchecked Senda
     /// `keyterm` parameters, and keeps only the LAST 224 tokens of it. So the
     /// words are chosen in priority order (the list's order) until the budget
     /// is spent, then emitted in reverse: the highest-priority words end up
-    /// last, where truncation cannot reach them. Latin text costs about one
-    /// character per token-ish unit of budget; other scripts tokenize to
-    /// roughly one token per character, so each non-Latin character is charged
-    /// three, which keeps a Persian or Chinese list under the same 224 tokens.
+    /// last, where truncation cannot reach them. Budget units are a rough
+    /// proxy for tokens: ASCII costs 1, Latin letters above U+007F (accents)
+    /// cost 2, CJK and Indic scalars cost 5, other non-Latin scripts cost 3.
+    /// The estimate is conservative, not exact. When the list overflows the
+    /// budget, the lowest-priority words are dropped, so they are not sent.
     static func initialPrompt(from dictionaryWords: [String]) -> String? {
         let budget = 700
+        let separator = ", "
         func cost(_ word: String) -> Int {
-            word.unicodeScalars.reduce(0) { $0 + ($1.value <= 0x24F ? 1 : 3) }
+            word.unicodeScalars.reduce(0) { total, scalar in
+                let v = scalar.value
+                switch v {
+                case 0...0x7F: return total + 1
+                case 0x80...0x24F: return total + 2
+                case 0x0900...0x0DFF,          // Indic scripts
+                     0x2E80...0x9FFF,          // CJK radicals, kana, ideographs
+                     0xAC00...0xD7AF,          // Hangul
+                     0xF900...0xFAFF,          // CJK compatibility ideographs
+                     0x20000...0x2FA1F:        // CJK extensions
+                    return total + 5
+                default: return total + 3
+                }
+            }
         }
         var chosen: [String] = []
         var spent = 0
         for word in dictionaryWords {
-            let next = spent + cost(word) + (chosen.isEmpty ? 0 : 1)
+            let next = spent + cost(word) + (chosen.isEmpty ? 0 : separator.count)
             if next > budget { break }
             chosen.append(word)
             spent = next
         }
-        return chosen.isEmpty ? nil : chosen.reversed().joined(separator: " ")
+        return chosen.isEmpty ? nil : chosen.reversed().joined(separator: separator) + "."
     }
 
     public func transcribe(audio: URL, hint: TranscriptionHint) async throws -> Transcript {
@@ -121,7 +136,10 @@ public final class LocalWhisperProvider: TranscriptionProvider, @unchecked Senda
     private func describe(_ error: LocalEngineError) -> String {
         switch error {
         case .modelLoadFailed:
-            return "\(model.displayName) could not be loaded. Delete and download it again in Settings, or use Turbo on 8 GB Macs."
+            let base = "\(model.displayName) could not be loaded. Delete and download it again in Settings"
+            return model.id == WhisperModelCatalog.largeV3Turbo.id
+                ? base + "."
+                : base + ", or use Turbo on 8 GB Macs."
         case .transcriptionFailed(let status):
             return "Local transcription failed (code \(status)). Try again."
         }

@@ -104,27 +104,43 @@ public final class LocalModelStore: @unchecked Sendable {
         return total
     }
 
-    /// Promotes a fully downloaded `.partial` file to the live model file,
-    /// after validating it. Throws rather than activate a file that fails
-    /// validation, and removes the rejected file so it cannot confuse a later
-    /// attempt or be loaded by accident.
-    public func activateDownloadedFile(for model: WhisperModel) throws {
-        let staged = partialURL(for: model)
-        let result = ModelFileValidator.validateAfterDownload(fileURL: staged, model: model)
+    /// Checks a fully downloaded `.partial` file without touching it. The
+    /// downloader runs this outside its lock (hashing takes seconds), then
+    /// commits under the lock.
+    public func validateDownloadedFile(for model: WhisperModel) throws {
+        let result = ModelFileValidator.validateAfterDownload(
+            fileURL: partialURL(for: model), model: model)
         guard result == .valid else {
-            try? fileManager.removeItem(at: staged)
             throw ModelStoreError.validationFailed(Self.describe(result))
         }
+    }
+
+    /// Moves the already validated `.partial` file into place.
+    public func commitDownloadedFile(for model: WhisperModel) throws {
         let destination = fileURL(for: model)
         try? fileManager.removeItem(at: destination)
         do {
-            try fileManager.moveItem(at: staged, to: destination)
+            try fileManager.moveItem(at: partialURL(for: model), to: destination)
         } catch {
             throw ModelStoreError.activationFailed(error.localizedDescription)
         }
         FileProtection.restrict(destination, isDirectory: false)
         // A completed download has no resume data left to keep.
         try? fileManager.removeItem(at: resumeDataURL(for: model))
+    }
+
+    /// Promotes a fully downloaded `.partial` file to the live model file,
+    /// after validating it. Throws rather than activate a file that fails
+    /// validation, and removes the rejected file so it cannot confuse a later
+    /// attempt or be loaded by accident.
+    public func activateDownloadedFile(for model: WhisperModel) throws {
+        do {
+            try validateDownloadedFile(for: model)
+        } catch {
+            try? fileManager.removeItem(at: partialURL(for: model))
+            throw error
+        }
+        try commitDownloadedFile(for: model)
     }
 
     /// Deletes the model file and any leftover download artifacts. A file that

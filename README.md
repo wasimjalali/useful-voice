@@ -36,7 +36,7 @@ Requirements: macOS 14+, Apple Silicon, Command Line Tools (no full Xcode needed
 3. **Pick a transcription engine** in Settings:
    - **Deepgram (cloud)** — paste your Deepgram API key. Useful Voice transcribes with the Deepgram Nova-3 model.
    - **Whisper (local)** — download a Whisper model from Settings and everything runs on-device. No API key, no account, no audio leaving the Mac.
-4. Turn **Auto-format transcript** on for punctuation, capitalization and formatted numbers, or off for raw text.
+4. With Deepgram, turn **Auto-format transcript** on for punctuation, capitalization and formatted numbers, or off for raw text.
 
 Your Deepgram API key is stored in the macOS Keychain, never in a file.
 

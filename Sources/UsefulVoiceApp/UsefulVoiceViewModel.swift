@@ -98,9 +98,12 @@ final class UsefulVoiceViewModel: ObservableObject {
         case .needsDeepgramKey:
             providerConfigured = false
             providerSetupHint = "Add your Deepgram key in Settings"
-        case .needsModelDownload, .modelInvalid:
+        case .needsModelDownload:
             providerConfigured = false
             providerSetupHint = "Download a model in Settings"
+        case .modelInvalid:
+            providerConfigured = false
+            providerSetupHint = "Download your model again in Settings"
         }
         languagePin = settings.languagePin
         hotkeyKeycode = settings.hotkeyKeycode

@@ -48,8 +48,7 @@ open dist/UsefulVoice.app
       Persian text inserts with correct RTL text.
 - [ ] Dari is not in the language list: pin **Persian** and dictate Dari
       speech; it transcribes without error.
-- [ ] Auto-format on: capitalization, punctuation, numbers applied to local
-      transcripts the same as Deepgram's.
+- [ ] Local transcripts come back punctuated and capitalized without any toggle.
 - [ ] Dictionary word taught (a name or specialist spelling): correction
       applies to local transcripts.
 - [ ] Fix-a-recurring-mistake correction applies to local transcripts.
@@ -68,6 +67,9 @@ open dist/UsefulVoice.app
       dictate again — the second dictation uses Deepgram (visible by behaviour/
       diagnostics) and no audio or text from the first dictation is lost.
 - [ ] Switch back to Whisper; dictate; still works.
+- [ ] The menu-bar Auto-format item hides while Whisper is the engine.
+- [ ] The model unloads after switching to Deepgram and after 10 idle minutes
+      (memory drops in Activity Monitor).
 - [ ] Deepgram regression: existing dictation, formatting, dictionary keyterms,
       and the **Test connection** probe all still work. API key flow unchanged (Settings
       still shows the key field, key lives in Keychain only).

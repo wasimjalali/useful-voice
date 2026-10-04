@@ -20,6 +20,11 @@ public actor WhisperCppEngine: LocalSpeechEngine {
         self.idleUnloadAfter = idleUnloadAfter
     }
 
+    /// A released engine must not leak the context's Metal buffers.
+    deinit {
+        if let context { whisper_free(context) }
+    }
+
     /// The decoding params are configured for dictation, not translation:
     /// transcribe in the spoken language, timestamps on (harmless, and the
     /// segment callbacks that drive partial results are keyed to them),
@@ -97,8 +102,16 @@ public actor WhisperCppEngine: LocalSpeechEngine {
         let delay = idleUnloadAfter
         idleTask = Task { [weak self] in
             do { try await Task.sleep(for: delay) } catch { return }
-            await self?.unload()
+            await self?.unloadIfIdle()
         }
+    }
+
+    /// Runs on the actor after the idle sleep. A `transcribe` that started
+    /// after the sleep ended has already cancelled this task, so the check
+    /// keeps its context.
+    private func unloadIfIdle() async {
+        guard !Task.isCancelled else { return }
+        await unload()
     }
 
     /// Loads the model when needed and transcribes. `whisper_full` blocks until

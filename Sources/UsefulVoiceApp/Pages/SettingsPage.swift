@@ -406,11 +406,13 @@ struct SettingsPage: View {
                 Text("Verifying checksum")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.muted)
-            case .paused:
-                Button("Resume download") { models.download(model) }
-                    .buttonStyle(.borderless)
-                    .font(.system(size: 12, weight: .medium))
-                    .clickableCursor()
+            case .paused(let resumeAvailable):
+                Button(resumeAvailable ? "Resume download" : "Download \(model.sizeDescription)") {
+                    models.download(model)
+                }
+                .buttonStyle(.borderless)
+                .font(.system(size: 12, weight: .medium))
+                .clickableCursor()
             case .failed(let message):
                 Text(message)
                     .font(.system(size: 11))

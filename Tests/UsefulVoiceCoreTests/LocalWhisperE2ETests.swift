@@ -7,17 +7,12 @@ import Testing
 /// (reported as skipped, not passed) on machines without the model, so the
 /// rest of the suite stays hermetic.
 @Suite("Local whisper end-to-end (requires downloaded model)",
+       .serialized,
        .enabled(if: e2eModelIsInstalled()))
 struct LocalWhisperE2ETests {
     static let model = WhisperModelCatalog.largeV3Turbo
 
     private var store: LocalModelStore { LocalModelStore() }
-
-    init() {
-        // Same residency workaround the app sets in main.swift: without it the
-        // test process aborts at exit within 3 minutes of a transcription.
-        setenv("GGML_METAL_NO_RESIDENCY", "1", 0)
-    }
 
     /// Synthesizes a 16 kHz mono 16-bit WAV of `sentence` into a fresh temp dir.
     private func makeFixture(_ sentence: String) throws -> URL {
@@ -34,17 +29,30 @@ struct LocalWhisperE2ETests {
         return wav
     }
 
+    private func removeFixture(_ wav: URL) {
+        try? FileManager.default.removeItem(at: wav.deletingLastPathComponent())
+    }
+
     @Test(.timeLimit(.minutes(5)))
     func transcribesRealSpeechWithAPinnedLanguage() async throws {
         let wav = try makeFixture("Hello, this is a test of local dictation on this Mac.")
+        defer { removeFixture(wav) }
         let partials = LockedPartials()
+        let engine = WhisperCppEngine()
         let provider = LocalWhisperProvider(
-            model: Self.model, engine: WhisperCppEngine(), store: store,
+            model: Self.model, engine: engine, store: store,
             onPartialResult: { text in partials.append(text) })
 
-        let transcript = try await provider.transcribe(
-            audio: wav,
-            hint: TranscriptionHint(languagePin: LanguagePin(code: "en"), dictionaryWords: []))
+        let transcript: Transcript
+        do {
+            transcript = try await provider.transcribe(
+                audio: wav,
+                hint: TranscriptionHint(languagePin: LanguagePin(code: "en"), dictionaryWords: []))
+        } catch {
+            await engine.unload()
+            throw error
+        }
+        await engine.unload()
 
         #expect(!transcript.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         #expect(transcript.text.lowercased().contains("hello"))
@@ -56,12 +64,21 @@ struct LocalWhisperE2ETests {
     @Test(.timeLimit(.minutes(5)))
     func autoPinTranscribesAndReportsTheDetectedLanguage() async throws {
         let wav = try makeFixture("Hello, this is a test of local dictation on this Mac.")
+        defer { removeFixture(wav) }
+        let engine = WhisperCppEngine()
         let provider = LocalWhisperProvider(
-            model: Self.model, engine: WhisperCppEngine(), store: store)
+            model: Self.model, engine: engine, store: store)
 
-        let transcript = try await provider.transcribe(
-            audio: wav,
-            hint: TranscriptionHint(languagePin: .auto, dictionaryWords: []))
+        let transcript: Transcript
+        do {
+            transcript = try await provider.transcribe(
+                audio: wav,
+                hint: TranscriptionHint(languagePin: .auto, dictionaryWords: []))
+        } catch {
+            await engine.unload()
+            throw error
+        }
+        await engine.unload()
 
         #expect(!transcript.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         #expect(transcript.text.lowercased().contains("hello"))
@@ -70,7 +87,11 @@ struct LocalWhisperE2ETests {
 }
 
 private func e2eModelIsInstalled() -> Bool {
-    LocalModelStore().availability(of: WhisperModelCatalog.largeV3Turbo) == .usable
+    // Same residency workaround the app sets in main.swift: without it the
+    // test process aborts at exit within 3 minutes of a transcription. Set once,
+    // here, because this runs before any test in the suite.
+    setenv("GGML_METAL_NO_RESIDENCY", "1", 0)
+    return LocalModelStore().availability(of: WhisperModelCatalog.largeV3Turbo) == .usable
 }
 
 /// Sendable scratch space for the @Sendable segment callback.

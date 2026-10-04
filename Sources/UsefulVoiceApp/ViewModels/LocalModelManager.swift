@@ -23,8 +23,10 @@ final class LocalModelManager: ObservableObject {
     }
 
     /// Set when the last delete could not remove every file, so the UI can say
-    /// the model is still on disk. Cleared by the next delete.
+    /// the model is still on disk. Cleared by the next delete, download or
+    /// activation, and once the file is gone.
     @Published private(set) var deleteError: String?
+    private var deleteErrorModelID: String?
 
     /// Called after anything that could change provider usability: a download
     /// finished, a model was deleted, the active model switched. The app layer
@@ -49,6 +51,11 @@ final class LocalModelManager: ObservableObject {
         self.downloader.events = self
         store.prepare()
         refreshAvailability()
+        // A quit during the verify step leaves a complete .partial behind:
+        // finish installing it instead of making the user download again.
+        for model in WhisperModelCatalog.all where availability[model.id] != .usable {
+            self.downloader.recoverCompletePartial(for: model)
+        }
     }
 
     var models: [WhisperModel] { WhisperModelCatalog.all }
@@ -75,6 +82,9 @@ final class LocalModelManager: ObservableObject {
             next[model.id] = store.availability(of: model)
         }
         availability = next
+        if let id = deleteErrorModelID, next[id] == .missing {
+            deleteError = nil
+        }
     }
 
     func installedBytes(for model: WhisperModel) -> Int64? {
@@ -88,6 +98,7 @@ final class LocalModelManager: ObservableObject {
     // MARK: - Actions
 
     func download(_ model: WhisperModel) {
+        deleteError = nil
         downloadStates[model.id] = .downloading(received: 0, total: model.expectedBytes)
         downloader.start(model: model)
     }
@@ -105,6 +116,7 @@ final class LocalModelManager: ObservableObject {
     func activate(_ model: WhisperModel) {
         guard availability(of: model) == .usable else { return }
         guard model.id != activeModelID else { return }
+        deleteError = nil
         activeModelID = model.id
         settings.localModelID = model.id
         onModelsChanged?(.activated(model))
@@ -121,17 +133,19 @@ final class LocalModelManager: ObservableObject {
     }
 
     func delete(_ model: WhisperModel) {
-        downloader.discard(model: model)
         deleteError = nil
+        var failure: String?
         do {
-            try store.delete(model)
+            try downloader.delete(model: model)
         } catch {
-            deleteError = "Could not delete \(model.displayName): \(error.localizedDescription)"
+            failure = "Could not delete \(model.displayName): \(error.localizedDescription) Close other apps using it and try again."
             Diagnostics.shared.error(
                 "models", "could not delete \(model.fileName): \(error.localizedDescription)")
         }
         downloadStates[model.id] = .idle
         refreshAvailability()
+        deleteError = failure
+        deleteErrorModelID = failure == nil ? nil : model.id
         onModelsChanged?(.deleted(model))
     }
 

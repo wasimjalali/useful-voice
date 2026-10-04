@@ -20,12 +20,18 @@ struct LocalWhisperE2ETests {
             .appendingPathComponent("uv-whisper-e2e-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let wav = dir.appendingPathComponent("speech.wav")
-        let say = Process()
-        say.executableURL = URL(fileURLWithPath: "/usr/bin/say")
-        say.arguments = ["-o", wav.path, "--data-format=LEI16@16000", sentence]
-        try say.run()
-        say.waitUntilExit()
-        try #require(say.terminationStatus == 0, "say failed to synthesize the fixture")
+        do {
+            let say = Process()
+            say.executableURL = URL(fileURLWithPath: "/usr/bin/say")
+            say.arguments = ["-o", wav.path, "--data-format=LEI16@16000", sentence]
+            try say.run()
+            say.waitUntilExit()
+            try #require(say.terminationStatus == 0, "say failed to synthesize the fixture")
+        } catch {
+            // The caller's cleanup only registers once a fixture is returned.
+            try? FileManager.default.removeItem(at: dir)
+            throw error
+        }
         return wav
     }
 

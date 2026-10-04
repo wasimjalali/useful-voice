@@ -62,6 +62,10 @@ public enum ProviderError: Error {
     case notConfigured(String)
     case timedOut
     case transport(URLError)
+    /// The local engine could not load its model or finish a transcription.
+    /// Carries a user-readable reason — a missing model is `notConfigured`
+    /// instead, since the fix is different (download it in Settings).
+    case engineFailed(String)
 }
 
 public protocol TranscriptionProvider: Sendable {

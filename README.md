@@ -6,7 +6,7 @@
 [![Swift](https://img.shields.io/badge/Swift-F05138?logo=swift&logoColor=white)](https://swift.org)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20%7C%20Windows%2010%2B-lightgrey)
 
-A fast, personal voice-dictation app for macOS and Windows. Tap a hotkey anywhere, speak in English or German, and the transcript lands at your cursor. Powered by Deepgram Nova-3 for fast, accurate speech-to-text.
+A fast, personal voice-dictation app for macOS and Windows. Tap a hotkey anywhere, speak in English or German (or 97 other languages), and the transcript lands at your cursor. Choose your engine: Deepgram Nova-3 in the cloud, or open-weight Whisper models running fully on your Mac.
 
 Useful Voice records, transcribes, applies your personal dictionary and inserts the result at your cursor with a clipboard backup. On macOS the main window has six areas: Dictate, Dictionary, Insights, Notes, Library and Settings. The Windows app keeps its earlier layout.
 
@@ -33,12 +33,14 @@ Requirements: macOS 14+, Apple Silicon, Command Line Tools (no full Xcode needed
 
 1. **Microphone**: grant it when macOS prompts (or System Settings > Privacy & Security > Microphone).
 2. **Accessibility**: System Settings > Privacy & Security > Accessibility, enable Useful Voice. This powers the tap hotkeys AND inserting text at your cursor. The app polls for this, so once you grant it the hotkey starts working without a relaunch (no need to quit and reopen).
-3. **Deepgram API key**: open Settings and paste your Deepgram API key. Useful Voice transcribes with the Deepgram Nova-3 model. Turn **Auto-format transcript** on for punctuation, capitalization and formatted numbers, or off for raw text.
+3. **Pick a transcription engine** in Settings:
+   - **Deepgram (cloud)** — paste your Deepgram API key. Useful Voice transcribes with the Deepgram Nova-3 model.
+   - **Whisper (local)** — download a Whisper model from Settings and everything runs on-device. No API key, no account, no audio leaving the Mac.
+4. With Deepgram, turn **Auto-format transcript** on for punctuation, capitalization and formatted numbers, or off for raw text.
 
 Your Deepgram API key is stored in the macOS Keychain, never in a file.
 
-Until your key is configured, every dictation ends with the HUD saying "No transcription provider configured."
-Use **Test connection** in Settings to run a tiny redacted transcription probe before you rely on it.
+Until an engine is configured, every dictation ends with the HUD saying "No transcription provider configured." Use **Test connection** in Settings to run a tiny transcription probe before you rely on it.
 
 ## Using it
 
@@ -54,9 +56,28 @@ Use **Test connection** in Settings to run a tiny redacted transcription probe b
 - In **Library**, search, copy, send a dictation to Notes, reprocess retained audio or teach a correction into the dictionary.
 - **Insights** shows words dictated, time dictating, words per minute, time saved versus typing, your streak and when you dictate, for 7 days, 30 days or all time. The totals live in their own small file (`usage-stats.json`), so clearing Library does not reset them.
 
-## Transcription model
+## Transcription engines
 
-Useful Voice uses Deepgram's **Nova-3** model for all dictation. Auto-format (Deepgram's `smart_format`) adds punctuation, capitalization and formatted numbers and dates; turn it off in Settings for raw text. Your personal dictionary terms (correct spellings only) are sent as Deepgram keyterms to bias recognition. Misheard forms, aliases and auto-corrections always run locally after transcription so learning actually sticks. Local app data stays under the app's Application Support directory; Useful Voice does not read, scan, index, or default-save into your Documents folder.
+Settings offers two engines behind the same provider pipeline — everything after transcription (formatting, dictionary corrections, language memory, history, insertion) works identically for both.
+
+### Deepgram (cloud)
+
+Useful Voice uses Deepgram's **Nova-3** model. Auto-format (Deepgram's `smart_format`) adds punctuation, capitalization and formatted numbers and dates; turn it off in Settings for raw text. Your personal dictionary terms (correct spellings only) are sent as Deepgram keyterms to bias recognition. Misheard forms, aliases and auto-corrections always run locally after transcription so learning actually sticks.
+
+### Whisper (local, on-device)
+
+Runs [whisper.cpp](https://github.com/ggml-org/whisper.cpp) with Metal GPU acceleration — no API key, and **audio never leaves your Mac**. Models are listed in Settings › Speech once you pick Whisper (local). Download one there (progress, pause and resume, checksum verification and delete are built in):
+
+| Model | Size | License | Notes |
+|---|---|---|---|
+| `whisper-large-v3-turbo` | ~1.6 GB | MIT | **Recommended.** Near state-of-the-art accuracy at much higher speed. The right pick for most Macs, including 8 GB machines. |
+| `whisper-large-v3` | ~3.1 GB | Apache-2.0 | The most accurate option, but roughly 2× the memory and noticeably slower. Better suited to 16 GB+ Macs; on 8 GB machines prefer turbo. |
+
+Both models support **99 languages** with auto-detection, plus the language override in the menu bar. Persian is included.
+
+Model weights are the `ggml-*.bin` builds published by the whisper.cpp project on Hugging Face ([ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp)), converted from OpenAI's releases: [openai/whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo) (MIT) and [openai/whisper-large-v3](https://huggingface.co/openai/whisper-large-v3) (Apache-2.0). Weights land in `~/Library/Application Support/UsefulVoice/models/` and are verified against their SHA-256 before activation.
+
+Local app data stays under the app's Application Support directory; Useful Voice does not read, scan, index, or default-save into your Documents folder.
 
 ## Develop
 
@@ -101,7 +122,9 @@ verified by execution and which still require a Windows machine to confirm.
   files written by an earlier build, or restored from a backup, are corrected too.
 - Audio is held in memory only while transcribing and is never written to disk
   except as retained recordings, which are deleted as newer ones replace them.
-  Only the resulting text is sent to Deepgram.
+  With the Whisper engine selected, audio never leaves the Mac at all — the
+  model runs on-device and no network call is made during dictation. With
+  Deepgram, the audio clip itself is uploaded for transcription.
 - The Windows renderer runs with `contextIsolation` on, `nodeIntegration` off, and a
   strict `file://` CSP; 50 named IPC channels are its entire surface.
 - A store that cannot read its file **refuses to write** rather than starting empty,

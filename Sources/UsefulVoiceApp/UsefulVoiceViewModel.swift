@@ -10,6 +10,8 @@ final class UsefulVoiceViewModel: ObservableObject {
     /// Bumped whenever the usage stats change, so the Insights page redraws.
     @Published var usageRevision = 0
     @Published var providerConfigured: Bool = false
+    /// What Home says when the provider is not ready, matched to the engine.
+    @Published var providerSetupHint: String = "Add your Deepgram key in Settings"
     @Published var providerName: String = "Deepgram"
     @Published var languagePin: LanguagePin = .auto
     /// Whether the global hotkey tap is actually running (Accessibility granted).
@@ -29,6 +31,10 @@ final class UsefulVoiceViewModel: ObservableObject {
     var onReprocessHistory: ((DictationRecord) -> Void)?
     /// Applies recording settings to the live controller without requiring a relaunch.
     var onRecordingSettingsChange: ((TimeInterval, Int) -> Void)?
+    /// Builds the provider a dictation would use right now — for the Settings
+    /// "Test connection" probe, which must exercise the real engine selection
+    /// rather than a copy of it.
+    var makeTranscriptionProvider: (() -> TranscriptionProvider?)?
 
     private let settings: AppSettings
     private let history: DictationHistory
@@ -36,6 +42,9 @@ final class UsefulVoiceViewModel: ObservableObject {
     let usageStats: UsageStatsStore
     let languageMemory: LanguageMemoryViewModel
     let scratchpad: ScratchpadViewModel
+    /// Local model downloads/state for the Settings page. Owns the store and
+    /// downloader; the view reads it as an ordinary ObservedObject.
+    let models: LocalModelManager
     private let onToggle: () -> Void
 
     /// History pages read search/all directly off the store.
@@ -44,12 +53,15 @@ final class UsefulVoiceViewModel: ObservableObject {
     init(settings: AppSettings, history: DictationHistory,
          usageStats: UsageStatsStore,
          languageMemory: LanguageMemoryStore,
-         scratchpad: ScratchpadStore, onToggle: @escaping () -> Void) {
+         scratchpad: ScratchpadStore,
+         models: LocalModelManager? = nil,
+         onToggle: @escaping () -> Void) {
         self.settings = settings
         self.history = history
         self.usageStats = usageStats
         self.languageMemory = LanguageMemoryViewModel(store: languageMemory)
         self.scratchpad = ScratchpadViewModel(store: scratchpad)
+        self.models = models ?? LocalModelManager(settings: settings)
         self.onToggle = onToggle
         refreshConfig()
         refreshRecent()
@@ -71,9 +83,28 @@ final class UsefulVoiceViewModel: ObservableObject {
         // after every settings/language change) and can block on a keychain
         // authorization prompt, freezing the app and, with it, the HUD and the
         // event tap. DeepgramKeyStore is primed off-main at launch.
-        providerName = "Deepgram"
-        providerConfigured = DeepgramKeyStore.shared.current != nil
-            || DeepgramKeyStore.shared.isConfigured()
+        let engine = settings.transcriptionEngine
+        providerName = engine.displayName
+        let model = models.activeModel
+        let plan = ProviderSelector.resolve(
+            engine: engine,
+            deepgramKeyAvailable: DeepgramKeyStore.shared.current != nil
+                || DeepgramKeyStore.shared.isConfigured(),
+            localModel: model,
+            localModelAvailability: models.availability(of: model))
+        switch plan {
+        case .deepgram, .local:
+            providerConfigured = true
+        case .needsDeepgramKey:
+            providerConfigured = false
+            providerSetupHint = "Add your Deepgram key in Settings"
+        case .needsModelDownload:
+            providerConfigured = false
+            providerSetupHint = "Download a model in Settings"
+        case .modelInvalid:
+            providerConfigured = false
+            providerSetupHint = "Download your model again in Settings"
+        }
         languagePin = settings.languagePin
         hotkeyKeycode = settings.hotkeyKeycode
         languageSwitchKeycode = settings.languageSwitchKeycode

@@ -2,6 +2,15 @@ import AppKit
 import ServiceManagement
 import UsefulVoiceCore
 
+// Works around a ggml-metal teardown bug in the whisper XCFramework: Metal
+// residency sets keep freed buffers registered for a keep-alive window (180 s),
+// and `ggml_metal_device_free` asserts the set is empty during static
+// destruction at process exit, so quitting within 3 minutes of a local
+// transcription would abort with SIGABRT. Disabling residency sets avoids the
+// assert. Set here, once, before any thread exists (setenv is not thread safe),
+// and without overwrite so a user's explicit environment still wins.
+setenv("GGML_METAL_NO_RESIDENCY", "1", 0)
+
 /// Headless maintenance flags, used by the install/uninstall scripts.
 ///
 /// `uninstall.sh` must turn off launch-at-login *while the bundle still exists*,

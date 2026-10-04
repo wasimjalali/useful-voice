@@ -147,6 +147,8 @@ public enum ProviderHealthCheck {
                 return "timed out"
             case .transport(let urlError):
                 return urlError.localizedDescription
+            case .engineFailed(let detail):
+                return detail
             }
         }
         return sanitize(error.localizedDescription)

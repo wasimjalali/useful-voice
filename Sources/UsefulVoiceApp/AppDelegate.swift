@@ -24,6 +24,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var languageMemory: LanguageMemoryStore?
     private var scratchpad: ScratchpadStore?
     private var controller: DictationController?
+    /// Local transcription: the on-disk model directory, the whisper.cpp
+    /// engine (lazily loads a context), and the cached provider for the
+    /// currently selected model.
+    private let modelStore = LocalModelStore()
+    private let localEngine = WhisperCppEngine()
+    private var modelManager: LocalModelManager?
     private var recordingTimer: Timer?
     /// When the current recording began, so the pill can show elapsed mm:ss.
     private var recordingStartedAt: Date?
@@ -229,6 +235,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             controller?.cancel()
         }
         viewModel?.flushPendingEdits()
+        // Keep the bytes of any model download in flight: pause it so URLSession
+        // hands back resume data, and give the write a bounded moment to land.
+        modelManager?.pauseAllDownloads()
+    }
+
+    /// Frees the loaded whisper context only when it is no longer the active,
+    /// usable model: that model was deleted, replaced by a fresh download or
+    /// deactivated. Another model's download finishing or failing leaves the
+    /// loaded context alone.
+    private func unloadLocalEngineIfStale(after change: LocalModelManager.Change) {
+        let active = modelManager?.activeModel ?? WhisperModelCatalog.default
+        let activeURL = modelStore.fileURL(for: active)
+        let activeUsable = modelStore.availability(of: active) == .usable
+        let replacedURL: URL? = {
+            if case .downloaded(let model) = change { return modelStore.fileURL(for: model) }
+            return nil
+        }()
+        Task { [localEngine] in
+            guard let loaded = await localEngine.loadedModelURL else { return }
+            if loaded != activeURL || !activeUsable || loaded == replacedURL {
+                await localEngine.unload()
+            }
+        }
     }
 
     /// Useful Voice is an accessory app, so no menu bar is visible, but AppKit still
@@ -315,18 +344,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             notesURL: sadaaDir.appendingPathComponent("notes.json"))
         self.scratchpad = scratchpad
 
+        // Model directory is created and hardened once up front so the
+        // Settings page and a first download never race its creation.
+        modelStore.prepare()
+        let modelManager = LocalModelManager(settings: settings, store: modelStore)
+        modelManager.onModelsChanged = { [weak self] change in
+            self?.unloadLocalEngineIfStale(after: change)
+            self?.viewModel?.refreshConfig()
+        }
+        modelManager.onEngineChanged = { [weak self] engine in
+            // Leaving local frees the whisper context now; it reloads on demand
+            // if the user comes back.
+            guard engine == .deepgram, let self else { return }
+            Task { await self.localEngine.unload() }
+        }
+        self.modelManager = modelManager
+
         let viewModel = UsefulVoiceViewModel(
             settings: settings,
             history: history,
             usageStats: usageStats,
             languageMemory: languageMemory,
             scratchpad: scratchpad,
+            models: modelManager,
             onToggle: { [weak self] in self?.toggleDictation() })
         self.viewModel = viewModel
 
         let controller = DictationController(
             recorder: recorder,
-            providers: { [settings] in Self.buildProviders(settings: settings) },
+            providers: { [weak self] in self?.buildProviders(showPartials: true) ?? [] },
             store: store,
             hint: { [settings, languageMemory] in
                 TranscriptionHint(
@@ -414,6 +460,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 recordingsToKeep: recordingsToKeep
             )
         }
+        viewModel.makeTranscriptionProvider = { [weak self] in
+            self?.buildProviders().first
+        }
         self.controller = controller
     }
 
@@ -454,7 +503,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                        hint: TranscriptionHint,
                                        context: FormattingContext,
                                        languageMemory: LanguageMemoryStore) async {
-        let chain = Self.buildProviders(settings: settings)
+        let chain = buildProviders()
         guard !chain.isEmpty else {
             viewModel?.reprocessHistoryTextOnly(record)
             hud.show(.error("No provider configured. Reprocessed with local memory only."))
@@ -582,23 +631,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .map { Snippet(id: $0.id, trigger: $0.trigger, expansion: $0.expansion) }
     }
 
-    /// Active transcription provider: Deepgram Nova-3, keyed from the in-memory
-    /// key cache.
+    /// Active transcription provider: the engine the user picked in Settings.
     ///
     /// Deliberately does NOT read the Keychain: this runs on the main actor
     /// inside the dictation pipeline, and a blocking keychain read there would
     /// stall the main run loop, which is where the global event tap lives.
     /// `DeepgramKeyStore` is primed off-main at launch and refreshed whenever the
     /// user saves the key in Settings.
-    private static func buildProviders(settings: AppSettings)
-        -> [TranscriptionProvider] {
-        guard let key = DeepgramKeyStore.shared.current, !key.isEmpty else {
+    ///
+    /// A local selection that cannot run (model missing or invalid) returns an
+    /// `UnavailableProvider` rather than an empty chain, so the dictation fails
+    /// with "download it in Settings" instead of the generic no-provider error.
+    /// Local is never silently swapped for Deepgram — choosing it means no
+    /// audio leaves the machine.
+    private func buildProviders(showPartials: Bool = false) -> [TranscriptionProvider] {
+        let model = modelManager?.activeModel ?? WhisperModelCatalog.default
+        let plan = ProviderSelector.resolve(
+            engine: settings.transcriptionEngine,
+            deepgramKeyAvailable: !(DeepgramKeyStore.shared.current ?? "").isEmpty,
+            localModel: model,
+            localModelAvailability: modelStore.availability(of: model))
+        switch plan {
+        case .deepgram:
+            guard let key = DeepgramKeyStore.shared.current, !key.isEmpty else {
+                return []
+            }
+            return [DeepgramProvider(config: .init(
+                apiKey: key,
+                smartFormat: settings.formattingEnabled,
+                spokenPunctuation: settings.spokenPunctuationEnabled))]
+        case .local(let model):
+            return [localProvider(for: model, showPartials: showPartials)]
+        case .needsDeepgramKey:
+            // Same outcome the Deepgram path always had: the chain is empty and
+            // the controller reports "No transcription provider configured".
             return []
+        case .needsModelDownload, .modelInvalid:
+            let message = ProviderSelector.unavailableMessage(for: plan)
+                ?? "Local transcription is not set up. Open Settings."
+            return [UnavailableProvider(name: "Whisper (local)", message: message)]
         }
-        return [DeepgramProvider(config: .init(
-            apiKey: key,
-            smartFormat: settings.formattingEnabled,
-            spokenPunctuation: settings.spokenPunctuationEnabled))]
+    }
+
+    /// A local provider for `model`. Cheap to build (the engine and its loaded
+    /// context are shared), so one is made per dictation: the live dictation
+    /// passes `showPartials` to drive the HUD, reprocess and the health probe
+    /// pass false, and partials can never leak from one call into another.
+    private func localProvider(for model: WhisperModel, showPartials: Bool) -> LocalWhisperProvider {
+        let onPartial: (@Sendable (String) -> Void)?
+        if showPartials {
+            onPartial = { [weak self] (text: String) in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        guard self?.controller?.state == .transcribing else { return }
+                        self?.hud.show(.transcribing(partial: text))
+                    }
+                }
+            }
+        } else {
+            onPartial = nil
+        }
+        return LocalWhisperProvider(
+            model: model, engine: localEngine, store: modelStore,
+            onPartialResult: onPartial)
     }
 
     private static func describeProviderError(_ error: ProviderError) -> String {
@@ -619,6 +714,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return "timed out"
         case .transport(let urlError):
             return urlError.localizedDescription
+        case .engineFailed(let detail):
+            return detail
         }
     }
 
@@ -735,7 +832,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if lastDictationState == .recording { chimes.playStop() }
             stopRecordingTimer()
             setIcon("waveform", tint: .systemOrange)
-            hud.show(.transcribing)
+            hud.show(.transcribing(partial: nil))
         case .delivering:
             hud.show(.delivering)
         case .error(let message):
@@ -848,6 +945,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// change made on the Settings page is reflected here too.
     func menuWillOpen(_ menu: NSMenu) {
         formattingMenuItem?.state = settings.formattingEnabled ? .on : .off
+        // Smart formatting is a Deepgram option; local models format on their own.
+        formattingMenuItem?.isHidden = settings.transcriptionEngine == .whisperLocal
         syncLanguageMenu()
     }
 

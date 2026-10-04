@@ -67,7 +67,7 @@ struct HomePage: View {
                 .frame(width: 8, height: 8)
             Text(viewModel.providerConfigured
                  ? "\(viewModel.providerName) is ready"
-                 : "Add your Deepgram key in Settings")
+                 : viewModel.providerSetupHint)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Theme.ink)
             Spacer()

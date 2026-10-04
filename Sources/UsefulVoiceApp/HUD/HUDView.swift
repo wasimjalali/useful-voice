@@ -7,7 +7,9 @@ import UsefulVoiceCore
 /// not in the controller state machines.
 enum HUDDisplay: Equatable {
     case recording(seconds: Int, level: Float)
-    case transcribing
+    /// Local transcription emits segments as they decode; `partial` is the
+    /// latest one, shown as a live preview instead of the static label.
+    case transcribing(partial: String?)
     case delivering
     /// A brief success confirmation shown after a dictation lands.
     case done
@@ -75,8 +77,12 @@ struct HUDView: View {
                 .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(Theme.hudInk)
             KeyHint(label: "esc")
-        case .transcribing:
-            status("Transcribing")
+        case .transcribing(let partial):
+            // A live preview gets a fixed width and truncates at its head (the
+            // newest words stay visible), so the pill does not resize with
+            // every partial.
+            status(Self.transcribingLabel(partial),
+                   fixedWidth: partial == nil ? nil : 260)
         case .delivering:
             status("Inserting")
         case .done:
@@ -113,9 +119,17 @@ struct HUDView: View {
         }
     }
 
+    /// The transcribing label: the static word, or a quoted preview of the
+    /// latest decoded segment trimmed so the pill stays compact.
+    private static func transcribingLabel(_ partial: String?) -> String {
+        guard let partial else { return "Transcribing" }
+        let tail = String(partial.suffix(56)).trimmingCharacters(in: .whitespaces)
+        return tail.isEmpty ? "Transcribing" : "“\(tail)”"
+    }
+
     /// A working state: a spinner plus a quiet label. The recording state shows
     /// the full waveform, so these brief states stay minimal.
-    private func status(_ label: String) -> some View {
+    private func status(_ label: String, fixedWidth: CGFloat? = nil) -> some View {
         HStack(spacing: 8) {
             ProgressView()
                 .progressViewStyle(.circular)
@@ -124,6 +138,9 @@ struct HUDView: View {
             Text(label)
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.hudInk)
+                .lineLimit(1)
+                .truncationMode(.head)
+                .frame(width: fixedWidth, alignment: .leading)
         }
     }
 

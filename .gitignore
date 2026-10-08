@@ -18,3 +18,7 @@ dist/
 /work-*.png
 /live-*.png
 .playwright-mcp/
+
+# Agent verification screenshots and worktrees
+/verify/
+/.claude/worktrees/

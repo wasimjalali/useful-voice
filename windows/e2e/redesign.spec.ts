@@ -19,17 +19,32 @@ let userData: string;
 /** The app's own stdout and stderr, shown when the launch fails. */
 const appOutput: string[] = [];
 
+async function locationOf(page: Page): Promise<string> {
+  try {
+    return await page.evaluate(() => location.href);
+  } catch {
+    return '';
+  }
+}
+
 async function mainWindow(electronApp: ElectronApplication): Promise<Page> {
   // A cold Windows runner can take a while: PowerShell helpers and first-run file
-  // creation happen before the window loads.
+  // creation happen before the window loads. `page.url()` can stay empty for a
+  // hidden window there, so ask each page where it is.
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
-    const found = electronApp.windows().find((page) => page.url().includes('view=main'));
-    if (found) return found;
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    for (const page of electronApp.windows()) {
+      if ((await locationOf(page)).includes('view=main')) return page;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  const urls = electronApp.windows().map((page) => page.url()).join(', ') || 'none';
-  throw new Error(`the main window never opened (windows: ${urls})\n${appOutput.join('')}`);
+  const seen = await Promise.all(electronApp.windows().map(locationOf));
+  const fromMain = await electronApp
+    .evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map((w) => w.webContents.getURL()))
+    .catch((error: Error) => [`(main unreachable: ${error.message})`]);
+  throw new Error(
+    `the main window never opened\npages: ${seen.join(' | ') || 'none'}\nmain: ${fromMain.join(' | ')}\n${appOutput.join('')}`,
+  );
 }
 
 async function go(section: 'Stream' | 'Notes' | 'Vocabulary' | 'Insights' | 'Settings'): Promise<void> {

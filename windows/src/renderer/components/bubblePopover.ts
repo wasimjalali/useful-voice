@@ -30,6 +30,8 @@ export interface FloatingOptions {
 export interface FloatingHandle {
   element: HTMLElement;
   close: () => void;
+  /** Places the surface again, for content whose height changed after it opened. */
+  reposition: () => void;
 }
 
 const MARGIN = 8;
@@ -55,23 +57,36 @@ export function openFloating(options: FloatingOptions): FloatingHandle {
   surface.style.visibility = 'hidden';
   document.body.append(surface);
 
-  const rect = anchor instanceof HTMLElement ? anchor.getBoundingClientRect() : anchor;
-  const width = surface.offsetWidth;
-  const height = surface.offsetHeight;
-  const viewportW = window.innerWidth;
-  const viewportH = window.innerHeight;
+  /**
+   * Puts the surface under (or above) the anchor, inside the window. The height is measured
+   * with no cap first; if it does not fit on the chosen side it is capped to the room there
+   * and scrolls, so the surface can never grow off-window.
+   */
+  function place(): void {
+    const rect = anchor instanceof HTMLElement ? anchor.getBoundingClientRect() : anchor;
+    surface.style.maxHeight = 'none';
+    const natural = surface.offsetHeight;
+    const viewportW = window.innerWidth;
+    const viewportH = window.innerHeight;
 
-  const room = { below: viewportH - rect.bottom - gap - MARGIN, above: rect.top - gap - MARGIN };
-  const useAbove = placement === 'above'
-    ? room.above >= height || room.above > room.below
-    : placement === 'auto' && room.below < height && room.above > room.below;
-  const top = useAbove ? Math.max(MARGIN, rect.top - gap - height) : rect.bottom + gap;
-  let left = align === 'end' ? rect.right - width : rect.left;
-  left = Math.min(Math.max(MARGIN, left), Math.max(MARGIN, viewportW - width - MARGIN));
-  surface.style.left = `${Math.round(left)}px`;
-  surface.style.top = `${Math.round(top)}px`;
-  surface.style.maxHeight = `${Math.max(120, useAbove ? room.above : room.below)}px`;
-  surface.dataset.placement = useAbove ? 'above' : 'below';
+    const room = { below: viewportH - rect.bottom - gap - MARGIN, above: rect.top - gap - MARGIN };
+    const useAbove = placement === 'above'
+      ? room.above >= natural || room.above > room.below
+      : placement === 'auto' && room.below < natural && room.above > room.below;
+    const cap = Math.max(120, Math.min(useAbove ? room.above : room.below, viewportH - 2 * MARGIN));
+    surface.style.maxHeight = `${Math.round(cap)}px`;
+    // Measured after the cap: a capped surface scrolls, and its scrollbar makes it wider.
+    const width = surface.offsetWidth;
+    const height = surface.offsetHeight;
+    const wanted = useAbove ? rect.top - gap - height : rect.bottom + gap;
+    const top = Math.min(Math.max(MARGIN, wanted), Math.max(MARGIN, viewportH - height - MARGIN));
+    let left = align === 'end' ? rect.right - width : rect.left;
+    left = Math.min(Math.max(MARGIN, left), Math.max(MARGIN, viewportW - width - MARGIN));
+    surface.style.left = `${Math.round(left)}px`;
+    surface.style.top = `${Math.round(top)}px`;
+    surface.dataset.placement = useAbove ? 'above' : 'below';
+  }
+  place();
   surface.style.visibility = '';
 
   let closed = false;
@@ -112,7 +127,7 @@ export function openFloating(options: FloatingOptions): FloatingHandle {
     options.onClose?.();
   }
 
-  const handle: FloatingHandle = { element: surface, close };
+  const handle: FloatingHandle = { element: surface, close, reposition: place };
   current = handle;
   return handle;
 }

@@ -384,7 +384,10 @@ function toggleIn(set: Set<string>, entry: HistoryEntryDTO): void {
 }
 
 const handlers: BubbleHandlers = {
-  previewFeatures: previewFeatures(),
+  // Read when a bubble is built, not at module load: the launch flags load after this file runs.
+  get previewFeatures(): boolean {
+    return previewFeatures();
+  },
   copy: (entry) => {
     api.copyToClipboard(entry.text).then(
       () => showToast('Copied'),
@@ -472,21 +475,62 @@ function titleFrom(text: string): string {
   return space > 16 ? cut.slice(0, space) : cut;
 }
 
+/** Appends to one note run one at a time, so two quick adds can never read the same body. */
+const noteQueues = new Map<string, Promise<unknown>>();
+
+function enqueueForNote<T>(noteId: string, job: () => Promise<T>): Promise<T> {
+  const previous = noteQueues.get(noteId) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(job);
+  noteQueues.set(noteId, next);
+  next.then(
+    () => undefined,
+    () => undefined,
+  ).then(() => {
+    if (noteQueues.get(noteId) === next) noteQueues.delete(noteId);
+  });
+  return next;
+}
+
+async function freshNote(id: string): Promise<NoteDTO | undefined> {
+  return (await api.getNotes()).find((note) => note.id === id);
+}
+
 async function addToNote(target: NoteDTO | null, texts: string[]): Promise<void> {
   const addition = texts.join('\n\n');
   let title: string;
-  let undo: () => Promise<unknown>;
+  let undo: () => Promise<boolean>;
   if (target === null) {
     const created = await api.saveNote({ title: titleFrom(texts[0] ?? ''), body: addition });
     title = created.title;
-    undo = () => api.deleteNote(created.id);
+    // Undo removes the note only while it still holds exactly what was added.
+    undo = () => enqueueForNote(created.id, async () => {
+      const latest = await freshNote(created.id);
+      if (latest === undefined || latest.body.trimEnd() !== addition.trimEnd()) return false;
+      await api.deleteNote(created.id);
+      return true;
+    });
   } else {
-    // The latest body, not the picker's copy: the note may have changed since it was listed.
-    const latest = (await api.getNotes()).find((note) => note.id === target.id) ?? target;
-    const next = latest.body.trim() === '' ? addition : `${latest.body}\n\n${addition}`;
-    await api.saveNote({ id: latest.id, title: latest.title, body: next });
-    title = latest.title;
-    undo = () => api.saveNote({ id: latest.id, title: latest.title, body: latest.body });
+    // Read inside the queue: the latest body, not the picker's copy and not what an add that
+    // is still running was about to replace.
+    const added = await enqueueForNote(target.id, async () => {
+      const latest = (await freshNote(target.id)) ?? target;
+      const suffix = latest.body.trim() === '' ? addition : `\n\n${addition}`;
+      const next = latest.body.trim() === '' ? addition : `${latest.body}${suffix}`;
+      await api.saveNote({ id: latest.id, title: latest.title, body: next });
+      return { id: latest.id, title: latest.title, suffix };
+    });
+    title = added.title;
+    // Undo takes back only the paragraph that was appended, and only if it is still the end
+    // of the note unchanged. Anything typed since stays.
+    undo = () => enqueueForNote(added.id, async () => {
+      const latest = await freshNote(added.id);
+      if (latest === undefined) return false;
+      const body = latest.body.trimEnd();
+      if (!body.endsWith(added.suffix.trimEnd())) return false;
+      const rest = body.slice(0, body.length - added.suffix.trimEnd().length);
+      await api.saveNote({ id: latest.id, title: latest.title, body: rest });
+      return true;
+    });
   }
   state.notes = await api.getNotes();
   clearSelection();
@@ -494,8 +538,9 @@ async function addToNote(target: NoteDTO | null, texts: string[]): Promise<void>
     label: 'Undo',
     run: () => {
       undo().then(
-        async () => {
+        async (done) => {
           state.notes = await api.getNotes();
+          if (!done) showToast('Can’t undo: the note has changed since');
         },
         (error: unknown) => setNotice('danger', error instanceof Error ? error.message : String(error)),
       );

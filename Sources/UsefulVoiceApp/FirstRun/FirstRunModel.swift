@@ -180,10 +180,14 @@ final class FirstRunModel: ObservableObject {
             microphoneAuthorized: AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
             accessibilityTrusted: AXIsProcessTrusted(),
             forced: forced)
-        if decision == .skipAndMarkCompleted {
+        // An offscreen render saves nothing, and unless the flow is forced it
+        // renders the page it was asked for: a differently signed build is never
+        // Accessibility-trusted, so the gate would otherwise always show setup.
+        let offscreen = environment["UV_SNAPSHOT"] != nil
+        if decision == .skipAndMarkCompleted, !offscreen {
             defaults.set(true, forKey: FirstRunGate.completedKey)
         }
-        self.active = decision == .show
+        self.active = decision == .show && (forced || !offscreen)
 
         var start: Page = .welcome
         var preview: Preview?

@@ -1,0 +1,134 @@
+/* Vocabulary: every rule reads as a sentence. */
+
+.vocab { gap: 14px; }
+
+.vocab-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.vocab-count { color: var(--ink-muted); font-weight: 400; }
+.segmented button[aria-selected="true"] .vocab-count { color: var(--ink); }
+
+.vocab-searchwrap { position: relative; width: 240px; color: var(--ink-muted); }
+.vocab-searchwrap svg { position: absolute; left: 11px; top: 8px; pointer-events: none; }
+.vocab-search { padding-left: 33px; }
+
+.vocab-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-lift);
+  flex-wrap: wrap;
+}
+.vocab-add-word { color: var(--ink-muted); font-size: var(--fs-body); }
+.vocab-add .field-input { width: 220px; flex: 0 1 220px; }
+
+.vocab-table { display: flex; flex-direction: column; }
+.vocab-head,
+.vocab-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px 150px;
+  align-items: center;
+  column-gap: 16px;
+  padding: 0 12px;
+}
+.vocab-table.with-type .vocab-head,
+.vocab-table.with-type .vocab-row { grid-template-columns: 72px minmax(0, 1fr) 56px 150px; }
+
+.vocab-head {
+  height: 34px;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-ui);
+  color: var(--ink-muted);
+}
+.vocab-row {
+  min-height: 56px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  transition: background var(--dur-hover) var(--ease-out);
+}
+.vocab-row:hover,
+.vocab-row:focus-within { background: var(--sunken); border-radius: var(--r-sm); }
+.vocab-row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; border-radius: var(--r-sm); }
+.vocab-row.is-paused .vocab-rule { color: var(--ink-muted); }
+
+.vocab-type { font-size: var(--fs-ui); color: var(--ink-muted); }
+.vocab-rule { font-size: var(--fs-body); line-height: 1.7; min-width: 0; overflow-wrap: anywhere; }
+.vocab-quiet { font-size: var(--fs-ui); color: var(--ink-muted); }
+.vocab-chip {
+  display: inline;
+  padding: 2px 8px;
+  border-radius: var(--r-xs);
+  background: var(--sunken);
+  color: var(--ink);
+  font-weight: 550;
+  overflow-wrap: anywhere;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.vocab-row:hover .vocab-chip,
+.vocab-row:focus-within .vocab-chip { background: var(--surface); }
+.vocab-expansion { font-size: var(--fs-ui); color: var(--ink-muted); }
+.vocab-uses { text-align: end; font-size: var(--fs-body); }
+.vocab-head .vocab-uses { font-size: var(--fs-ui); }
+
+.vocab-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.vocab-paused { font-size: var(--fs-ui); color: var(--ink-muted); }
+.vocab-hover { opacity: 0; transition: opacity var(--dur-hover) var(--ease-out); }
+.vocab-row:hover .vocab-hover,
+.vocab-row:focus-within .vocab-hover { opacity: 1; }
+@media (hover: none) { .vocab-hover { opacity: 1; } }
+
+.vocab-none { margin: 16px 12px; font-size: var(--fs-ui); }
+.vocab-empty-action { margin-top: 14px; }
+
+.vocab-body { display: flex; flex-direction: column; gap: 12px; }
+.vocab-card {
+  max-width: 720px;
+  padding: 18px 20px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-lift);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.vocab-card-title { margin: 0; font-size: var(--fs-title); line-height: 1.5; overflow-wrap: anywhere; }
+.vocab-quote { font-weight: 600; }
+
+.vocab-more { position: relative; }
+.vocab-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  min-width: 200px;
+  padding: 6px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-pop);
+}
+.vocab-menu-item {
+  display: block;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--fs-ui);
+  text-align: start;
+  cursor: pointer;
+}
+.vocab-menu-item:hover,
+.vocab-menu-item:focus-visible { background: var(--sunken); outline: none; }
+
+@media (pointer: coarse) {
+  .vocab-row { min-height: 56px; }
+  .vocab-row .btn, .vocab-row .icon-btn { min-height: 40px; min-width: 40px; }
+  .vocab-menu-item { height: 40px; }
+}

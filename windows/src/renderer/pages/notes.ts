@@ -1,267 +1,316 @@
 import { api } from '../api.js';
 import { el, icon, ICONS } from '../components/dom.js';
 import { relativeTime } from '../components/format.js';
-import { state, render, setNotice, refresh } from '../shell.js';
+import { state, render, setNotice } from '../shell.js';
 import type { NoteDTO } from '../../preload/types.js';
 
-let undoTimer = 0;
+const SEARCH_ICON = 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3';
+const AUTOSAVE_MS = 500;
+const UNDO_MS = 5000;
 
-// ---- Notes ------------------------------------------------------------
+// Module state: the page is rebuilt on every shell repaint, so anything the user is
+// in the middle of (selection, search, an unsaved edit, the undo toast) lives here.
+let selectedId: string | null = null;
+let query = '';
+let draft: { id: string; title: string; body: string } | null = null;
+let saveTimer = 0;
+let focusRequest: { field: 'title' | 'body' | 'search'; start: number; end: number } | null = null;
+let undo: { note: { id: string; title: string; body: string; createdAt: string; updatedAt: string }; index: number; timer: number } | null = null;
 
-export function renderNotes(): Node {
-  const page = el('div', { class: 'page page-wide', style: 'gap:14px' as never });
+function wordCount(text: string): number {
+  const trimmed = text.trim();
+  return trimmed.length === 0 ? 0 : trimmed.split(/\s+/).length;
+}
 
-  if (state.notes.length === 0 && !state.noteDraft) {
-    page.append(
+function formatCount(value: number): string {
+  return value.toLocaleString('de-DE');
+}
+
+function firstLine(body: string): string {
+  return body.split('\n').find((line) => line.trim().length > 0)?.trim() ?? '';
+}
+
+function currentTitle(note: NoteDTO): string {
+  return draft && draft.id === note.id ? draft.title : note.title;
+}
+
+function currentBody(note: NoteDTO): string {
+  return draft && draft.id === note.id ? draft.body : note.body;
+}
+
+function visibleNotes(): NoteDTO[] {
+  const needle = query.trim().toLowerCase();
+  if (needle.length === 0) return state.notes;
+  return state.notes.filter(
+    (note) => currentTitle(note).toLowerCase().includes(needle) || currentBody(note).toLowerCase().includes(needle),
+  );
+}
+
+// ---- Page -------------------------------------------------------------
+
+export function renderNotesPage(): HTMLElement {
+  if (selectedId && !state.notes.some((note) => note.id === selectedId)) selectedId = null;
+  if (!selectedId && state.notes.length > 0) selectedId = state.notes[0]!.id;
+
+  // The shell rebuilds the page on any repaint (a notice, a background refresh). The old
+  // DOM is still in the document here, so carry the caret over to the new one.
+  const active = document.activeElement;
+  if ((active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) && active.matches('.notes-title, .notes-body, .notes-search')) {
+    focusRequest = {
+      field: (active.dataset.field ?? 'search') as 'title' | 'body' | 'search',
+      start: active.selectionStart ?? 0,
+      end: active.selectionEnd ?? 0,
+    };
+  }
+
+  const root = el('div', { class: 'notes-page' });
+
+  if (state.notes.length === 0) {
+    root.classList.add('notes-page-empty');
+    root.append(
       el(
         'div',
-        { class: 'empty-state' },
+        { class: 'empty-state notes-empty' },
         el('h3', {}, 'No notes yet'),
-        el('p', {}, 'Create a note and type or dictate into it. Notes stay on this computer.'),
+        el('p', {}, 'Notes keep what you want to reuse. Add the latest dictation to a note from the Stream, or start a blank one.'),
         el(
           'div',
-          { class: 'inline', style: 'margin-top:14px' as never },
+          { class: 'notes-empty-action' },
           el('button', { class: 'btn btn-primary', type: 'button', onclick: () => void createNote() } as never, 'New note'),
         ),
       ),
     );
-    return page;
+    appendToast(root);
+    return root;
   }
 
-  const layout = el('div', { style: 'display:grid;grid-template-columns:minmax(200px,260px) minmax(0,1fr);gap:14px;align-items:start' as never });
+  const selected = state.notes.find((note) => note.id === selectedId) ?? null;
 
-  const list = el(
-    'div',
-    { class: 'list' },
-    ...state.notes.map((note) =>
-      el(
-        'button',
-        {
-          class: 'nav-item',
-          type: 'button',
-          'aria-current': state.selectedNoteId === note.id ? 'page' : undefined,
-          onclick: () => void openNote(note),
-        } as never,
-        el(
-          'div',
-          { style: 'min-width:0;text-align:left' as never },
-          el('div', { class: 'truncate strong' }, note.title || 'Untitled note'),
-          el('div', { class: 'tiny faint truncate' }, relativeTime(note.updatedAt)),
-        ),
-      ),
-    ),
-  );
+  const search = el('input', {
+    class: 'field-input notes-search',
+    type: 'search',
+    value: query,
+    placeholder: 'Search notes',
+    'aria-label': 'Search notes',
+    dataset: { field: 'search' },
+  } as never);
+  const list = el('div', { class: 'notes-list', role: 'listbox', 'aria-label': 'Notes' } as never);
 
-  const editor = el('div', { class: 'card card-pad' });
-  if (!state.noteDraft) {
-    editor.append(
-      el('p', { class: 'muted', style: 'margin:0' as never }, 'Select a note, or create a new one.'),
+  const fillList = (): void => {
+    const notes = visibleNotes();
+    list.replaceChildren(
+      ...(notes.length === 0
+        ? [el('p', { class: 'notes-none muted' }, 'No notes match.')]
+        : notes.map((note, index) => noteRow(note, index === 0 && !notes.some((n) => n.id === selectedId)))),
     );
-  } else {
-    const titleInput = el('input', {
-      class: 'field-input',
-      value: state.noteDraft.title,
-      placeholder: 'Title',
-      'aria-label': 'Note title',
-    } as never);
-    const bodyInput = el('textarea', {
-      class: 'field-textarea',
-      value: state.noteDraft.body,
-      placeholder: 'Write, or dictate with your hotkey…',
-      'aria-label': 'Note body',
-      style: 'min-height:280px' as never,
-    } as never);
+  };
+  search.addEventListener('input', () => {
+    query = search.value;
+    fillList();
+  });
+  list.addEventListener('keydown', (event) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const rows = [...list.querySelectorAll<HTMLButtonElement>('.notes-row')];
+    const at = rows.indexOf(document.activeElement as HTMLButtonElement);
+    if (at < 0) return;
+    const next = rows[at + (event.key === 'ArrowDown' ? 1 : -1)];
+    if (!next) return;
+    event.preventDefault();
+    rows.forEach((row) => (row.tabIndex = -1));
+    next.tabIndex = 0;
+    next.focus();
+  });
+  fillList();
 
-    titleInput.addEventListener('input', () => {
-      if (state.noteDraft) state.noteDraft.title = titleInput.value;
+  const listPane = el('div', { class: 'notes-listpane' }, el('div', { class: 'notes-searchwrap' }, icon(SEARCH_ICON, 15), search), list);
+  root.append(el('div', { class: 'notes-layout' }, listPane, selected ? documentPane(selected, fillList) : el('div', { class: 'notes-doc' })));
+  appendToast(root);
+
+  if (focusRequest) {
+    const request = focusRequest;
+    focusRequest = null;
+    requestAnimationFrame(() => {
+      const target =
+        root.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-field="${request.field}"]`);
+      if (!target) return;
+      target.focus();
+      target.setSelectionRange(request.start, request.end);
     });
-    bodyInput.addEventListener('input', () => {
-      if (state.noteDraft) state.noteDraft.body = bodyInput.value;
-    });
-
-    const saveButton = el(
-      'button',
-      {
-        class: 'btn btn-primary',
-        type: 'button',
-        onclick: () => void saveNoteDraft(),
-      } as never,
-      'Save note',
-    );
-
-    editor.append(
-      el(
-        'div',
-        { class: 'stack' },
-        titleInput,
-        bodyInput,
-        el(
-          'div',
-          { class: 'inline' },
-          saveButton,
-          el(
-            'button',
-            {
-              class: 'btn btn-danger',
-              type: 'button',
-              onclick: () => {
-                state.confirmNoteDelete = true;
-                render();
-              },
-            } as never,
-            icon(ICONS.trash, 14),
-            'Delete',
-          ),
-          el('span', { class: 'spacer' }),
-          el(
-            'span',
-            { class: 'tiny faint' },
-            'Changes are saved when you press Save.',
-          ),
-        ),
-      ),
-    );
   }
-
-  layout.append(list, editor);
-  page.append(layout);
-
-  // A real confirmation for a destructive action, rather than deleting on click.
-  if (state.confirmNoteDelete && state.selectedNoteId) {
-    page.append(confirmDialog());
-  }
-
-  return page;
+  return root;
 }
 
-function confirmDialog(): Node {
-  const overlay = el('div', { class: 'dialog-overlay' });
-  const panel = el(
+function noteRow(note: NoteDTO, tabbable: boolean): HTMLElement {
+  const title = currentTitle(note);
+  const body = currentBody(note);
+  const preview = firstLine(body);
+  const isSelected = note.id === selectedId;
+  return el(
+    'button',
+    {
+      class: 'notes-row',
+      type: 'button',
+      role: 'option',
+      'aria-selected': isSelected ? 'true' : 'false',
+      tabIndex: isSelected || tabbable ? 0 : -1,
+      onclick: () => selectNote(note.id),
+    } as never,
+    el('span', { class: 'notes-row-title truncate' }, title.trim() || 'Untitled note'),
+    preview
+      ? el('span', { class: 'notes-row-preview truncate', dir: 'auto' }, preview)
+      : el('span', { class: 'notes-row-preview notes-row-none truncate' }, 'No text yet'),
+    el('span', { class: 'notes-row-meta tnum' }, `${formatCount(wordCount(body))} words · ${relativeTime(note.updatedAt)}`),
+  );
+}
+
+function documentPane(note: NoteDTO, refreshList: () => void): HTMLElement {
+  const title = el('input', {
+    class: 'notes-title',
+    value: currentTitle(note),
+    placeholder: 'Untitled note',
+    'aria-label': 'Note title',
+    dir: 'auto',
+    dataset: { field: 'title' },
+  } as never);
+  const body = el('textarea', {
+    class: 'notes-body',
+    value: currentBody(note),
+    placeholder: 'Write, or dictate with your hotkey',
+    'aria-label': 'Note body',
+    dataset: { field: 'body' },
+  } as never);
+  const meta = el('p', { class: 'notes-meta tnum' });
+  const setMeta = (updatedAt: string): void => {
+    meta.textContent = `${formatCount(wordCount(body.value))} words · Edited ${relativeTime(updatedAt)}`;
+  };
+  setMeta(note.updatedAt);
+
+  const onEdit = (): void => {
+    draft = { id: note.id, title: title.value, body: body.value };
+    setMeta(new Date().toISOString());
+    refreshList();
+    window.clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(() => void flushSave(), AUTOSAVE_MS);
+  };
+  title.addEventListener('input', onEdit);
+  body.addEventListener('input', onEdit);
+  // Enter in the title moves to the text, like a document.
+  title.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      body.focus();
+    }
+  });
+  return el(
     'div',
-    { class: 'dialog-panel', role: 'dialog', 'aria-modal': 'true' as never },
-    el('h2', { class: 'dialog-title' }, 'Delete this note?'),
-    el('p', { class: 'dialog-body' }, 'It will be removed from this computer. You can undo immediately afterwards.'),
+    { class: 'notes-doc' },
     el(
       'div',
-      { class: 'dialog-actions' },
+      { class: 'notes-toolbar' },
       el(
         'button',
-        {
-          class: 'btn btn-secondary',
-          type: 'button',
-          onclick: () => {
-            state.confirmNoteDelete = false;
-            render();
-          },
-        } as never,
-        'Cancel',
+        { class: 'btn btn-ghost', type: 'button', onclick: () => void copyMarkdown(title.value, body.value) } as never,
+        icon(ICONS.copy, 15),
+        'Copy as Markdown',
       ),
       el(
         'button',
-        {
-          class: 'btn btn-primary',
-          type: 'button',
-          onclick: () => void confirmDeleteNote(),
-        } as never,
+        { class: 'btn btn-ghost', type: 'button', onclick: () => void deleteSelected(note.id) } as never,
+        icon(ICONS.trash, 15),
         'Delete',
       ),
     ),
+    el('div', { class: 'notes-scroll' }, el('div', { class: 'notes-column' }, title, meta, body)),
   );
-  overlay.append(panel);
-  overlay.addEventListener('click', (event) => {
-    if (event.target === overlay) {
-      state.confirmNoteDelete = false;
-      render();
-    }
-  });
-  return overlay;
+}
+
+function appendToast(root: HTMLElement): void {
+  if (!undo) return;
+  root.append(
+    el(
+      'div',
+      { class: 'toast notes-toast', role: 'status' },
+      el('span', {}, 'Note deleted.'),
+      el('button', { class: 'toast-action', type: 'button', onclick: () => void undoDelete() } as never, 'Undo'),
+    ),
+  );
 }
 
 // ---- Actions ----------------------------------------------------------
 
-async function createNote(): Promise<void> {
-  state.selectedNoteId = null;
-  state.noteDraft = { title: '', body: '' };
-  state.confirmNoteDelete = false;
-  render();
-}
-
-async function openNote(note: NoteDTO): Promise<void> {
-  state.selectedNoteId = note.id;
-  state.noteDraft = { title: note.title, body: note.body };
-  state.confirmNoteDelete = false;
-  render();
-}
-
-async function saveNoteDraft(): Promise<void> {
-  const draft = state.noteDraft;
-  if (!draft) return;
-  const saved = await api.saveNote({
-    id: state.selectedNoteId ?? undefined,
-    title: draft.title.trim() || 'Untitled note',
-    body: draft.body,
-  });
-  state.selectedNoteId = saved.id;
-  state.noteDraft = { title: saved.title, body: saved.body };
-  await refresh();
-  setNotice('success', 'Note saved.');
-}
-
-async function confirmDeleteNote(): Promise<void> {
-  const id = state.selectedNoteId;
-  state.confirmNoteDelete = false;
-  if (!id) {
-    // Unsaved draft: nothing on disk to delete.
-    state.noteDraft = null;
+function selectNote(id: string): void {
+  if (id === selectedId) return;
+  void flushSave().then(() => {
+    selectedId = id;
     render();
-    return;
-  }
-  const removed = await api.deleteNote(id);
-  await refresh();
-  state.noteDraft = null;
-  state.selectedNoteId = null;
+  });
+}
 
-  if (removed) {
-    state.deletedNote = {
-      note: {
-        id: removed.id,
-        title: removed.title,
-        body: removed.body,
-        createdAt: '',
-        updatedAt: '',
-      },
-      index: removed.index,
-    };
-    if (undoTimer) window.clearTimeout(undoTimer);
-    undoTimer = window.setTimeout(() => {
-      state.deletedNote = null;
-      render();
-    }, 8000);
-  }
+async function flushSave(): Promise<void> {
+  window.clearTimeout(saveTimer);
+  const pending = draft;
+  if (!pending) return;
+  const saved = await api.saveNote({ id: pending.id, title: pending.title.trim() ? pending.title : '', body: pending.body });
+  // Patch the one note in place: a full refresh would replace the list under the editor.
+  const at = state.notes.findIndex((note) => note.id === saved.id);
+  if (at >= 0) state.notes[at] = saved;
+  else state.notes.unshift(saved);
+  if (draft === pending) draft = null;
+}
+
+async function createNote(): Promise<void> {
+  await flushSave();
+  const created = await api.saveNote({ title: '', body: '' });
+  state.notes.unshift(created);
+  selectedId = created.id;
+  query = '';
+  focusRequest = { field: 'title', start: 0, end: 0 };
   render();
 }
 
-export async function undoDeleteNote(): Promise<void> {
-  const deleted = state.deletedNote;
-  if (!deleted) return;
-  if (undoTimer) window.clearTimeout(undoTimer);
-  // Restore puts the note back at its original position, so undoing a mis-click
-  // does not also reorder the list.
-  await api.restoreNote(
-    {
-      id: deleted.note.id,
-      title: deleted.note.title,
-      body: deleted.note.body,
-    },
-    deleted.index,
-  );
-  state.deletedNote = null;
-  await refresh();
-  setNotice('success', 'Note restored.');
+async function copyMarkdown(title: string, body: string): Promise<void> {
+  const heading = title.trim();
+  await api.copyToClipboard(heading ? `# ${heading}\n\n${body}` : body);
+  setNotice('success', 'Copied as Markdown.');
 }
 
-/** The header buttons for the Notes page. */
-export function notesHeaderActions(): Node[] {
+async function deleteSelected(id: string): Promise<void> {
+  await flushSave();
+  const removed = await api.deleteNote(id);
+  if (!removed) throw new Error(`Note ${id} was not found when deleting it.`);
+  const gone = state.notes.find((note) => note.id === id);
+  state.notes = state.notes.filter((note) => note.id !== id);
+  selectedId = state.notes[Math.min(removed.index, state.notes.length - 1)]?.id ?? null;
+  if (undo) window.clearTimeout(undo.timer);
+  const timer = window.setTimeout(() => {
+    undo = null;
+    document.querySelector('.notes-toast')?.remove();
+  }, UNDO_MS);
+  undo = {
+    note: { id: removed.id, title: removed.title, body: removed.body, createdAt: gone?.createdAt ?? '', updatedAt: gone?.updatedAt ?? '' },
+    index: removed.index,
+    timer,
+  };
+  render();
+}
+
+async function undoDelete(): Promise<void> {
+  const pending = undo;
+  if (!pending) return;
+  window.clearTimeout(pending.timer);
+  undo = null;
+  // Restore puts the note back where it was, so Undo does not also reorder the list.
+  await api.restoreNote(
+    { id: pending.note.id, title: pending.note.title, body: pending.note.body, createdAt: pending.note.createdAt || undefined, updatedAt: pending.note.updatedAt || undefined },
+    pending.index,
+  );
+  state.notes = await api.getNotes();
+  selectedId = pending.note.id;
+  render();
+}
+
+/** The header button for the Notes page. */
+export function headerActionsForNotes(): HTMLElement[] {
   return [
     el(
       'button',
@@ -271,7 +320,3 @@ export function notesHeaderActions(): Node[] {
     ),
   ];
 }
-
-// TEMP until merge: the real Notes page replaces these.
-export const renderNotesPage = renderNotes;
-export const headerActionsForNotes = notesHeaderActions;

@@ -66,8 +66,11 @@ export function computeHealth(input: HealthInput, goToEngine: () => void): Healt
       label: 'Engine',
       tone: 'bad',
       text: kind === 'timedOut' ? 'Timed out' : 'Not responding',
-      fix: { label: 'Retry last recording', run: () => void api.retryLast() },
+      // Retry only when the error carries a retry fix: a failure without retained audio has none.
+      fix: input.lastError?.fix === 'retry' ? { label: 'Retry last recording', run: () => void api.retryLast() } : undefined,
     };
+  } else if (kind === 'deliveryFailed') {
+    engine = { label: 'Engine', tone: 'bad', text: "Couldn't deliver" };
   } else if (kind === 'offline') {
     engine = { label: 'Engine', tone: 'warn', text: 'Offline', fix: { label: 'Retry last recording', run: () => void api.retryLast() } };
   } else {

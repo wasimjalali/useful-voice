@@ -270,6 +270,24 @@ struct InsightsHeroChartView: View {
     }
 }
 
+// MARK: - Fitting
+
+extension View {
+    /// Draws a fixed-size square chart at its design size when there is room, and
+    /// scales it down (to `minScale`) when its tile is narrower, so the figures beside
+    /// it keep their width instead of breaking one letter per line.
+    func fitSquare(_ design: CGFloat, minScale: CGFloat) -> some View {
+        GeometryReader { geo in
+            let scale = min(1, max(minScale, min(geo.size.width, geo.size.height) / design))
+            self.scaleEffect(scale)
+                .frame(width: geo.size.width, height: geo.size.height)
+        }
+        .frame(minWidth: design * minScale, idealWidth: design, maxWidth: design,
+               minHeight: design * minScale, idealHeight: design, maxHeight: design)
+        .aspectRatio(1, contentMode: .fit)
+    }
+}
+
 // MARK: - Rings
 
 /// Daily goal on the outside, streak inside: two stroked circles trimmed to their fraction.
@@ -313,7 +331,11 @@ struct InsightsRadial: View {
     var body: some View {
         Canvas { ctx, size in
             let c = CGPoint(x: size.width / 2, y: size.height / 2)
-            let inner: CGFloat = 22, outer: CGFloat = 78
+            // Drawn for the size it gets (192 pt when there is room), labels kept
+            // full size, so a narrow tile shrinks the wedges and not the text beside it.
+            // The hour labels keep an 18 pt ring of their own inside the frame.
+            let outer = min(size.width, size.height) / 2 - 18
+            let inner = outer * 22 / 78
             let peak = max(hours.max() ?? 0, 1)
             let peakHour = empty ? -1 : (hours.firstIndex(of: hours.max() ?? 0) ?? -1)
 
@@ -343,7 +365,8 @@ struct InsightsRadial: View {
                          at: p, anchor: .center)
             }
         }
-        .frame(width: 192, height: 192)
+        .frame(minWidth: 112, idealWidth: 192, maxWidth: 192, minHeight: 112, idealHeight: 192, maxHeight: 192)
+        .aspectRatio(1, contentMode: .fit)
         .accessibilityElement()
         .accessibilityLabel(empty ? "Words by hour of day, no data yet"
                             : "Words by hour of day, busiest at \(InsightsFormat.hour(hours.firstIndex(of: hours.max() ?? 0) ?? 0))")

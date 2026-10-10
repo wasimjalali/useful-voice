@@ -48,19 +48,6 @@ export async function pasteClipboard(): Promise<boolean> {
 }
 
 /**
- * Send the target's undo shortcut, used to take back a paste that provably landed
- * when the user cancels within the undo window.
- */
-export async function sendUndo(): Promise<boolean> {
-  try {
-    await runPowerShell('$wshell = New-Object -ComObject WScript.Shell; $wshell.SendKeys("^z")');
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Which window has focus right now.
  *
  * Used for two things: showing the user which app will receive their text, and
@@ -87,10 +74,10 @@ $h = [UvForeground]::GetForegroundWindow()
 $len = [UvForeground]::GetWindowTextLength($h)
 $sb = New-Object System.Text.StringBuilder ($len + 1)
 [void][UvForeground]::GetWindowText($h, $sb, $sb.Capacity)
-$pid = 0
-[void][UvForeground]::GetWindowThreadProcessId($h, [ref]$pid)
+$procId = 0
+[void][UvForeground]::GetWindowThreadProcessId($h, [ref]$procId)
 $name = ""
-try { $name = (Get-Process -Id $pid -ErrorAction Stop).ProcessName } catch {}
+try { $name = (Get-Process -Id $procId -ErrorAction Stop).ProcessName } catch {}
 # A unit-separator character is used rather than a tab: PowerShell would need a
 # backtick escape for a tab, and the backtick collides with JS template syntax.
 Write-Output ("{0}{1}{2}{1}{3}" -f $h.ToInt64(), [char]31, $name, $sb.ToString())

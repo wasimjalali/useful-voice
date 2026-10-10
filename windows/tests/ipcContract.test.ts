@@ -262,6 +262,18 @@ describe('recorder window protocol', () => {
     expect(mainSource).toContain('this.recorder.handleError(token, message)');
   });
 
+  it('accepts recorder messages only from the recorder window, and only with a token', () => {
+    expect(mainSource).toContain('event.sender === this.recorderWindow.webContents');
+    for (const channel of ['audio:started', 'audio:captured', 'audio:error']) {
+      const start = mainSource.indexOf(`ipcMain.handle('${channel}'`);
+      expect(start, `${channel} handler`).toBeGreaterThan(0);
+      const body = mainSource.slice(start, start + 400);
+      expect(body, `${channel} must check the sender`).toContain('fromRecorder(event)');
+      expect(body, `${channel} must require a string token`).toContain("typeof token !== 'string'");
+    }
+    expect(mainSource).toContain('validateCapture(wav, meta)');
+  });
+
   it('keeps the old fire-and-forget start and the untagged pending slot out of main', () => {
     expect(mainSource).not.toContain('pendingCapture');
     expect(mainSource).not.toContain("webContents.send('audio:start')");

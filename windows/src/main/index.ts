@@ -30,7 +30,7 @@ import {
   resolvedTheme,
   titleBarOverlayFor,
 } from './theme.js';
-import { RecorderBridge } from './recorderBridge.js';
+import { RecorderBridge, validateCapture } from './recorderBridge.js';
 import { TrayController } from './tray.js';
 import { Announcer } from './announce.js';
 import {
@@ -815,7 +815,12 @@ class UsefulVoiceApp {
         }
       },
       // The microphone failed while recording (unplugged, access revoked).
-      onUnclaimedError: (error) => void this.service.recorderFailed(error),
+      onUnclaimedError: (error) =>
+        void this.service
+          .recorderFailed(error)
+          .catch((failure: unknown) =>
+            this.diagnostics.log('dictation', `could not end the recording after a recorder error: ${(failure as Error).message}`),
+          ),
     });
     return new DictationService({
       recorder: this.recorder,
@@ -965,6 +970,10 @@ class UsefulVoiceApp {
    */
   private async deliver(request: DeliveryRequest): Promise<DeliveryResult> {
     const { text, mode, targetApp } = request;
+    // A cancel that arrived before anything touched the clipboard stops here, on every
+    // path: copy, moved window and paste alike.
+    const cancelled: DeliveryResult = { delivered: false, clipboardFallback: false, cancelled: true };
+    if (request.signal?.aborted) return cancelled;
     if (mode === 'copy') {
       // Nothing is pasted, so there is nothing to confirm and nothing to restore: the
       // dictation simply becomes the clipboard.
@@ -972,6 +981,7 @@ class UsefulVoiceApp {
       return { delivered: true, clipboardFallback: false };
     }
     const target = await foregroundWindow();
+    if (request.signal?.aborted) return cancelled;
     if (pasteTargetMoved(request.targetHandle, target)) {
       // The user stopped from somewhere else (the dock, so Useful Voice is in front) or
       // clicked away: a paste would land in the wrong window. Leave it on the clipboard.
@@ -987,7 +997,7 @@ class UsefulVoiceApp {
     // keystroke is sent and the dictation is delivered whatever the user does next.
     if (request.signal?.aborted) {
       this.restoreSnapshot(snapshot);
-      return { delivered: false, clipboardFallback: false, cancelled: true };
+      return cancelled;
     }
     const pasteSent = await pasteClipboard();
 
@@ -1106,21 +1116,32 @@ class UsefulVoiceApp {
   }
 
   private registerIpc(): void {
-    ipcMain.handle('audio:started', (_event, token: string) => this.recorder.handleStarted(token));
+    // Only the hidden recorder window may talk to the recorder bridge: a message from any
+    // other renderer could otherwise end or replace a live recording.
+    const fromRecorder = (event: Electron.IpcMainInvokeEvent): boolean =>
+      this.recorderWindow !== null &&
+      !this.recorderWindow.isDestroyed() &&
+      event.sender === this.recorderWindow.webContents;
 
-    ipcMain.handle(
-      'audio:captured',
-      (_event, token: string, wav: ArrayBuffer, meta: { durationSeconds: number; peak: number; hadSpeech: boolean }) => {
-        this.recorder.handleCaptured(token, {
-          wav: new Uint8Array(wav),
-          durationSeconds: meta.durationSeconds,
-          peak: meta.peak,
-          hadSpeech: meta.hadSpeech,
-        });
-      },
-    );
+    ipcMain.handle('audio:started', (event, token: unknown) => {
+      if (!fromRecorder(event) || typeof token !== 'string') return;
+      this.recorder.handleStarted(token);
+    });
 
-    ipcMain.handle('audio:error', (_event, message: string, token?: string) => {
+    ipcMain.handle('audio:captured', (event, token: unknown, wav: unknown, meta: unknown) => {
+      if (!fromRecorder(event) || typeof token !== 'string') return;
+      const captured = validateCapture(wav, meta);
+      if (captured instanceof Error) {
+        this.diagnostics.log('recorder', captured.message);
+        this.recorder.handleError(token, captured.message);
+        return;
+      }
+      this.recorder.handleCaptured(token, captured);
+    });
+
+    ipcMain.handle('audio:error', (event, message: unknown, token: unknown) => {
+      // An untagged error cannot be tied to a recording, so it is not acted on.
+      if (!fromRecorder(event) || typeof token !== 'string' || typeof message !== 'string') return;
       this.recorder.handleError(token, message);
     });
 

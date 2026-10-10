@@ -162,9 +162,13 @@ struct LandingTile: View {
     var body: some View {
         let r = radius ?? size * 0.25
         LandingMark(style: animated && !reduceMotion ? .idle : .still,
-                    size: size * 0.55, fill: Theme.brandInk)
+                    size: size * 0.55, fill: Theme.hudInk)
             .frame(width: size, height: size)
-            .background(Theme.ink, in: RoundedRectangle(cornerRadius: r, style: .continuous))
+            // The tile is dark in both appearances (the board's dark default
+            // tile); on a dark canvas a 1px tone ring keeps its edge visible.
+            .background(Theme.markTile, in: RoundedRectangle(cornerRadius: r, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: r, style: .continuous)
+                .strokeBorder(Theme.tone, lineWidth: 1))
             .accessibilityElement()
             .accessibilityLabel("Useful Voice")
     }

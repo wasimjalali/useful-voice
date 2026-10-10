@@ -104,6 +104,8 @@ enum Theme {
 
     static let hudSurface = dynamic(light: 0x171717, dark: 0x202020)
     static let hudInk = rgb(0xFA, 0xFA, 0xFA)
+    /// The app mark's tile: dark in both appearances, like the app icon.
+    static let markTile = rgb(0x17, 0x17, 0x17)
     static let hudMark = accentOnDark
     /// The record dot inside the HUD and any other dark surface. In-window record
     /// dots keep `danger`.

@@ -35,8 +35,9 @@ UV_START_SECTION=insights UV_SNAPSHOT="$PWD/verify/<branch>/ui-insights.png@1280
 ```
 
 `UV_START_SECTION` is a sidebar section's raw value (`home`, `languageMemory`, `insights`,
-`scratchpad`, `history`, `settings`). Another running copy of the app makes the new process exit
-immediately (single-instance guard), so quit it first. The pages show your real data, so keep
+`scratchpad`, `history`, `settings`). `UV_APPEARANCE=light|dark` overrides the Appearance setting
+for the render and saves nothing. A snapshot run skips the single-instance guard, the status item and
+(unless `UV_FIRST_RUN=force`) the first-run flow, so it runs beside your installed copy. The pages show your real data, so keep
 screenshots out of commits: put them in `verify/<branch>/` (gitignored). Build the bundle first (`make bundle`). A snapshot run also creates
 `usage-stats.json` in the real data folder if it does not exist yet, the same as a normal launch.
 

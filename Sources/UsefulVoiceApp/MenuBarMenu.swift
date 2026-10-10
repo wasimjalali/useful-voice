@@ -25,6 +25,9 @@ final class MenuBarMenu: NSObject, NSMenuDelegate {
     private let viewModel: UsefulVoiceViewModel
     private let actions: Actions
     private var isRecording = false
+    /// Whether the menu is on screen. The header only follows the recording ticks
+    /// while it is, so a closed menu does not republish 30 times a second.
+    private var isOpen = false
 
     private let toggleItem = NSMenuItem()
     private let cancelItem = NSMenuItem()
@@ -135,8 +138,9 @@ final class MenuBarMenu: NSObject, NSMenuDelegate {
     /// One recording tick. Runs from a timer in `.common` run-loop mode, so the
     /// timer in the header keeps counting while the menu is open.
     func tick(seconds: Int, level: Float) {
+        guard isOpen else { return }
         if header.seconds != seconds { header.seconds = seconds }
-        header.level = level
+        if header.level != level { header.level = level }
     }
 
     /// Brings every item in line with the current state. Called when the state
@@ -189,8 +193,13 @@ final class MenuBarMenu: NSObject, NSMenuDelegate {
     // MARK: - NSMenuDelegate
 
     func menuWillOpen(_ menu: NSMenu) {
+        isOpen = true
         header.copied = false
         refresh()
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        isOpen = false
     }
 
     // MARK: - Actions

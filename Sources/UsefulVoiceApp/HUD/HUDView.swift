@@ -15,6 +15,14 @@ enum HUDPresentation {
 final class HUDModel: ObservableObject {
     @Published var display: HUDDisplay = .delivering
     @Published var presentation: HUDPresentation = .entering
+    /// The capsule's current size, reported by the view. The panel uses it to take
+    /// clicks over the capsule only.
+    var capsuleSize: CGSize = .zero
+}
+
+private struct CapsuleSizeKey: PreferenceKey {
+    static let defaultValue: CGSize = .zero
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
 }
 
 /// The root of the panel's hosting view.
@@ -26,6 +34,7 @@ struct HUDRoot: View {
     var body: some View {
         HUDView(display: model.display, presentation: model.presentation,
                 onFix: onFix, onClose: onClose)
+            .onPreferenceChange(CapsuleSizeKey.self) { model.capsuleSize = $0 }
     }
 }
 
@@ -82,6 +91,9 @@ struct HUDView: View {
         }
         .frame(minHeight: Self.capsuleHeight)
         .background(surface)
+        .background(GeometryReader { proxy in
+            Color.clear.preference(key: CapsuleSizeKey.self, value: proxy.size)
+        })
         .animation(reduceMotion ? nil : BrandMotion.morph, value: display.phase)
         .accessibilityElement(children: display.isPersistent ? .contain : .ignore)
         .accessibilityLabel(display.accessibilityLabel)
@@ -154,7 +166,11 @@ struct HUDView: View {
         case .error(let error):
             row(trailing: 8) {
                 symbol(error.symbol)
+                // The message is the one flexible item: it truncates so the verb and
+                // the close always stay whole inside the 360 pt content width.
                 Text(error.message)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: Self.messageWidth(for: error.fix), alignment: .leading)
                 if let fix = error.fix { fixButton(fix) }
                 closeButton
             }
@@ -199,6 +215,7 @@ struct HUDView: View {
                 .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
+        .fixedSize()
         .accessibilityLabel(fix.hudTitle)
     }
 
@@ -213,6 +230,7 @@ struct HUDView: View {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .fixedSize()
         .accessibilityLabel("Dismiss")
     }
 
@@ -240,6 +258,17 @@ struct HUDView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(width: Self.bubbleWidth, alignment: .leading)
+    }
+
+    /// The room an error message has: the 360 pt content width less the icon, the
+    /// verb pill, the close and the gaps and padding around them.
+    static func messageWidth(for fix: DictationFix?) -> CGFloat {
+        let fixed: CGFloat = 16 + 16 + 10 + 10 + 24 + 8
+        guard let fix else { return bubbleWidth - fixed }
+        let label = NSAttributedString(string: fix.hudTitle, attributes: [
+            .font: NSFont.systemFont(ofSize: TypeScale.meta.rawValue, weight: .semibold)])
+        let pill = ceil(label.size().width) + 22
+        return bubbleWidth - fixed - 10 - pill
     }
 
     /// m:ss, counting up from zero. Tabular digits so the capsule never jitters

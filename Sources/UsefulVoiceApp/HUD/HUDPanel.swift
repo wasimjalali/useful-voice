@@ -17,7 +17,9 @@ private final class HUDHostingView<Content: View>: NSHostingView<Content> {
 /// transparent margin for the shadow. Every morph runs inside it, so the window
 /// never resizes and a state change never moves the pill. Clicks pass through the
 /// transparent margin (the window is non-opaque, so the window server skips fully
-/// transparent pixels).
+/// transparent pixels). The window ignores mouse events except while the pointer
+/// is over the capsule: a pointer monitor flips `ignoresMouseEvents`, so the margin
+/// never takes a click, whatever the hosting view does with transparent pixels.
 ///
 /// Timing lives here, not in the callers: `show` arms the state's own lifetime
 /// (`HUDDisplay.lifetime`), and a new `show` always replaces what is on screen,
@@ -42,6 +44,8 @@ final class HUDPanel: NSObject {
     /// Set around programmatic frame changes so windowDidMove can tell a real
     /// user drag apart from our own repositioning.
     private var isProgrammaticMove = false
+    /// Pointer monitors, installed while the HUD is on screen.
+    private var pointerMonitors: [Any] = []
 
     /// The pill's button: the fix verb. Wired by the app to `viewModel.perform`.
     var onFix: ((DictationFix) -> Void)?
@@ -68,6 +72,7 @@ final class HUDPanel: NSObject {
             // Mid-exit: come back from where it is instead of restarting.
             isShowing = true
             model.presentation = .shown
+            startPointerTracking(panel)
         } else {
             enter(panel)
         }
@@ -98,6 +103,7 @@ final class HUDPanel: NSObject {
         generation &+= 1
         isShowing = false
         lastAnnouncementKey = nil
+        stopPointerTracking()
         panel?.orderOut(nil)
     }
 
@@ -132,6 +138,7 @@ final class HUDPanel: NSObject {
         position(panel)
         panel.alphaValue = 1
         panel.orderFrontRegardless()
+        startPointerTracking(panel)
         // One run loop turn later, so the hidden first frame is on screen and the
         // change to "shown" animates instead of being the first thing drawn.
         DispatchQueue.main.async { [weak self] in
@@ -153,8 +160,49 @@ final class HUDPanel: NSObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             // A show() during the exit sets isShowing again: do not hide then.
             guard let self, self.generation == token, !self.isShowing else { return }
+            self.stopPointerTracking()
             panel.orderOut(nil)
         }
+    }
+
+    // MARK: - Click-through
+
+    /// The capsule in screen coordinates, with a few points of slack so the edge
+    /// is easy to hit.
+    private func capsuleScreenRect(_ panel: NSPanel) -> NSRect {
+        let size = model.capsuleSize
+        guard size.width > 0 else { return .zero }
+        let window = panel.frame
+        return NSRect(x: window.minX + (window.width - size.width) / 2,
+                      y: window.minY + HUDView.shadowPad,
+                      width: size.width, height: size.height).insetBy(dx: -4, dy: -4)
+    }
+
+    /// Takes mouse events only while the pointer is over the capsule.
+    private func updateMouseEvents() {
+        guard let panel else { return }
+        let inside = capsuleScreenRect(panel).contains(NSEvent.mouseLocation)
+        if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
+    }
+
+    private func startPointerTracking(_ panel: NSPanel) {
+        updateMouseEvents()
+        guard pointerMonitors.isEmpty else { return }
+        // Global: moves over other apps' windows, which is where the pointer is
+        // while the window ignores it. Local: moves over this window while it takes
+        // events, which is how it learns the pointer left the capsule.
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved, handler: { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateMouseEvents() }
+        }) { pointerMonitors.append(global) }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved, handler: { [weak self] event in
+            MainActor.assumeIsolated { self?.updateMouseEvents() }
+            return event
+        }) { pointerMonitors.append(local) }
+    }
+
+    private func stopPointerTracking() {
+        for monitor in pointerMonitors { NSEvent.removeMonitor(monitor) }
+        pointerMonitors = []
     }
 
     // MARK: - Announcements
@@ -203,8 +251,10 @@ final class HUDPanel: NSObject {
         panel.hasShadow = false   // the view draws its own shadow
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
-        // Draggable by its body; the buttons still take their own clicks.
-        panel.ignoresMouseEvents = false
+        // Draggable by its body; the buttons still take their own clicks. Ignores
+        // the mouse until the pointer is over the capsule (see updateMouseEvents).
+        panel.ignoresMouseEvents = true
+        panel.acceptsMouseMovedEvents = true
         panel.isMovableByWindowBackground = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.contentView = hosting

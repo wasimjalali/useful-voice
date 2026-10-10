@@ -91,7 +91,7 @@ struct HUDError: Equatable {
             message = "Deepgram is out of credits"
             symbol = "exclamationmark.triangle"
         case .timedOut:
-            message = "Transcription timed out"
+            message = "Timed out"
             symbol = "clock"
         case .providerFailed, .engineFailed:
             message = "Transcription failed"

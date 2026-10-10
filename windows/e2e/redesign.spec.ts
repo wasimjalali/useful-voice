@@ -76,7 +76,7 @@ test.beforeAll(async () => {
     env,
     // `_electron.launch` bypasses the config's `use` options, so video and trace
     // are switched on here.
-    recordVideo: { dir: path.join(out, 'video'), size: { width: 1180, height: 740 } },
+    recordVideo: process.env.E2E_NO_VIDEO ? undefined : { dir: path.join(out, 'video'), size: { width: 1180, height: 740 } },
   });
   app.process().stdout?.on('data', (chunk: Buffer) => appOutput.push(chunk.toString()));
   app.process().stderr?.on('data', (chunk: Buffer) => appOutput.push(chunk.toString()));

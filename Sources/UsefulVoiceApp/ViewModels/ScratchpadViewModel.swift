@@ -178,6 +178,39 @@ final class ScratchpadViewModel: ObservableObject {
         loadSelectedDraft()
     }
 
+    /// The notes the Add to note picker offers first: most recently edited.
+    func recentNotes(limit: Int = 3) -> [ScratchpadNote] {
+        Array(notes.sorted { $0.updatedAt > $1.updatedAt }.prefix(limit))
+    }
+
+    /// Appends text to a note as a new paragraph. Returns the note's previous
+    /// body so the caller's Undo can restore it, or nil when the note is gone.
+    @discardableResult
+    func append(_ text: String, toNoteID id: UUID) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, var note = notes.first(where: { $0.id == id }) else { return nil }
+        if id == selectedID { commitDraft() }
+        let previous = note.body
+        note.body = [previous, trimmed]
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: "\n\n")
+        note.updatedAt = Date()
+        store.update(note)
+        refresh()
+        if id == selectedID { loadSelectedDraft() }
+        return previous
+    }
+
+    /// Undo for `append`: puts the previous body back.
+    func restoreBody(_ body: String, noteID id: UUID) {
+        guard var note = notes.first(where: { $0.id == id }) else { return }
+        note.body = body
+        note.updatedAt = Date()
+        store.update(note)
+        refresh()
+        if id == selectedID { loadSelectedDraft() }
+    }
+
     @discardableResult
     func createDictationNote(_ text: String) -> ScratchpadNote? {
         guard let note = store.captureDictation(text) else { return nil }

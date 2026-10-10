@@ -103,6 +103,39 @@ final class UsefulVoiceViewModel: ObservableObject {
         publishFeedback()
     }
 
+    // MARK: - Navigation and fixes
+
+    /// Asks the window to show a section, optionally scrolled to an anchor (a
+    /// Settings group id such as "engine" or "appearance"). RootView consumes it.
+    struct NavigationRequest: Equatable {
+        let section: String
+        let anchor: String?
+        let id = UUID()
+    }
+    @Published var navigationRequest: NavigationRequest?
+
+    /// `section` is a `SidebarSection` raw value.
+    func navigate(to section: String, anchor: String? = nil) {
+        navigationRequest = NavigationRequest(section: section, anchor: anchor)
+    }
+
+    /// Runs the fix verb attached to an error or notice, from the dock, a banner,
+    /// the HUD or a menu item.
+    func perform(_ fix: DictationFix) {
+        switch fix {
+        case .openMicrophoneSettings: Self.openPrivacyPane("Privacy_Microphone")
+        case .openAccessibilitySettings: Self.openPrivacyPane("Privacy_Accessibility")
+        case .openEngineSettings: navigate(to: "settings", anchor: "engine")
+        case .retry: retry()
+        }
+    }
+
+    static func openPrivacyPane(_ pane: String) {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)")
+        else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     private func publishFeedback() {
         if lastIssue != feedback.issue { lastIssue = feedback.issue }
         if lastOutcome != feedback.outcome { lastOutcome = feedback.outcome }

@@ -69,6 +69,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * or a key combination from the person at the machine.
  */
 const E2E = process.argv.includes('--e2e');
+
+// `--uv-data-dir=<path>` points every store at a scratch folder, so the E2E suite
+// runs on fixture data and never touches (or reads) the real install's history.
+const userDataArg = process.argv.find((arg) => arg.startsWith('--uv-data-dir='));
+if (userDataArg) app.setPath('userData', path.resolve(userDataArg.slice('--uv-data-dir='.length)));
 if (E2E) {
   // CI runners have no GPU; software rendering keeps hidden windows painting.
   app.disableHardwareAcceleration();
@@ -1921,10 +1926,6 @@ export async function runSelfTest(): Promise<SelfTestResult> {
   return { ok: checks.every((check) => check.ok), checks };
 }
 
-// `--user-data-dir=<path>` points every store at a scratch folder, so the E2E suite
-// runs on fixture data and never touches (or reads) the real install's history.
-const userDataArg = process.argv.find((arg) => arg.startsWith('--user-data-dir='));
-if (userDataArg) app.setPath('userData', path.resolve(userDataArg.slice('--user-data-dir='.length)));
 
 // `--self-test` runs the headless verification and exits, so a build can be checked
 // without a human watching the screen.

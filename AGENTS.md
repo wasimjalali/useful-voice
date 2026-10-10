@@ -12,7 +12,7 @@ Cross-platform dictation app. macOS: Swift (`Sources/UsefulVoiceCore`,
   Electron self-test)
 - Packaging smoke: `cd windows && npx electron-builder --win --dir`
 - Windows E2E: `cd windows && env -u ELECTRON_RUN_AS_NODE npm run e2e` (Playwright drives the
-  built app with `--e2e --user-data-dir=<scratch>`: hidden windows, fixture data, no tray or
+  built app with `--e2e --uv-data-dir=<scratch>`: hidden windows, fixture data, no tray or
   global hotkeys). `E2E_OUT=<dir>` moves the HTML report, traces, videos and screenshots
   (default `windows/e2e-results/`). CI runs it on `windows-latest` and uploads the report.
 

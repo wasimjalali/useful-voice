@@ -72,7 +72,7 @@ test.beforeAll(async () => {
   const env = { ...process.env } as Record<string, string>;
   delete env.ELECTRON_RUN_AS_NODE;
   app = await electron.launch({
-    args: [path.join(root, 'dist', 'main', 'index.js'), `--user-data-dir=${userData}`, '--e2e'],
+    args: [path.join(root, 'dist', 'main', 'index.js'), `--uv-data-dir=${userData}`, '--e2e'],
     env,
     // `_electron.launch` bypasses the config's `use` options, so video and trace
     // are switched on here.

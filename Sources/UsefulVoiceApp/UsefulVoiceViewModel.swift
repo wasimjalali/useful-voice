@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import UsefulVoiceCore
 
@@ -6,6 +7,16 @@ import UsefulVoiceCore
 @MainActor
 final class UsefulVoiceViewModel: ObservableObject {
     @Published var dictationState: DictationState = .idle
+    /// The error or "copied, not pasted" notice from the last dictation. Set when
+    /// the dictation fails or its text could not be pasted; cleared when the next
+    /// recording (or a retry) starts, or by `dismissIssue()`.
+    @Published private(set) var lastIssue: DictationIssue?
+    /// How the last dictation ended. Published just before the state returns to
+    /// idle; cleared when the next recording (or a retry) starts.
+    @Published private(set) var lastOutcome: DictationOutcome?
+    /// Live level, timer, countdowns and local partial text. A separate object so
+    /// its 30 Hz updates redraw only the views that observe it.
+    let telemetry = DictationTelemetry()
     @Published var recent: [DictationRecord] = []
     /// Bumped whenever the usage stats change, so the Insights page redraws.
     @Published var usageRevision = 0
@@ -25,6 +36,11 @@ final class UsefulVoiceViewModel: ObservableObject {
     var onHotkeyKeycodeChange: ((Int) -> Void)?
     /// Set by the app layer to push a new language-switch key to the live HotkeyManager.
     var onLanguageSwitchKeycodeChange: ((Int) -> Void)?
+    /// Set by the app layer: the saved recordings were deleted, so retained audio
+    /// for Retry is gone too.
+    var onRecordingsDeleted: (() -> Void)?
+    /// Set by the app layer to bring the main window up (closed or behind).
+    var onOpenWindow: (() -> Void)?
     /// Set by the app layer to retry the last failed dictation on its audio.
     var onRetry: (() -> Void)?
     /// Set by the app layer to re-run a history item from retained audio when possible.
@@ -45,7 +61,8 @@ final class UsefulVoiceViewModel: ObservableObject {
     /// Local model downloads/state for the Settings page. Owns the store and
     /// downloader; the view reads it as an ordinary ObservedObject.
     let models: LocalModelManager
-    private let onToggle: () -> Void
+    private let onToggle: (DictationSource) -> Void
+    private var feedback = DictationFeedback()
 
     /// History pages read search/all directly off the store.
     var historyStore: DictationHistory { history }
@@ -55,7 +72,7 @@ final class UsefulVoiceViewModel: ObservableObject {
          languageMemory: LanguageMemoryStore,
          scratchpad: ScratchpadStore,
          models: LocalModelManager? = nil,
-         onToggle: @escaping () -> Void) {
+         onToggle: @escaping (DictationSource) -> Void) {
         self.settings = settings
         self.history = history
         self.usageStats = usageStats
@@ -67,11 +84,91 @@ final class UsefulVoiceViewModel: ObservableObject {
         refreshRecent()
     }
 
-    func toggle() { onToggle() }
+    /// The window's mic button and transport: the dictation is saved and copied,
+    /// not pasted.
+    func toggle() { onToggle(.window) }
 
     func retry() { onRetry?() }
 
-    func refreshState(_ state: DictationState) { dictationState = state }
+    /// Call after deleting the saved recordings (Delete all dictations).
+    func recordingsDeleted() {
+        onRecordingsDeleted?()
+        canRetry = false
+        // A Retry offered for audio that is now gone would be a dead button.
+        if lastIssue?.fix == .retry { dismissIssue() }
+    }
+
+    func refreshState(_ state: DictationState) {
+        dictationState = state
+        telemetry.apply(state: state)
+        feedback.apply(state: state)
+        publishFeedback()
+    }
+
+    /// A dictation finished (delivered) or was cancelled.
+    func handle(outcome: DictationOutcome) {
+        feedback.apply(outcome: outcome)
+        publishFeedback()
+    }
+
+    /// Clears the issue the window shows (the dock row), when its fix no longer
+    /// applies. The HUD's x and its 8 s only hide the HUD: the fix stays
+    /// reachable in the window and the menu until the next dictation.
+    func dismissIssue() {
+        feedback.dismissIssue()
+        publishFeedback()
+    }
+
+    // MARK: - Navigation and fixes
+
+    /// Asks the window to show a section, optionally scrolled to an anchor (a
+    /// Settings group id such as "engine" or "appearance"). RootView consumes it.
+    struct NavigationRequest: Equatable {
+        let section: String
+        let anchor: String?
+        let id = UUID()
+    }
+    @Published var navigationRequest: NavigationRequest?
+    /// A page shows a modal dialog: the shell disables the rail behind it.
+    @Published var modalPresented = false
+
+    /// `section` is a `SidebarSection` raw value.
+    func navigate(to section: String, anchor: String? = nil) {
+        navigationRequest = NavigationRequest(section: section, anchor: anchor)
+    }
+
+    /// Runs the fix verb attached to an error or notice, from the dock, a banner,
+    /// the HUD or a menu item.
+    func perform(_ fix: DictationFix) {
+        switch fix {
+        case .openMicrophoneSettings:
+            // Permission granted means the device itself failed: Sound > Input is
+            // where that is fixed; otherwise the privacy switch is.
+            if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
+               let url = URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension?input") {
+                NSWorkspace.shared.open(url)
+            } else {
+                Self.openPrivacyPane("Privacy_Microphone")
+            }
+        case .openAccessibilitySettings: Self.openPrivacyPane("Privacy_Accessibility")
+        case .openEngineSettings:
+            // From the HUD or the menu the window may be closed: open it first.
+            onOpenWindow?()
+            navigate(to: "settings", anchor: "engine")
+        case .retry: retry()
+        }
+    }
+
+    static func openPrivacyPane(_ pane: String) {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)")
+        else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    private func publishFeedback() {
+        if lastIssue != feedback.issue { lastIssue = feedback.issue }
+        if lastOutcome != feedback.outcome { lastOutcome = feedback.outcome }
+    }
 
     func refreshRecent() { recent = history.recent(5) }
 

@@ -6,12 +6,12 @@ import UsefulVoiceCore
 ///
 /// This subclass is not optional garnish, it is what makes the picker usable.
 /// AppKit refuses key status to a window that cannot become key, and a
-/// `.borderless` panel cannot by default — `canBecomeKey` returns false because
+/// `.borderless` panel cannot by default - `canBecomeKey` returns false because
 /// there is no title bar to click. `HUDPanel` gets away with a borderless panel
 /// precisely because it never wants focus: it is `.nonactivatingPanel` and must not
 /// steal the caret from the app being dictated into. This panel wants the opposite,
 /// so it has to say so. Without the override the popup appears and then ignores
-/// every keystroke, so its search field is inert — the feature would look present
+/// every keystroke, so its search field is inert - the feature would look present
 /// and be unusable.
 final class KeyablePanel: NSPanel {
     override var canBecomeKey: Bool { true }
@@ -27,21 +27,21 @@ final class KeyablePanel: NSPanel {
 ///
 /// Deliberately *not* built on `HUDPanel`. That panel is `.nonactivatingPanel` and
 /// never takes focus, because a dictation HUD must not steal the caret from the app
-/// you are typing into. This one needs the opposite — a search field has to receive
+/// you are typing into. This one needs the opposite - a search field has to receive
 /// keystrokes, so the panel must be able to become key.
 ///
 /// **Taking focus makes restoring it this panel's responsibility.** Every delivery
 /// path in the app is focus-dependent: `TextInserter` posts an unaddressed ⌘V to
 /// `.cghidEventTap`, which goes to whatever application is frontmost, and its
 /// accessibility fallback targets the system-wide focused element. So a panel that
-/// takes frontmost and does not give it back silently breaks the *next* dictation —
+/// takes frontmost and does not give it back silently breaks the *next* dictation:
 /// the transcript would be pasted into nothing, or into this app. The old in-place
 /// cycle had no such problem because it never activated anything, which is what makes
 /// this a regression to avoid rather than a nicety to add.
 @MainActor
 final class LanguagePickerPanel: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
-    private var hosting: NSHostingView<LanguagePicker>?
+    private var hosting: NSHostingView<AnyView>?
     private var onSelect: ((LanguagePin) -> Void)?
     /// Called when the panel closes without a selection, so the caller can leave
     /// the previous language untouched rather than guessing.
@@ -56,8 +56,13 @@ final class LanguagePickerPanel: NSObject, NSWindowDelegate {
     /// restore this breaks the next dictation rather than merely being untidy.
     private var previousApplication: NSRunningApplication?
 
-    private let panelWidth: CGFloat = 292
-    private let panelHeight: CGFloat = 396
+    /// The card is 300 by 400 pt. The window adds a transparent margin around it
+    /// so the pop shadow is not clipped.
+    private let shadowPad: CGFloat = 36
+    private var panelWidth: CGFloat { LanguagePicker.size.width + shadowPad * 2 }
+    private var panelHeight: CGFloat { LanguagePicker.size.height + shadowPad * 2 }
+    /// Gap between the picker and the top of the capsule it is anchored to.
+    private let anchorGap: CGFloat = 10
 
     var isVisible: Bool { isShowing }
 
@@ -67,10 +72,11 @@ final class LanguagePickerPanel: NSObject, NSWindowDelegate {
     /// value would freeze the panel at whatever it was when the hotkey was pressed:
     /// the picker keeps holding a `Binding`, and a binding built from a captured value
     /// answers with that stale value for as long as the panel is open. If anything
-    /// changed the language in the meantime — the menu bar, another window — the
+    /// changed the language in the meantime - the menu bar, another window - the
     /// checkmark would point at the wrong row and re-selecting the shown value would
     /// write it back over the real one.
     func show(
+        anchor: NSPoint? = nil,
         current: @escaping () -> LanguagePin,
         onSelect: @escaping (LanguagePin) -> Void,
         onDismiss: (() -> Void)? = nil
@@ -102,7 +108,10 @@ final class LanguagePickerPanel: NSObject, NSWindowDelegate {
             }
         )
 
-        let view = LanguagePicker(selection: binding, title: "Dictation language")
+        let view = AnyView(
+            LanguagePicker(selection: binding, title: "Dictation language",
+                           onCancel: { [weak self] in self?.close() })
+                .padding(shadowPad))
         if let hosting {
             hosting.rootView = view
         } else {
@@ -110,7 +119,7 @@ final class LanguagePickerPanel: NSObject, NSWindowDelegate {
         }
         guard let panel else { return }
 
-        position(panel)
+        position(panel, anchor: anchor)
         isShowing = true
         // The panel has to be key for the search field to receive keystrokes. It is
         // `KeyablePanel` (see above) precisely so this call can succeed on a
@@ -128,10 +137,14 @@ final class LanguagePickerPanel: NSObject, NSWindowDelegate {
         // this method, and the guard above is what stops the recursion.
         isShowing = false
         panel?.orderOut(nil)
+        // Unmount the picker so its key monitor is removed and the next open starts
+        // with a clean search field. A hidden-but-mounted picker would keep taking
+        // the arrow keys and Return from every other window.
+        hosting?.rootView = AnyView(EmptyView())
 
         // Hand focus back to whatever had it. Without this the app remains frontmost,
         // and the next dictation would paste into a window that is not the user's
-        // editor — the delivery path relies on the frontmost application to know where
+        // editor - the delivery path relies on the frontmost application to know where
         // text goes. `.activateIgnoringOtherApps` is deprecated and ignored on macOS
         // 14+, so the plain call is both current and equivalent.
         if let previous = previousApplication, !previous.isTerminated {
@@ -148,7 +161,7 @@ final class LanguagePickerPanel: NSObject, NSWindowDelegate {
 
     // MARK: - Panel
 
-    private func buildPanel(with view: LanguagePicker) {
+    private func buildPanel(with view: AnyView) {
         let hosting = NSHostingView(rootView: view)
         let panel = KeyablePanel(
             contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
@@ -173,18 +186,27 @@ final class LanguagePickerPanel: NSObject, NSWindowDelegate {
         self.hosting = hosting
     }
 
-    /// Centres horizontally on the active screen and sits above centre, where it
-    /// does not cover the caret line the user is dictating into on most layouts.
-    private func position(_ panel: NSPanel) {
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+    /// Sits 10 pt above the top of the HUD capsule, centred on it, and kept on the
+    /// screen. Without an anchor it centres on the active screen, a little above
+    /// the middle, where it does not cover the caret line on most layouts.
+    private func position(_ panel: NSPanel, anchor: NSPoint?) {
+        // The screen the anchor is on, which is the one the HUD was placed on.
+        let anchored = anchor.flatMap { point in NSScreen.screens.first { $0.frame.contains(point) } }
+        guard let screen = anchored ?? NSScreen.main ?? NSScreen.screens.first else { return }
         let visible = screen.visibleFrame
-        let size = NSSize(width: panelWidth, height: panelHeight)
-        let origin = NSPoint(
-            x: visible.midX - size.width / 2,
-            y: visible.midY - size.height / 2 + visible.height * 0.12
-        )
-        panel.setFrame(NSRect(origin: origin, size: size), display: false)
-        panel.setContentSize(size)
+        let card = LanguagePicker.size
+        var cardOrigin: NSPoint
+        if let anchor {
+            cardOrigin = NSPoint(x: anchor.x - card.width / 2, y: anchor.y + anchorGap)
+        } else {
+            cardOrigin = NSPoint(x: visible.midX - card.width / 2,
+                                 y: visible.midY - card.height / 2 + visible.height * 0.12)
+        }
+        cardOrigin.x = min(max(cardOrigin.x, visible.minX + 8), visible.maxX - card.width - 8)
+        cardOrigin.y = min(max(cardOrigin.y, visible.minY + 8), visible.maxY - card.height - 8)
+        let origin = NSPoint(x: cardOrigin.x - shadowPad, y: cardOrigin.y - shadowPad)
+        panel.setFrame(NSRect(origin: origin, size: NSSize(width: panelWidth, height: panelHeight)),
+                       display: false)
     }
 
     // MARK: - NSWindowDelegate

@@ -262,6 +262,9 @@ export function createBubble(view: BubbleView, handlers: BubbleHandlers): HTMLEl
   if (collapsible) {
     text.classList.add('is-clamped');
     bubble.dataset.clampable = '1';
+    // A search excerpt that was cut out of a longer dictation always offers Show all, even
+    // when the excerpt itself is short enough to fit in four lines.
+    if (view.query !== '' && excerptAround(entry.text, view.query).cut) bubble.dataset.cut = '1';
   }
   bubble.append(showAll);
 
@@ -327,7 +330,7 @@ export function measureBubbles(container: ParentNode): void {
   const overflowing = texts.map((text) => text !== null && text.scrollHeight > text.clientHeight + 1);
   all.forEach((bubble, index) => {
     const toggle = bubble.querySelector<HTMLElement>('.bubble-more');
-    if (toggle) toggle.hidden = !overflowing[index];
+    if (toggle) toggle.hidden = !(overflowing[index] || bubble.dataset.cut === '1');
     if (!overflowing[index]) texts[index]?.classList.remove('is-clamped');
   });
 }

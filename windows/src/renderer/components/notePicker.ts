@@ -55,6 +55,9 @@ export function openNotePicker(options: NotePickerOptions): FloatingHandle {
   const list = el('div', { class: 'np-list', id: 'np-list', role: 'listbox', 'aria-label': 'Notes' });
   const root = el('div', { class: 'np' }, field, list);
 
+  let opened = false;
+  // Rows first, so the surface is measured and placed with its real height.
+  paint();
   const handle = openFloating({
     content: root,
     anchor: options.anchor,
@@ -118,6 +121,8 @@ export function openNotePicker(options: NotePickerOptions): FloatingHandle {
     children.push(row(null, rows.length - 1));
     list.replaceChildren(...children);
     input.setAttribute('aria-activedescendant', `np-row-${active}`);
+    // A search changes how many rows there are; keep the surface inside the window.
+    if (opened) handle.reposition();
   }
 
   input.addEventListener('input', () => {
@@ -136,7 +141,7 @@ export function openNotePicker(options: NotePickerOptions): FloatingHandle {
     }
   });
 
-  paint();
+  opened = true;
   input.focus();
   return handle;
 }

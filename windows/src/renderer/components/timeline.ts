@@ -162,6 +162,11 @@ export function createTimeline(hooks: TimelineHooks): Timeline {
 
   function loadOlder(): void {
     if (start === 0) return;
+    // Remember where the reader is before anything is inserted. The bubbles that join the day
+    // already on screen count too, so they must be inserted after this is read.
+    const anchor = captureAnchor();
+    const heightBefore = scroll.scrollHeight;
+    const topBefore = scroll.scrollTop;
     const newStart = Math.max(0, start - PAGE);
     const sections = buildSections(flat.slice(newStart, start), new Set());
     const firstExisting = col.querySelector<HTMLElement>('.tl-day');
@@ -173,11 +178,9 @@ export function createTimeline(hooks: TimelineHooks): Timeline {
       if (label) label.after(...moved);
       sections.pop();
     }
-    const before = scroll.scrollHeight;
-    const keepTop = scroll.scrollTop;
     col.prepend(...sections);
     measureBubbles(col);
-    scroll.scrollTop = keepTop + (scroll.scrollHeight - before);
+    if (!restoreAnchor(anchor)) scroll.scrollTop = topBefore + (scroll.scrollHeight - heightBefore);
     start = newStart;
   }
 

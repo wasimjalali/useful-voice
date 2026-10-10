@@ -29,6 +29,9 @@ public enum DeliveryResult: Sendable, Equatable {
     /// Paste mode, but the user moved to another app before delivery, so the text
     /// was copied instead of pasted into the wrong place. Not a permission problem.
     case copiedAppChanged
+    /// Paste mode, but a password field took focus, so nothing was typed into it
+    /// and the text was left on the clipboard. Not a permission problem.
+    case copiedSecureField
 }
 
 /// Delivery could not put the text where it was meant to go (the clipboard write
@@ -210,11 +213,13 @@ public enum DictationIssue: Equatable, Sendable {
     case copiedNotPasted
     /// The user switched apps, so the text was copied. Permissions are fine.
     case copiedAppChanged
+    /// A password field had focus, so the text was copied instead. No fix.
+    case copiedSecureField
 
     public var message: String {
         switch self {
         case .error(let error): return error.message
-        case .copiedNotPasted, .copiedAppChanged: return "Copied. Press \u{2318}V to paste."
+        case .copiedNotPasted, .copiedAppChanged, .copiedSecureField: return "Copied. Press \u{2318}V to paste."
         }
     }
 
@@ -224,7 +229,7 @@ public enum DictationIssue: Equatable, Sendable {
         switch self {
         case .error(let error): return error.fix
         case .copiedNotPasted: return .openAccessibilitySettings
-        case .copiedAppChanged: return nil
+        case .copiedAppChanged, .copiedSecureField: return nil
         }
     }
 }
@@ -261,6 +266,7 @@ public struct DictationFeedback: Equatable, Sendable {
             switch result {
             case .copiedNotPasted: issue = .copiedNotPasted
             case .copiedAppChanged: issue = .copiedAppChanged
+            case .copiedSecureField: issue = .copiedSecureField
             case .pasted, .copied: break
             }
         }

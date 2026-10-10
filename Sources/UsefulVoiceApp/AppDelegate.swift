@@ -465,6 +465,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         case .clipboardOnly:
                             // The HUD shows "Copied. Press ⌘V to paste" from the outcome.
                             done(.success(.copiedNotPasted))
+                        case .secureFieldCopied:
+                            done(.success(.copiedSecureField))
                         case .insertedViaAX, .pasted:
                             done(.success(.pasted))
                         }
@@ -958,7 +960,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .pasted: hud.show(.done(.inserted(words: words)))
             case .copied: hud.show(.done(.savedAndCopied(words: words)))
             case .copiedNotPasted: hud.show(.copiedNotPasted(fix: .openAccessibilitySettings))
-            case .copiedAppChanged: hud.show(.copiedNotPasted(fix: nil))
+            case .copiedAppChanged, .copiedSecureField: hud.show(.copiedNotPasted(fix: nil))
             }
         }
     }

@@ -1675,4 +1675,16 @@ final class CapturingProvider: TranscriptionProvider {
         #expect(error.fix == nil)
         #expect(outcomes.isEmpty)
     }
+
+    // Round 3: a password field focused mid-dictation is reported as such, and the
+    // result is passed through unchanged (no Accessibility fix is implied).
+    @Test func testSecureFieldCopyIsPassedThroughToTheOutcome() async throws {
+        deliveryResultOverride = .copiedSecureField
+        let controller = makeController(providers: [okProvider()])
+        controller.toggle()
+        controller.toggle()
+        await controller.awaitProcessing()
+        #expect(outcomes == [.delivered(words: 2, mode: .copiedSecureField, appName: "Slack")])
+        #expect(controller.state == .idle)
+    }
 }

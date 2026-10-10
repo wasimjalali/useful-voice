@@ -297,13 +297,6 @@ struct StreamPage: View {
     var body: some View { HomePage(viewModel: viewModel) }
 }
 
-typealias NotesPage = ScratchpadPage
-
-struct VocabularyPage: View {
-    @ObservedObject var viewModel: UsefulVoiceViewModel
-    var body: some View { LanguageMemoryPage(viewModel: viewModel.languageMemory) }
-}
-
 extension InsightsPage {
     init(viewModel: UsefulVoiceViewModel, settings: AppSettings) {
         self.init(viewModel: viewModel)

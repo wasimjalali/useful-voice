@@ -878,7 +878,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch state {
         case .idle:
             stopRecordingTimer()
-            setIcon("waveform", tint: nil)
+            setIcon(tint: nil)
             if lastDictationState == .delivering {
                 // A dictation just landed: flash a brief success confirmation
                 // before the pill fades out, the way WhisperFlow and friends do.
@@ -890,17 +890,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .recording:
             chimes.playStart()
             startRecordingTimer()
-            setIcon("record.circle.fill", tint: .systemRed)
+            setIcon(tint: .systemRed)
         case .transcribing:
             if lastDictationState == .recording { chimes.playStop() }
             stopRecordingTimer()
-            setIcon("waveform", tint: .systemOrange)
+            setIcon(tint: .systemOrange)
             hud.show(.transcribing(partial: nil))
         case .delivering:
             hud.show(.delivering)
         case .error(let message):
             stopRecordingTimer()
-            setIcon("waveform", tint: nil)
+            setIcon(tint: nil)
             hud.show(.error(message))
             hud.hide(after: 6)
         }
@@ -929,12 +929,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         recordingStartedAt = nil
     }
 
-    private func setIcon(_ symbol: String, tint: NSColor?) {
-        let image = NSImage(systemSymbolName: symbol,
-                            accessibilityDescription: "Useful Voice")
-        image?.isTemplate = (tint == nil)
-        statusItem?.button?.image = image
-        statusItem?.button?.contentTintColor = tint
+    private func setIcon(tint: NSColor?) {
+        statusItem?.button?.image = Self.statusItemImage(tint: tint)
+        statusItem?.button?.contentTintColor = nil
+    }
+
+    /// The Landing mark as an 18 pt menu bar image (StatusItem.png and @2x in
+    /// Resources). With no tint it is a template, so the menu bar colours it for
+    /// light, dark and the highlighted state. With a tint (recording, transcribing)
+    /// it is drawn in that colour and is not a template.
+    private static func statusItemImage(tint: NSColor?) -> NSImage {
+        guard let mark = NSImage(named: "StatusItem") else {
+            fatalError("StatusItem.png is missing from the app bundle's Resources")
+        }
+        mark.accessibilityDescription = "Useful Voice"
+        guard let tint else {
+            mark.isTemplate = true
+            return mark
+        }
+        let tinted = NSImage(size: mark.size, flipped: false) { rect in
+            mark.draw(in: rect)
+            tint.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        tinted.accessibilityDescription = "Useful Voice"
+        tinted.isTemplate = false
+        return tinted
     }
 
     // MARK: - Status item and menu
@@ -942,8 +963,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func setUpStatusItem() {
         let item = NSStatusBar.system.statusItem(
             withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "waveform",
-                                     accessibilityDescription: "Useful Voice")
+        item.button?.image = Self.statusItemImage(tint: nil)
         let menu = NSMenu()
 
         let openItem = NSMenuItem(title: "Open Useful Voice",

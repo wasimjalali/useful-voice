@@ -1,12 +1,25 @@
-import { app, Menu, nativeImage, Tray, type NativeImage } from 'electron';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { app, Menu, nativeImage, nativeTheme, Tray, type NativeImage } from 'electron';
 
 /**
  * The tray icon and its menu.
  *
- * Windows has no menu-bar-extra equivalent, so the tray is the app's front door —
- * equivalent to the macOS `LSUIElement` status item. The icon is generated in code
- * rather than shipped as a binary asset so the packaged app has nothing to lose.
+ * Windows has no menu-bar-extra equivalent, so the tray is the app's front door,
+ * equivalent to the macOS `LSUIElement` status item. The icons are the PNGs that
+ * `npm run build:icon` writes to `build/tray`, shipped as extra resources.
  */
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/** Windows picks the representation that matches the display scale: 100, 125, 150 and 200 %. */
+const TRAY_SCALES: Array<{ scaleFactor: number; px: number }> = [
+  { scaleFactor: 1, px: 16 },
+  { scaleFactor: 1.25, px: 20 },
+  { scaleFactor: 1.5, px: 24 },
+  { scaleFactor: 2, px: 32 },
+];
 
 export interface TrayHandlers {
   onToggleDictation: () => void;
@@ -37,7 +50,9 @@ export class TrayController {
   constructor(private readonly handlers: TrayHandlers) {}
 
   create(): void {
-    this.tray = new Tray(this.icon(false));
+    this.tray = new Tray(this.icon(this.state.recording));
+    // The taskbar follows the system theme, so swap the icon when it changes.
+    nativeTheme.on('updated', this.onThemeUpdated);
     this.tray.setToolTip('Useful Voice: press your hotkey to dictate');
     // Left click opens the window: the most common reason to click the tray icon
     // is to see what the app is doing.
@@ -52,6 +67,7 @@ export class TrayController {
   }
 
   destroy(): void {
+    nativeTheme.off('updated', this.onThemeUpdated);
     this.tray?.destroy();
     this.tray = null;
   }
@@ -109,42 +125,27 @@ export class TrayController {
     );
   }
 
+  private readonly onThemeUpdated = (): void => {
+    this.tray?.setImage(this.icon(this.state.recording));
+  };
+
   /**
-   * Draw the icon as a data URL.
-   *
-   * A filled circle when recording and a hollow one when idle: the same
-   * information the macOS status item conveys, and legible at 16 px.
+   * The Landing mark for the current taskbar theme: ink on a light taskbar, light on
+   * a dark one, in the danger colour while recording.
    */
   private icon(recording: boolean): NativeImage {
-    const size = 32;
-    const pixels = Buffer.alloc(size * size * 4, 0);
-    const centre = (size - 1) / 2;
-    const outer = 13;
-    const inner = recording ? 0 : 6.5;
-
-    for (let y = 0; y < size; y += 1) {
-      for (let x = 0; x < size; x += 1) {
-        const distance = Math.hypot(x - centre, y - centre);
-        // Ink #171717 for the ring, matching the design system.
-        const inRing = distance <= outer && distance >= inner;
-        if (!inRing) continue;
-        // Anti-alias the two edges so the circle does not look stepped.
-        const alpha = Math.min(
-          clamp01(outer - distance + 0.5),
-          inner > 0 ? clamp01(distance - inner + 0.5) : 1,
-        );
-        const offset = (y * size + x) * 4;
-        pixels[offset] = 0x17;
-        pixels[offset + 1] = 0x17;
-        pixels[offset + 2] = 0x17;
-        pixels[offset + 3] = Math.round(alpha * 255);
-      }
+    const taskbar = nativeTheme.shouldUseDarkColorsForSystemIntegratedUI ? 'dark' : 'light';
+    const state = recording ? 'recording' : 'idle';
+    const dir = app.isPackaged
+      ? path.join(process.resourcesPath, 'tray')
+      : path.join(__dirname, '..', '..', 'build', 'tray');
+    const image = nativeImage.createEmpty();
+    for (const { scaleFactor, px } of TRAY_SCALES) {
+      image.addRepresentation({
+        scaleFactor,
+        buffer: fs.readFileSync(path.join(dir, `tray-${taskbar}-${state}-${px}.png`)),
+      });
     }
-
-    return nativeImage.createFromBuffer(pixels, { width: size, height: size });
+    return image;
   }
-}
-
-function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, value));
 }

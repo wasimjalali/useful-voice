@@ -988,10 +988,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Resources). With no tint it is a template, so the menu bar colours it for
     /// light, dark and the highlighted state. With a tint (recording, transcribing)
     /// it is drawn in that colour and is not a template.
+    /// Resolved once. A bare `swift run` has no bundle Resources: it falls back to
+    /// a system glyph and logs it, rather than crashing the menu bar app.
+    private static let statusMark: NSImage = {
+        if let mark = NSImage(named: "StatusItem") { return mark }
+        Diagnostics.shared.record(level: .warning, category: "launch",
+                                  message: "StatusItem.png missing from Resources; using a system glyph")
+        return NSImage(systemSymbolName: "waveform", accessibilityDescription: nil) ?? NSImage()
+    }()
+
     private static func statusItemImage(tint: NSColor?) -> NSImage {
-        guard let mark = NSImage(named: "StatusItem") else {
-            fatalError("StatusItem.png is missing from the app bundle's Resources")
-        }
+        let mark = statusMark.copy() as! NSImage
         mark.accessibilityDescription = "Useful Voice"
         guard let tint else {
             mark.isTemplate = true

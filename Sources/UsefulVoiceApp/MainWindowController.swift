@@ -95,8 +95,12 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         offscreen.appearance = Appearance.nsAppearance(for: settings.appearance)
         offscreen.contentView = hosting
         hosting.frame = NSRect(origin: .zero, size: size)
+        // Ordered in far off every screen, behind everything, never key: a window
+        // that is never ordered in gets no onAppear, so lazy lists render blank.
+        offscreen.setFrameOrigin(NSPoint(x: -30_000, y: -30_000))
+        offscreen.orderBack(nil)
         // Give SwiftUI a moment to run onAppear work and lay the page out.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             hosting.layoutSubtreeIfNeeded()
             guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {
                 completion(false)

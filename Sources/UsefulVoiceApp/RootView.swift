@@ -289,11 +289,3 @@ struct RootView: View {
         }
     }
 }
-
-// TEMP until merge: the page entry points from pr2-contract.md, mapped onto today's pages.
-struct StreamPage: View {
-    @ObservedObject var viewModel: UsefulVoiceViewModel
-    let settings: AppSettings
-    var body: some View { HomePage(viewModel: viewModel) }
-}
-

@@ -162,7 +162,6 @@ struct InsightsPage: View {
             .controlSize(.large)
             // A dictation already running would be stopped by the toggle.
             .disabled(!dictationIdle)
-            .clickableCursor()
         }
     }
 

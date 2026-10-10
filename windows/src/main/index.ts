@@ -1118,7 +1118,7 @@ class UsefulVoiceApp {
   private registerIpc(): void {
     // Only the hidden recorder window may talk to the recorder bridge: a message from any
     // other renderer could otherwise end or replace a live recording.
-    const fromRecorder = (event: Electron.IpcMainInvokeEvent): boolean =>
+    const fromRecorder = (event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): boolean =>
       this.recorderWindow !== null &&
       !this.recorderWindow.isDestroyed() &&
       event.sender === this.recorderWindow.webContents;
@@ -1145,7 +1145,9 @@ class UsefulVoiceApp {
       this.recorder.handleError(token, message);
     });
 
-    ipcMain.on('audio:level', (_event, level: number) => {
+    ipcMain.on('audio:level', (event, level: unknown) => {
+      // Only the recorder window measures the microphone, and only a number is a level.
+      if (!fromRecorder(event) || typeof level !== 'number' || !Number.isFinite(level)) return;
       if (this.hudWindow && !this.hudWindow.isDestroyed()) {
         this.hudWindow.webContents.send('hud:level', level);
       }

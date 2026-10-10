@@ -69,6 +69,15 @@ struct WindowBanner: Equatable {
 
     /// Failures that persist until the next recording. Quiet ones (no speech, too
     /// short, a password field) stay in the dock and the HUD.
+    static func isPersistent(_ kind: DictationError.Kind) -> Bool {
+        switch kind {
+        case .outOfCredits, .timedOut, .providerFailed, .engineFailed, .stopFailed, .micUnavailable:
+            return true
+        default:
+            return false
+        }
+    }
+
     private static func issueBanner(_ error: DictationError) -> WindowBanner? {
         switch error.kind {
         case .outOfCredits, .timedOut, .providerFailed, .engineFailed, .stopFailed, .micUnavailable:

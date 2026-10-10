@@ -125,84 +125,94 @@ async function open(
     throw error;
   }
 
-  // The main process may have given up while the permission prompt or the driver was
-  // thinking. The stream is open now, so close it rather than leave the microphone live.
-  const abandon = (): boolean => {
-    if (!ticket.cancelled) return false;
-    for (const track of stream.getTracks()) track.stop();
-    return true;
-  };
-  if (abandon()) return false;
-
-  const context = new AudioContext();
-  // Chrome may start it suspended; resume so audio actually flows.
-  if (context.state === 'suspended') await context.resume();
-  if (ticket.cancelled) {
-    for (const track of stream.getTracks()) track.stop();
-    await context.close().catch(() => undefined);
-    return false;
-  }
-
-  const source = context.createMediaStreamSource(stream);
-  // A ScriptProcessorNode is used rather than an AudioWorklet because a worklet
-  // needs a separate module file served over a URL, and the number of samples per
-  // callback is not performance-critical here.
-  const processor = context.createScriptProcessor(4096, 1, 1);
-
-  const capture: Capture = {
-    token,
-    stream,
-    context,
-    source,
-    processor,
-    chunks: [],
-    startedAt: performance.now(),
-    peak: 0,
-    hadSpeech: false,
-    levelTimer: 0,
-  };
-
-  processor.onaudioprocess = (event) => {
-    const input = event.inputBuffer.getChannelData(0);
-    // Copy: the buffer is reused by the audio thread, so holding a reference would
-    // capture whatever the next callback writes.
-    const chunk = new Float32Array(input.length);
-    chunk.set(input);
-    capture.chunks.push(chunk);
-
-    capture.peak = Math.max(capture.peak, peak(chunk));
-    if (containsSpeech(chunk)) capture.hadSpeech = true;
-
-    // Push the level for the HUD meter on a timer, not per callback: an unfiltered
-    // flood would swamp the IPC channel.
-    const now = performance.now();
-    if (now - capture.levelTimer > 50) {
-      capture.levelTimer = now;
-      window.usefulVoice.sendLevel(Math.min(1, rms(chunk) * LEVEL_METER_GAIN));
-    }
-  };
-
-  source.connect(processor);
-  // A ScriptProcessorNode only runs while connected to a destination. The gain is
-  // zero so nothing is played back, which would otherwise feed the microphone back
-  // into the speakers.
-  const silence = context.createGain();
-  silence.gain.value = 0;
-  processor.connect(silence);
-  silence.connect(context.destination);
-
-  // The device going away mid-recording is the one failure no stop will ever report.
-  for (const track of stream.getTracks()) {
-    track.onended = () => {
-      if (active !== capture) return;
-      active = null;
-      void release(capture);
-      onLost('NotFoundError: the microphone was disconnected.');
+  // Anything below can throw (the AudioContext constructor, resume, the node factories).
+  // The stream is already open, so a throw must close it, or the microphone stays live
+  // with nobody holding it.
+  let opened: AudioContext | null = null;
+  try {
+    // The main process may have given up while the permission prompt or the driver was
+    // thinking. The stream is open now, so close it rather than leave the microphone live.
+    const abandon = (): boolean => {
+      if (!ticket.cancelled) return false;
+      for (const track of stream.getTracks()) track.stop();
+      return true;
     };
-  }
+    if (abandon()) return false;
 
-  active = capture;
-  return true;
+    const context = (opened = new AudioContext());
+    // Chrome may start it suspended; resume so audio actually flows.
+    if (context.state === 'suspended') await context.resume();
+    if (ticket.cancelled) {
+      for (const track of stream.getTracks()) track.stop();
+      await context.close().catch(() => undefined);
+      return false;
+    }
+
+    const source = context.createMediaStreamSource(stream);
+    // A ScriptProcessorNode is used rather than an AudioWorklet because a worklet
+    // needs a separate module file served over a URL, and the number of samples per
+    // callback is not performance-critical here.
+    const processor = context.createScriptProcessor(4096, 1, 1);
+
+    const capture: Capture = {
+      token,
+      stream,
+      context,
+      source,
+      processor,
+      chunks: [],
+      startedAt: performance.now(),
+      peak: 0,
+      hadSpeech: false,
+      levelTimer: 0,
+    };
+
+    processor.onaudioprocess = (event) => {
+      const input = event.inputBuffer.getChannelData(0);
+      // Copy: the buffer is reused by the audio thread, so holding a reference would
+      // capture whatever the next callback writes.
+      const chunk = new Float32Array(input.length);
+      chunk.set(input);
+      capture.chunks.push(chunk);
+
+      capture.peak = Math.max(capture.peak, peak(chunk));
+      if (containsSpeech(chunk)) capture.hadSpeech = true;
+
+      // Push the level for the HUD meter on a timer, not per callback: an unfiltered
+      // flood would swamp the IPC channel.
+      const now = performance.now();
+      if (now - capture.levelTimer > 50) {
+        capture.levelTimer = now;
+        window.usefulVoice.sendLevel(Math.min(1, rms(chunk) * LEVEL_METER_GAIN));
+      }
+    };
+
+    source.connect(processor);
+    // A ScriptProcessorNode only runs while connected to a destination. The gain is
+    // zero so nothing is played back, which would otherwise feed the microphone back
+    // into the speakers.
+    const silence = context.createGain();
+    silence.gain.value = 0;
+    processor.connect(silence);
+    silence.connect(context.destination);
+
+    // The device going away mid-recording is the one failure no stop will ever report.
+    for (const track of stream.getTracks()) {
+      track.onended = () => {
+        if (active !== capture) return;
+        active = null;
+        void release(capture);
+        onLost('NotFoundError: the microphone was disconnected.');
+      };
+    }
+
+    active = capture;
+    return true;
+  } catch (error) {
+    for (const track of stream.getTracks()) track.stop();
+    await opened?.close().catch(() => undefined);
+    throw error;
+  }
 }
 
 /**

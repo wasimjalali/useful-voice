@@ -272,6 +272,12 @@ describe('recorder window protocol', () => {
       expect(body, `${channel} must require a string token`).toContain("typeof token !== 'string'");
     }
     expect(mainSource).toContain('validateCapture(wav, meta)');
+    // The level stream feeds the silence watchdog, so it gets the same checks.
+    const level = mainSource.indexOf("ipcMain.on('audio:level'");
+    expect(level, 'audio:level handler').toBeGreaterThan(0);
+    const levelBody = mainSource.slice(level, level + 400);
+    expect(levelBody).toContain('fromRecorder(event)');
+    expect(levelBody).toContain('Number.isFinite(level)');
   });
 
   it('keeps the old fire-and-forget start and the untagged pending slot out of main', () => {

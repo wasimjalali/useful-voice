@@ -19,7 +19,7 @@ is split by what is actually provable on each platform.
 
 | Area | Evidence |
 | --- | --- |
-| All platform-free logic | `npm test` — **460 tests, 17 files**, run on macOS |
+| All platform-free logic | `npm test` — **490 tests, 19 files**, run on macOS |
 | Type safety | `npm run typecheck` — clean |
 | Build | `npm run build` — main, preload and renderer all emitted |
 | Preload↔renderer contract | `npm run self-test` — API exposed, 66 methods, no Node leak |

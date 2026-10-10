@@ -312,7 +312,12 @@ async function deleteSelected(id: string): Promise<void> {
   }
   if (!removed) {
     // Already gone (deleted elsewhere): resync instead of pretending it worked.
-    state.notes = await api.getNotes();
+    try {
+      state.notes = await api.getNotes();
+    } catch (error) {
+      failure('Could not reload the notes', error);
+      return;
+    }
     setNotice('warning', 'That note was already deleted.');
     return;
   }

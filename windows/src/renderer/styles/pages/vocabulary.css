@@ -4,7 +4,7 @@
 
 .vocab-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .vocab-count { color: var(--ink-muted); font-weight: 400; }
-.segmented button[aria-selected="true"] .vocab-count { color: var(--ink); }
+.segmented button[aria-pressed="true"] .vocab-count { color: var(--ink); }
 
 .vocab-searchwrap { position: relative; width: 240px; color: var(--ink-muted); }
 .vocab-searchwrap svg { position: absolute; left: 11px; top: 8px; pointer-events: none; }

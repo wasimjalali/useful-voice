@@ -56,10 +56,17 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await app?.context().tracing.stop({ path: path.join(out, 'trace.zip') });
-  await app?.close();
-  // The scratch user-data folder this run created.
-  if (userData) await fs.rm(userData, { recursive: true, force: true });
+  try {
+    await app?.context().tracing.stop({ path: path.join(out, 'trace.zip') });
+  } finally {
+    try {
+      await app?.close();
+    } finally {
+      // The scratch user-data folder this run created. Windows can hold the files
+      // for a moment after the app exits, so retry.
+      if (userData) await fs.rm(userData, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    }
+  }
 });
 
 test('filter, search and teach a fix, then switch to dark', async () => {

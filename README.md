@@ -99,7 +99,7 @@ Deepgram request shape, so a backup taken on one platform is readable by the oth
 ```bash
 cd windows
 npm install
-npm run verify      # typecheck + 460 tests + build + headless self-test
+npm run verify      # typecheck + 490 tests + build + headless self-test
 npm start
 npm run dist        # NSIS installer + portable exe -> windows/release/
 ```

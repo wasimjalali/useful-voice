@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { BYTES_PER_SECOND, WAV_HEADER_BYTES } from '../core/audio/wav.js';
+import { MAX_RECORDING_SECONDS } from '../core/settings/settingsBounds.js';
 import type { CapturedAudio, RecorderPort } from './dictationService.js';
 
 /**
@@ -87,6 +89,8 @@ export class RecorderBridge implements RecorderPort {
       const timer = setTimeout(() => {
         this.pendingStop = null;
         if (this.current === token) this.current = null;
+        // The renderer may still be encoding or recording: tell it to let go.
+        this.options.send('audio:stop', { token, discard: true });
         reject(new Error('The microphone did not return any audio.'));
       }, this.options.stopTimeoutMs ?? DEFAULT_STOP_TIMEOUT_MS);
       timer.unref?.();
@@ -120,9 +124,19 @@ export class RecorderBridge implements RecorderPort {
     this.pendingStop?.reject(cancelled);
   }
 
-  /** The renderer opened the microphone for `token`. */
+  /**
+   * The renderer opened the microphone for `token`.
+   *
+   * An ack for a token that is neither being waited on nor the live recording comes
+   * from a start that already timed out (getUserMedia answered late): its stream is
+   * open and nobody owns it, so it is told to close.
+   */
   handleStarted(token: string): void {
-    if (this.pendingStart?.token === token) this.pendingStart.resolve();
+    if (this.pendingStart?.token === token) {
+      this.pendingStart.resolve();
+      return;
+    }
+    if (this.current !== token) this.options.send('audio:stop', { token, discard: true });
   }
 
   /** The renderer finished `token` and sent its audio. */
@@ -130,20 +144,18 @@ export class RecorderBridge implements RecorderPort {
     if (this.pendingStop?.token === token) this.pendingStop.resolve(audio);
   }
 
-  /** The renderer failed. `token` is absent only from an older renderer. */
-  handleError(token: string | undefined, message: string): void {
+  /** The renderer failed while handling `token`. An error for any other token is stale. */
+  handleError(token: string, message: string): void {
     const error = new Error(message);
-    if (this.pendingStart && (token === undefined || token === this.pendingStart.token)) {
+    if (this.pendingStart?.token === token) {
       this.pendingStart.reject(error);
       return;
     }
-    if (this.pendingStop && (token === undefined || token === this.pendingStop.token)) {
+    if (this.pendingStop?.token === token) {
       this.pendingStop.reject(error);
       return;
     }
-    if (this.current !== null && (token === undefined || token === this.current)) {
-      this.options.onUnclaimedError(error);
-    }
+    if (this.current === token) this.options.onUnclaimedError(error);
     // Anything else belongs to a recording that is already over.
   }
 
@@ -151,4 +163,34 @@ export class RecorderBridge implements RecorderPort {
     this.current = null;
     this.options.send('audio:stop', { token, discard: true });
   }
+}
+
+/** The longest audio a recording can legitimately produce, with headroom. */
+const MAX_CAPTURE_BYTES = WAV_HEADER_BYTES + (MAX_RECORDING_SECONDS + 5) * BYTES_PER_SECOND;
+
+/**
+ * Check what the recorder window sent before it reaches the pipeline. Returns the
+ * audio, or the reason it was refused. The sender is one of our own windows, but a
+ * wrong type or an absurd size would still be uploaded and billed.
+ */
+export function validateCapture(wav: unknown, meta: unknown): CapturedAudio | Error {
+  let bytes: Uint8Array;
+  if (wav instanceof ArrayBuffer) bytes = new Uint8Array(wav);
+  else if (wav instanceof Uint8Array) bytes = wav;
+  else return new Error('The recorder returned something that is not audio.');
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_CAPTURE_BYTES) {
+    return new Error('The recorder returned audio of an unusable size.');
+  }
+  const info = meta as { durationSeconds?: unknown; peak?: unknown; hadSpeech?: unknown } | null;
+  if (
+    !info ||
+    typeof info.durationSeconds !== 'number' ||
+    !Number.isFinite(info.durationSeconds) ||
+    typeof info.peak !== 'number' ||
+    !Number.isFinite(info.peak) ||
+    typeof info.hadSpeech !== 'boolean'
+  ) {
+    return new Error('The recorder returned unreadable recording details.');
+  }
+  return { wav: bytes, durationSeconds: info.durationSeconds, peak: info.peak, hadSpeech: info.hadSpeech };
 }

@@ -171,7 +171,9 @@ export type DictationErrorKind =
   | 'offline'
   | 'timedOut'
   | 'providerFailed'
-  | 'deliveryFailed';
+  | 'deliveryFailed'
+  /** The text reached the user but could not be written to the history. */
+  | 'saveFailed';
 
 /** What the user can do about an error. Absent means there is nothing to offer. */
 export type DictationFix = 'openMicrophoneSettings' | 'openEngineSettings' | 'retry';

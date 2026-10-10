@@ -63,6 +63,10 @@
  *  32. A clipboard or sink failure is untyped, so the HUD says "Transcription failed".
  *  33. A callback that throws mid-pipeline (history, status listener, settings) leaves
  *      the session stuck in transcribing or delivering.
+ *  35. Esc before a copy (or before the moved-window check) is ignored because only the
+ *      paste branch looked at the abort signal.
+ *  36. A history or outcome callback that throws after delivery is reported as a
+ *      transcription failure.
  *  34. Clearing history leaves failed audio that "Retry last recording" can still use.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -74,6 +78,7 @@ import {
   describeRecordingFailure,
   describeTranscriptionFailure,
   type CapturedAudio,
+  type DictationOutcome,
   type DictationStatus,
   type FormatterPort,
   type RecorderPort,
@@ -216,6 +221,7 @@ function setup(options: {
   /** Statuses and outcomes in the order they were emitted. */
   const events: string[] = [];
   const records: Array<{ text: string; appName: string }> = [];
+  const full: DictationOutcome[] = [];
   const completed: string[] = [];
   const diagnostics: Array<{ category: string; message: string }> = [];
 
@@ -240,6 +246,7 @@ function setup(options: {
     onTelemetry: (sample) => telemetry.push(sample),
     onCompleted: (outcome) => {
       completed.push(outcome.text);
+      full.push(outcome);
       records.push({ text: outcome.text, appName: outcome.appName });
     },
     onDiagnostic: (category, message) => diagnostics.push({ category, message }),
@@ -251,6 +258,8 @@ function setup(options: {
 
   return {
     service, recorder, transcriber, sink, statuses, outcomes, telemetry, events, records,
+    /** The newest history record the service produced. */
+    last: (): DictationOutcome | null => full.at(-1) ?? null,
     completed, diagnostics, settings, memory,
   };
 }
@@ -271,8 +280,8 @@ describe('happy path', () => {
     await ctx.service.startRecording({ source: 'hotkey' });
     await ctx.service.stopAndProcess();
     expect(ctx.completed).toEqual(['hello world']);
-    expect(ctx.service.mostRecent?.text).toBe('hello world');
-    expect(ctx.service.mostRecent?.mode).toBe('raw');
+    expect(ctx.last()?.text).toBe('hello world');
+    expect(ctx.last()?.mode).toBe('raw');
   });
 
   it('walks through the documented state sequence', async () => {
@@ -323,7 +332,7 @@ describe('happy path', () => {
     await ctx.service.startRecording({ source: 'hotkey' });
     await ctx.service.stopAndProcess();
     // The raw provider code round-trips into history, region subtag included.
-    expect(ctx.service.mostRecent?.language).toBe('de-DE');
+    expect(ctx.last()?.language).toBe('de-DE');
   });
 });
 
@@ -333,7 +342,7 @@ describe('formatter integration', () => {
     await ctx.service.startRecording({ source: 'hotkey' });
     await ctx.service.stopAndProcess();
     expect(ctx.sink.delivered).toEqual(['hello world.']);
-    expect(ctx.service.mostRecent?.mode).toBe('formatted');
+    expect(ctx.last()?.mode).toBe('formatted');
   });
 
   it('falls back to raw text when the formatter throws, without losing the dictation', async () => {
@@ -669,7 +678,7 @@ describe('raw-mode flag lifetime', () => {
     await ctx.service.startRecording({ source: 'hotkey' });
     await ctx.service.stopAndProcess();
     expect(ctx.sink.delivered).toEqual(['F:hello world']);
-    expect(ctx.service.mostRecent?.mode).toBe('formatted');
+    expect(ctx.last()?.mode).toBe('formatted');
   });
 
   it('does not leak raw mode past a too-short failure', async () => {
@@ -796,8 +805,8 @@ describe('detected language handling', () => {
     // de-DE resolves to de for processing: the German-scoped term fires, the
     // English-scoped one does not (an 'auto' scope would have fixed both).
     expect(ctx.sink.delivered).toEqual(['deploy Kubernetes and type script']);
-    expect(ctx.service.mostRecent?.memoryHitIds).toEqual(['t-de']);
-    expect(ctx.service.mostRecent?.language).toBe('de-DE');
+    expect(ctx.last()?.memoryHitIds).toEqual(['t-de']);
+    expect(ctx.last()?.language).toBe('de-DE');
   });
 
   it('applies a Russian-scoped term when detection reports ru, and not an English-scoped one', async () => {
@@ -818,8 +827,8 @@ describe('detected language handling', () => {
     await ctx.service.stopAndProcess();
     // Previously ru collapsed to the pin (auto), so every language's rules ran.
     expect(ctx.sink.delivered).toEqual(['deploy Kubernetes and type script']);
-    expect(ctx.service.mostRecent?.memoryHitIds).toEqual(['t-ru']);
-    expect(ctx.service.mostRecent?.language).toBe('ru');
+    expect(ctx.last()?.memoryHitIds).toEqual(['t-ru']);
+    expect(ctx.last()?.language).toBe('ru');
   });
 
   it('processes an unknown detected code as auto, stores it raw, and warns without transcript text', async () => {
@@ -838,7 +847,7 @@ describe('detected language handling', () => {
     // Effective 'auto': terms from every language participate.
     expect(ctx.sink.delivered).toEqual(['Kubernetes and TypeScript']);
     // But history records what Deepgram actually said.
-    expect(ctx.service.mostRecent?.language).toBe('is');
+    expect(ctx.last()?.language).toBe('is');
     expect(ctx.diagnostics).toHaveLength(1);
     expect(ctx.diagnostics[0]?.category).toBe('dictation');
     expect(ctx.diagnostics[0]?.message).toContain("'is'");
@@ -852,7 +861,7 @@ describe('detected language handling', () => {
     ctx.transcriber.transcript = { text: 'hello', durationSeconds: 1, detectedLanguage: 'en-US' };
     await ctx.service.startRecording({ source: 'hotkey' });
     await ctx.service.stopAndProcess();
-    expect(ctx.service.mostRecent?.language).toBe('en-US');
+    expect(ctx.last()?.language).toBe('en-US');
     expect(ctx.diagnostics).toEqual([]);
   });
 
@@ -861,7 +870,7 @@ describe('detected language handling', () => {
     ctx.transcriber.transcript = { text: 'hallo', durationSeconds: 1, detectedLanguage: null };
     await ctx.service.startRecording({ source: 'hotkey' });
     await ctx.service.stopAndProcess();
-    expect(ctx.service.mostRecent?.language).toBe('de');
+    expect(ctx.last()?.language).toBe('de');
     expect(ctx.diagnostics).toEqual([]);
   });
 
@@ -870,7 +879,7 @@ describe('detected language handling', () => {
     ctx.transcriber.transcript = { text: 'hallo', durationSeconds: 1, detectedLanguage: 'de-DE' };
     await ctx.service.startRecording({ source: 'hotkey' });
     await ctx.service.stopAndProcess();
-    expect(ctx.service.mostRecent?.language).toBe('de-DE');
+    expect(ctx.last()?.language).toBe('de-DE');
   });
 
   it('treats a whitespace-only detection as absent and stores the pin', async () => {
@@ -878,7 +887,7 @@ describe('detected language handling', () => {
     ctx.transcriber.transcript = { text: 'hallo', durationSeconds: 1, detectedLanguage: '   ' };
     await ctx.service.startRecording({ source: 'hotkey' });
     await ctx.service.stopAndProcess();
-    expect(ctx.service.mostRecent?.language).toBe('de');
+    expect(ctx.last()?.language).toBe('de');
     expect(ctx.diagnostics).toEqual([]);
   });
 
@@ -895,7 +904,7 @@ describe('detected language handling', () => {
     await ctx.service.stopAndProcess();
     expect(seen).toBe('de');
     // History still stores the raw regional code.
-    expect(ctx.service.mostRecent?.language).toBe('de-DE');
+    expect(ctx.last()?.language).toBe('de-DE');
   });
 
   it('strips control characters from a detected code before storing or logging it', async () => {
@@ -907,7 +916,7 @@ describe('detected language handling', () => {
     };
     await ctx.service.startRecording({ source: 'hotkey' });
     await ctx.service.stopAndProcess();
-    expect(ctx.service.mostRecent?.language).toBe('de-DEinjected');
+    expect(ctx.last()?.language).toBe('de-DEinjected');
     for (const entry of ctx.diagnostics) {
       expect(entry.message).not.toContain('\n');
     }
@@ -979,7 +988,8 @@ describe('dictation source', () => {
     // Even a target handed in by mistake is dropped: a window start has none.
     await ctx.service.toggle({ source: 'window', targetApp: 'Slack' });
     await ctx.service.toggle({ source: 'window' });
-    expect(ctx.sink.requests).toEqual([{ text: 'hello world', mode: 'copy' }]);
+    expect(ctx.sink.requests).toHaveLength(1);
+    expect(ctx.sink.requests[0]).toMatchObject({ text: 'hello world', mode: 'copy' });
     expect(ctx.sink.requests[0]).not.toHaveProperty('targetApp', 'Slack');
     expect(ctx.outcomes).toEqual([{ kind: 'delivered', words: 2, result: 'copied' }]);
     expect(ctx.outcomes[0]).not.toHaveProperty('appName');
@@ -1047,7 +1057,7 @@ describe('dictation source', () => {
 
     ctx.transcriber.error = null;
     await ctx.service.retryLast();
-    expect(ctx.sink.requests).toEqual([{ text: 'hello world', mode: 'copy' }]);
+    expect(ctx.sink.requests.map(({ text, mode }) => ({ text, mode }))).toEqual([{ text: 'hello world', mode: 'copy' }]);
     expect(ctx.outcomes).toEqual([{ kind: 'delivered', words: 2, result: 'copied' }]);
     expect(ctx.records[0]?.appName).toBe('');
 
@@ -1420,7 +1430,7 @@ describe('races between entry points', () => {
 
     await ctx.service.stopAndProcess();
     expect(ctx.completed).toEqual(['hello world']);
-    expect(ctx.sink.requests).toEqual([{ text: 'hello world', mode: 'copy' }]);
+    expect(ctx.sink.requests.map(({ text, mode }) => ({ text, mode }))).toEqual([{ text: 'hello world', mode: 'copy' }]);
     expect(ctx.outcomes.map((outcome) => outcome.kind)).toEqual(['cancelled', 'delivered']);
   });
 
@@ -1526,7 +1536,7 @@ describe('silence watchdog and max length', () => {
     expect(ctx.service.currentState).toBe('recording');
     await vi.advanceTimersByTimeAsync(2_000);
     expect(ctx.service.currentState).toBe('idle');
-    expect(ctx.sink.requests).toEqual([{ text: 'hello world', mode: 'copy' }]);
+    expect(ctx.sink.requests.map(({ text, mode }) => ({ text, mode }))).toEqual([{ text: 'hello world', mode: 'copy' }]);
   });
 
   it('reports a max-length stop that the recorder cannot complete', async () => {
@@ -1815,7 +1825,12 @@ describe('review round 1: no stuck session', () => {
     await service.toggle({ source: 'hotkey' });
     await service.toggle({ source: 'hotkey' });
     expect(service.currentState).toBe('error');
-    expect(ctx.statuses.at(-1)?.message).toContain('disk full');
+    // The text was already delivered, so the error says so instead of blaming transcription.
+    expect(ctx.statuses.at(-1)?.error).toEqual({
+      kind: 'saveFailed',
+      message: 'Delivered, but it could not be saved to your history.',
+    });
+    expect(ctx.sink.delivered).toEqual(['hello world']);
     // And it recovers.
     await service.toggle({ source: 'hotkey' });
     expect(service.currentState).toBe('recording');
@@ -1892,5 +1907,75 @@ describe('review round 1: retained audio', () => {
     ctx.transcriber.error = null;
     await ctx.service.retryLast();
     expect(ctx.transcriber.requests).toHaveLength(1);
+  });
+});
+
+describe('review round 2: cancel on paths that never paste', () => {
+  it('passes the abort signal to a copy-mode delivery', async () => {
+    const ctx = setup();
+    await ctx.service.toggle({ source: 'window' });
+    await ctx.service.toggle({ source: 'window' });
+    expect(ctx.sink.requests[0]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('cancels a window dictation whose copy has not happened yet', async () => {
+    const ctx = setup();
+    ctx.sink.honorAbort = true;
+    await ctx.service.startRecording({ source: 'window' });
+    const processing = ctx.service.stopAndProcess();
+    await settle();
+    expect(ctx.service.currentState).toBe('delivering');
+    await ctx.service.cancel();
+    await processing;
+    expect(ctx.service.currentState).toBe('idle');
+    expect(ctx.outcomes).toEqual([{ kind: 'cancelled' }]);
+    expect(ctx.completed).toEqual([]);
+  });
+});
+
+describe('review round 2: failure after the text was delivered', () => {
+  function withCallbacks(callbacks: { onCompleted?: () => void; onOutcome?: () => void }) {
+    const statuses: DictationStatus[] = [];
+    const sink = new FakeSink();
+    const service = new DictationService({
+      recorder: new FakeRecorder(),
+      transcriber: new FakeTranscriber(),
+      sink,
+      settings: () => DEFAULT_SETTINGS,
+      memory: () => emptySnapshot(),
+      apiKey: async () => 'k',
+      onStatus: (status) => statuses.push(status),
+      ...callbacks,
+    });
+    return { service, statuses, sink };
+  }
+
+  it('says it was delivered when the outcome callback throws', async () => {
+    const ctx = withCallbacks({
+      onOutcome: () => {
+        throw new Error('listener broke');
+      },
+    });
+    await ctx.service.toggle({ source: 'hotkey' });
+    await ctx.service.toggle({ source: 'hotkey' });
+    expect(ctx.statuses.at(-1)?.error?.kind).toBe('saveFailed');
+  });
+
+  it('keeps blaming the pipeline when the failure came before delivery', async () => {
+    const statuses: DictationStatus[] = [];
+    const service = new DictationService({
+      recorder: new FakeRecorder(),
+      transcriber: new FakeTranscriber(),
+      sink: new FakeSink(),
+      settings: () => DEFAULT_SETTINGS,
+      memory: () => {
+        throw new Error('memory unreadable');
+      },
+      apiKey: async () => 'k',
+      onStatus: (status) => statuses.push(status),
+    });
+    await service.toggle({ source: 'hotkey' });
+    await service.toggle({ source: 'hotkey' });
+    expect(statuses.at(-1)?.error?.kind).toBe('providerFailed');
   });
 });

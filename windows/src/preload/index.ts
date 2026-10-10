@@ -69,7 +69,7 @@ const api = {
     wav: ArrayBuffer,
     meta: { durationSeconds: number; peak: number; hadSpeech: boolean },
   ): Promise<void> => ipcRenderer.invoke('audio:captured', token, wav, meta),
-  sendAudioError: (message: string, token?: string): Promise<void> => ipcRenderer.invoke('audio:error', message, token),
+  sendAudioError: (message: string, token: string): Promise<void> => ipcRenderer.invoke('audio:error', message, token),
   sendLevel: (level: number): void => ipcRenderer.send('audio:level', level),
 
   // ---- state ----

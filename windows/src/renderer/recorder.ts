@@ -16,9 +16,11 @@ export function mountRecorder(): void {
   api.onStartRecording((token) => {
     void (async () => {
       try {
-        await startCapture();
-        // Only now is the microphone really open: the main process waits for this.
-        await api.sendAudioStarted(token);
+        const started = await startCapture(token, (message) => {
+          void api.sendAudioError(message, token);
+        });
+        // A discarded start has nothing to report: the main process already moved on.
+        if (started) await api.sendAudioStarted(token);
       } catch (error) {
         // Report the failure so the main process can show actionable advice
         // instead of waiting for a capture that will never arrive.
@@ -31,15 +33,15 @@ export function mountRecorder(): void {
     void (async () => {
       if (discard) {
         // A cancelled recording: nobody wants the audio, so it is never encoded or sent.
-        await cancelCapture();
+        await cancelCapture(token);
         return;
       }
-      if (!isCapturing()) {
+      if (!isCapturing(token)) {
         await api.sendAudioError('Recording is not running.', token);
         return;
       }
       try {
-        const result = await stopCapture();
+        const result = await stopCapture(token);
         await api.sendAudio(token, result.wav, {
           durationSeconds: result.durationSeconds,
           peak: result.peak,
@@ -47,7 +49,7 @@ export function mountRecorder(): void {
         });
       } catch (error) {
         await api.sendAudioError((error as Error).message, token);
-        await cancelCapture();
+        await cancelCapture(token);
       }
     })();
   });

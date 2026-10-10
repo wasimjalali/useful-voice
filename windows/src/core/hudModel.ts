@@ -262,6 +262,8 @@ export function errorTitle(error: DictationError): string {
       return 'Transcription failed';
     case 'deliveryFailed':
       return 'Could not deliver the text';
+    case 'saveFailed':
+      return 'Not saved to history';
   }
 }
 

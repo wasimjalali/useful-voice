@@ -77,6 +77,8 @@ const channelsReceivedByMain = unique(extracts(mainSource, /ipcMain\.on\(\s*'([^
 const channelsSentToRenderer = unique([
   ...extracts(mainSource, /webContents\.send\(\s*'([^']+)'/g),
   ...extracts(mainSource, /this\.broadcast\(\s*'([^']+)'/g),
+  // The same idea for live telemetry, which goes to the main window and the HUD only.
+  ...extracts(mainSource, /this\.sendToMainAndHud\(\s*'([^']+)'/g),
 ]);
 
 const allChannels = unique([
@@ -211,6 +213,40 @@ describe('main -> renderer', () => {
         `${channel} must be forwarded to the renderer by the preload`,
       ).toContain(channel);
     }
+  });
+});
+
+describe('dictation telemetry and outcome channels', () => {
+  it('broadcasts the outcome and telemetry and forwards both to the renderer', () => {
+    for (const channel of ['dictation:outcome', 'dictation:telemetry']) {
+      expect(channelsSentToRenderer, `${channel} must be sent by main`).toContain(channel);
+      expect(channelsSubscribedByPreload, `${channel} must be forwarded by the preload`).toContain(channel);
+    }
+  });
+
+  it('sends live telemetry to the main window and the HUD only, never the recorder', () => {
+    // The hidden recorder window has no use for it, and a level every ~33 ms is not free.
+    const sender = /private sendToMainAndHud[\s\S]*?\n  }\n/.exec(mainSource);
+    expect(sender, 'sendToMainAndHud must exist').not.toBeNull();
+    expect(sender?.[0]).toContain('this.mainWindow');
+    expect(sender?.[0]).toContain('this.hudWindow');
+    expect(sender?.[0]).not.toContain('recorderWindow');
+    expect(mainSource).toContain("this.sendToMainAndHud('dictation:telemetry'");
+  });
+
+  it('sends the outcome from the service callback, not from the status handler', () => {
+    // The outcome is ordered before the idle status inside the service. A second
+    // sender in `handleStatus` would put it after.
+    const handler = /private handleStatus[\s\S]*?\n  }\n/.exec(mainSource);
+    expect(handler?.[0]).not.toContain('dictation:outcome');
+    expect(mainSource).toContain("onOutcome: (outcome) => this.broadcast('dictation:outcome', outcome)");
+  });
+
+  it('lets the renderer start a dictation only as a window dictation', () => {
+    // Pasting is the hotkey's privilege: the renderer API takes no source argument.
+    expect(mainSource).toContain("ipcMain.handle('dictation:toggle', () => this.toggleDictation('window'))");
+    expect(mainSource).toContain("globalShortcut.register(accelerator, () => void this.toggleDictation('hotkey'))");
+    expect(preloadSource).toContain("toggleDictation: (): Promise<void> => ipcRenderer.invoke('dictation:toggle')");
   });
 });
 

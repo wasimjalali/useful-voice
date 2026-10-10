@@ -230,6 +230,8 @@ export function errorTitle(error: DictationError): string {
       return 'Deepgram took too long';
     case 'providerFailed':
       return 'Transcription failed';
+    case 'deliveryFailed':
+      return 'Could not deliver the text';
   }
 }
 

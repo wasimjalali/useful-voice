@@ -66,6 +66,16 @@ export interface DeliveryRequest {
   mode: 'paste' | 'copy';
   /** Which app was focused when a hotkey dictation started. Absent in copy mode. */
   targetApp?: string;
+  /**
+   * The window that was in front when it started. If another window is in front at
+   * delivery, the sink copies instead of pasting.
+   */
+  targetHandle?: number;
+  /**
+   * Aborted when the user cancels. The sink must check it right before it pastes and
+   * stop there; once the paste is sent it finishes and reports `delivered`.
+   */
+  signal?: AbortSignal;
 }
 
 export interface DeliveryResult {
@@ -73,6 +83,8 @@ export interface DeliveryResult {
   delivered: boolean;
   /** Whether the dictation is still on the clipboard as a fallback. */
   clipboardFallback: boolean;
+  /** The sink stopped before pasting because the signal aborted. Nothing was sent. */
+  cancelled?: boolean;
 }
 
 export interface TextSinkPort {
@@ -124,6 +136,8 @@ export interface StartOptions {
   rawMode?: boolean;
   /** The app that was frontmost. Only a hotkey dictation uses it. */
   targetApp?: string;
+  /** Its window handle, so delivery can tell the user has since moved elsewhere. */
+  targetHandle?: number;
 }
 
 export interface DictationOutcome {
@@ -167,7 +181,10 @@ interface Session {
   /** Where it started. Never changes. */
   readonly source: DictationSource;
   readonly targetApp?: string;
+  readonly targetHandle?: number;
   readonly rawMode: boolean;
+  /** Esc arrived during delivery: the sink decides whether the paste went out. */
+  cancelRequested: boolean;
   /** A stop is under way (or done), so no other stop may begin. */
   stopping: boolean;
   /** Its outcome has been sent, so none can be sent again. */
@@ -196,6 +213,8 @@ export class DictationService {
   private session: Session | null = null;
   /** True while `recorder.start()` is pending, so a second press cannot start another. */
   private starting = false;
+  /** The pipeline after recording stops, so a cancel during delivery can wait for its verdict. */
+  private processing: Promise<void> | null = null;
   private watchdog: SilenceWatchdog | null = null;
   private ticker: NodeJS.Timeout | null = null;
   private lastLevel = 0;
@@ -253,7 +272,9 @@ export class DictationService {
       source: options.source,
       // A window dictation never pastes, so it has no target to record.
       targetApp: options.source === 'hotkey' ? options.targetApp : undefined,
+      targetHandle: options.source === 'hotkey' ? options.targetHandle : undefined,
       rawMode: options.rawMode === true,
+      cancelRequested: false,
       stopping: false,
       settled: false,
     };
@@ -315,7 +336,7 @@ export class DictationService {
     if (this.session !== session) return;
     this.clock.stop();
 
-    await this.process(session, captured, this.deps.settings().languagePin);
+    await this.run(session, () => this.process(session, captured, this.deps.settings().languagePin));
   }
 
   /**
@@ -330,6 +351,16 @@ export class DictationService {
     const session = this.session;
     // No session outside the error state means a cancel is already in flight.
     if (this.state !== 'error' && !session) return;
+
+    // During delivery the sink knows whether the paste has gone out. Stop it before the
+    // paste if it can; if the paste was already sent the dictation finishes as delivered,
+    // because a "Cancelled" for text that is in the document would be a lie.
+    if (this.state === 'delivering' && session && this.processing) {
+      session.cancelRequested = true;
+      this.abortController?.abort();
+      await this.processing.catch(() => undefined);
+      return;
+    }
 
     const wasRecording = this.state === 'recording';
     this.session = null;
@@ -352,9 +383,14 @@ export class DictationService {
     if (this.isBusy || this.session !== null || this.starting) return;
     this.lastFailed = null;
     // The window it came from may be long gone, so a retry always saves and copies.
-    const session: Session = { source: 'window', rawMode: false, stopping: true, settled: false };
+    const session: Session = { source: 'window', rawMode: false, cancelRequested: false, stopping: true, settled: false };
     this.session = session;
-    await this.process(session, failed.audio, failed.language);
+    await this.run(session, () => this.process(session, failed.audio, failed.language));
+  }
+
+  /** Forget the audio kept for a retry, for instance when the history is cleared. */
+  discardRetained(): void {
+    this.lastFailed = null;
   }
 
   /**
@@ -368,6 +404,50 @@ export class DictationService {
     this.lastLevel = Math.max(0, Math.min(1, level));
     this.watchdog.observe(this.lastLevel / LEVEL_METER_GAIN, this.clock.elapsedSeconds());
     this.emitTelemetry();
+  }
+
+  /**
+   * The recorder reported an error while a recording was live (the device was
+   * unplugged, access was revoked). Ends the dictation as a microphone problem.
+   * Ignored when no recording is live: a stop reports its own failure.
+   */
+  async recorderFailed(error: unknown): Promise<void> {
+    const session = this.session;
+    if (!this.isRecordingLive() || !session) return;
+    session.stopping = true;
+    this.stopMonitoring();
+    this.clock.stop();
+    await this.deps.recorder.cancel().catch(() => undefined);
+    this.fail(session, classifyRecordingFailure(error));
+  }
+
+  /**
+   * Run the pipeline so that nothing a callback throws can leave the session stuck in
+   * transcribing or delivering. Whatever escapes ends the dictation as an error.
+   */
+  private async run(session: Session, work: () => Promise<void>): Promise<void> {
+    const task = (async () => {
+      try {
+        await work();
+      } catch (error) {
+        this.deps.onDiagnostic?.('dictation', `unexpected failure: ${describe(error)}`);
+        try {
+          this.fail(session, {
+            kind: 'providerFailed',
+            message: `The dictation failed unexpectedly: ${describe(error)}`,
+          });
+        } catch (listenerError) {
+          // The status listener threw as well. The state is already released.
+          this.deps.onDiagnostic?.('dictation', `status listener failed: ${describe(listenerError)}`);
+        }
+      }
+    })();
+    this.processing = task;
+    try {
+      await task;
+    } finally {
+      if (this.processing === task) this.processing = null;
+    }
   }
 
   private isRecordingLive(): boolean {
@@ -566,9 +646,17 @@ export class DictationService {
     // window dictation, any retry) is saved and copied only.
     const deliveryMode = session.source === 'hotkey' ? 'paste' : 'copy';
     this.setState('delivering', undefined, session.targetApp);
-    const delivered = await this.deliver(finalText, deliveryMode, session.targetApp);
-    // Cancelled while delivering: the dictation was abandoned, so it is not recorded.
+    const delivered = await this.deliver(finalText, deliveryMode, session);
     if (!current()) return;
+    if (delivered.cancelled) {
+      // Esc arrived and the sink stopped before it pasted: nothing went out, so this
+      // dictation is abandoned and not recorded.
+      this.abortController = null;
+      this.emitOutcome(session, { kind: 'cancelled' });
+      this.session = null;
+      this.setState('idle');
+      return;
+    }
 
     const outcome: DictationOutcome = {
       id: (this.deps.idFactory ?? defaultId)(),
@@ -593,7 +681,10 @@ export class DictationService {
       if (!delivered.delivered) {
         // The text is safe in history, but it did not reach the clipboard, and saying
         // "Saved and copied" would be a lie.
-        this.fail(session, 'Your dictation is saved in your history, but copying it to the clipboard failed.');
+        this.fail(session, {
+          kind: 'deliveryFailed',
+          message: 'Your dictation is saved in your history, but copying it to the clipboard failed.',
+        });
         return;
       }
       this.finish(session, finalText, 'copied');
@@ -608,7 +699,10 @@ export class DictationService {
       return;
     }
     // Neither pasted nor on the clipboard: only a broken sink reports this.
-    this.fail(session, 'Your dictation is saved in your history, but it could not be delivered.');
+    this.fail(session, {
+      kind: 'deliveryFailed',
+      message: 'Your dictation is saved in your history, but it could not be delivered.',
+    });
   }
 
   /** End a dictation that was delivered: outcome first, then idle. */
@@ -654,11 +748,20 @@ export class DictationService {
    * state is always released, and the dictation is left on the clipboard either
    * way.
    */
-  private async deliver(text: string, mode: 'paste' | 'copy', targetApp?: string): Promise<DeliveryResult> {
+  private async deliver(text: string, mode: 'paste' | 'copy', session: Session): Promise<DeliveryResult> {
     const timeoutMs = this.deps.deliveryTimeoutMs ?? DEFAULT_DELIVERY_TIMEOUT_MS;
     let timer: NodeJS.Timeout | null = null;
     try {
-      const request: DeliveryRequest = mode === 'paste' ? { text, mode, targetApp } : { text, mode };
+      const request: DeliveryRequest =
+        mode === 'paste'
+          ? {
+              text,
+              mode,
+              targetApp: session.targetApp,
+              targetHandle: session.targetHandle,
+              signal: this.abortController?.signal,
+            }
+          : { text, mode };
       const result = await Promise.race([
         this.deps.sink.deliver(request),
         new Promise<DeliveryResult>((resolve) => {
@@ -790,6 +893,8 @@ function transcriptionFailureMessage(error: unknown): string {
       case 'badRequest':
         // The provider's message is already bounded and has the key redacted.
         return error.message;
+      case 'outOfCredits':
+        return 'Your Deepgram credit is used up. Add credit in your Deepgram account, then try again.';
       case 'serverError':
         return 'Deepgram is having trouble right now. Try again shortly.';
       case 'malformedResponse':

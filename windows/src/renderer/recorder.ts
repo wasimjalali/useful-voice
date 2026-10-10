@@ -13,30 +13,40 @@ export function mountRecorder(): void {
     root.append(el('div', { class: 'recorder-note' }, 'Audio capture host. This window is never shown.'));
   }
 
-  api.onStartRecording(() => {
+  api.onStartRecording((token) => {
     void (async () => {
       try {
         await startCapture();
+        // Only now is the microphone really open: the main process waits for this.
+        await api.sendAudioStarted(token);
       } catch (error) {
         // Report the failure so the main process can show actionable advice
         // instead of waiting for a capture that will never arrive.
-        await api.sendAudioError((error as Error).message);
+        await api.sendAudioError((error as Error).message, token);
       }
     })();
   });
 
-  api.onStopRecording(() => {
+  api.onStopRecording(({ token, discard }) => {
     void (async () => {
-      if (!isCapturing()) return;
+      if (discard) {
+        // A cancelled recording: nobody wants the audio, so it is never encoded or sent.
+        await cancelCapture();
+        return;
+      }
+      if (!isCapturing()) {
+        await api.sendAudioError('Recording is not running.', token);
+        return;
+      }
       try {
         const result = await stopCapture();
-        await api.sendAudio(result.wav, {
+        await api.sendAudio(token, result.wav, {
           durationSeconds: result.durationSeconds,
           peak: result.peak,
           hadSpeech: result.hadSpeech,
         });
       } catch (error) {
-        await api.sendAudioError((error as Error).message);
+        await api.sendAudioError((error as Error).message, token);
         await cancelCapture();
       }
     })();

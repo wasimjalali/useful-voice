@@ -8,6 +8,7 @@ import os from 'node:os';
 import { DataStore } from '../core/settings/dataStore.js';
 import { planLoginItem, wasAutoStarted } from '../core/settings/autostart.js';
 import { decideClipboardRestore, isProbablyVerifiable } from '../core/delivery/clipboardRestore.js';
+import { pasteTargetMoved } from '../core/delivery/pasteTarget.js';
 import {
   normaliseMemoryLanguage,
   type AppSettings,
@@ -29,11 +30,13 @@ import {
   resolvedTheme,
   titleBarOverlayFor,
 } from './theme.js';
+import { RecorderBridge } from './recorderBridge.js';
 import { TrayController } from './tray.js';
 import { Announcer } from './announce.js';
 import {
   DictationService,
-  type CapturedAudio,
+  type DeliveryRequest,
+  type DeliveryResult,
   type DictationStatus,
 } from './dictationService.js';
 import {
@@ -44,7 +47,6 @@ import {
   playCue,
   restoreClipboard,
   snapshotClipboard,
-  sendUndo,
 } from './windowsPlatform.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -68,9 +70,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const E2E = process.argv.includes('--e2e');
 
 const CLIPBOARD_RESTORE_DELAY_MS = 700;
-
-/** How long a cancelled paste can still be taken back with Ctrl+Z. */
-const UNDO_WINDOW_MS = 6000;
 
 /**
  * The HUD window is a fixed transparent area, big enough for the widest state, so the
@@ -109,16 +108,11 @@ class UsefulVoiceApp {
   private service!: DictationService;
   private diagnostics!: Diagnostics;
 
-  /** Set while `service` is waiting for audio from the renderer. */
-  private pendingCapture: {
-    resolve: (audio: CapturedAudio) => void;
-    reject: (error: Error) => void;
-    startedAt: number;
-  } | null = null;
+  /** Talks to the hidden recorder window: start acks, tokens, discard on cancel. */
+  private recorder!: RecorderBridge;
 
   /** Whether Esc is registered as a global shortcut. It is, only while recording. */
   private escapeRegistered = false;
-  private lastPaste: { text: string; at: number } | null = null;
 
   async start(): Promise<void> {
     // A second launch must hand off to the running instance rather than start a
@@ -276,7 +270,19 @@ class UsefulVoiceApp {
     });
   }
 
+  /**
+   * Show the main window on `page`. Never rejects: callers fire and forget, and the
+   * window can be closed at any point while it loads or is sent the page.
+   */
   private async openWindow(page: string, anchor?: string): Promise<void> {
+    try {
+      await this.openWindowUnguarded(page, anchor);
+    } catch (error) {
+      this.diagnostics.log('window', `could not open ${page}: ${(error as Error).message}`);
+    }
+  }
+
+  private async openWindowUnguarded(page: string, anchor?: string): Promise<void> {
     if (page === 'hud') return;
 
     if (!this.mainWindow || this.mainWindow.isDestroyed()) {
@@ -313,15 +319,18 @@ class UsefulVoiceApp {
           void this.openWindow('notes');
         }
       });
-      await this.mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
+      const created = this.mainWindow;
+      await created.loadFile(path.join(__dirname, '../renderer/index.html'), {
         query: { view: 'main', theme },
       });
-      this.mainWindow.webContents.on('did-finish-load', () => this.pushAll());
+      if (!created.isDestroyed()) created.webContents.on('did-finish-load', () => this.pushAll());
     } else if (!E2E) {
       this.mainWindow.show();
       this.mainWindow.focus();
     }
-    this.mainWindow.webContents.send('app:navigate', page, anchor);
+    // It may have been closed while it was loading.
+    const target = this.mainWindow;
+    if (target && !target.isDestroyed()) target.webContents.send('app:navigate', page, anchor);
   }
 
   /**
@@ -561,7 +570,7 @@ class UsefulVoiceApp {
       transcribing: state === 'transcribing' || state === 'delivering',
       canRetry: this.service?.canRetry ?? false,
       // Any finished dictation can be copied again, not only one that failed.
-      canCopyLast: (this.service?.mostRecent ?? null) !== null,
+      canCopyLast: (this.data?.history.length ?? 0) > 0,
       hotkeyLabel: this.settings.all.hotkey.accelerator,
       languagePin: this.settings.all.languagePin,
       formattingEnabled: this.settings.all.formattingEnabled,
@@ -652,19 +661,17 @@ class UsefulVoiceApp {
   // ---- dictation ---------------------------------------------------------
 
   private buildService(): DictationService {
-    return new DictationService({
-      recorder: {
-        start: async () => {
-          this.recorderWindow?.webContents.send('audio:start');
-        },
-        stop: async () => this.awaitCapture(),
-        cancel: async () => {
-          this.recorderWindow?.webContents.send('audio:stop');
-          // Reject rather than drop: a stop still waiting for audio ends now instead of
-          // when its own timer fires, by which time a newer dictation may be waiting.
-          this.pendingCapture?.reject(new Error('The recording was cancelled.'));
-        },
+    this.recorder = new RecorderBridge({
+      send: (channel, payload) => {
+        if (this.recorderWindow && !this.recorderWindow.isDestroyed()) {
+          this.recorderWindow.webContents.send(channel, payload);
+        }
       },
+      // The microphone failed while recording (unplugged, access revoked).
+      onUnclaimedError: (error) => void this.service.recorderFailed(error),
+    });
+    return new DictationService({
+      recorder: this.recorder,
       transcriber: {
         // Adapt the pure request builder to the port the state machine expects.
         transcribe: (request, signal) => {
@@ -686,7 +693,7 @@ class UsefulVoiceApp {
           });
         },
       },
-      sink: { deliver: (request) => this.deliver(request.text, request.mode, request.targetApp) },
+      sink: { deliver: (request) => this.deliver(request) },
       settings: () => this.settings.all,
       memory: () => this.data.memorySnapshot(),
       apiKey: async () => this.settings.revealApiKey(),
@@ -728,33 +735,6 @@ class UsefulVoiceApp {
     });
   }
 
-  /** Resolve with the audio the renderer captured, or fail after a bounded wait. */
-  private async awaitCapture(): Promise<CapturedAudio> {
-    const timeoutMs = 4000;
-    return new Promise<CapturedAudio>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        // Only clear what is still this wait: a newer dictation may own the slot now.
-        if (this.pendingCapture === pending) this.pendingCapture = null;
-        reject(new Error('The microphone did not return any audio.'));
-      }, timeoutMs);
-      timer.unref?.();
-      const pending: NonNullable<typeof this.pendingCapture> = {
-        startedAt: Date.now(),
-        resolve: (audio) => {
-          clearTimeout(timer);
-          this.pendingCapture = null;
-          resolve(audio);
-        },
-        reject: (error) => {
-          clearTimeout(timer);
-          this.pendingCapture = null;
-          reject(error);
-        },
-      };
-      this.pendingCapture = pending;
-    });
-  }
-
   private handleStatus(status: DictationStatus): void {
     this.broadcast('dictation:state', status);
     this.recordingTarget = status.state === 'recording' ? status.targetApp : undefined;
@@ -782,14 +762,16 @@ class UsefulVoiceApp {
    */
   private async toggleDictation(source: DictationSource): Promise<void> {
     let targetApp: string | undefined;
+    let targetHandle: number | undefined;
     if (source === 'hotkey' && (this.service.currentState === 'idle' || this.service.currentState === 'error')) {
       // Capture which app is focused NOW, before recording. By the time the
       // transcript is ready the user may have clicked elsewhere, and pasting into
       // the wrong window is worse than not pasting at all.
       const target = await foregroundWindow();
       targetApp = target ? target.title || target.processName : undefined;
+      targetHandle = target?.handle;
     }
-    await this.service.toggle({ source, targetApp });
+    await this.service.toggle({ source, targetApp, targetHandle });
     void this.data.flush();
   }
 
@@ -810,10 +792,12 @@ class UsefulVoiceApp {
     }
   }
 
+  /**
+   * Cancel whatever is running. During delivery the sink stops before the paste if it
+   * still can; a paste that already went out is not undone, and the dictation finishes
+   * as delivered (the user can still press Ctrl+Z in the app).
+   */
   private async cancelDictation(): Promise<void> {
-    // Only a cancel during delivery can have a paste to take back. Earlier, the paste
-    // Ctrl+Z would reach belongs to the previous dictation, which must be left alone.
-    if (this.service.currentState === 'delivering') await this.undoLastPaste();
     await this.service.cancel();
   }
 
@@ -830,24 +814,32 @@ class UsefulVoiceApp {
    * clipboard lives in `decideClipboardRestore`, so the contract is testable without
    * Electron and cannot drift from what the tests assert.
    */
-  private async deliver(
-    text: string,
-    mode: 'paste' | 'copy',
-    targetApp?: string,
-  ): Promise<{ delivered: boolean; clipboardFallback: boolean }> {
+  private async deliver(request: DeliveryRequest): Promise<DeliveryResult> {
+    const { text, mode, targetApp } = request;
     if (mode === 'copy') {
-      // Nothing is pasted, so there is nothing to confirm, nothing to restore and
-      // nothing for Ctrl+Z to take back: the dictation simply becomes the clipboard.
+      // Nothing is pasted, so there is nothing to confirm and nothing to restore: the
+      // dictation simply becomes the clipboard.
       clipboard.writeText(text);
-      this.lastPaste = null;
       return { delivered: true, clipboardFallback: false };
     }
     const target = await foregroundWindow();
+    if (pasteTargetMoved(request.targetHandle, target)) {
+      // The user stopped from somewhere else (the dock, so Useful Voice is in front) or
+      // clicked away: a paste would land in the wrong window. Leave it on the clipboard.
+      this.diagnostics.log('delivery', 'start window is no longer in front; copied instead of pasting');
+      clipboard.writeText(text);
+      return { delivered: false, clipboardFallback: true };
+    }
     const snapshot = snapshotClipboard();
 
     clipboard.writeText(text);
-    this.lastPaste = null;
 
+    // The last point at which a cancel can still stop the paste. After this line the
+    // keystroke is sent and the dictation is delivered whatever the user does next.
+    if (request.signal?.aborted) {
+      this.restoreSnapshot(snapshot);
+      return { delivered: false, clipboardFallback: false, cancelled: true };
+    }
     const pasteSent = await pasteClipboard();
 
     // Confirmation is limited to observing that focus did not move and that the
@@ -881,15 +873,6 @@ class UsefulVoiceApp {
       this.diagnostics.log('delivery', `unverifiable target (${name}); left on clipboard`);
     }
 
-    if (pasteSent) {
-      // Armed for any paste that was *sent*, proven or not, which is the behaviour
-      // this extraction deliberately preserves: someone who cancels right after a
-      // dictation expects Ctrl+Z to take it back even when delivery could not be
-      // confirmed. A paste that never ran arms nothing, so undo cannot reach back
-      // past the previous dictation.
-      this.lastPaste = { text, at: Date.now() };
-    }
-
     return { delivered: decision.delivered, clipboardFallback: !decision.delivered };
   }
 
@@ -905,18 +888,11 @@ class UsefulVoiceApp {
     }
   }
 
-  /** Take back a paste the user cancelled, if the target still allows an undo. */
-  private async undoLastPaste(): Promise<void> {
-    if (!this.lastPaste) return;
-    if (Date.now() - this.lastPaste.at > UNDO_WINDOW_MS) return;
-    await sendUndo().catch(() => undefined);
-    this.lastPaste = null;
-  }
-
+  /** The newest dictation still in the history, so a deleted one is never copied back. */
   private copyLastTranscript(): void {
-    const outcome = this.service.mostRecent;
-    if (!outcome) return;
-    clipboard.writeText(outcome.text);
+    const newest = this.data.history[0];
+    if (!newest) return;
+    clipboard.writeText(newest.text);
   }
 
   // ---- windows and IPC ---------------------------------------------------
@@ -981,19 +957,22 @@ class UsefulVoiceApp {
   }
 
   private registerIpc(): void {
-    ipcMain.handle('audio:captured', (_event, wav: ArrayBuffer, meta: { durationSeconds: number; peak: number; hadSpeech: boolean }) => {
-      const pending = this.pendingCapture;
-      if (!pending) return;
-      pending.resolve({
-        wav: new Uint8Array(wav),
-        durationSeconds: meta.durationSeconds,
-        peak: meta.peak,
-        hadSpeech: meta.hadSpeech,
-      });
-    });
+    ipcMain.handle('audio:started', (_event, token: string) => this.recorder.handleStarted(token));
 
-    ipcMain.handle('audio:error', (_event, message: string) => {
-      this.pendingCapture?.reject(new Error(message));
+    ipcMain.handle(
+      'audio:captured',
+      (_event, token: string, wav: ArrayBuffer, meta: { durationSeconds: number; peak: number; hadSpeech: boolean }) => {
+        this.recorder.handleCaptured(token, {
+          wav: new Uint8Array(wav),
+          durationSeconds: meta.durationSeconds,
+          peak: meta.peak,
+          hadSpeech: meta.hadSpeech,
+        });
+      },
+    );
+
+    ipcMain.handle('audio:error', (_event, message: string, token?: string) => {
+      this.recorder.handleError(token, message);
     });
 
     ipcMain.on('audio:level', (_event, level: number) => {
@@ -1145,10 +1124,14 @@ class UsefulVoiceApp {
     ipcMain.handle('history:remove', (_event, id: string) => {
       this.data.removeHistory(id);
       this.broadcast('history:changed');
+      this.syncTray();
     });
     ipcMain.handle('history:clear', () => {
       this.data.clearHistory();
+      // "Clear all" also drops the audio kept for a retry: it is the same dictation data.
+      this.service.discardRetained();
       this.broadcast('history:changed');
+      this.syncTray();
     });
     ipcMain.handle('history:export-csv', async () => {
       const file = path.join(app.getPath('documents'), 'useful-voice-history.csv');
@@ -1647,11 +1630,11 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     // The count is checked against the documented boundary rather than a vague lower
     // bound: `tests/ipcContract.test.ts` pins this same number to the README, so a
     // channel added or lost anywhere fails one of the two.
-    // 64: the theme (`getTheme`, `onThemeChanged`), `showDiagnosticsLog`, `onOutcome` +
+    // 65: the theme (`getTheme`, `onThemeChanged`), `showDiagnosticsLog`, `onOutcome` +
     // `onTelemetry`, `getFlags`, and the floating windows (`onHudView`, `hudPointer`,
-    // `hudAction`, `onAnnounce`, `pickerChoose`, `pickerClose`, `onSettingsChanged`).
+    // `hudAction`, `onAnnounce`, `pickerChoose`, `pickerClose`, `onSettingsChanged`), and `sendAudioStarted`.
     // Kept in step with the README by the comment below.
-    const EXPECTED_API_METHODS = 64;
+    const EXPECTED_API_METHODS = 65;
     record(
       'preload exposes API',
       preloadProbe.hasApi

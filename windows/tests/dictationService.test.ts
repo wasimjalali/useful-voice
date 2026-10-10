@@ -52,6 +52,18 @@
  *  28. A copy-mode delivery asks the sink to paste, or to restore the old clipboard.
  *      (The clipboard snapshot and restore themselves live in src/main/index.ts, which
  *      needs Electron; this file proves the service never asks for them in copy mode.)
+
+ * Review round 1 (PR #33)
+ *  29. A blocked microphone that the recorder only reports after start() resolved
+ *      (or mid-recording) never becomes micUnavailable.
+ *  30. Esc during delivery still pastes and then drops the history row, or claims
+ *      "Cancelled" for a paste that went out.
+ *  31. A hotkey dictation pastes into whatever is in front at delivery: the start
+ *      window's handle must reach the sink.
+ *  32. A clipboard or sink failure is untyped, so the HUD says "Transcription failed".
+ *  33. A callback that throws mid-pipeline (history, status listener, settings) leaves
+ *      the session stuck in transcribing or delivering.
+ *  34. Clearing history leaves failed audio that "Retry last recording" can still use.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -145,17 +157,30 @@ class FakeTranscriber implements TranscriberPort {
 
 class FakeSink implements TextSinkPort {
   delivered: string[] = [];
-  requests: Array<{ text: string; targetApp?: string; mode: string }> = [];
-  result: { delivered: boolean; clipboardFallback: boolean } = { delivered: true, clipboardFallback: false };
+  requests: Array<{ text: string; targetApp?: string; targetHandle?: number; mode: string; signal?: AbortSignal }> = [];
+  result: { delivered: boolean; clipboardFallback: boolean; cancelled?: boolean } = { delivered: true, clipboardFallback: false };
   /** Never resolves, to exercise the delivery timeout. */
   hang = false;
+  /** Waits for the abort signal and reports it stopped before pasting, like the real sink. */
+  honorAbort = false;
+  /** Holds the delivery open until released, then answers with `result` whatever the signal says. */
+  gate: Promise<void> | null = null;
   error: Error | null = null;
 
-  async deliver(request: { text: string; targetApp?: string; mode: string }): Promise<{ delivered: boolean; clipboardFallback: boolean }> {
+  async deliver(request: { text: string; targetApp?: string; targetHandle?: number; mode: string; signal?: AbortSignal }): Promise<{ delivered: boolean; clipboardFallback: boolean; cancelled?: boolean }> {
     this.delivered.push(request.text);
     this.requests.push(request);
     if (this.error) throw this.error;
     if (this.hang) return new Promise(() => {});
+    if (this.honorAbort) {
+      const signal = request.signal;
+      await new Promise<void>((resolve) => {
+        if (signal?.aborted) resolve();
+        else signal?.addEventListener('abort', () => resolve());
+      });
+      return { delivered: false, clipboardFallback: false, cancelled: true };
+    }
+    if (this.gate) await this.gate;
     return this.result;
   }
 }
@@ -942,7 +967,9 @@ describe('dictation source', () => {
     const ctx = setup();
     await ctx.service.toggle({ source: 'hotkey', targetApp: 'Slack' });
     await ctx.service.toggle({ source: 'hotkey' });
-    expect(ctx.sink.requests).toEqual([{ text: 'hello world', targetApp: 'Slack', mode: 'paste' }]);
+    expect(ctx.sink.requests).toHaveLength(1);
+    expect(ctx.sink.requests[0]).toMatchObject({ text: 'hello world', targetApp: 'Slack', mode: 'paste' });
+    expect(ctx.sink.requests[0]?.signal).toBeInstanceOf(AbortSignal);
     expect(ctx.outcomes).toEqual([{ kind: 'delivered', words: 2, result: 'pasted', appName: 'Slack' }]);
     expect(ctx.records[0]?.appName).toBe('Slack');
   });
@@ -1052,6 +1079,8 @@ describe('dictation source', () => {
     await ctx.service.toggle({ source: 'window' });
     expect(ctx.service.currentState).toBe('error');
     expect(ctx.statuses.at(-1)?.message).toContain('saved');
+    // Typed, so the HUD title is about delivery and not about transcription.
+    expect(ctx.statuses.at(-1)?.error).toMatchObject({ kind: 'deliveryFailed' });
     expect(ctx.outcomes).toEqual([]);
     // The dictation itself is safe in history.
     expect(ctx.completed).toEqual(['hello world']);
@@ -1144,7 +1173,10 @@ describe('typed errors', () => {
   });
 
   it('keeps today\'s wording for the text-only failures', () => {
-    expect(classifyTranscriptionFailure(new ProviderError('outOfCredits', 'out')).message).toContain('Transcription failed');
+    // Out of credits has its own wording: it is not a failure of the transcription itself.
+    const credits = classifyTranscriptionFailure(new ProviderError('outOfCredits', 'out'));
+    expect(credits.message).toContain('credit');
+    expect(credits.message).not.toContain('Transcription failed');
     expect(classifyTranscriptionFailure(new Error('weird')).kind).toBe('providerFailed');
     expect(classifyRecordingFailure(new Error('Permission denied')).message).toContain('Microphone access is blocked');
   });
@@ -1241,16 +1273,20 @@ describe('outcomes', () => {
     expect(transcribing.outcomes).toEqual([{ kind: 'cancelled' }]);
 
     // Delivering.
+    // Delivering, stopped before the paste.
     const delivering = setup();
-    delivering.sink.hang = true;
+    delivering.sink.honorAbort = true;
     await delivering.service.startRecording({ source: 'hotkey' });
     const delivery = delivering.service.stopAndProcess();
     await settle();
     expect(delivering.service.currentState).toBe('delivering');
     await delivering.service.cancel();
+    expect(delivering.service.currentState).toBe('idle');
     expect(delivering.outcomes).toEqual([{ kind: 'cancelled' }]);
+    expect(delivering.completed).toEqual([]);
     await delivery;
     expect(delivering.outcomes).toEqual([{ kind: 'cancelled' }]);
+    expect(delivering.events.slice(-2)).toEqual(['outcome:cancelled', 'status:idle']);
   });
 
   it('emits no outcome when there was nothing to cancel', async () => {
@@ -1324,19 +1360,47 @@ describe('races between entry points', () => {
     expect(ctx.outcomes).toEqual([{ kind: 'cancelled' }]);
   });
 
-  it('records nothing and says nothing when a delivery returns after an Esc', async () => {
+  it('tells the sink to stop when Esc arrives during delivery', async () => {
     const ctx = setup();
-    ctx.sink.hang = true;
+    ctx.sink.honorAbort = true;
     await ctx.service.startRecording({ source: 'hotkey' });
     const processing = ctx.service.stopAndProcess();
     await settle();
-    expect(ctx.service.currentState).toBe('delivering');
+    expect(ctx.sink.requests[0]?.signal?.aborted).toBe(false);
     await ctx.service.cancel();
-    const statusesAfterCancel = ctx.statuses.length;
-    await processing; // resolves when the delivery timeout fires
-    expect(ctx.statuses).toHaveLength(statusesAfterCancel);
-    expect(ctx.completed).toEqual([]);
-    expect(ctx.outcomes).toEqual([{ kind: 'cancelled' }]);
+    expect(ctx.sink.requests[0]?.signal?.aborted).toBe(true);
+    await processing;
+  });
+
+  it('finishes as delivered, not cancelled, when the paste already landed before Esc', async () => {
+    const ctx = setup();
+    const landing = gate();
+    ctx.sink.gate = landing.promise;
+    await ctx.service.startRecording({ source: 'hotkey', targetApp: 'Slack' });
+    const processing = ctx.service.stopAndProcess();
+    await settle();
+    expect(ctx.service.currentState).toBe('delivering');
+    const cancelling = ctx.service.cancel();
+    landing.open(); // the paste goes out although the signal is aborted
+    await cancelling;
+    await processing;
+    expect(ctx.service.currentState).toBe('idle');
+    expect(ctx.outcomes).toEqual([{ kind: 'delivered', words: 2, result: 'pasted', appName: 'Slack' }]);
+    expect(ctx.completed).toEqual(['hello world']);
+    expect(ctx.events.filter((event) => event === 'status:idle')).toHaveLength(1);
+  });
+
+  it('records a delivery that Esc could not confirm either way as copied, not as cancelled', async () => {
+    const ctx = setup();
+    ctx.sink.hang = true;
+    await ctx.service.startRecording({ source: 'hotkey', targetApp: 'Slack' });
+    const processing = ctx.service.stopAndProcess();
+    await settle();
+    await ctx.service.cancel(); // returns once the bounded delivery wait ends
+    await processing;
+    expect(ctx.service.currentState).toBe('idle');
+    expect(ctx.completed).toEqual(['hello world']);
+    expect(ctx.outcomes).toEqual([{ kind: 'delivered', words: 2, result: 'copiedNotPasted', appName: 'Slack' }]);
   });
 
   it('does not let the late result of a cancelled dictation land on the next one', async () => {
@@ -1399,7 +1463,9 @@ describe('silence watchdog and max length', () => {
     await vi.advanceTimersByTimeAsync(2_000);
     expect(ctx.service.currentState).toBe('idle');
     expect(ctx.recorder.stopCalls).toBe(1);
-    expect(ctx.sink.requests).toEqual([{ text: 'hello world', targetApp: 'Slack', mode: 'paste' }]);
+    expect(ctx.sink.requests).toHaveLength(1);
+    expect(ctx.sink.requests[0]).toMatchObject({ text: 'hello world', targetApp: 'Slack', mode: 'paste' });
+    expect(ctx.sink.requests[0]?.signal).toBeInstanceOf(AbortSignal);
     expect(ctx.outcomes).toHaveLength(1);
   });
 
@@ -1642,5 +1708,189 @@ describe('telemetry', () => {
     await vi.advanceTimersByTimeAsync(2_500); // 3.5 s left
     expect(ctx.telemetry.at(-1)?.maxRemaining).toBe(4);
     expect(ctx.telemetry.at(-1)).not.toHaveProperty('silenceRemaining');
+  });
+});
+
+describe('review round 1: recorder failures outside start()', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('turns a recorder error during a live recording into micUnavailable with the settings fix', async () => {
+    const ctx = setup();
+    await ctx.service.toggle({ source: 'window' });
+    await ctx.service.recorderFailed(new Error('Permission denied: microphone access is blocked.'));
+    expect(ctx.service.currentState).toBe('error');
+    expect(ctx.statuses.at(-1)?.error).toEqual({
+      kind: 'micUnavailable',
+      message: describeRecordingFailure(new Error('Permission denied')),
+      fix: 'openMicrophoneSettings',
+    });
+    expect(ctx.recorder.cancelCalls).toBe(1);
+    expect(ctx.outcomes).toEqual([]);
+    expect(ctx.transcriber.requests).toHaveLength(0);
+  });
+
+  it('leaves no timer behind and accepts the next dictation', async () => {
+    vi.useFakeTimers();
+    const ctx = setup({ settings: { silenceTimeoutSeconds: 10 } });
+    await ctx.service.toggle({ source: 'hotkey' });
+    await ctx.service.recorderFailed(new Error('NotReadableError: the microphone is in use by another app.'));
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(100_000);
+    expect(ctx.recorder.stopCalls).toBe(0);
+    await ctx.service.toggle({ source: 'hotkey' });
+    expect(ctx.service.currentState).toBe('recording');
+  });
+
+  it('ignores a recorder error when no recording is live', async () => {
+    const idle = setup();
+    await idle.service.recorderFailed(new Error('boom'));
+    expect(idle.statuses).toEqual([]);
+
+    // A stop is already under way: the stop reports its own failure.
+    const stopping = setup();
+    await stopping.service.startRecording({ source: 'hotkey' });
+    const gateStop = gate();
+    stopping.recorder.stopGate = gateStop.promise;
+    const processing = stopping.service.stopAndProcess();
+    await stopping.service.recorderFailed(new Error('late'));
+    gateStop.open();
+    await processing;
+    expect(stopping.service.currentState).toBe('idle');
+    expect(stopping.recorder.cancelCalls).toBe(0);
+  });
+});
+
+describe('review round 1: delivery target and failures', () => {
+  it('hands the start window to the sink for a hotkey dictation only', async () => {
+    const hotkey = setup();
+    await hotkey.service.toggle({ source: 'hotkey', targetApp: 'Slack', targetHandle: 4242 });
+    await hotkey.service.toggle({ source: 'hotkey' });
+    expect(hotkey.sink.requests[0]).toMatchObject({ mode: 'paste', targetApp: 'Slack', targetHandle: 4242 });
+
+    const window = setup();
+    await window.service.toggle({ source: 'window', targetApp: 'Slack', targetHandle: 4242 });
+    await window.service.toggle({ source: 'window' });
+    expect(window.sink.requests[0]?.targetHandle).toBeUndefined();
+  });
+
+  it('reports a sink that moved the paste to the clipboard as copied-not-pasted', async () => {
+    // What the real sink answers when the window in front at delivery is not the start window.
+    const ctx = setup();
+    ctx.sink.result = { delivered: false, clipboardFallback: true };
+    await ctx.service.toggle({ source: 'hotkey', targetApp: 'Slack', targetHandle: 1 });
+    await ctx.service.toggle({ source: 'hotkey' });
+    expect(ctx.outcomes).toEqual([{ kind: 'delivered', words: 2, result: 'copiedNotPasted', appName: 'Slack' }]);
+    expect(ctx.statuses.at(-1)?.message).toContain('Ctrl+V');
+  });
+
+  it('types the "neither pasted nor copied" failure as deliveryFailed', async () => {
+    const ctx = setup();
+    ctx.sink.result = { delivered: false, clipboardFallback: false };
+    await ctx.service.toggle({ source: 'hotkey' });
+    await ctx.service.toggle({ source: 'hotkey' });
+    expect(ctx.statuses.at(-1)?.error).toMatchObject({ kind: 'deliveryFailed' });
+    expect(ctx.statuses.at(-1)?.error?.message).toContain('history');
+    expect(ctx.completed).toEqual(['hello world']);
+  });
+});
+
+describe('review round 1: no stuck session', () => {
+  it('ends in an error when the history callback throws', async () => {
+    const ctx = setup();
+    const service = new DictationService({
+      recorder: ctx.recorder,
+      transcriber: ctx.transcriber,
+      sink: ctx.sink,
+      settings: () => ctx.settings,
+      memory: () => ctx.memory,
+      apiKey: async () => 'k',
+      onStatus: (status) => ctx.statuses.push(status),
+      onCompleted: () => {
+        throw new Error('disk full');
+      },
+      deliveryTimeoutMs: 200,
+    });
+    await service.toggle({ source: 'hotkey' });
+    await service.toggle({ source: 'hotkey' });
+    expect(service.currentState).toBe('error');
+    expect(ctx.statuses.at(-1)?.message).toContain('disk full');
+    // And it recovers.
+    await service.toggle({ source: 'hotkey' });
+    expect(service.currentState).toBe('recording');
+  });
+
+  it('ends in an error when the key lookup throws, and when the settings read throws at stop', async () => {
+    const keyThrows = new DictationService({
+      recorder: new FakeRecorder(),
+      transcriber: new FakeTranscriber(),
+      sink: new FakeSink(),
+      settings: () => DEFAULT_SETTINGS,
+      memory: () => emptySnapshot(),
+      apiKey: async () => {
+        throw new Error('keychain locked');
+      },
+      onStatus: () => undefined,
+    });
+    await keyThrows.toggle({ source: 'hotkey' });
+    await keyThrows.toggle({ source: 'hotkey' });
+    expect(keyThrows.currentState).toBe('error');
+
+    let reads = 0;
+    const settingsThrow = new DictationService({
+      recorder: new FakeRecorder(),
+      transcriber: new FakeTranscriber(),
+      sink: new FakeSink(),
+      settings: () => {
+        reads += 1;
+        if (reads > 2) throw new Error('settings unreadable');
+        return DEFAULT_SETTINGS;
+      },
+      memory: () => emptySnapshot(),
+      apiKey: async () => 'k',
+      onStatus: () => undefined,
+    });
+    await settingsThrow.toggle({ source: 'hotkey' });
+    await settingsThrow.toggle({ source: 'hotkey' });
+    expect(settingsThrow.currentState).toBe('error');
+  });
+
+  it('survives a status listener that throws while failing', async () => {
+    const statuses: DictationStatus[] = [];
+    const service = new DictationService({
+      recorder: new FakeRecorder(),
+      transcriber: new FakeTranscriber(),
+      sink: new FakeSink(),
+      settings: () => DEFAULT_SETTINGS,
+      memory: () => emptySnapshot(),
+      apiKey: async () => {
+        throw new Error('boom');
+      },
+      onStatus: (status) => {
+        statuses.push(status);
+        if (status.state === 'error') throw new Error('listener broke');
+      },
+    });
+    await service.toggle({ source: 'hotkey' });
+    await service.toggle({ source: 'hotkey' });
+    expect(service.currentState).toBe('error');
+    await service.toggle({ source: 'hotkey' });
+    expect(service.currentState).toBe('recording');
+  });
+});
+
+describe('review round 1: retained audio', () => {
+  it('drops the retained failed audio on request, so Retry has nothing left', async () => {
+    const ctx = setup();
+    ctx.transcriber.error = new ProviderError('transport', 'down');
+    await ctx.service.toggle({ source: 'hotkey' });
+    await ctx.service.toggle({ source: 'hotkey' });
+    expect(ctx.service.canRetry).toBe(true);
+    ctx.service.discardRetained();
+    expect(ctx.service.canRetry).toBe(false);
+    ctx.transcriber.error = null;
+    await ctx.service.retryLast();
+    expect(ctx.transcriber.requests).toHaveLength(1);
   });
 });

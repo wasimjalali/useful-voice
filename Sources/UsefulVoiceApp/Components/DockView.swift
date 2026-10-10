@@ -259,7 +259,7 @@ struct StreamDock: View {
         }
         .buttonStyle(.plain)
         .disabled(busy)
-        .clickableCursor()
+        .clickableCursor(!busy)
         .accessibilityLabel(recording ? "Stop dictation" : "Start dictation")
     }
 

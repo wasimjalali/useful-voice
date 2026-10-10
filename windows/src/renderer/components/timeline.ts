@@ -63,6 +63,7 @@ export function createTimeline(hooks: TimelineHooks): Timeline {
   let start = 0;
   let frame = 0;
 
+  /** The sticky band is a plain wrapper, so only the day text and chevron are the button. */
   function dayLabelButton(key: string, date: Date): HTMLElement {
     const label = el(
       'button',
@@ -76,8 +77,9 @@ export function createTimeline(hooks: TimelineHooks): Timeline {
       el('span', {}, dayLabel(date)),
       icon(STREAM_ICONS.chevronDown, 14),
     );
-    label.dataset.day = key;
-    return label;
+    const band = el('div', { class: 'tl-day-band' }, label);
+    band.dataset.day = key;
+    return band;
   }
 
   function buildSections(slice: readonly HistoryEntryDTO[], fresh: ReadonlySet<string>): HTMLElement[] {
@@ -140,7 +142,7 @@ export function createTimeline(hooks: TimelineHooks): Timeline {
 
   function updateStuck(): void {
     const top = scroll.getBoundingClientRect().top;
-    for (const label of col.querySelectorAll<HTMLElement>('.tl-day-label')) {
+    for (const label of col.querySelectorAll<HTMLElement>('.tl-day-band')) {
       label.classList.toggle('is-stuck', Math.abs(label.getBoundingClientRect().top - top) < 1.5);
     }
   }
@@ -148,10 +150,10 @@ export function createTimeline(hooks: TimelineHooks): Timeline {
   function currentDay(): string | null {
     const top = scroll.getBoundingClientRect().top;
     let found: string | null = null;
-    for (const label of col.querySelectorAll<HTMLElement>('.tl-day-label')) {
+    for (const label of col.querySelectorAll<HTMLElement>('.tl-day-band')) {
       if (label.getBoundingClientRect().top <= top + 1.5) found = label.dataset.day ?? null;
     }
-    return found ?? col.querySelector<HTMLElement>('.tl-day-label')?.dataset.day ?? null;
+    return found ?? col.querySelector<HTMLElement>('.tl-day-band')?.dataset.day ?? null;
   }
 
   function render(fresh: ReadonlySet<string>): void {
@@ -174,7 +176,7 @@ export function createTimeline(hooks: TimelineHooks): Timeline {
     if (lastNew && firstExisting && lastNew.dataset.day === firstExisting.dataset.day) {
       // The page ends mid-day: its bubbles join the day that is already on screen.
       const moved = [...lastNew.querySelectorAll<HTMLElement>('.bubble')];
-      const label = firstExisting.querySelector('.tl-day-label');
+      const label = firstExisting.querySelector('.tl-day-band');
       if (label) label.after(...moved);
       sections.pop();
     }

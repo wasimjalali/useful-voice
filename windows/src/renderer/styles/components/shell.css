@@ -183,31 +183,6 @@
   .banner .btn, .status-row .btn { height: 40px; }
 }
 
-/* Still used by the Notes page's own list until it is rebuilt (the rail uses .rail-item). */
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 8px 10px;
-  border: 0;
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--ink-muted);
-  font-size: var(--fs-ui);
-  text-align: left;
-  cursor: pointer;
-  transition: background var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out);
-}
-.nav-item:hover { background: var(--sunken); color: var(--ink); }
-.nav-item[aria-current="page"] {
-  background: var(--sunken);
-  color: var(--ink);
-  font-weight: 550;
-  box-shadow: inset 2px 0 0 var(--ink);
-}
-.nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
-
 .stage-wrap {
   display: flex;
   min-width: 0;

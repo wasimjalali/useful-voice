@@ -220,12 +220,12 @@ struct SettingsPage: View {
             SettingsRow(title: "Microphone") {
                 PremiumStatusBadge(kind: system.microphone.kind, text: system.microphone.text)
                 Button("Open System Settings") { UsefulVoiceViewModel.openPrivacyPane("Privacy_Microphone") }
-                    .buttonStyle(.brandSecondary).clickableCursor()
+                    .buttonStyle(.brandSecondary)
             }
             SettingsRow(title: "Accessibility") {
                 PremiumStatusBadge(kind: system.accessibility.kind, text: system.accessibility.text)
                 Button("Open System Settings") { UsefulVoiceViewModel.openPrivacyPane("Privacy_Accessibility") }
-                    .buttonStyle(.brandSecondary).clickableCursor()
+                    .buttonStyle(.brandSecondary)
             }
         }
     }
@@ -249,7 +249,7 @@ struct SettingsPage: View {
                 SettingsRow(title: "Test engine", detail: testStatusText(for: .whisperLocal),
                             detailTone: testStatusTone) {
                     Button(isTesting ? "Testing" : "Test connection") { testConnection() }
-                        .buttonStyle(.brandSecondary).disabled(isTesting).clickableCursor()
+                        .buttonStyle(.brandSecondary).disabled(isTesting)
                 }
             }
         } footer: {
@@ -281,31 +281,31 @@ struct SettingsPage: View {
                     .disabled(savingKey)
                     .onSubmit(saveKey)
                 Button("Save key") { saveKey() }
-                    .buttonStyle(.brandPrimary).disabled(savingKey).clickableCursor()
+                    .buttonStyle(.brandPrimary).disabled(savingKey)
                 if hasDeepgramKey {
                     Button("Remove") { removeKey() }
-                        .buttonStyle(.brandDanger).disabled(savingKey).clickableCursor()
+                        .buttonStyle(.brandDanger).disabled(savingKey)
                 }
                 Button("Cancel") { changingDeepgramKey = false }
-                    .buttonStyle(.brandSecondary).disabled(savingKey).clickableCursor()
+                    .buttonStyle(.brandSecondary).disabled(savingKey)
             }
             keyStatusRow
         } else if hasDeepgramKey {
             SettingsRow(title: "Deepgram key", detail: "Stored in Keychain") {
                 keyBadge
                 Button(isTesting ? "Testing" : "Test connection") { testConnection() }
-                    .buttonStyle(.brandSecondary).disabled(isTesting).clickableCursor()
+                    .buttonStyle(.brandSecondary).disabled(isTesting)
                 Button("Change key") { changingDeepgramKey = true }
-                    .buttonStyle(.brandSecondary).disabled(savingKey).clickableCursor()
+                    .buttonStyle(.brandSecondary).disabled(savingKey)
             }
             keyStatusRow
         } else {
             SettingsRow(title: "Deepgram key") {
                 Text("No key added").font(.uv(.meta)).foregroundStyle(Theme.inkMuted)
                 Button("Add key") { changingDeepgramKey = true }
-                    .buttonStyle(.brandPrimary).clickableCursor()
+                    .buttonStyle(.brandPrimary)
                 Button("Get free credit") { openSignup() }
-                    .buttonStyle(.brandSecondary).clickableCursor()
+                    .buttonStyle(.brandSecondary)
             }
             keyStatusRow
         }
@@ -383,7 +383,7 @@ struct SettingsPage: View {
                     Button { models.pause(model) } label: {
                         Label("Pause", systemImage: "pause").labelStyle(.titleAndIcon)
                     }
-                    .buttonStyle(.brandSecondary).clickableCursor()
+                    .buttonStyle(.brandSecondary)
                 }
                 InsightsMeter(fraction: Double(received) / Double(max(total, 1)), height: 4)
                 HStack {
@@ -402,7 +402,7 @@ struct SettingsPage: View {
             SettingsBlock {
                 modelHeader(model) {
                     Button(models.canResume(model) ? "Resume" : "Download") { models.download(model) }
-                        .buttonStyle(.brandPrimary).clickableCursor()
+                        .buttonStyle(.brandPrimary)
                 }
             }
         case .failed(let message, _):
@@ -410,7 +410,7 @@ struct SettingsPage: View {
                 modelHeader(model) {
                     PremiumStatusBadge(kind: .bad, icon: "circle.fill", text: "Download failed")
                     Button("Try again") { models.download(model) }
-                        .buttonStyle(.brandSecondary).clickableCursor()
+                        .buttonStyle(.brandSecondary)
                 }
                 Text(message).font(.uv(.meta)).foregroundStyle(Theme.danger)
                     .fixedSize(horizontal: false, vertical: true)
@@ -424,10 +424,10 @@ struct SettingsPage: View {
                             PremiumStatusBadge(kind: .ok, icon: "circle.fill", text: "In use")
                         } else {
                             Button("Use") { useModel(model) }
-                                .buttonStyle(.brandSecondary).clickableCursor()
+                                .buttonStyle(.brandSecondary)
                         }
                         Button("Delete") { confirmation = .model(model) }
-                            .buttonStyle(.brandDanger).clickableCursor()
+                            .buttonStyle(.brandDanger)
                     }
                     .frame(minHeight: 32)
                 }
@@ -437,7 +437,7 @@ struct SettingsPage: View {
                         Button { models.download(model) } label: {
                             Label(models.canResume(model) ? "Resume" : "Download", systemImage: "arrow.down.to.line")
                         }
-                        .buttonStyle(.brandPrimary).clickableCursor()
+                        .buttonStyle(.brandPrimary)
                     }
                     .frame(minHeight: 32)
                 }
@@ -446,9 +446,9 @@ struct SettingsPage: View {
                     modelHeader(model) {
                         PremiumStatusBadge(kind: .bad, icon: "circle.fill", text: "Check failed")
                         Button("Download again") { models.download(model) }
-                            .buttonStyle(.brandSecondary).clickableCursor()
+                            .buttonStyle(.brandSecondary)
                         Button("Delete") { confirmation = .model(model) }
-                            .buttonStyle(.brandDanger).clickableCursor()
+                            .buttonStyle(.brandDanger)
                     }
                     Text("The file didn't pass its check (\(reason)). Download it again.")
                         .font(.uv(.meta)).foregroundStyle(Theme.inkMuted)
@@ -581,7 +581,6 @@ struct SettingsPage: View {
                 }
                 .buttonStyle(.brandDanger)
                 .disabled(system.dictationCount == 0 || dictationBusy)
-                .clickableCursor()
             }
         }
     }
@@ -626,7 +625,6 @@ struct SettingsPage: View {
     private func fileButton(_ title: String, _ symbol: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) { Label(title, systemImage: symbol) }
             .buttonStyle(.brandSecondary)
-            .clickableCursor()
     }
 
     private func export(_ text: String, _ name: String, _ type: UTType) {
@@ -707,17 +705,17 @@ struct SettingsPage: View {
             }
             SettingsRow(title: "Event log") {
                 Button { diagnostics.reload() } label: { Label("Refresh", systemImage: "arrow.clockwise") }
-                    .buttonStyle(.brandSecondary).clickableCursor()
+                    .buttonStyle(.brandSecondary)
                 Button {
                     diagnostics.copyReport()
                     toasts.show(diagnostics.copyConfirmation ?? "Copied")
                 } label: { Label("Copy report", systemImage: "doc.on.doc") }
-                    .buttonStyle(.brandSecondary).disabled(!diagnostics.hasEntries).clickableCursor()
+                    .buttonStyle(.brandSecondary).disabled(!diagnostics.hasEntries)
                 Button("Clear") {
                     diagnostics.clear()
                     toasts.show("Cleared")
                 }
-                .buttonStyle(.brandSecondary).disabled(!diagnostics.hasEntries).clickableCursor()
+                .buttonStyle(.brandSecondary).disabled(!diagnostics.hasEntries)
             }
         }
         .onAppear { diagnostics.reload() }
@@ -737,11 +735,11 @@ struct SettingsPage: View {
                     .lineLimit(1).fixedSize()
                     .textSelection(.enabled)
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([supportFolder]) }
-                    .buttonStyle(.brandSecondary).clickableCursor()
+                    .buttonStyle(.brandSecondary)
             }
             SettingsRow(title: "Setup") {
                 Button("Run setup again") { firstRun.restart() }
-                    .buttonStyle(.brandSecondary).clickableCursor()
+                    .buttonStyle(.brandSecondary)
             }
         }
     }

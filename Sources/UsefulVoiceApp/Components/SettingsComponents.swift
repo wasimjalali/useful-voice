@@ -204,6 +204,7 @@ struct SettingsStepper: View {
             } else {
                 Text(format(value))
                     .contentShape(Rectangle())
+                    .clickableCursor(editable)
                     .onTapGesture {
                         guard editable else { return }
                         text = format(value)
@@ -243,7 +244,7 @@ struct SettingsStepper: View {
         .buttonStyle(.plain)
         .disabled(!range.contains(next))
         .opacity(range.contains(next) ? 1 : 0.4)
-        .clickableCursor()
+        .clickableCursor(range.contains(next))
         .accessibilityLabel(delta > 0 ? "Increase" : "Decrease")
     }
 
@@ -301,7 +302,6 @@ struct SettingsConfirmDialog: View {
                         .controlSize(.large)
                         .keyboardShortcut(.cancelAction)
                         .focused($cancelFocused)
-                        .clickableCursor()
                     Button(confirmTitle, action: onConfirm)
                         .buttonStyle(SettingsDangerSolidButtonStyle())
                         .clickableCursor()
@@ -360,7 +360,6 @@ struct HotkeyCaptureField: View {
             if capturing {
                 Button("Cancel") { stop() }
                     .buttonStyle(.brandSecondary)
-                    .clickableCursor()
             }
         }
         .onDisappear { stop() }

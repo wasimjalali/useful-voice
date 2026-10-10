@@ -264,6 +264,7 @@ struct StreamDateJump: View {
                     Label("Days", systemImage: "chevron.left")
                         .font(.uv(.ui, .medium))
                         .foregroundStyle(Theme.ink)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .clickableCursor()
@@ -477,12 +478,16 @@ struct StreamSelectionBar: View {
                 .foregroundStyle(Theme.hudInk.opacity(0.7))
                 .lineLimit(1)
             Spacer(minLength: 12)
-            Button("Cancel") { store.clearSelection() }
-                .buttonStyle(.plain)
-                .font(.uv(.body, .semibold))
-                .foregroundStyle(Theme.hudInk)
-                .padding(.horizontal, 10)
-                .clickableCursor()
+            Button { store.clearSelection() } label: {
+                Text("Cancel")
+                    .font(.uv(.body, .semibold))
+                    .foregroundStyle(Theme.hudInk)
+                    .padding(.horizontal, 10)
+                    .frame(minHeight: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .clickableCursor()
             Button { pickerOpen = true } label: {
                 Text("Add \(store.selection.count) to note")
                     .font(.uv(.body, .semibold))

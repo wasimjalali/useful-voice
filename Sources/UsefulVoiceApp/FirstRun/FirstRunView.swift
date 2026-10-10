@@ -52,11 +52,12 @@ struct FirstRunView: View {
                             .foregroundStyle(Theme.inkMuted)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 4)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .disabled(model.savingKey)
                     .keyboardShortcut(.cancelAction)
-                    .clickableCursor()
+                    .clickableCursor(!model.savingKey)
                     .padding(14)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 }

@@ -1,0 +1,56 @@
+/* ==========================================================================
+   Floating surfaces: the base box and the dictation action menu
+   ========================================================================== */
+
+.floating {
+  position: fixed;
+  z-index: 60;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop);
+  animation: floating-in var(--dur-state) var(--ease-out);
+}
+
+.floating[data-placement="above"] { animation-name: floating-in-up; }
+
+@keyframes floating-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes floating-in-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.bm { min-width: 196px; padding: 6px; }
+
+.bm-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--fs-ui);
+  text-align: left;
+  cursor: pointer;
+}
+
+.bm-item svg { flex: none; color: var(--ink-muted); }
+.bm-item:hover:not(:disabled), .bm-item:focus-visible { background: var(--sunken); outline: none; }
+.bm-item:focus-visible { box-shadow: inset 2px 0 0 var(--ink); }
+.bm-item:disabled { color: var(--ink-muted); cursor: not-allowed; }
+.bm-item.is-danger { color: var(--danger); }
+.bm-item.is-danger svg { color: var(--danger); }
+.bm-sep { height: 1px; margin: 4px 6px; background: var(--line); }
+
+@media (pointer: coarse) {
+  .bm-item { height: 40px; }
+}

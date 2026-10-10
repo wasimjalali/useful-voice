@@ -35,6 +35,9 @@ final class UsefulVoiceViewModel: ObservableObject {
     var onHotkeyKeycodeChange: ((Int) -> Void)?
     /// Set by the app layer to push a new language-switch key to the live HotkeyManager.
     var onLanguageSwitchKeycodeChange: ((Int) -> Void)?
+    /// Set by the app layer: the saved recordings were deleted, so retained audio
+    /// for Retry is gone too.
+    var onRecordingsDeleted: (() -> Void)?
     /// Set by the app layer to bring the main window up (closed or behind).
     var onOpenWindow: (() -> Void)?
     /// Set by the app layer to retry the last failed dictation on its audio.
@@ -85,6 +88,12 @@ final class UsefulVoiceViewModel: ObservableObject {
     func toggle() { onToggle(.window) }
 
     func retry() { onRetry?() }
+
+    /// Call after deleting the saved recordings (Delete all dictations).
+    func recordingsDeleted() {
+        onRecordingsDeleted?()
+        canRetry = false
+    }
 
     func refreshState(_ state: DictationState) {
         dictationState = state

@@ -48,11 +48,14 @@ export interface HudStatusInput {
 export interface HudClock {
   setTimeout(callback: () => void, ms: number): unknown;
   clearTimeout(handle: unknown): void;
+  /** Milliseconds, on the same clock the timers run on. */
+  now(): number;
 }
 
 const REAL_CLOCK: HudClock = {
   setTimeout: (callback, ms) => setTimeout(callback, ms),
   clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+  now: () => Date.now(),
 };
 
 /** The kinds that mean a dictation is still in flight, so an idle status ends them. */
@@ -163,7 +166,7 @@ export class HudModel {
     this.seq += 1;
     const frame: HudFrame = { ...view, seq: this.seq };
     this.current = frame;
-    this.deadline = autoHideMs === undefined ? null : Date.now() + autoHideMs;
+    this.deadline = autoHideMs === undefined ? null : this.clock.now() + autoHideMs;
     this.emit(frame);
     if (autoHideMs !== undefined) {
       const seq = this.seq;
@@ -182,7 +185,7 @@ export class HudModel {
       const { frame, deadline } = this.covered;
       this.covered = null;
       // A persistent view keeps what was left of its own time, so it still ends on schedule.
-      const remaining = deadline === null ? null : deadline - Date.now();
+      const remaining = deadline === null ? null : deadline - this.clock.now();
       if (remaining !== null && remaining <= 0) {
         this.hide();
         return;

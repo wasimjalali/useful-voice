@@ -121,6 +121,9 @@ struct SettingsPage: View {
         .accessibilityHidden(confirmation != nil)
         .background(Theme.surface)
         .overlay { dialog }
+        // The rail lives outside this page: tell the shell to fence it off too.
+        .onChange(of: confirmation != nil) { _, shown in viewModel.modalPresented = shown }
+        .onDisappear { viewModel.modalPresented = false }
         .onAppear(perform: load)
         .onChange(of: viewModel.usageRevision) { _, _ in system.refreshCount() }
         // The setup flow can change the engine and the key: re-read only those, so edits

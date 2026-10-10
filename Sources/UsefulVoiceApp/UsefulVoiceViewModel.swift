@@ -125,6 +125,8 @@ final class UsefulVoiceViewModel: ObservableObject {
         let id = UUID()
     }
     @Published var navigationRequest: NavigationRequest?
+    /// A page shows a modal dialog: the shell disables the rail behind it.
+    @Published var modalPresented = false
 
     /// `section` is a `SidebarSection` raw value.
     func navigate(to section: String, anchor: String? = nil) {

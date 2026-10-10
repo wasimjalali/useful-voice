@@ -86,6 +86,8 @@ struct RootView: View {
     var body: some View {
         HStack(spacing: 0) {
             rail
+                .disabled(viewModel.modalPresented)
+                .accessibilityHidden(viewModel.modalPresented)
             stage
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

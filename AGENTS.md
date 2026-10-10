@@ -15,6 +15,8 @@ Cross-platform dictation app. macOS: Swift (`Sources/UsefulVoiceCore`,
   built app with `--e2e --uv-data-dir=<scratch>`: hidden windows, fixture data, no tray or
   global hotkeys). `E2E_OUT=<dir>` moves the HTML report, traces, videos and screenshots
   (default `windows/e2e-results/`). CI runs it on `windows-latest` and uploads the report.
+  The video needs Playwright's ffmpeg (`npx playwright install ffmpeg`); without it Playwright never
+  resumes the windows and they hang blank, with no error.
 
 ## Windows renderer layout
 

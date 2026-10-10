@@ -189,13 +189,13 @@ struct StreamDock: View {
             ZStack(alignment: .leading) {
                 content(phase: phase, issue: issue)
                     .id(phase.key)
-                    .transition(.opacity)
+                    .transition(.morphSwap)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             trailing(phase: phase, issue: issue)
                 .fixedSize(horizontal: true, vertical: false)
                 .id(phase.key + "-trailing")
-                .transition(.opacity)
+                .transition(.morphSwap)
         }
         .padding(.leading, 12)
         .padding(.trailing, 14)

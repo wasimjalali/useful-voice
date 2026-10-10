@@ -16,8 +16,11 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     var onClose: (() -> Void)?
     private var appVisibilityObservers: [NSObjectProtocol] = []
 
+    /// Opens the window, on `section` when given (a Settings anchor can ride along). Works
+    /// whether the window is closed, hidden or open: the request goes through the view
+    /// model, which RootView consumes.
     func show(viewModel: UsefulVoiceViewModel, settings: AppSettings,
-              firstRun: FirstRunModel) {
+              firstRun: FirstRunModel, section: SidebarSection? = nil, anchor: String? = nil) {
         let isFirstShow = window == nil
         if isFirstShow {
             let hosting = NSHostingController(
@@ -31,7 +34,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             window.backgroundColor = Theme.canvasNSColor
             window.isMovableByWindowBackground = true
             window.setContentSize(Self.defaultContentSize(on: NSScreen.main))
-            window.minSize = NSSize(width: 960, height: 640)
+            window.minSize = NSSize(width: 920, height: 620)
             window.isReleasedWhenClosed = false
             // The window manages its own placement (and remembers the user's
             // choice), so AppKit's restorable-state machinery must not fight it.
@@ -41,6 +44,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             self.window = window
             observeAppVisibility()
         }
+        if let section { viewModel.navigate(to: section.rawValue, anchor: anchor) }
         NSApp.setActivationPolicy(.regular)
         // Centre only on the first show. Re-centring on every open undid the
         // user's move/resize and forced the window back to the main screen, so
@@ -121,8 +125,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     /// A standard document-sized window, clamped to the visible screen.
     private static func defaultContentSize(on screen: NSScreen?) -> NSSize {
         let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let width = min(1280, max(1080, visible.width * 0.62))
-        let height = min(860, max(720, visible.height * 0.76))
+        // The board's frames are 1180 x 740.
+        let width = min(1180, max(1040, visible.width * 0.62))
+        let height = min(780, max(700, visible.height * 0.76))
         return NSSize(width: width.rounded(), height: height.rounded())
     }
 }

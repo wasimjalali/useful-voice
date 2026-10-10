@@ -67,39 +67,16 @@ jobs:
       - name: Build
         run: npm run build
 
+      # The spec records a video, and Playwright encodes it with its own ffmpeg build,
+      # which `npm ci` does not fetch. Without it the video recorder throws while
+      # Playwright attaches to each window, before it resumes the renderer, so every
+      # window hangs at "start loading" and the run times out with blank pages.
+      - name: Install Playwright ffmpeg
+        run: npx playwright install ffmpeg
+
       # The redesign end to end on a real Windows desktop: Playwright drives the built
       # app (hidden windows, fixture data, no tray or hotkeys) through filter, search,
       # Teach a fix and the dark theme. The report and screenshots are kept.
-      # TEMP DIAG (remove before merge): do windows load on the runner without Playwright?
-      - name: DIAG self-test without Playwright
-        continue-on-error: true
-        timeout-minutes: 3
-        run: |
-          npx electron . --self-test --report=self-test-report.txt
-          "exit $LASTEXITCODE"
-          Get-Content self-test-report.txt
-
-      - name: DIAG e2e mode without Playwright
-        continue-on-error: true
-        timeout-minutes: 3
-        run: |
-          $d = Join-Path $env:RUNNER_TEMP 'uvdiag'
-          New-Item -ItemType Directory -Force $d | Out-Null
-          $exe = node -p "require('electron')"
-          $main = Join-Path (Get-Location) 'dist\main\index.js'
-          $p = Start-Process -FilePath $exe -ArgumentList @($main, "--uv-data-dir=$d", '--e2e') -PassThru
-          Start-Sleep -Seconds 25
-          Get-Content (Join-Path $d 'e2e.log')
-          Stop-Process -Id $p.Id -Force
-
-      - name: DIAG Playwright without video
-        continue-on-error: true
-        timeout-minutes: 4
-        env:
-          E2E_NO_VIDEO: '1'
-          E2E_OUT: e2e-results-novideo
-        run: npx playwright test
-
       - name: E2E
         run: npx playwright test
 

@@ -463,7 +463,7 @@ public final class DictationController {
             switch report {
             case .success(let result):
                 let reported: DeliveryResult =
-                    pasteRedirected && result == .copied ? .copiedNotPasted : result
+                    pasteRedirected && result == .copied ? .copiedAppChanged : result
                 self.onOutcome?(.delivered(words: words, mode: reported, appName: appName))
                 self.state = .idle
             case .failure:

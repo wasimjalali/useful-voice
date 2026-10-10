@@ -26,6 +26,9 @@ public enum DeliveryResult: Sendable, Equatable {
     case copiedNotPasted
     /// Copy mode: the text is on the clipboard, as asked.
     case copied
+    /// Paste mode, but the user moved to another app before delivery, so the text
+    /// was copied instead of pasted into the wrong place. Not a permission problem.
+    case copiedAppChanged
 }
 
 /// Delivery could not put the text where it was meant to go (the clipboard write
@@ -43,13 +46,10 @@ public struct FrontmostApp: Equatable, Sendable {
     public let id: String?
     /// Localized name shown to the user.
     public let name: String?
-    /// True when it is Useful Voice itself.
-    public let isSelf: Bool
 
-    public init(id: String?, name: String?, isSelf: Bool = false) {
+    public init(id: String?, name: String?) {
         self.id = id
         self.name = name
-        self.isSelf = isSelf
     }
 }
 
@@ -67,7 +67,7 @@ public struct DictationError: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         /// A password field is focused.
         case secureField
-        /// Recording could not start (no microphone, permission denied, no disk).
+        /// Recording could not start because the microphone is missing, lost or denied.
         case micUnavailable
         /// Recording could not start because the disk is full or not writable.
         case diskFull
@@ -206,21 +206,25 @@ public enum DictationOutcome: Equatable, Sendable {
 /// or the notice that text was copied but not pasted.
 public enum DictationIssue: Equatable, Sendable {
     case error(DictationError)
+    /// The paste could not land (usually Accessibility is off).
     case copiedNotPasted
+    /// The user switched apps, so the text was copied. Permissions are fine.
+    case copiedAppChanged
 
     public var message: String {
         switch self {
         case .error(let error): return error.message
-        case .copiedNotPasted: return "Copied. Press \u{2318}V to paste."
+        case .copiedNotPasted, .copiedAppChanged: return "Copied. Press \u{2318}V to paste."
         }
     }
 
     /// The fix for the issue. A copied-not-pasted notice points at Accessibility,
-    /// the usual reason the paste could not be posted.
+    /// the usual reason the paste could not be posted; an app change has none.
     public var fix: DictationFix? {
         switch self {
         case .error(let error): return error.fix
         case .copiedNotPasted: return .openAccessibilitySettings
+        case .copiedAppChanged: return nil
         }
     }
 }
@@ -253,8 +257,12 @@ public struct DictationFeedback: Equatable, Sendable {
 
     public mutating func apply(outcome next: DictationOutcome) {
         outcome = next
-        if case .delivered(_, .copiedNotPasted, _) = next {
-            issue = .copiedNotPasted
+        if case .delivered(_, let result, _) = next {
+            switch result {
+            case .copiedNotPasted: issue = .copiedNotPasted
+            case .copiedAppChanged: issue = .copiedAppChanged
+            case .pasted, .copied: break
+            }
         }
     }
 

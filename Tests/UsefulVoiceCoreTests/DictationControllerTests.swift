@@ -1562,21 +1562,21 @@ final class CapturingProvider: TranscriptionProvider {
         controller.toggle()                          // stopped after switching apps
         await controller.awaitProcessing()
         #expect(deliveredModes == [.copy])
-        #expect(outcomes == [.delivered(words: 2, mode: .copiedNotPasted, appName: "Slack")])
+        #expect(outcomes == [.delivered(words: 2, mode: .copiedAppChanged, appName: "Slack")])
     }
 
     @Test func testHotkeyDictationDeliveredWhileUsefulVoiceIsFrontCopies() async throws {
         let controller = makeController(providers: [okProvider()])
         controller.toggle()
-        frontmostApp = FrontmostApp(id: "ai.karko.usefulvoice", name: "Useful Voice", isSelf: true)
+        frontmostApp = FrontmostApp(id: "ai.karko.usefulvoice", name: "Useful Voice")
         controller.toggle()                          // e.g. stopped from the dock
         await controller.awaitProcessing()
         #expect(deliveredModes == [.copy])
-        #expect(outcomes == [.delivered(words: 2, mode: .copiedNotPasted, appName: "Slack")])
+        #expect(outcomes == [.delivered(words: 2, mode: .copiedAppChanged, appName: "Slack")])
     }
 
     @Test func testHotkeyDictationStartedAndDeliveredInUsefulVoicePastesThere() async throws {
-        frontmostApp = FrontmostApp(id: "ai.karko.usefulvoice", name: "Useful Voice", isSelf: true)
+        frontmostApp = FrontmostApp(id: "ai.karko.usefulvoice", name: "Useful Voice")
         let controller = makeController(providers: [okProvider()])
         controller.toggle()                          // hotkey while typing in a note
         controller.toggle()
@@ -1633,5 +1633,46 @@ final class CapturingProvider: TranscriptionProvider {
         controller.toggle()                          // new recording; the old audio is still retained
         controller.discardRetainedAudio()
         #expect(controller.canRetry)
+    }
+
+    // Round 2: the copy a user-switch forces is not a blocked paste.
+    @Test func testARealBlockedPasteStaysCopiedNotPastedNotAppChanged() async throws {
+        deliveryResultOverride = .copiedNotPasted
+        let controller = makeController(providers: [okProvider()])
+        controller.toggle()
+        controller.toggle()
+        await controller.awaitProcessing()
+        #expect(deliveredModes == [.paste])
+        #expect(outcomes == [.delivered(words: 2, mode: .copiedNotPasted, appName: "Slack")])
+    }
+
+    @Test func testAppChangedCopyThatFailsEndsInDeliveryFailed() async throws {
+        deliveryFailure = DeliveryFailure()
+        let controller = makeController(providers: [okProvider()])
+        controller.toggle()
+        frontmostApp = FrontmostApp(id: "com.apple.mail", name: "Mail")
+        controller.toggle()
+        await controller.awaitProcessing()
+        guard case .error(let error) = controller.state else {
+            Issue.record("expected deliveryFailed"); return
+        }
+        #expect(error.kind == .deliveryFailed)
+        #expect(outcomes.isEmpty)
+    }
+
+    // A paste delivery whose clipboard write failed reports a failure too.
+    @Test func testPasteDeliveryFailureEndsInDeliveryFailedWithNoOutcome() async throws {
+        deliveryFailure = DeliveryFailure()
+        let controller = makeController(providers: [okProvider()])
+        controller.toggle()
+        controller.toggle()
+        await controller.awaitProcessing()
+        #expect(deliveredModes == [.paste])
+        guard case .error(let error) = controller.state else {
+            Issue.record("expected deliveryFailed, got \(controller.state)"); return
+        }
+        #expect(error.kind == .deliveryFailed)
+        #expect(error.fix == nil)
+        #expect(outcomes.isEmpty)
     }
 }

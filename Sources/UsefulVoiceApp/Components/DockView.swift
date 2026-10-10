@@ -21,7 +21,7 @@ struct DockIssue: Equatable {
         detail = issue.message
         fix = issue.fix
         switch issue {
-        case .copiedNotPasted:
+        case .copiedNotPasted, .copiedAppChanged:
             (lead, rest, icon, tone, micOff) = ("Copied.", "Press \u{2318}V to paste.", "exclamationmark.triangle", .warning, false)
         case .error(let error):
             let saved = canRetry ? "Your recording is saved on this Mac." : ""
@@ -174,7 +174,7 @@ struct StreamDock: View {
                 switch mode {
                 case .pasted: return .done(words: words, destination: app.map { "Inserted into \($0)" } ?? "Inserted")
                 case .copied: return .done(words: words, destination: "Saved and copied")
-                case .copiedNotPasted: break
+                case .copiedNotPasted, .copiedAppChanged: break
                 }
             }
             return .idle

@@ -63,7 +63,7 @@ enum HUDSnapshot {
         case "inserting": return .delivering
         case "done": return .done(.inserted(words: 24))
         case "doneSaved": return .done(.savedAndCopied(words: 24))
-        case "copied": return .copiedNotPasted
+        case "copied": return .copiedNotPasted(fix: .openAccessibilitySettings)
         case "cancelled": return .cancelled
         case "errorNetwork":
             return .error(HUDError(DictationError(kind: .offline, message: "", fix: .retry)))

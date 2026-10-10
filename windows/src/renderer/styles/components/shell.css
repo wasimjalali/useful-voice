@@ -45,11 +45,11 @@
   height: 36px;
   margin: 0 auto 14px;
   border-radius: var(--r-sm);
-  /* The mark's tile is dark in both themes, like the app icon; on a dark canvas a
-     1px tone ring keeps its edge. */
+  /* The dark tile in the light theme and the light tile in the dark one, like the
+     app icon's two variants, so the logo never sinks into the rail. */
   background: var(--mark-tile);
   box-shadow: inset 0 0 0 1px var(--mark-ring);
-  color: var(--hud-ink);
+  color: var(--mark-ink);
 }
 
 .rail-nav,
@@ -59,7 +59,16 @@
   gap: 6px;
   width: 100%;
 }
-.rail-nav { flex: 1; min-height: 0; overflow-y: auto; }
+.rail-nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Spans the rail's 8px gutters (items stay inset) so the scroll box doesn't clip
+     the selection bar, which sits in the gutter. */
+  width: calc(100% + 16px);
+  margin: 0 -8px;
+  padding: 0 8px;
+}
 
 /* Icon over label. The selected item lifts onto the surface and carries a 2px ink bar on
    its leading edge, so selection never rests on tint alone. */
@@ -91,7 +100,8 @@
 .rail-item[aria-current="page"]::before {
   content: "";
   position: absolute;
-  left: 0;
+  /* In the rail's 8px gutter, outside the item, clear of a wide label. */
+  left: -5px;
   top: 14px;
   bottom: 14px;
   width: 2px;
@@ -111,7 +121,8 @@
 .rail-status[aria-expanded="true"]::before {
   content: "";
   position: absolute;
-  left: 0;
+  /* In the rail's 8px gutter, outside the item, clear of a wide label. */
+  left: -5px;
   top: 14px;
   bottom: 14px;
   width: 2px;

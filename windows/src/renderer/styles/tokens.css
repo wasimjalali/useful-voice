@@ -44,6 +44,7 @@
   /* The HUD is dark in both themes. */
   --hud-surface: #171717;
   --mark-tile: #171717;
+  --mark-ink: #fafafa;
   --mark-ring: transparent;
   --hud-ink: #fafafa;
   --hud-mark: #d4d4d4;
@@ -107,8 +108,10 @@
   --danger-soft: #3a1b14;
 
   --hud-surface: #202020;
-  --mark-tile: #171717;
-  --mark-ring: rgb(255 255 255 / 0.14);
+  /* The light tile (app-icon-light.svg) on a dark canvas, so the logo stands out. */
+  --mark-tile: #fafafa;
+  --mark-ink: #171717;
+  --mark-ring: transparent;
   --hud-ink: #fafafa;
   --hud-mark: #d4d4d4;
   --hud-danger: #f0795c;

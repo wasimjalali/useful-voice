@@ -39,6 +39,9 @@ struct RailItem: View {
                 .fill(Theme.ink)
                 .frame(width: 2)
                 .padding(.vertical, 14)
+                // In the rail's 8 pt gutter, outside the card: inside it the bar sat
+                // a point or two from a wide label ("Vocabulary").
+                .offset(x: -5)
                 .opacity(isSelected ? 1 : 0)
         }
         // The highlight fades in and out (150 ms) instead of snapping.

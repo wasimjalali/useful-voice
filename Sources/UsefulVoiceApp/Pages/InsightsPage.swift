@@ -8,11 +8,14 @@ struct InsightsPage: View {
     @ObservedObject var viewModel: UsefulVoiceViewModel
     let settings: AppSettings
     @State private var range: InsightsRange = InsightsFixture.startRange ?? .month
+    @State private var cache = InsightsCache()
 
     var body: some View {
         // Reading the revision ties this body to new dictations.
         let _ = viewModel.usageRevision
-        let data = InsightsData.build(range: range, inputs: inputs)
+        let data = cache.data(range: range, revision: viewModel.usageRevision, goal: settings.dailyWordGoal) {
+            InsightsData.build(range: range, inputs: inputs)
+        }
 
         VStack(spacing: 0) {
             StagePageHeader(title: "Insights", subtitle: data.rangeLabel) {
@@ -157,8 +160,15 @@ struct InsightsPage: View {
             }
             .buttonStyle(.brandPrimary)
             .controlSize(.large)
+            // A dictation already running would be stopped by the toggle.
+            .disabled(!dictationIdle)
             .clickableCursor()
         }
+    }
+
+    private var dictationIdle: Bool {
+        if case .idle = viewModel.dictationState { return true }
+        return false
     }
 
     /// Ghost axes for a new user, so the page keeps its shape.
@@ -498,7 +508,7 @@ struct InsightsPage: View {
     private func topWordsTile(_ d: InsightsData) -> some View {
         let top = d.topWords[0]
         let peak = Double(max(top.count, 1))
-        return InsightsTile(title: "Top words", meta: "From your vocabulary") {
+        return InsightsTile(title: "Top words", meta: "All time, from your vocabulary") {
             HStack(alignment: .top, spacing: 24) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(top.word)

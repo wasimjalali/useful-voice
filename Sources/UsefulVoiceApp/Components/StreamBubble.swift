@@ -96,7 +96,10 @@ struct StreamBubble: View {
                 onShiftClick: { store.shiftClick(record.id) },
                 // A click drops the old selection. It must not move focus: that would end
                 // a drag-selection in the text view.
-                onPlainClick: { selection = nil },
+                onPlainClick: {
+                    keyboardSelectionTask?.cancel()   // a click ends a pending keyboard selection
+                    selection = nil
+                },
                 onLineCount: { lineCount = $0 })
                 .popover(isPresented: Binding(get: { teach != nil }, set: { if !$0 { teach = nil } }),
                          attachmentAnchor: .rect(.rect(teach?.rect ?? .zero)), arrowEdge: .bottom) {

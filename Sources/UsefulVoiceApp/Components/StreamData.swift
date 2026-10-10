@@ -500,9 +500,12 @@ final class StreamStore: ObservableObject {
             return
         }
         clearSelection()
-        show("Added to \(note.title)") {
+        show("Added to \(note.title)") { [weak self] in
             scratchpad.select(note.id)
             scratchpad.deleteSelected()
+            if scratchpad.saveState == .failed {
+                self?.show("Couldn't undo. Notes can't be saved right now.", kind: .danger)
+            }
         }
     }
 

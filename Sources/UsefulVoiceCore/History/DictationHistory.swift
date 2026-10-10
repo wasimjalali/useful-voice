@@ -68,8 +68,11 @@ public final class DictationHistory {
 
     /// Remove all records and persist.
     public func clear() {
+        let before = records
         records = []
-        persist()
+        // A failed write must leave memory matching the file, or the next append
+        // would silently drop the history the user was told was kept.
+        if !persist() { records = before }
     }
 
     public func all() -> [DictationRecord] {

@@ -5,7 +5,7 @@ public enum DictationState: Equatable, Sendable {
     case recording
     case transcribing
     case delivering
-    case error(String)
+    case error(DictationError)
 }
 
 /// The dictation pipeline state machine. Spec section 4 data flow and
@@ -16,6 +16,11 @@ public final class DictationController {
         didSet { onStateChange?(state) }
     }
     public var onStateChange: ((DictationState) -> Void)?
+    /// What a dictation ended with. `delivered` fires from the delivery
+    /// completion and `cancelled` from `cancel()`, each exactly once and BEFORE
+    /// the state returns to `.idle`, so a listener that renders "done" has
+    /// already seen the outcome.
+    public var onOutcome: ((DictationOutcome) -> Void)?
 
     private let recorder: AudioRecording
     private let providers: () -> [TranscriptionProvider]
@@ -23,10 +28,11 @@ public final class DictationController {
     private let hint: () -> TranscriptionHint
     private(set) var recordingsToKeep: Int
     /// Delivers the final text and calls the completion once delivery has fully
-    /// settled (paste verified, clipboard restored). The controller stays in
-    /// .delivering until then, so the busy mutex covers the whole delivery
-    /// window and a re-entrant tap can't start a new recording mid-paste.
-    private let deliver: (String, @escaping () -> Void) -> Void
+    /// settled (paste verified, clipboard restored, or the copy written). The
+    /// controller stays in .delivering until then, so the busy mutex covers the
+    /// whole delivery window and a re-entrant tap can't start a new recording
+    /// mid-paste. Only the first call of a completion counts.
+    private let deliver: (String, DeliveryMode, @escaping (DeliveryReport) -> Void) -> Void
     private let record: (DictationRecord) -> Void
     /// Where a detected-language anomaly is reported. Injected so tests do not append
     /// to the real install's log.
@@ -38,7 +44,21 @@ public final class DictationController {
     private let formatterUnavailable: () -> Void
     private let now: () -> Date
     private let isSecureInputActive: () -> Bool
+    /// The app in front. Read when a hotkey dictation starts (the paste target)
+    /// and again at delivery, so text is pasted only where it was dictated for.
+    private let frontmostApp: () -> FrontmostApp?
     private var pendingRawMode = false
+    /// Where the dictation now in flight was started, and the app it will paste
+    /// into. Written once, when recording starts, and never by the stop toggle,
+    /// the auto-stop or Esc. The stop path copies them out synchronously, and
+    /// retryLast() does not read them at all.
+    private var activeSource: DictationSource = .hotkey
+    private var activeAppName: String?
+    private var activeApp: FrontmostApp?
+    /// Identifies the delivery in flight. A completion acts only if it still
+    /// holds the current token, so a second call, or a late one from an earlier
+    /// dictation, cannot fire an outcome or end the next dictation's delivery.
+    private var deliveryToken = 0
     private var processingTask: Task<Void, Never>?
     private var recordingStartedAt: Date?
     /// Audio from the last dictation whose providers all failed. Spec section 5:
@@ -57,7 +77,7 @@ public final class DictationController {
                 store: RecordingStore,
                 hint: @escaping () -> TranscriptionHint,
                 recordingsToKeep: Int,
-                deliver: @escaping (String, @escaping () -> Void) -> Void,
+                deliver: @escaping (String, DeliveryMode, @escaping (DeliveryReport) -> Void) -> Void,
                 record: @escaping (DictationRecord) -> Void = { _ in },
                 diagnostics: Diagnostics = .shared,
                 format: ((String, FormattingContext) async throws -> FormattingResult)? = nil,
@@ -69,7 +89,8 @@ public final class DictationController {
                 suggestTerms: @escaping ([String]) -> Void = { _ in },
                 formatterUnavailable: @escaping () -> Void = {},
                 now: @escaping () -> Date = { Date() },
-                isSecureInputActive: @escaping () -> Bool = { false }) {
+                isSecureInputActive: @escaping () -> Bool = { false },
+                frontmostApp: @escaping () -> FrontmostApp? = { nil }) {
         self.recorder = recorder
         self.providers = providers
         self.store = store
@@ -85,27 +106,36 @@ public final class DictationController {
         self.formatterUnavailable = formatterUnavailable
         self.now = now
         self.isSecureInputActive = isSecureInputActive
+        self.frontmostApp = frontmostApp
+        // The recorder calls this on the main thread and only for its live
+        // session (see AudioRecording.onAutoStop), so it acts at once: no extra
+        // hop in which a stale call could end the NEXT recording. The state check
+        // covers a call that lands after a manual stop already advanced the state.
         self.recorder.onAutoStop = { [weak self] in
-            DispatchQueue.main.async {
-                // Only the recording we own may be auto-stopped. A late auto-stop
-                // dispatched after a manual stop already advanced the state must
-                // not toggle (worst case, start a fresh recording from .idle).
-                guard self?.state == .recording else { return }
-                self?.toggle()
+            MainActor.assumeIsolated {
+                guard let self, self.state == .recording else { return }
+                self.toggle()
             }
         }
     }
 
-    /// Tap of the hotkey: start when idle, stop+process when recording.
-    /// Ignored while a previous dictation is still processing.
-    public func toggle(rawMode: Bool = false) {
+    /// Tap of the hotkey or the window's mic button: start when idle, stop+process
+    /// when recording. Ignored while a previous dictation is still processing.
+    ///
+    /// `source` matters only when this call STARTS a recording: it is kept for
+    /// that dictation (a window start is copied, a hotkey start is pasted). A
+    /// stop toggle ignores it, whichever source sends it.
+    public func toggle(rawMode: Bool = false, source: DictationSource = .hotkey) {
         switch state {
         case .idle, .error:
-            startRecording()
+            startRecording(source: source)
         case .recording:
             pendingRawMode = rawMode
+            let mode: DeliveryMode = activeSource == .window ? .copy : .paste
+            let appName = activeAppName
+            let startApp = activeApp
             state = .transcribing   // synchronous: a racing toggle now sees .transcribing and is ignored
-            processingTask = Task { await stopAndProcess() }
+            processingTask = Task { await stopAndProcess(mode: mode, appName: appName, startApp: startApp) }
         case .transcribing, .delivering:
             break // busy; ignore to avoid double-processing
         }
@@ -117,9 +147,15 @@ public final class DictationController {
         await processingTask?.value
     }
 
+    /// Test helper: awaits whatever processing is in flight.
+    func awaitProcessing() async {
+        await processingTask?.value
+    }
+
     /// Re-runs the provider chain on the audio retained from the last failure.
     /// Spec section 5: one-click retry, no re-recording. Ignored when busy or
-    /// when there is nothing to retry.
+    /// when there is nothing to retry. The result is always saved and copied, never
+    /// pasted: it belongs to an old recording, whatever started it.
     public func retryLast() {
         guard let url = lastFailedAudio else { return }
         switch state {
@@ -130,7 +166,7 @@ public final class DictationController {
         let savedContext = lastFailedContext
         processingTask = Task {
             await process(audioURL: url, measuredDuration: nil,
-                          presetContext: savedContext)
+                          presetContext: savedContext, mode: .copy, appName: nil)
         }
     }
 
@@ -143,7 +179,20 @@ public final class DictationController {
     public func cancel() {
         guard state == .recording else { return }
         recorder.cancel()
+        onOutcome?(.cancelled)
         state = .idle
+    }
+
+    /// Forgets the retained audio of the last failed dictation (its recording was
+    /// deleted), so Retry is no longer offered. Ignored while a dictation is in
+    /// flight, which owns that audio.
+    public func discardRetainedAudio() {
+        switch state {
+        case .recording, .transcribing, .delivering: return
+        case .idle, .error: break
+        }
+        lastFailedAudio = nil
+        lastFailedContext = nil
     }
 
     public func updateRecordingSettings(silenceTimeout: TimeInterval, recordingsToKeep: Int) {
@@ -151,24 +200,33 @@ public final class DictationController {
         self.recordingsToKeep = recordingsToKeep
     }
 
-    private func startRecording() {
+    private func startRecording(source: DictationSource) {
         // A password field is focused: refuse rather than record and paste into
         // it. Spec section 5. IsSecureEventInputEnabled is injected from the app.
         guard !isSecureInputActive() else {
-            state = .error("Secure field active. Dictation is off here.")
+            state = .error(DictationError(
+                kind: .secureField,
+                message: "Secure field active. Dictation is off here."))
             return
         }
         let url = store.newRecordingURL()
         do {
             try recorder.start(to: url)
             recordingStartedAt = now()
+            // Captured now, for this dictation only. Only a hotkey dictation
+            // pastes, so only it needs the app it will paste into.
+            activeSource = source
+            let front = source == .hotkey ? frontmostApp() : nil
+            activeApp = front
+            activeAppName = front?.name
             state = .recording
         } catch {
-            state = .error("Couldn't start recording: \(error.localizedDescription)")
+            state = .error(DictationError.startFailure(error))
         }
     }
 
-    private func stopAndProcess() async {
+    private func stopAndProcess(mode: DeliveryMode, appName: String?,
+                                 startApp: FrontmostApp?) async {
         let audioURL: URL
         do {
             audioURL = try recorder.stop()
@@ -177,7 +235,9 @@ public final class DictationController {
             // consumed by retryLast(), the one path that reaches process()
             // without a fresh toggle(rawMode:) write.
             pendingRawMode = false
-            state = .error("Couldn't stop recording: \(error.localizedDescription)")
+            state = .error(DictationError(
+                kind: .stopFailed,
+                message: "Couldn't stop recording: \(error.localizedDescription)"))
             return
         }
         // The user was silent the whole time: never transcribe it. A silent clip
@@ -187,14 +247,18 @@ public final class DictationController {
         guard recorder.didCaptureSpeech else {
             pendingRawMode = false   // the raw intent dies with this dictation
             try? store.prune(keep: recordingsToKeep)
-            state = .error("No speech detected.")
+            state = .error(Self.noSpeech)
             return
         }
         // Wall-clock recording length, used as the duration when the provider
         // response omits one.
         let measuredDuration = recordingStartedAt.map { max(0, now().timeIntervalSince($0)) }
-        await process(audioURL: audioURL, measuredDuration: measuredDuration)
+        await process(audioURL: audioURL, measuredDuration: measuredDuration,
+                      mode: mode, appName: appName, startApp: startApp)
     }
+
+    private static let noSpeech = DictationError(
+        kind: .noSpeech, message: "No speech detected.")
 
     /// Transcribes, formats, records, and delivers a recorded audio file. Shared
     /// by the normal stop path and retryLast(). state is already .transcribing.
@@ -202,7 +266,10 @@ public final class DictationController {
     /// the app they dictated into; a retry reuses the context captured when the
     /// failed dictation was recorded (presetContext).
     private func process(audioURL: URL, measuredDuration: Double?,
-                         presetContext: FormattingContext? = nil) async {
+                         presetContext: FormattingContext? = nil,
+                         mode deliveryMode: DeliveryMode,
+                         appName: String?,
+                         startApp: FrontmostApp? = nil) async {
         // Raw mode is consumed exactly once, at the top: a failed or empty
         // transcript used to leave the flag set and leak raw mode into the next
         // dictation.
@@ -223,7 +290,10 @@ public final class DictationController {
         } ?? hint()
         let chain = providers()
         guard !chain.isEmpty else {
-            state = .error("No transcription provider configured. Open Settings.")
+            state = .error(DictationError(
+                kind: .noProvider,
+                message: "No transcription provider configured. Open Settings.",
+                fix: .openEngineSettings))
             return
         }
 
@@ -236,7 +306,8 @@ public final class DictationController {
         let audioBytes = (attrs?[.size] as? Int) ?? 0
         guard audioBytes >= 44 + 3200 else {
             try? store.prune(keep: recordingsToKeep)
-            state = .error("Recording was too short.")
+            state = .error(DictationError(
+                kind: .tooShort, message: "Recording was too short."))
             return
         }
 
@@ -261,7 +332,13 @@ public final class DictationController {
             lastFailedContext = formattingContext
             let detail = (lastError as? ProviderError).map(Self.describe)
                 ?? lastError?.localizedDescription ?? "unknown error"
-            state = .error("Transcription failed: \(detail)")
+            // Retry is offered only where it can help (see DictationError.fix);
+            // the audio is retained for every failure, so canRetry stays true.
+            let kind = DictationError.kind(forTranscriptionFailure: lastError)
+            state = .error(DictationError(
+                kind: kind,
+                message: "Transcription failed: \(detail)",
+                fix: DictationError.fix(forTranscriptionFailure: kind)))
             return
         }
         // Transcription succeeded: any earlier failure is resolved.
@@ -273,7 +350,7 @@ public final class DictationController {
         // clipboard). Spec section 5. The STT call was already billed by the API.
         guard !transcript.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             try? store.prune(keep: recordingsToKeep)
-            state = .error("No speech detected.")
+            state = .error(Self.noSpeech)
             return
         }
 
@@ -361,9 +438,39 @@ public final class DictationController {
         // Hold .delivering until delivery actually settles; the busy mutex then
         // spans the whole paste/verify/restore window instead of dropping to
         // .idle the instant the synthetic paste is posted.
-        deliver(finalText) { [weak self] in
-            guard let self else { return }
-            self.state = .idle
+        //
+        // The token is taken before deliver() runs because a completion may fire
+        // synchronously. A completion acts once: the outcome is published first,
+        // then the state returns to .idle.
+        deliveryToken += 1
+        let token = deliveryToken
+        let words = DictationOutcome.wordCount(of: finalText)
+        // A hotkey dictation pastes only into the app it started in. If the user
+        // has since moved (or stopped it from Useful Voice's own window after
+        // starting elsewhere), the paste would land in the wrong place, so deliver
+        // by copy and say so. Started and still in Useful Voice (a note) pastes.
+        var deliverMode = deliveryMode
+        var pasteRedirected = false
+        if deliverMode == .paste, let now = frontmostApp(),
+           now.id != startApp?.id {
+            deliverMode = .copy
+            pasteRedirected = true
+        }
+        deliver(finalText, deliverMode) { [weak self] report in
+            guard let self, self.state == .delivering,
+                  self.deliveryToken == token else { return }
+            self.deliveryToken += 1
+            switch report {
+            case .success(let result):
+                let reported: DeliveryResult =
+                    pasteRedirected && result == .copied ? .copiedAppChanged : result
+                self.onOutcome?(.delivered(words: words, mode: reported, appName: appName))
+                self.state = .idle
+            case .failure:
+                self.state = .error(DictationError(
+                    kind: .deliveryFailed,
+                    message: "Couldn't copy the text. It's saved in Useful Voice."))
+            }
         }
     }
 

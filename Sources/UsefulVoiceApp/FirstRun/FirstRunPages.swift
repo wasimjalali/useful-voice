@@ -840,8 +840,8 @@ struct FRTryItPage: View {
             .accessibilityElement(children: .combine)
             FRPrimaryButton(title: "Finish setup") { model.go(.done) }
         } else {
-            if case .error(let text) = viewModel.dictationState {
-                FRErrorBanner(text: text)
+            if case .error(let error) = viewModel.dictationState {
+                FRErrorBanner(text: error.message)
                 if viewModel.canRetry {
                     FRPrimaryButton(title: "Retry", action: viewModel.retry)
                 }

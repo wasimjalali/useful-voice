@@ -7,6 +7,8 @@ enum DeliveryOutcome {
     case insertedViaAX   // typed into the focused element
     case pasted          // synthetic Cmd-V landed (or a Cmd-V app where we can't prove it)
     case clipboardOnly   // nothing landed; the user pastes manually
+    case secureFieldCopied // a password field has focus: left on the clipboard, never typed
+    case failed          // the clipboard write itself failed: the text is nowhere but History
 }
 
 /// Proof that a paste actually landed, gathered from the *target* element.
@@ -123,8 +125,7 @@ struct TextInserter {
         // safe themselves. Nothing is snapshotted: a password manager's
         // clipboard entry must not be copied into our process. Spec section 5.
         if isSecureInput() {
-            Clipboard.writeString(text, marker: true, to: pb)
-            completion(.clipboardOnly)
+            completion(Clipboard.writeString(text, marker: true, to: pb) ? .secureFieldCopied : .failed)
             return
         }
 
@@ -143,8 +144,13 @@ struct TextInserter {
         // paste, marked so a re-entrant snapshot skips our own item.
         guard Clipboard.writeString(text, marker: true, to: pb) else {
             // The clipboard could not be written at all. Nothing was posted, so
-            // the dictation survives in History; report the manual path.
-            completion(.clipboardOnly)
+            // the dictation survives only in History; report the failure. The
+            // failed write may already have cleared the clipboard, so put the
+            // user's own contents back when they were copied safely.
+            if canRestoreSafely, !saved.isEmpty {
+                Clipboard.restore(saved, to: pb)
+            }
+            completion(.failed)
             onDeliverySettled?()
             return
         }
@@ -199,6 +205,19 @@ struct TextInserter {
                 }
             }
         }
+    }
+
+    /// Copy mode: puts `text` on the clipboard and nothing else. No snapshot, no
+    /// restore (the user asked for this text to be copied, so it must stay), no
+    /// paste, no secure-input check (nothing is typed anywhere). Returns false when
+    /// the write failed (also logged); the dictation is still in History.
+    @discardableResult
+    func copy(_ text: String) -> Bool {
+        guard Clipboard.writeString(text, marker: false, to: pasteboard()) else {
+            Diagnostics.shared.error("delivery", "could not write the dictation to the clipboard")
+            return false
+        }
+        return true
     }
 
     /// Whether the paste provably landed: the SAME element is still focused and

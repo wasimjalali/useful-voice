@@ -56,7 +56,11 @@ export async function readJson<T>(filePath: string): Promise<LoadResult<T>> {
     // TIMESTAMPED name rather than a fixed ".bak": a fixed name meant a second
     // incident destroyed the first one's evidence before quarantining the new
     // file, leaving only one generation.
-    const quarantinedTo = `${filePath}.corrupt-${timestampSlug()}`;
+    // Two incidents inside one millisecond would share the timestamp, so a taken
+    // name gets a counter instead of being overwritten.
+    const base = `${filePath}.corrupt-${timestampSlug()}`;
+    let quarantinedTo = base;
+    for (let n = 1; await exists(quarantinedTo); n += 1) quarantinedTo = `${base}-${n}`;
     try {
       await fs.rename(filePath, quarantinedTo);
     } catch {
@@ -115,6 +119,15 @@ export async function hasFreeSpace(directory: string, requiredBytes: number): Pr
 function describe(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+async function exists(target: string): Promise<boolean> {
+  try {
+    await fs.access(target);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function timestampSlug(now: Date = new Date()): string {

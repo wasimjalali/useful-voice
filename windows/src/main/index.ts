@@ -1659,8 +1659,8 @@ export async function runSelfTest(): Promise<SelfTestResult> {
       `({
         navItems: document.querySelectorAll('.rail-item:not(.rail-status)').length,
         shell: !!document.querySelector('.shell'),
-        title: (document.querySelector('.stage-title') || {}).textContent || '',
-        stats: document.querySelectorAll('.stat-value').length,
+        title: (document.querySelector('.st-title') || document.querySelector('.stage-title') || {}).textContent || '',
+        stats: document.querySelectorAll('.bubble').length,
       })`,
     )) as { navItems: number; shell: boolean; title: string; stats: number };
 

@@ -307,6 +307,8 @@ export function mountMain(pages: Record<Page, PageModule>): void {
 
     const page = PAGES.find((entry) => entry.id === state.page);
     title.textContent = page?.label ?? 'Useful Voice';
+    // The Stream page draws its own header (title, search, filters, Export).
+    header.hidden = state.page === 'stream';
     headerActions.replaceChildren(...pages[state.page].headerActions());
 
     const animatePage = nextPageAnimates.value;

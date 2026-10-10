@@ -39,8 +39,44 @@ function grouped(value: number): string {
 function displayAccelerator(value: string): string {
   return value.replace(/\bControl\b/g, 'Ctrl');
 }
+
+const MODIFIER_NAMES: Record<string, string> = {
+  control: 'Control', ctrl: 'Control', commandorcontrol: 'Control', cmdorctrl: 'Control',
+  alt: 'Alt', option: 'Alt',
+  shift: 'Shift',
+  super: 'Super', meta: 'Super', cmd: 'Super', command: 'Super', win: 'Super',
+};
+const MODIFIER_ORDER = ['Control', 'Alt', 'Shift', 'Super'];
+const KEY_NAMES: Record<string, string> = {
+  space: 'Space', return: 'Return', enter: 'Return', tab: 'Tab', backspace: 'Backspace',
+  up: 'Up', down: 'Down', left: 'Left', right: 'Right',
+};
+
+/**
+ * One spelling per combination: canonical names, modifiers in a fixed order, the key
+ * last. "Alt+Ctrl+space" and "Control+Alt+Space" come out identical, so they compare
+ * equal and are saved the same way.
+ */
+function normalizeAccelerator(value: string): string {
+  const modifiers = new Set<string>();
+  const keys: string[] = [];
+  for (const raw of value.split('+')) {
+    const token = raw.trim();
+    if (token.length === 0) continue;
+    const lower = token.toLowerCase();
+    const modifier = MODIFIER_NAMES[lower];
+    if (modifier) {
+      modifiers.add(modifier);
+    } else {
+      keys.push(
+        KEY_NAMES[lower] ?? (/^f\d{1,2}$/.test(lower) || token.length === 1 ? token.toUpperCase() : token),
+      );
+    }
+  }
+  return [...MODIFIER_ORDER.filter((name) => modifiers.has(name)), ...keys].join('+');
+}
 function storedAccelerator(value: string): string {
-  return value.trim().replace(/\bCtrl\b/g, 'Control');
+  return normalizeAccelerator(value);
 }
 
 /** The toast host of the page on screen. Replaced on every page render. */
@@ -68,8 +104,15 @@ function messageOf(error: unknown, fallback: string): string {
   return error.message.replace(/^Error invoking remote method '[^']*': (Error: )?/, '') || fallback;
 }
 
-/** The ends of a hotkey capture still listening; at most one at a time. */
-let endCapture: (() => void) | null = null;
+/**
+ * The one hotkey capture still listening, if any. `release` stops listening; `redraw`
+ * puts its row back to idle, which a row needs when another row took the capture.
+ */
+interface Capture {
+  release: () => void;
+  redraw: () => void;
+}
+let activeCapture: Capture | null = null;
 
 const CTRL_OR_ALT = /(^|\+)(control|ctrl|commandorcontrol|cmdorctrl|alt|option)(\+|$)/i;
 
@@ -80,10 +123,29 @@ const CTRL_OR_ALT = /(^|\+)(control|ctrl|commandorcontrol|cmdorctrl|alt|option)(
  */
 function hotkeyRefusal(value: string, other: string): string | null {
   if (!CTRL_OR_ALT.test(value)) return 'Add Ctrl or Alt, like Ctrl+Alt+Space.';
-  if (other.trim().length > 0 && other.trim().toLowerCase() === value.trim().toLowerCase()) {
+  if (other.trim().length > 0 && normalizeAccelerator(other) === normalizeAccelerator(value)) {
     return "Dictation and the language picker can't share a hotkey.";
   }
   return null;
+}
+
+/**
+ * Reload the settings after a key change that already succeeded. If the reload fails,
+ * the page still shows the outcome the change had (`hasApiKey`) and says so; it does
+ * not claim the change itself failed.
+ */
+async function reloadSettings(hasApiKey: boolean): Promise<boolean> {
+  try {
+    state.settings = await api.getSettings();
+    return true;
+  } catch (error) {
+    if (state.settings) state.settings = { ...state.settings, hasApiKey };
+    toast(
+      `${hasApiKey ? 'Key saved' : 'Key removed'}, but the settings could not be reloaded. ${messageOf(error, '')}`.trim(),
+      'bad',
+    );
+    return false;
+  }
 }
 
 /** Save one patch. Failures surface as a toast; the caller decides how to roll back. */
@@ -103,7 +165,7 @@ export function renderSettingsPage(anchor?: string): HTMLElement {
   if (!settings) return el('div', { class: 'muted' }, 'Loading…');
 
   // A repaint builds a new page: a capture still listening belongs to the old one.
-  endCapture?.();
+  activeCapture?.release();
 
   const page = el('div', { class: 'settings-page' });
   const host = el('div', { class: 's-toasts', role: 'status', 'aria-live': 'polite' } as never);
@@ -392,18 +454,19 @@ function keyRow(): HTMLElement {
         draw();
         return;
       }
-      state.settings = await api.getSettings();
     } catch (error) {
       status = { kind: 'bad', text: messageOf(error, 'The key could not be saved.') };
       draw();
       return;
     }
+    // The key is saved. Reloading the settings is a separate step and reports on its own.
+    const reloaded = await reloadSettings(true);
     editing = false;
     status = null;
     draw();
     // The key banner and the status button in the shell read hasApiKey.
     renderChrome();
-    toast('Saved');
+    if (reloaded) toast('Saved');
   };
 
   const testKey = async (): Promise<void> => {
@@ -427,16 +490,16 @@ function keyRow(): HTMLElement {
   const removeKey = async (): Promise<void> => {
     try {
       await api.clearApiKey();
-      state.settings = await api.getSettings();
     } catch (error) {
       toast(messageOf(error, 'The key could not be removed.'), 'bad');
       return;
     }
+    const reloaded = await reloadSettings(false);
     editing = false;
     status = null;
     draw();
     renderChrome();
-    toast('Key removed');
+    if (reloaded) toast('Key removed');
   };
 
   draw();
@@ -574,19 +637,24 @@ function hotkeyRow(
     );
   };
 
+  // This row's own capture. Another row starting one releases it and redraws this row.
+  let own: Capture | null = null;
   const stop = (): void => {
-    endCapture?.();
+    own?.release();
+    own = null;
     draw(false);
   };
   const listen = (): void => {
-    endCapture?.();
+    const lost = activeCapture;
+    lost?.release();
+    lost?.redraw();
     showHint(hintText, false);
     draw(true);
     const onKey = (event: KeyboardEvent): void => {
       // The page was repainted or left while this was listening: let go, and leave
       // the key alone for whoever has focus now.
       if (!control.isConnected) {
-        endCapture?.();
+        mine.release();
         return;
       }
       event.preventDefault();
@@ -601,25 +669,37 @@ function hotkeyRow(
         showHint("That key can't be used.", true);
         return;
       }
-      const accelerator = [
+      const accelerator = normalizeAccelerator([
         event.ctrlKey ? 'Control' : null,
         event.altKey ? 'Alt' : null,
         event.shiftKey ? 'Shift' : null,
         main,
-      ].filter(Boolean).join('+');
+      ].filter(Boolean).join('+'));
       const refusal = hotkeyRefusal(accelerator, other());
       if (refusal) {
         showHint(refusal, true);
         return;
       }
       showHint(hintText, false);
-      void onSave(accelerator).then(() => stop());
+      void onSave(accelerator).then(() => {
+        // Only end this row's own capture; show the stored value if it is idle.
+        if (own === mine) stop();
+        else if (own === null) draw(false);
+      });
     };
+    const mine: Capture = {
+      release: () => {
+        window.removeEventListener('keydown', onKey, true);
+        if (activeCapture === mine) activeCapture = null;
+      },
+      redraw: () => {
+        own = null;
+        draw(false);
+      },
+    };
+    own = mine;
+    activeCapture = mine;
     window.addEventListener('keydown', onKey, true);
-    endCapture = () => {
-      window.removeEventListener('keydown', onKey, true);
-      endCapture = null;
-    };
   };
   draw(false);
   return wrapper;

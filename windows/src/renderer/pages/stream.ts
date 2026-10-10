@@ -295,3 +295,7 @@ export function historyHeaderActions(): Node[] {
     ),
   ];
 }
+
+// TEMP until merge: the real Stream page replaces these.
+export const renderStreamPage = renderHome;
+export const headerActionsForStream = homeHeaderActions;

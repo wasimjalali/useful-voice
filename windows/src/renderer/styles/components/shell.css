@@ -26,46 +26,157 @@
 }
 
 .rail {
-  width: 248px;
+  position: relative;
+  z-index: 5;
+  width: 84px;
   flex-shrink: 0;
-  padding: 8px 12px 16px;
+  padding: 12px 8px 12px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  align-items: center;
+  gap: 6px;
   background: var(--rail);
-  box-shadow: var(--shadow-rail);
 }
 
 .rail-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 6px 0;
-  min-height: 32px;
-}
-
-.rail-mark {
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  margin-bottom: 14px;
   color: var(--ink);
 }
 
-.rail-wordmark {
-  font-size: var(--fs-body);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.rail-nav {
+.rail-nav,
+.rail-foot {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
+  gap: 6px;
+  width: 100%;
+}
+.rail-nav { flex: 1; min-height: 0; overflow-y: auto; }
+
+/* Icon over label. The selected item lifts onto the surface and carries a 2px ink bar on
+   its leading edge, so selection never rests on tint alone. */
+.rail-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 54px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: var(--fs-label);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out);
+}
+.rail-item:hover { background: var(--sunken); color: var(--ink); }
+.rail-item[aria-current="page"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm), 0 0 0 0.5px var(--edge);
+}
+.rail-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--ink);
+}
+.rail-glyph { display: grid; place-items: center; }
+.rail-glyph svg { width: 22px; height: 22px; }
+.rail-glyph.ok { color: var(--success); }
+.rail-glyph.warn { color: var(--warning); }
+.rail-glyph.bad { color: var(--danger); }
+.rail-label { line-height: 1; }
+
+/* The status button is an item with a state word, and its popover opens to its right. */
+.rail-status-wrap { position: relative; width: 100%; }
+.rail-status[aria-expanded="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm), 0 0 0 0.5px var(--edge); }
+.rail-status[aria-expanded="true"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--ink);
 }
 
+.status-popover {
+  position: absolute;
+  left: calc(100% + 8px);
+  bottom: 0;
+  width: 300px;
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-pop);
+  animation: popover-in var(--dur-state) var(--ease-out);
+}
+.status-popover.leaving {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity var(--dur-exit) ease-in, transform var(--dur-exit) ease-in;
+}
+.status-popover-title { margin: 0; font-size: var(--fs-title); font-weight: 600; }
+.status-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+.status-row-label { flex: 1; font-size: var(--fs-body); }
+.status-row .status-pill svg { flex: none; }
+.status-row .btn { margin-left: auto; }
+
+@keyframes popover-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Banners: one line under the header, one action. */
+.banner-host:empty { display: none; }
+.banner-host { padding: 0 20px 4px; }
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px 14px;
+  border-radius: var(--r-md);
+  background: var(--warning-soft);
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+  color: var(--ink);
+  font-size: var(--fs-ui);
+  line-height: 1.4;
+}
+.banner svg { flex: none; color: var(--warning); }
+.banner.bad { background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+.banner.bad svg { color: var(--danger); }
+.banner b { font-weight: 600; }
+.banner-text { flex: 1; min-width: 0; }
+.banner .btn { flex: none; background: var(--surface); }
+
+/* Touch screens: rows and buttons at 40px. */
+@media (pointer: coarse) {
+  .rail-item { height: 60px; }
+  .banner .btn, .status-row .btn { height: 40px; }
+}
+
+/* Still used by the Notes page's own list until it is rebuilt (the rail uses .rail-item). */
 .nav-item {
   display: flex;
   align-items: center;
@@ -81,24 +192,14 @@
   cursor: pointer;
   transition: background var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out);
 }
-
 .nav-item:hover { background: var(--sunken); color: var(--ink); }
 .nav-item[aria-current="page"] {
   background: var(--sunken);
   color: var(--ink);
   font-weight: 550;
-  /* A shape cue besides the tint: a 2px ink bar on the leading edge. */
   box-shadow: inset 2px 0 0 var(--ink);
 }
 .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
-
-.rail-operator {
-  border-top: 1px solid var(--line);
-  padding-top: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
 
 .stage-wrap {
   display: flex;
@@ -125,7 +226,6 @@
   justify-content: space-between;
   gap: 16px;
   padding: 20px 28px 14px;
-  border-bottom: 1px solid var(--line);
 }
 
 .stage-title {
@@ -133,12 +233,6 @@
   font-weight: 600;
   letter-spacing: -0.02em;
   margin: 0;
-}
-
-.stage-subtitle {
-  margin: 3px 0 0;
-  font-size: var(--fs-ui);
-  color: var(--ink-muted);
 }
 
 .stage-body {
@@ -151,12 +245,18 @@
 .page { display: flex; flex-direction: column; gap: 18px; max-width: 920px; }
 .page-wide { max-width: none; }
 
-/* Applied only on a real page switch, so unrelated repaints do not replay it.
-   The shared brand curve is front-loaded, so the duration is at the top of the
-   brand range; anything shorter reads as a cut rather than a transition. */
-.page-enter { animation: page-in 300ms var(--ease-out); }
+/* Two beats on a real page switch, never a cross-fade: the old page leaves in 120 ms
+   (fade, 6px up, ease-in), the swap happens at opacity 0, the new one enters in 260 ms
+   (8px rise and fade). Applied only on a real switch, so unrelated repaints do not
+   replay it. */
+.stage-body.leaving {
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity var(--dur-exit) ease-in, transform var(--dur-exit) ease-in;
+}
+.page-enter { animation: page-in var(--dur-enter) var(--ease-out); }
 
 @keyframes page-in {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
 }

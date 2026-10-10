@@ -466,3 +466,6 @@ async function dismissSuggestion(id: string): Promise<void> {
   await refresh();
   render();
 }
+
+// TEMP until merge: the real Vocabulary page replaces this.
+export const renderVocabularyPage = renderDictionary;

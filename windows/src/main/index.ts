@@ -232,7 +232,7 @@ class UsefulVoiceApp {
     });
   }
 
-  private async openWindow(page: string): Promise<void> {
+  private async openWindow(page: string, anchor?: string): Promise<void> {
     if (page === 'hud') return;
 
     if (!this.mainWindow || this.mainWindow.isDestroyed()) {
@@ -276,7 +276,7 @@ class UsefulVoiceApp {
       this.mainWindow.show();
       this.mainWindow.focus();
     }
-    this.broadcast('app:navigate', page);
+    this.mainWindow.webContents.send('app:navigate', page, anchor);
   }
 
   /**
@@ -1077,9 +1077,11 @@ class UsefulVoiceApp {
 
     ipcMain.handle('app:open-external', async (_event, url: string) => {
       // Only https, so a compromised renderer cannot launch arbitrary schemes.
-      if (/^https:\/\//i.test(url)) await shell.openExternal(url);
+      // The one non-https target is the Windows microphone privacy page, for the status fix.
+      if (/^https:\/\//i.test(url) || url === 'ms-settings:privacy-microphone') await shell.openExternal(url);
     });
 
+    ipcMain.handle('app:flags', () => ({ previewFeatures: process.argv.includes('--preview-features') }));
     ipcMain.handle('app:get-theme', () => resolvedTheme());
     ipcMain.handle('app:show-log', () => shell.showItemInFolder(this.diagnostics.path));
 
@@ -1287,6 +1289,7 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     'notes:get': [],
     'app:save-status': { ok: true },
     'app:get-theme': 'light',
+    'app:flags': { previewFeatures: false },
   };
   for (const [channel, value] of Object.entries(stubs)) {
     ipcMain.handle(channel, () => value);
@@ -1397,9 +1400,9 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     // The count is checked against the documented boundary rather than a vague lower
     // bound: `tests/ipcContract.test.ts` pins this same number to the README, so a
     // channel added or lost anywhere fails one of the two.
-    // 56: the theme (`getTheme`, `onThemeChanged`), `showDiagnosticsLog`, and
-    // `onOutcome` + `onTelemetry`. Kept in step with the README by the comment below.
-    const EXPECTED_API_METHODS = 56;
+    // 57: the theme (`getTheme`, `onThemeChanged`), `showDiagnosticsLog`,
+    // `onOutcome` + `onTelemetry` and `getFlags`. Kept in step with the README by the comment below.
+    const EXPECTED_API_METHODS = 57;
     record(
       'preload exposes API',
       preloadProbe.hasApi
@@ -1419,7 +1422,7 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     await new Promise((resolve) => setTimeout(resolve, 1500));
     const uiProbe = (await probe.webContents.executeJavaScript(
       `({
-        navItems: document.querySelectorAll('.nav-item').length,
+        navItems: document.querySelectorAll('.rail-item:not(.rail-status)').length,
         shell: !!document.querySelector('.shell'),
         title: (document.querySelector('.stage-title') || {}).textContent || '',
         stats: document.querySelectorAll('.stat-value').length,

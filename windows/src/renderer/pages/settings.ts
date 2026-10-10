@@ -429,3 +429,8 @@ async function runBackup(kind: 'export' | 'import' | 'terms' | 'fixes'): Promise
   if (kind === 'import') await refresh();
   render();
 }
+
+// TEMP until merge: the real Settings page replaces this.
+export function renderSettingsPage(_anchor?: string): Node {
+  return renderSettings();
+}

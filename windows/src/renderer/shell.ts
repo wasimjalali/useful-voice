@@ -1,6 +1,10 @@
 import { api } from './api.js';
 import { el, icon, ICONS } from './components/dom.js';
+import { createBanner } from './components/banners.js';
+import { computeHealth, createStatusButton, type HealthInput } from './components/statusPopover.js';
+import { createLandingMark } from './components/landingMark.js';
 import type {
+  DictationError,
   DictationStateEvent,
   HistoryEntryDTO,
   MemorySnapshotDTO,
@@ -16,19 +20,36 @@ import type {
  * module never imports a page and the pages can import it freely.
  */
 
-export type Page = 'home' | 'dictionary' | 'history' | 'notes' | 'settings';
+export type Page = 'stream' | 'notes' | 'vocabulary' | 'insights' | 'settings';
 
-export const PAGES: Array<{ id: Page; label: string; icon: keyof typeof ICONS }> = [
-  { id: 'home', label: 'Dictate', icon: 'home' },
-  { id: 'dictionary', label: 'Dictionary', icon: 'dictionary' },
-  { id: 'history', label: 'History', icon: 'history' },
-  { id: 'notes', label: 'Notes', icon: 'notes' },
-  { id: 'settings', label: 'Settings', icon: 'settings' },
+const PAGE_ICONS = {
+  stream:
+    'M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2',
+  notes: ICONS.notes,
+  vocabulary: 'M3 15l3-8 3 8M4.2 12.5h3.6M13 6v9h3a2.2 2.2 0 0 0 0-4.4h-3M3 20h18',
+  insights: 'M4 4v16h16M9 20v-7M14 20V9M19 20v-5',
+  settings: ICONS.settings,
+};
+
+export const PAGES: Array<{ id: Page; label: string; icon: string }> = [
+  { id: 'stream', label: 'Stream', icon: PAGE_ICONS.stream },
+  { id: 'notes', label: 'Notes', icon: PAGE_ICONS.notes },
+  { id: 'vocabulary', label: 'Vocabulary', icon: PAGE_ICONS.vocabulary },
+  { id: 'insights', label: 'Insights', icon: PAGE_ICONS.insights },
+  { id: 'settings', label: 'Settings', icon: PAGE_ICONS.settings },
 ];
+
+/** Old page ids (the tray, an older window) map onto the new ones. */
+const LEGACY_PAGES: Record<string, Page> = { home: 'stream', history: 'stream', dictionary: 'vocabulary' };
+
+export function normalizePage(id: string): Page | null {
+  if (PAGES.some((entry) => entry.id === id)) return id as Page;
+  return LEGACY_PAGES[id] ?? null;
+}
 
 /** What a page contributes to the shell. */
 export interface PageModule {
-  render: () => Node;
+  render: (anchor?: string) => Node;
   headerActions: () => Node[];
 }
 
@@ -47,10 +68,16 @@ export interface State {
   deletedNote: { note: NoteDTO; index: number } | null;
   notice: { kind: 'success' | 'warning' | 'danger'; message: string } | null;
   confirmNoteDelete: boolean;
+  /** The last dictation error, until the next dictation starts or succeeds. */
+  lastError: DictationError | null;
+  /** The last hotkey dictation was copied because the paste was blocked. */
+  pasteBlocked: boolean;
+  /** The OS microphone permission reads as denied. */
+  micDenied: boolean;
 }
 
 export const state: State = {
-  page: 'home',
+  page: 'stream',
   settings: null,
   memory: null,
   history: [],
@@ -64,6 +91,9 @@ export const state: State = {
   deletedNote: null,
   notice: null,
   confirmNoteDelete: false,
+  lastError: null,
+  pasteBlocked: false,
+  micDenied: false,
 };
 
 let noticeTimer = 0;
@@ -122,11 +152,40 @@ export async function refresh(): Promise<void> {
   state.notes = notes;
 }
 
-export function navigate(page: Page): void {
-  if (state.page === page) return;
+/** The settings group the next render should scroll to, consumed by that render. */
+let pendingAnchor: string | undefined;
+/** True from a page switch until its exit beat ends; the body is not repainted meanwhile. */
+let swapPending = false;
+let swapTimer = 0;
+
+const EXIT_MS = 120;
+
+/**
+ * The one navigation call. A real page switch plays two beats, never a cross-fade:
+ * the old page fades and lifts out (120 ms), then the new one rises in (260 ms,
+ * `.page-enter`). Reduced motion swaps at once.
+ */
+export function navigate(page: Page, anchor?: string): void {
+  if (state.page === page && anchor === undefined) return;
+  const sameTarget = state.page === page;
+  pendingAnchor = anchor;
+  if (swapTimer) window.clearTimeout(swapTimer);
   state.page = page;
-  nextPageAnimates.value = true;
-  render();
+  nextPageAnimates.value = !sameTarget;
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (sameTarget || reduce) {
+    swapPending = false;
+    document.querySelector('.stage-body')?.classList.remove('leaving');
+    render();
+    return;
+  }
+  swapPending = true;
+  renderImpl();
+  document.querySelector('.stage-body')?.classList.add('leaving');
+  swapTimer = window.setTimeout(() => {
+    swapPending = false;
+    render();
+  }, EXIT_MS);
 }
 
 /**
@@ -177,94 +236,91 @@ async function loadIfActive(pages: Page | readonly Page[], load: () => Promise<v
  * repaint.
  */
 function hasUnsubmittedInput(): boolean {
-  if (state.page !== 'dictionary') return false;
+  if (state.page !== 'vocabulary') return false;
   return [...document.querySelectorAll<HTMLInputElement>('.stage-body .field-input')].some(
     (input) => input.value.trim().length > 0,
   );
 }
 
-export function mountMain(pages: Record<Page, PageModule>, undoDeleteNote: () => Promise<void>): void {
+export function mountMain(pages: Record<Page, PageModule>): void {
   document.body.classList.add('main');
 
   const root = document.getElementById('root');
   if (!root) return;
 
-  const brand = el(
-    'div',
-    { class: 'rail-brand' },
-    brandMark(),
-    el('span', { class: 'rail-wordmark' }, 'Useful Voice'),
-  );
-  const nav = el('nav', { class: 'rail-nav', 'aria-label': 'Sections' as never });
-  const operator = el('div', { class: 'rail-operator' });
-  const rail = el('aside', { class: 'rail' }, brand, nav, operator);
+  const goToEngine = (): void => navigate('settings', 'engine');
+  const health = (): HealthInput => ({
+    hasApiKey: state.settings?.hasApiKey ?? true,
+    lastError: state.lastError,
+    micDenied: state.micDenied,
+    pasteBlocked: state.pasteBlocked,
+    saveStatus: state.saveStatus,
+  });
 
-  const title = el('h1', { class: 'stage-title' }, 'Dictate');
-  const subtitle = el('p', { class: 'stage-subtitle' }, '');
-  const headerActions = el('div', { class: 'inline wrap' });
-  const header = el(
-    'header',
-    { class: 'stage-header' },
-    el('div', {}, title, subtitle),
-    headerActions,
+  const brand = el('div', { class: 'rail-brand' }, createLandingMark({ size: 28, state: 'still' }));
+  const navItems = new Map<Page, HTMLButtonElement>();
+  for (const page of PAGES) {
+    navItems.set(
+      page.id,
+      el(
+        'button',
+        { class: 'rail-item', type: 'button', onclick: () => navigate(page.id) } as never,
+        el('span', { class: 'rail-glyph' }, icon(page.icon, 22)),
+        el('span', { class: 'rail-label' }, page.label),
+      ),
+    );
+  }
+  const status = createStatusButton();
+  const rail = el(
+    'aside',
+    { class: 'rail' },
+    brand,
+    el(
+      'nav',
+      { class: 'rail-nav', 'aria-label': 'Sections' as never },
+      ...PAGES.filter((page) => page.id !== 'settings').map((page) => navItems.get(page.id) as HTMLElement),
+    ),
+    el('div', { class: 'rail-foot' }, navItems.get('settings') as HTMLElement, status.element),
   );
+
+  const title = el('h1', { class: 'stage-title' }, 'Stream');
+  const headerActions = el('div', { class: 'inline wrap' });
+  const header = el('header', { class: 'stage-header' }, title, headerActions);
+  const bannerHost = el('div', { class: 'banner-host' });
   const body = el('div', { class: 'stage-body' });
-  const stage = el('main', { class: 'stage' }, header, body);
+  const stage = el('main', { class: 'stage' }, header, bannerHost, body);
   root.append(
     el('div', { class: 'titlebar' }),
     el('div', { class: 'shell' }, rail, el('div', { class: 'stage-wrap' }, stage)),
   );
 
   function renderAll(): void {
-    // Nav
-    nav.replaceChildren(
-      ...PAGES.map((page) =>
-        el(
-          'button',
-          {
-            class: 'nav-item',
-            type: 'button',
-            'aria-current': state.page === page.id ? 'page' : undefined,
-            onclick: () => navigate(page.id),
-          } as never,
-          icon(ICONS[page.icon], 18),
-          el('span', {}, page.label),
-        ),
-      ),
-    );
+    for (const [id, item] of navItems) {
+      if (state.page === id) item.setAttribute('aria-current', 'page');
+      else item.removeAttribute('aria-current');
+    }
+    renderChrome();
+    // The old page is mid exit: the swap repaints the body.
+    if (swapPending) return;
 
     const page = PAGES.find((entry) => entry.id === state.page);
-
-    renderOperator();
-
     title.textContent = page?.label ?? 'Useful Voice';
-    subtitle.textContent = pageSubtitle(state.page);
-
     headerActions.replaceChildren(...pages[state.page].headerActions());
 
     const animatePage = nextPageAnimates.value;
     nextPageAnimates.value = false;
-    const pageNode = pages[state.page].render();
+    const anchor = pendingAnchor;
+    pendingAnchor = undefined;
+    const pageNode = pages[state.page].render(anchor);
+    body.classList.remove('leaving');
+    if (animatePage) body.scrollTop = 0;
     body.replaceChildren(pageNode);
     if (animatePage) {
       (pageNode as HTMLElement).classList.add('page-enter');
     }
 
-    // A persistence or notice banner is shown above whatever page is open, so a
-    // save failure is visible no matter where the user is.
-    const banners: Node[] = [];
-    if (!state.saveStatus.ok && state.saveStatus.message) {
-      banners.push(
-        el(
-          'div',
-          { class: 'notice notice-danger', style: 'margin-bottom:14px' as never },
-          icon('M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z', 15),
-          el('span', {}, state.saveStatus.message),
-        ),
-      );
-    }
     if (state.notice) {
-      banners.push(
+      body.prepend(
         el(
           'div',
           { class: `notice notice-${state.notice.kind}`, style: 'margin-bottom:14px' as never },
@@ -272,69 +328,17 @@ export function mountMain(pages: Record<Page, PageModule>, undoDeleteNote: () =>
         ),
       );
     }
-    for (const banner of banners.reverse()) body.prepend(banner);
-
-    // Undo bar for a deleted note, shown regardless of page.
-    if (state.deletedNote) {
-      body.prepend(
-        el(
-          'div',
-          { class: 'undo-bar', style: 'margin-bottom:12px' as never },
-          el('span', {}, `Deleted “${state.deletedNote.note.title || 'Untitled note'}”`),
-          el('span', { class: 'spacer' }),
-          el('button', { type: 'button', onclick: () => void undoDeleteNote() }, 'Undo'),
-        ),
-      );
-    }
   }
 
-  /** The rail's operator row. Updated on its own for dictation state changes. */
-  function renderOperator(): void {
-    const stateLabel =
-      state.dictation.state === 'recording'
-        ? 'Listening…'
-        : state.dictation.state === 'transcribing'
-          ? 'Transcribing…'
-          : state.dictation.state === 'delivering'
-            ? 'Pasting…'
-            : state.dictation.state === 'error'
-              ? 'Last attempt failed'
-              : 'Ready';
-    operator.replaceChildren(
-      el(
-        'div',
-        { class: 'inline', style: 'gap:8px' as never },
-        el('span', {
-          class: `list-row-title ${state.dictation.state === 'error' ? 'danger' : ''}`,
-          style: 'font-size:12px' as never,
-        }, stateLabel),
-      ),
-      el(
-        'p',
-        { class: 'tiny faint', style: 'margin:0;line-height:1.5' as never },
-        state.settings?.hotkey.accelerator
-          ? `Hotkey: ${state.settings.hotkey.accelerator}`
-          : 'No hotkey set',
-      ),
-    );
+  /** The status button and the window banner. Cheap, so dictation events can repaint it alone. */
+  function renderChrome(): void {
+    const input = health();
+    status.update(computeHealth(input, goToEngine));
+    const banner = createBanner(input, goToEngine);
+    bannerHost.replaceChildren(...(banner ? [banner] : []));
   }
 
   renderImpl = renderAll;
-
-  function pageSubtitle(page: Page): string {
-    switch (page) {
-      case 'home':
-        return 'Press your hotkey anywhere, speak, and the text appears where you are working.';
-      case 'dictionary':
-        return 'Words and phrases Useful Voice should recognise, and the corrections it applies.';
-      case 'history':
-        return 'Everything you have dictated, newest first.';
-      case 'notes':
-        return 'Notes typed or dictated, stored on this computer only.';
-      case 'settings':
-        return 'Your key, language, hotkey and shortcuts.';
-    }
-  }
 
   // ---- Boot and subscriptions ------------------------------------------
 
@@ -342,6 +346,8 @@ export function mountMain(pages: Record<Page, PageModule>, undoDeleteNote: () =>
   // Settings, so navigate there first when it is not already showing.
   api.onOpenLanguagePicker(() => {
     if (state.page !== 'settings') {
+      if (swapTimer) window.clearTimeout(swapTimer);
+      swapPending = false;
       state.page = 'settings';
       nextPageAnimates.value = true;
       render();
@@ -350,21 +356,30 @@ export function mountMain(pages: Record<Page, PageModule>, undoDeleteNote: () =>
     activeLanguagePicker.current?.open();
   });
 
-  api.onNavigate((page) => {
-    if (PAGES.some((entry) => entry.id === page) && state.page !== page) {
-      state.page = page as Page;
-      nextPageAnimates.value = true;
-      render();
-    }
+  api.onNavigate((page, anchor) => {
+    const target = normalizePage(page);
+    if (target) navigate(target, anchor);
   });
 
   api.onState((event) => {
     state.dictation = event;
-    // Dictation state shows in the rail everywhere, and in the page body only on
-    // Home. Rebuilding every page for a state tick would drop focus from any
-    // in-progress input and re-create every row for no visible change.
-    if (state.page === 'home') render();
-    else renderOperator();
+    if (event.state === 'error' && event.error) state.lastError = event.error;
+    if (event.state === 'recording') {
+      state.lastError = null;
+      state.pasteBlocked = false;
+    }
+    // Dictation state shows in the page body only on the Stream. Rebuilding every page
+    // for a state tick would drop focus from any in-progress input and re-create every
+    // row for no visible change.
+    if (state.page === 'stream') render();
+    else renderChrome();
+  });
+
+  api.onOutcome((outcome) => {
+    if (outcome.kind !== 'delivered') return;
+    state.lastError = null;
+    state.pasteBlocked = outcome.result === 'copiedNotPasted';
+    renderChrome();
   });
 
   api.onSaveStatus((status) => {
@@ -376,13 +391,13 @@ export function mountMain(pages: Record<Page, PageModule>, undoDeleteNote: () =>
   // tray action, or learning an entry. Without these the affected page kept a
   // stale list until it was reopened.
   api.onHistoryChanged(() => {
-    void loadIfActive(['home', 'history'], () => api.getHistory().then((history) => {
+    void loadIfActive('stream', () => api.getHistory().then((history) => {
       state.history = history;
     }));
   });
 
   api.onMemoryChanged(() => {
-    void loadIfActive(['home', 'dictionary'], () => api.getMemory().then((memory) => {
+    void loadIfActive(['stream', 'vocabulary'], () => api.getMemory().then((memory) => {
       state.memory = memory;
     }));
   });
@@ -403,20 +418,16 @@ export function mountMain(pages: Record<Page, PageModule>, undoDeleteNote: () =>
     await refresh();
     state.saveStatus = await api.getSaveStatus();
     render();
+    // Read after the first paint: a missing permission API leaves the button on the
+    // last dictation error alone.
+    if (navigator.permissions) {
+      const permission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+      const apply = (): void => {
+        state.micDenied = permission.state === 'denied';
+        renderChrome();
+      };
+      apply();
+      permission.addEventListener('change', apply);
+    }
   })();
-}
-
-/** The brand mark: a simple monochrome glyph, matching the macOS app. */
-function brandMark(): SVGSVGElement {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('class', 'rail-mark');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('fill', 'none');
-  svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '1.7');
-  svg.setAttribute('stroke-linecap', 'round');
-  const bar1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  bar1.setAttribute('d', 'M6 9v6M12 4v16M18 8v8');
-  svg.append(bar1);
-  return svg;
 }

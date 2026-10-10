@@ -271,3 +271,7 @@ export function notesHeaderActions(): Node[] {
     ),
   ];
 }
+
+// TEMP until merge: the real Notes page replaces these.
+export const renderNotesPage = renderNotes;
+export const headerActionsForNotes = notesHeaderActions;

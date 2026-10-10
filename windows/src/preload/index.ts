@@ -92,8 +92,8 @@ const api = {
     ipcRenderer.on('hud:level', listener);
     return () => ipcRenderer.removeListener('hud:level', listener);
   },
-  onNavigate: (handler: (page: string) => void): (() => void) => {
-    const listener = (_event: unknown, page: string): void => handler(page);
+  onNavigate: (handler: (page: string, anchor?: string) => void): (() => void) => {
+    const listener = (_event: unknown, page: string, anchor?: string): void => handler(page, anchor);
     // `app:` like every other app-lifecycle channel: the tray and the second-instance
     // handler use this to send the renderer to a page from outside its own UI.
     ipcRenderer.on('app:navigate', listener);
@@ -195,6 +195,7 @@ const api = {
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('app:open-external', url),
   getDiagnostics: (): Promise<{ version: string; platform: string; logPath: string; recentErrors: string[] }> =>
     ipcRenderer.invoke('app:diagnostics'),
+  getFlags: (): Promise<{ previewFeatures: boolean }> => ipcRenderer.invoke('app:flags'),
   showDiagnosticsLog: (): Promise<void> => ipcRenderer.invoke('app:show-log'),
   getSaveStatus: (): Promise<{ ok: boolean; message?: string }> => ipcRenderer.invoke('app:save-status'),
   onSaveStatus: (handler: (status: { ok: boolean; message?: string }) => void): (() => void) => {

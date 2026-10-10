@@ -214,7 +214,7 @@ struct RootView: View {
     private var detail: some View {
         switch displayed {
         case .home:
-            HomePage(viewModel: viewModel)
+            StreamPage(viewModel: viewModel, settings: settings) // TEMP until merge
         case .languageMemory:
             LanguageMemoryPage(viewModel: viewModel.languageMemory)
         case .insights:
@@ -222,7 +222,7 @@ struct RootView: View {
         case .scratchpad:
             ScratchpadPage(viewModel: viewModel)
         case .history:
-            HistoryPage(viewModel: viewModel)
+            StreamPage(viewModel: viewModel, settings: settings) // TEMP until merge
         case .settings:
             SettingsPage(settings: settings, viewModel: viewModel, firstRun: firstRun)
         }

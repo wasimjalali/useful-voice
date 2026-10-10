@@ -134,41 +134,6 @@ struct WaitingSpinner: View {
     }
 }
 
-/// The dark waveform tile from the app icon, drawn from bar heights.
-struct WaveMark: View {
-    let size: CGFloat
-    let radius: CGFloat
-    let barWidth: CGFloat
-    let gap: CGFloat
-    let heights: [CGFloat]
-    var animated = false
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var low = false
-
-    var body: some View {
-        HStack(spacing: gap) {
-            ForEach(Array(heights.enumerated()), id: \.offset) { index, height in
-                RoundedRectangle(cornerRadius: barWidth / 2, style: .continuous)
-                    .fill(index == 2 ? FRColor.quiet : Theme.brandInk)
-                    .frame(width: barWidth, height: height)
-                    .scaleEffect(y: animated && !reduceMotion && low ? 0.5 : 1)
-                    .animation(
-                        animated && !reduceMotion
-                            ? .easeInOut(duration: 0.65).repeatForever(autoreverses: true)
-                                .delay(0.12 * Double(index))
-                            : nil,
-                        value: low)
-            }
-        }
-        .frame(width: size, height: size)
-        .background(Theme.ink, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
-        .onAppear { if animated { low = true } }
-        .accessibilityElement()
-        .accessibilityLabel("Useful Voice")
-    }
-}
-
 // MARK: - Buttons and text
 
 /// The solid 44-point button every step ends on.

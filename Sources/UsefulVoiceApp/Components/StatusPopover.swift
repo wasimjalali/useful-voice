@@ -240,8 +240,11 @@ struct StatusPopover: View {
         switch health.engine {
         case .ready: break
         case .offline:
-            list.append(("Retry last recording", "Retry last recording",
-                         { viewModel.perform(.retry) }))
+            // As the banner does: no retained recording, no retry button.
+            if viewModel.canRetry {
+                list.append(("Retry last recording", "Retry last recording",
+                             { viewModel.perform(.retry) }))
+            }
         default:
             list.append(("Open Engine settings", "Open Engine settings",
                          { viewModel.perform(.openEngineSettings) }))

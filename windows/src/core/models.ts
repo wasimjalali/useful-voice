@@ -209,7 +209,15 @@ export interface AppSettings {
   languageSwitchHotkey?: HotkeyBinding;
   /** Terms sent as keyterms on top of the dictionary, capped by KeytermBudget. */
   dictionaryBiasBudget: number;
+  /** Which theme the window uses. `system` follows Windows. */
+  appearance: Appearance;
+  /** Words per day the Insights page measures progress against. No UI sets it yet. */
+  dailyWordGoal: number;
 }
+
+export type Appearance = 'system' | 'light' | 'dark';
+
+export const APPEARANCES: readonly Appearance[] = ['system', 'light', 'dark'];
 
 export interface HotkeyBinding {
   /**
@@ -236,4 +244,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   hotkey: { accelerator: 'Control+Alt+Space', pushToTalk: false },
   languageSwitchHotkey: { accelerator: 'Control+Alt+L', pushToTalk: false },
   dictionaryBiasBudget: 100,
+  appearance: 'system',
+  dailyWordGoal: 2500,
 };

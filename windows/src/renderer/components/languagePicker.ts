@@ -5,7 +5,7 @@
  * select here, and only one of them is cosmetic:
  *
  * 1. It is drawn by the OS, so it was the one control on the page that did not
- *    follow the design system — every other field is a bordered white box with a
+ *    follow the design system - every other field is a bordered white box with a
  *    9px radius.
  * 2. It cannot be searched. Nova-3 speaks 60-odd languages and the list is only
  *    going to grow, so finding one by scrolling is the slow path.
@@ -14,14 +14,14 @@
  *   * a fixed maximum height with internal scrolling, so a long list never stretches
  *     the settings page or pushes the rows below it off-screen;
  *   * left-aligned, full-width rows;
- *   * only existing tokens — no new hues.
+ *   * only existing tokens - no new hues.
  */
 
 import {
   DEEPGRAM_LANGUAGES,
   MULTILINGUAL_CODE_SWITCHING,
   findLanguage,
-} from '../core/transcription/languages.js';
+} from '../../core/transcription/languages.js';
 
 /** A row entry: a mode or a language. */
 interface PickerOption {
@@ -70,8 +70,8 @@ function el<K extends keyof HTMLElementTagNameMap>(
 /**
  * Every value the picker offers: the modes first, then the languages.
  *
- * The modes lead because they are the common case — most people dictate in one
- * language and never pick it — and because both do something other than name a
+ * The modes lead because they are the common case - most people dictate in one
+ * language and never pick it - and because both do something other than name a
  * language, so burying them alphabetically would hide them.
  */
 export function languagePickerOptions(): PickerOption[] {

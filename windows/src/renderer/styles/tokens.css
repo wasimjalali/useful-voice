@@ -1,0 +1,218 @@
+/* ==========================================================================
+   Useful Voice: design tokens
+   Two themes, selected by the `data-theme` attribute on <html> (set before first
+   paint by theme-boot.js and kept in step with the OS by components/theme.ts).
+   Light values are the app's original palette. Dark values are the Useful brand dark
+   block. Monochrome by construction: the only hues are the three status roles.
+   Colour, radius, type and motion values are the ones in the design board's base.css.
+   Nothing outside this file writes a colour literal, except the HUD's own values below.
+   ========================================================================== */
+
+:root,
+[data-theme="light"] {
+  --canvas: #f8f8f8;
+  --rail: #f8f8f8;
+  --surface: #ffffff;
+  --sunken: #f0f0f0;
+  --bubble: #ffffff;
+
+  --ink: #171717;
+  --ink-muted: #5c5c5c;
+  --ink-faint: #a3a3a3;
+
+  --brand: #171717;
+  --brand-strong: #0a0a0a;
+  --brand-ink: #fafafa;
+
+  --accent: #171717;
+  --accent-strong: #0a0a0a;
+  --accent-soft: #f0f0f0;
+  --accent-on-dark: #d4d4d4;
+  --accent-ink: #ffffff;
+
+  --line: #ebebeb;
+  --line-strong: #e0e0e0;
+
+  /* Status: the only hues in the entire system. */
+  --success: #0f6f56;
+  --success-soft: #e4f4ee;
+  --warning: #8a5300;
+  --warning-soft: #fbf1de;
+  --danger: #b23c22;
+  --danger-soft: #fbeae5;
+
+  /* The HUD is dark in both themes. */
+  --hud-surface: #171717;
+  --hud-ink: #fafafa;
+  --hud-mark: #d4d4d4;
+  /* The record dot inside the HUD takes the dark-palette danger value (5.9:1 there).
+     The warning dot does the same with the dark-palette warning. */
+  --hud-danger: #f0795c;
+  --hud-warning: #e3a64a;
+  /* Tracks and hover washes on the HUD and on toasts, which are dark in both themes. */
+  --hud-track: rgb(255 255 255 / 0.22);
+  --hud-wash: rgb(255 255 255 / 0.1);
+
+  /* Control edges: ink-muted blended toward the surface, so fields, off switches and
+     slider tracks reach 3:1 (WCAG 1.4.11). */
+  --control-edge: color-mix(in srgb, var(--ink-muted) 72%, var(--surface));
+  --edge: rgb(0 0 0 / 0.05);
+  --focus-ring: rgb(23 23 23 / 0.08);
+  /* The raised item inside a segmented control. */
+  --seg-on: #ffffff;
+  --shadow-seg: 0 1px 1.5px rgb(23 23 23 / 0.1);
+
+  --shadow-sm: 0 1px 2px rgb(23 23 23 / 0.04);
+  --shadow-lift: 0 0.5px 1px rgb(23 23 23 / 0.04), 0 3px 16px rgb(23 23 23 / 0.08);
+  --shadow-card: 0 1px 0 rgb(23 23 23 / 0.03), 0 18px 40px -24px rgb(23 23 23 / 0.18);
+  --shadow-raise: 0 1px 0 rgb(23 23 23 / 0.04), 0 22px 44px -22px rgb(23 23 23 / 0.22);
+  --shadow-pop: 0 24px 56px -28px rgb(23 23 23 / 0.28), 0 0 0 0.5px rgb(23 23 23 / 0.08);
+  --shadow-rail: inset 0 1px 0 rgb(255 255 255 / 0.78), inset 0 -1px 0 rgb(23 23 23 / 0.03);
+  --scrim: rgb(23 23 23 / 0.18);
+
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --canvas: #0f0f0f;
+  --rail: #0f0f0f;
+  --surface: #171717;
+  --sunken: #2c2c2c;
+  --bubble: #202020;
+
+  --ink: #ededed;
+  --ink-muted: #a3a3a3;
+  --ink-faint: #6e6e6e;
+
+  --brand: #ededed;
+  --brand-strong: #ffffff;
+  --brand-ink: #141414;
+
+  --accent: #ededed;
+  --accent-strong: #ffffff;
+  --accent-soft: #262626;
+  --accent-on-dark: #d4d4d4;
+  --accent-ink: #141414;
+
+  --line: #262626;
+  --line-strong: #333333;
+
+  --success: #4cc39b;
+  --success-soft: #13302a;
+  --warning: #e3a64a;
+  --warning-soft: #33260f;
+  --danger: #f0795c;
+  --danger-soft: #3a1b14;
+
+  --hud-surface: #202020;
+  --hud-ink: #fafafa;
+  --hud-mark: #d4d4d4;
+  --hud-danger: #f0795c;
+  --hud-warning: #e3a64a;
+  --hud-track: rgb(255 255 255 / 0.22);
+  --hud-wash: rgb(255 255 255 / 0.1);
+
+  --control-edge: color-mix(in srgb, var(--ink-muted) 72%, var(--surface));
+  --edge: rgb(255 255 255 / 0.07);
+  --focus-ring: rgb(237 237 237 / 0.14);
+  --seg-on: #3a3a3a;
+  --shadow-seg: 0 1px 1.5px rgb(0 0 0 / 0.3);
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-lift: 0 0.5px 1px rgb(0 0 0 / 0.3), 0 3px 16px rgb(0 0 0 / 0.35);
+  --shadow-card: 0 1px 0 rgb(0 0 0 / 0.3), 0 18px 40px -24px rgb(0 0 0 / 0.6);
+  --shadow-raise: 0 1px 0 rgb(0 0 0 / 0.3), 0 22px 44px -22px rgb(0 0 0 / 0.7);
+  --shadow-pop: 0 24px 56px -28px rgb(0 0 0 / 0.8), 0 0 0 0.5px rgb(255 255 255 / 0.1);
+  --shadow-rail: none;
+  --scrim: rgb(0 0 0 / 0.5);
+
+  color-scheme: dark;
+}
+
+/* Theme-independent tokens. */
+:root {
+  /* Radius scale. 1 to 3px is allowed only for bar and meter geometry. */
+  --r-xs: 6px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-2xl: 24px;
+  --r-pill: 999px;
+
+  /* Type scale: whole pixels, nothing under 11. */
+  --fs-label: 11px;      /* labels and keycaps */
+  --fs-meta: 12px;       /* meta */
+  --fs-ui: 13px;         /* UI */
+  --fs-body: 14px;       /* body */
+  --fs-title: 15px;      /* titles */
+  --fs-figure: 20px;     /* figures and the timer */
+  --fs-statement: 28px;  /* statements */
+
+  /* Motion: one curve, and the durations from the board's motion table. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-hover: 150ms;    /* rail, row and button hover and selection */
+  --dur-state: 200ms;    /* popovers, menus, dock and HUD state changes */
+  --dur-enter: 260ms;    /* page and bubble enter */
+  --dur-exit: 120ms;     /* page and popover exit */
+  --dur-hud-enter: 220ms;
+  --dur-hud-exit: 160ms;
+
+  /* The strip above the stage. It carries the Windows caption buttons. */
+  --titlebar-h: 32px;
+
+  /* Geist is the brand font. It is not bundled in this build (the app must
+     work offline and ship no font binaries), so the stack asks for Geist first
+     and falls back to the platform UI font, the same allowance the macOS build
+     makes with SF Pro. The Windows system font first in the fallback list keeps
+     the UI native there. */
+  --font-sans: "Geist", "Segoe UI Variable Text", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", "Cascadia Code", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* ---------- Base ---------- */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+body { font-size: var(--fs-ui); }
+
+button, input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::selection { background: var(--accent-soft); color: var(--brand); }
+
+/* Thin scrollbars, as the system specifies. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: var(--ink-faint);
+  border-radius: var(--r-pill);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track { background: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

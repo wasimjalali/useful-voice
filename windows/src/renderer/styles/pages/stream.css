@@ -1,0 +1,4 @@
+/* Stream page (today: Home) */
+
+.stat-value { font-size: var(--fs-statement); font-weight: 600; letter-spacing: -0.03em; line-height: 1.1; }
+.stat-label { font-size: var(--fs-meta); color: var(--ink-muted); margin-top: 2px; }

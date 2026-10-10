@@ -297,15 +297,3 @@ struct StreamPage: View {
     var body: some View { HomePage(viewModel: viewModel) }
 }
 
-extension InsightsPage {
-    init(viewModel: UsefulVoiceViewModel, settings: AppSettings) {
-        self.init(viewModel: viewModel)
-    }
-}
-
-extension SettingsPage {
-    init(settings: AppSettings, viewModel: UsefulVoiceViewModel, firstRun: FirstRunModel,
-         anchor: Binding<String?>) {
-        self.init(settings: settings, viewModel: viewModel, firstRun: firstRun)
-    }
-}

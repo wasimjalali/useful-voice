@@ -9,6 +9,17 @@ public struct InsightsDailyPoint: Equatable, Sendable {
     public let words: Int
 }
 
+/// One local calendar day of stored usage, as it was recorded.
+public struct InsightsDayStat: Equatable, Sendable {
+    /// Start of the local day.
+    public let date: Date
+    public let words: Int
+    public let dictations: Int
+    /// Words and seconds of dictations that recorded a valid duration.
+    public let timedWords: Int
+    public let seconds: Double
+}
+
 public struct InsightsLanguageShare: Equatable, Sendable {
     /// Lowercased base code ("de" for "de-DE"), "multi", or "unknown".
     public let code: String
@@ -235,6 +246,18 @@ public final class UsageStatsStore {
             out.bestDay = InsightsDailyPoint(date: date, words: best.value.words)
         }
         return out
+    }
+
+    /// Every stored day that has words, oldest first. Read-only: the Insights page buckets
+    /// these into weeks, speaking speed per day and the first-week frame.
+    public func dayStats() -> [InsightsDayStat] {
+        file.days
+            .compactMap { key, day -> InsightsDayStat? in
+                guard day.words > 0, let date = Self.date(fromKey: key, calendar: calendar) else { return nil }
+                return InsightsDayStat(date: date, words: day.words, dictations: day.dictations,
+                                       timedWords: day.timedWords, seconds: day.seconds)
+            }
+            .sorted { $0.date < $1.date }
     }
 
     // MARK: - Helpers

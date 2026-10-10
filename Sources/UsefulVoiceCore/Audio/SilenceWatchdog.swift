@@ -21,4 +21,11 @@ public struct SilenceWatchdog {
         }
         return time - lastLoudAt! > timeout
     }
+
+    /// The time (same base as `observe`) after which continued silence stops the
+    /// recording: the last loud (or seeding) sample plus the timeout. Nil until
+    /// the first sample. Moves only when speech resets the clock.
+    public var silenceDeadline: TimeInterval? {
+        lastLoudAt.map { $0 + timeout }
+    }
 }

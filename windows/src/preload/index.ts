@@ -4,6 +4,8 @@ import type {
   DictationStateEvent,
   DictationTelemetry,
   HistoryEntryDTO,
+  HudAction,
+  HudFrame,
   MemorySnapshotDTO,
   NoteDTO,
   ResolvedTheme,
@@ -92,6 +94,28 @@ const api = {
     ipcRenderer.on('hud:level', listener);
     return () => ipcRenderer.removeListener('hud:level', listener);
   },
+  /**
+   * What the HUD window should draw: the latest view, or null once it should sink away.
+   * The window draws only this, so a stale view can never be left on screen.
+   */
+  onHudView: (handler: (frame: HudFrame | null) => void): (() => void) => {
+    const listener = (_event: unknown, payload: HudFrame | null): void => handler(payload);
+    ipcRenderer.on('hud:view', listener);
+    return () => ipcRenderer.removeListener('hud:view', listener);
+  },
+  /**
+   * The HUD window ignores the mouse except over its buttons. The renderer says when the
+   * pointer enters or leaves one, and main toggles click-through to match.
+   */
+  hudPointer: (overButton: boolean): void => ipcRenderer.send('hud:pointer', overButton),
+  hudAction: (action: HudAction): Promise<void> => ipcRenderer.invoke('hud:action', action),
+  /** A line for a screen reader. Sent to whichever window the user is in. */
+  onAnnounce: (handler: (text: string, urgency: 'polite' | 'assertive') => void): (() => void) => {
+    const listener = (_event: unknown, payload: { text: string; urgency: 'polite' | 'assertive' }): void =>
+      handler(payload.text, payload.urgency);
+    ipcRenderer.on('app:announce', listener);
+    return () => ipcRenderer.removeListener('app:announce', listener);
+  },
   onNavigate: (handler: (page: string, anchor?: string) => void): (() => void) => {
     const listener = (_event: unknown, page: string, anchor?: string): void => handler(page, anchor);
     // `app:` like every other app-lifecycle channel: the tray and the second-instance
@@ -101,11 +125,11 @@ const api = {
   },
 
   /**
-   * Fires when the language-picker hotkey is pressed.
+   * Fires in the floating language picker window each time the hotkey (or the tray)
+   * opens it, so it can reset its search and take focus.
    *
-   * The hotkey is global, so it can arrive while the user is in another
-   * application; the main process brings the window forward and this tells the
-   * renderer to open its picker.
+   * The hotkey is global, so it can arrive while the user is in another application.
+   * The picker is its own focusable window and the main window stays where it is.
    */
   onOpenLanguagePicker: (handler: () => void): (() => void) => {
     const listener = (): void => handler();
@@ -133,7 +157,17 @@ const api = {
   onNotesChanged: (handler: () => void): (() => void) =>
     subscribe('notes:changed', handler),
 
+  // ---- language picker window ----
+  /** The floating picker chose a language (or closed without one). */
+  pickerChoose: (value: string): Promise<void> => ipcRenderer.invoke('app:picker-choose', value),
+  pickerClose: (): Promise<void> => ipcRenderer.invoke('app:picker-close'),
+
   // ---- settings ----
+  /**
+   * Settings changed somewhere the renderer did not initiate: the language picker or the
+   * tray menu. A page showing those values refetches.
+   */
+  onSettingsChanged: (handler: () => void): (() => void) => subscribe('settings:changed', handler),
   getSettings: (): Promise<SettingsDTO> => ipcRenderer.invoke('settings:get'),
   saveSettings: (patch: Partial<SettingsDTO>): Promise<SettingsDTO> => ipcRenderer.invoke('settings:save', patch),
   setApiKey: (key: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('settings:set-api-key', key),

@@ -2,6 +2,7 @@ import { api } from './api.js';
 import { el, icon, ICONS } from './components/dom.js';
 import { createBanner } from './components/banners.js';
 import { computeHealth, createStatusButton, type HealthInput } from './components/statusPopover.js';
+import { mountAnnouncer } from './components/announcer.js';
 import { createLandingMark } from './components/landingMark.js';
 import type {
   DictationError,
@@ -243,6 +244,7 @@ function hasUnsubmittedInput(): boolean {
 }
 
 export function mountMain(pages: Record<Page, PageModule>): void {
+  mountAnnouncer();
   document.body.classList.add('main');
 
   const root = document.getElementById('root');
@@ -395,6 +397,9 @@ export function mountMain(pages: Record<Page, PageModule>): void {
       state.history = history;
     }));
   });
+
+  // Tray and floating-picker changes (language, auto-format) land in Settings too.
+  api.onSettingsChanged(() => void refresh());
 
   api.onMemoryChanged(() => {
     void loadIfActive(['stream', 'vocabulary'], () => api.getMemory().then((memory) => {

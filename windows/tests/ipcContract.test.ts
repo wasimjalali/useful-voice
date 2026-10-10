@@ -239,7 +239,8 @@ describe('dictation telemetry and outcome channels', () => {
     // sender in `handleStatus` would put it after.
     const handler = /private handleStatus[\s\S]*?\n  }\n/.exec(mainSource);
     expect(handler?.[0]).not.toContain('dictation:outcome');
-    expect(mainSource).toContain("onOutcome: (outcome) => this.broadcast('dictation:outcome', outcome)");
+    // The HUD model hears the outcome first, then it is broadcast; both happen in the callback.
+    expect(mainSource).toMatch(/onOutcome: \(outcome\) => \{[^}]*this\.broadcast\('dictation:outcome', outcome\)/);
   });
 
   it('lets the renderer start a dictation only as a window dictation', () => {

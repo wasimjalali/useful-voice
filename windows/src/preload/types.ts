@@ -10,6 +10,11 @@
 
 import type { DictationError } from '../core/models.js';
 
+export type { HudFrame } from '../core/hudModel.js';
+
+/** What a HUD button asks the main process to do. */
+export type HudAction = 'dismiss' | 'retry' | 'openMicrophoneSettings' | 'openEngineSettings';
+
 export interface DictationStateEvent {
   state: 'idle' | 'recording' | 'transcribing' | 'delivering' | 'error';
   message?: string;

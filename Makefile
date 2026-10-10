@@ -37,6 +37,23 @@ SWIFT_TEST_FLAGS = -Xswiftc -F -Xswiftc $(CLT_FRAMEWORKS)
 MARKETING_VERSION ?= 1.0.0
 BUILD_NUMBER ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 
+# App icon. Xcode's actool compiles the Icon Composer bundle (assets/branding/Sadaa.icon,
+# light and dark appearances) into Assets.car, which CFBundleIconName points at. It needs
+# Xcode.app, so on Command Line Tools only the bundle falls back to the light Sadaa.icns
+# that CFBundleIconFile names. The icns is copied after actool so it is never overwritten.
+define compile_icon
+	@if xcrun --find actool >/dev/null 2>&1; then \
+		xcrun actool "$(CURDIR)/assets/branding/Sadaa.icon" --compile "$(CURDIR)/$(APP)/Contents/Resources" \
+			--output-format human-readable-text --notices --warnings --errors \
+			--output-partial-info-plist "$$(mktemp)" --app-icon Sadaa \
+			--platform macosx --minimum-deployment-target 14.0 --target-device mac; \
+	else \
+		echo "warning: actool not found (needs Xcode.app); shipping the light icon only" >&2; \
+	fi
+	cp assets/branding/Sadaa.icns $(APP)/Contents/Resources/Sadaa.icns
+	cp assets/branding/StatusItem*.png $(APP)/Contents/Resources/
+endef
+
 .PHONY: build test bundle run install uninstall bundle-release notarize dmg clean
 
 build:
@@ -55,7 +72,7 @@ bundle: build
 	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources $(APP)/Contents/Frameworks
 	cp bundle/Info.plist $(APP)/Contents/Info.plist
 	cp .build/release/UsefulVoiceApp $(APP)/Contents/MacOS/Sadaa
-	cp assets/branding/Sadaa.icns $(APP)/Contents/Resources/Sadaa.icns
+	$(call compile_icon)
 	cp assets/branding/useful-voice-mark-dark.png $(APP)/Contents/Resources/SadaaLogo.png
 	cp -R .build/release/$(FRAMEWORK) $(APP)/Contents/Frameworks/
 	@# The binary's own rpaths point at SPM's build/artifact dirs; inside the
@@ -109,7 +126,7 @@ endif
 	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources $(APP)/Contents/Frameworks
 	cp bundle/Info.plist $(APP)/Contents/Info.plist
 	cp .build/release/UsefulVoiceApp $(APP)/Contents/MacOS/Sadaa
-	cp assets/branding/Sadaa.icns $(APP)/Contents/Resources/Sadaa.icns
+	$(call compile_icon)
 	cp assets/branding/useful-voice-mark-dark.png $(APP)/Contents/Resources/SadaaLogo.png
 	cp -R .build/release/$(FRAMEWORK) $(APP)/Contents/Frameworks/
 	install_name_tool -add_rpath "@executable_path/../Frameworks" \

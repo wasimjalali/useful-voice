@@ -16,6 +16,9 @@ export interface DictationStateEvent {
   elapsedSeconds?: number;
 }
 
+/** The theme the window is drawn in. `system` is resolved by the main process. */
+export type ResolvedTheme = 'light' | 'dark';
+
 export interface MemorySnapshotDTO {
   terms: Array<{
     id: string;
@@ -62,6 +65,8 @@ export interface SettingsDTO {
   /** Opens the language picker. Optional, and empty means disabled. */
   languageSwitchHotkey?: { accelerator: string; pushToTalk: boolean };
   dictionaryBiasBudget: number;
+  appearance: 'system' | 'light' | 'dark';
+  dailyWordGoal: number;
   hasApiKey: boolean;
 }
 

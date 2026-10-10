@@ -12,7 +12,7 @@ import {
   supportsSpokenPunctuation,
 } from '../src/core/transcription/languages.js';
 import { MEMORY_LANGUAGES, normaliseMemoryLanguage } from '../src/core/models.js';
-import { filterLanguageOptions, languagePickerOptions } from '../src/renderer/languagePicker.js';
+import { filterLanguageOptions, languagePickerOptions } from '../src/renderer/components/languagePicker.js';
 
 /**
  * The catalogue is a large hand-transcribed data set, and every way it can be wrong

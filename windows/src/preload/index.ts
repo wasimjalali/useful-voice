@@ -4,6 +4,7 @@ import type {
   HistoryEntryDTO,
   MemorySnapshotDTO,
   NoteDTO,
+  ResolvedTheme,
   SettingsDTO,
 } from './types.js';
 
@@ -162,10 +163,19 @@ const api = {
     ipcRenderer.invoke('backup:import-csv', { kind, text }),
   copyToClipboard: (text: string): Promise<void> => ipcRenderer.invoke('clipboard:write', text),
 
+  // ---- theme ----
+  getTheme: (): Promise<ResolvedTheme> => ipcRenderer.invoke('app:get-theme'),
+  onThemeChanged: (handler: (theme: ResolvedTheme) => void): (() => void) => {
+    const listener = (_event: unknown, theme: ResolvedTheme): void => handler(theme);
+    ipcRenderer.on('app:theme', listener);
+    return () => ipcRenderer.removeListener('app:theme', listener);
+  },
+
   // ---- app ----
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('app:open-external', url),
   getDiagnostics: (): Promise<{ version: string; platform: string; logPath: string; recentErrors: string[] }> =>
     ipcRenderer.invoke('app:diagnostics'),
+  showDiagnosticsLog: (): Promise<void> => ipcRenderer.invoke('app:show-log'),
   getSaveStatus: (): Promise<{ ok: boolean; message?: string }> => ipcRenderer.invoke('app:save-status'),
   onSaveStatus: (handler: (status: { ok: boolean; message?: string }) => void): (() => void) => {
     const listener = (_event: unknown, status: { ok: boolean; message?: string }): void => handler(status);

@@ -50,6 +50,12 @@
       "package.json",
       "!**/*.map"
     ],
+    "extraResources": [
+      {
+        "from": "build/tray",
+        "to": "tray"
+      }
+    ],
     "extraMetadata": {
       "main": "dist/main/index.js"
     },

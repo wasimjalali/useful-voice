@@ -261,12 +261,13 @@ private struct BrandSwitchBody: View {
             HStack(spacing: 8) {
                 configuration.label
                 track
-                    .contentShape(Rectangle())
-                    .clickableCursor()
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // On the button, so the hand covers exactly what toggles (the track, and a
+        // label if one is ever shown).
+        .clickableCursor()
         .focusEffectDisabled()
         .overlay(alignment: .trailing) {
             if isFocused {

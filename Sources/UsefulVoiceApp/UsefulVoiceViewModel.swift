@@ -6,6 +6,16 @@ import UsefulVoiceCore
 @MainActor
 final class UsefulVoiceViewModel: ObservableObject {
     @Published var dictationState: DictationState = .idle
+    /// The error or "copied, not pasted" notice from the last dictation. Set when
+    /// the dictation fails or its text could not be pasted; cleared when the next
+    /// recording (or a retry) starts, or by `dismissIssue()`.
+    @Published private(set) var lastIssue: DictationIssue?
+    /// How the last dictation ended. Published just before the state returns to
+    /// idle; cleared when the next recording (or a retry) starts.
+    @Published private(set) var lastOutcome: DictationOutcome?
+    /// Live level, timer, countdowns and local partial text. A separate object so
+    /// its 30 Hz updates redraw only the views that observe it.
+    let telemetry = DictationTelemetry()
     @Published var recent: [DictationRecord] = []
     /// Bumped whenever the usage stats change, so the Insights page redraws.
     @Published var usageRevision = 0
@@ -45,7 +55,8 @@ final class UsefulVoiceViewModel: ObservableObject {
     /// Local model downloads/state for the Settings page. Owns the store and
     /// downloader; the view reads it as an ordinary ObservedObject.
     let models: LocalModelManager
-    private let onToggle: () -> Void
+    private let onToggle: (DictationSource) -> Void
+    private var feedback = DictationFeedback()
 
     /// History pages read search/all directly off the store.
     var historyStore: DictationHistory { history }
@@ -55,7 +66,7 @@ final class UsefulVoiceViewModel: ObservableObject {
          languageMemory: LanguageMemoryStore,
          scratchpad: ScratchpadStore,
          models: LocalModelManager? = nil,
-         onToggle: @escaping () -> Void) {
+         onToggle: @escaping (DictationSource) -> Void) {
         self.settings = settings
         self.history = history
         self.usageStats = usageStats
@@ -67,11 +78,35 @@ final class UsefulVoiceViewModel: ObservableObject {
         refreshRecent()
     }
 
-    func toggle() { onToggle() }
+    /// The window's mic button and transport: the dictation is saved and copied,
+    /// not pasted.
+    func toggle() { onToggle(.window) }
 
     func retry() { onRetry?() }
 
-    func refreshState(_ state: DictationState) { dictationState = state }
+    func refreshState(_ state: DictationState) {
+        dictationState = state
+        telemetry.apply(state: state)
+        feedback.apply(state: state)
+        publishFeedback()
+    }
+
+    /// A dictation finished (delivered) or was cancelled.
+    func handle(outcome: DictationOutcome) {
+        feedback.apply(outcome: outcome)
+        publishFeedback()
+    }
+
+    /// Clears the issue, from a close button or after the HUD's 8 s.
+    func dismissIssue() {
+        feedback.dismissIssue()
+        publishFeedback()
+    }
+
+    private func publishFeedback() {
+        if lastIssue != feedback.issue { lastIssue = feedback.issue }
+        if lastOutcome != feedback.outcome { lastOutcome = feedback.outcome }
+    }
 
     func refreshRecent() { recent = history.recent(5) }
 

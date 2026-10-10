@@ -203,7 +203,7 @@ struct HomePage: View {
         case .recording: return "Speak naturally. Press Esc to cancel."
         case .transcribing: return "Your recording is being transcribed."
         case .delivering: return "Useful Voice is placing the transcript at your cursor."
-        case .error(let message): return message
+        case .error(let error): return error.message
         }
     }
 

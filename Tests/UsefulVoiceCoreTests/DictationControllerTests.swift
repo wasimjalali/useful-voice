@@ -75,9 +75,11 @@ final class CapturingProvider: TranscriptionProvider {
     private var timeline: [String] = []
     /// When true, deliver() parks its completion instead of calling it.
     private var holdDelivery = false
-    private var parkedCompletions: [(DeliveryResult) -> Void] = []
+    private var parkedCompletions: [(DeliveryReport) -> Void] = []
     /// Overrides what the fake delivery reports; nil means pasted / copied by mode.
     private var deliveryResultOverride: DeliveryResult?
+    /// When set, the fake delivery reports this failure.
+    private var deliveryFailure: DeliveryFailure?
     private var states: [DictationState] = []
     private var records: [DictationRecord] = []
     private var suggested: [String] = []
@@ -116,16 +118,17 @@ final class CapturingProvider: TranscriptionProvider {
             },
             now: now,
             isSecureInputActive: isSecureInputActive,
-            frontmostAppName: { [weak self] in
+            frontmostApp: { [weak self] in
                 self?.frontmostLookups += 1
-                return self?.frontmostName
+                return self?.frontmostApp
             }
         )
         wire(controller)
         return controller
     }
 
-    private var frontmostName: String? = "Slack"
+    /// What the fake system reports as frontmost, at start and at delivery.
+    private var frontmostApp: FrontmostApp? = FrontmostApp(id: "com.tinyspeck.slack", name: "Slack")
     private var frontmostLookups = 0
 
     /// Hooks the controller's callbacks into the suite's logs.
@@ -151,14 +154,15 @@ final class CapturingProvider: TranscriptionProvider {
     }
 
     private func fakeDeliver(_ text: String, _ mode: DeliveryMode,
-                             _ done: @escaping (DeliveryResult) -> Void) {
+                             _ done: @escaping (DeliveryReport) -> Void) {
         delivered.append(text)
         deliveredModes.append(mode)
         if holdDelivery {
             parkedCompletions.append(done)
             return
         }
-        done(deliveryResultOverride ?? (mode == .paste ? .pasted : .copied))
+        if let deliveryFailure { done(.failure(deliveryFailure)); return }
+        done(.success(deliveryResultOverride ?? (mode == .paste ? .pasted : .copied)))
     }
 
     private func makeFormattingController(
@@ -1083,7 +1087,7 @@ final class CapturingProvider: TranscriptionProvider {
         await controller.toggleAndWait()
         #expect(deliveredModes == [.paste])
         #expect(outcomes == [.delivered(words: 2, mode: .pasted, appName: "Slack")])
-        #expect(frontmostLookups == 1)
+        #expect(frontmostLookups == 2)   // at start, and again at delivery
     }
 
     @Test func testStopToggleNeverChangesTheSourceChosenAtStart() async throws {
@@ -1146,7 +1150,7 @@ final class CapturingProvider: TranscriptionProvider {
             hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
             recordingsToKeep: 10,
             deliver: { [weak self] text, mode, done in self?.fakeDeliver(text, mode, done) },
-            frontmostAppName: { "Mail" })
+            frontmostApp: { FrontmostApp(id: "com.apple.mail", name: "Mail") })
         wire(controller)
         controller.toggle(source: .window)
         await controller.toggleAndWait()          // fails, audio retained
@@ -1192,7 +1196,7 @@ final class CapturingProvider: TranscriptionProvider {
                 hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
                 recordingsToKeep: 10,
                 deliver: { [weak self] text, mode, done in self?.fakeDeliver(text, mode, done) },
-                frontmostAppName: { "Slack" })
+                frontmostApp: { FrontmostApp(id: "com.tinyspeck.slack", name: "Slack") })
             wire(controller)
             controller.toggle(source: source)
             await controller.toggleAndWait()
@@ -1235,8 +1239,8 @@ final class CapturingProvider: TranscriptionProvider {
         #expect(controller.state == .delivering)
         #expect(parkedCompletions.count == 1)
 
-        parkedCompletions[0](.pasted)
-        parkedCompletions[0](.pasted)          // a second call of the same completion
+        parkedCompletions[0](.success(.pasted))
+        parkedCompletions[0](.success(.pasted))          // a second call of the same completion
         #expect(outcomes.count == 1)
         #expect(controller.state == .idle)
         #expect(states.filter { $0 == .idle }.count == 1)
@@ -1248,17 +1252,17 @@ final class CapturingProvider: TranscriptionProvider {
         controller.toggle()
         await controller.toggleAndWait()
         let first = parkedCompletions[0]
-        first(.pasted)
+        first(.success(.pasted))
         #expect(outcomes.count == 1)
 
         controller.toggle()
         await controller.toggleAndWait()
         #expect(controller.state == .delivering)
-        first(.pasted)                          // late duplicate of the first dictation
+        first(.success(.pasted))                          // late duplicate of the first dictation
         #expect(controller.state == .delivering)
         #expect(outcomes.count == 1)
 
-        parkedCompletions[1](.pasted)
+        parkedCompletions[1](.success(.pasted))
         #expect(outcomes.count == 2)
         #expect(controller.state == .idle)
     }
@@ -1272,7 +1276,7 @@ final class CapturingProvider: TranscriptionProvider {
         #expect(controller.state == .delivering)
         #expect(recorder.cancelCount == 0)
         #expect(outcomes.isEmpty)
-        parkedCompletions[0](.pasted)
+        parkedCompletions[0](.success(.pasted))
         #expect(outcomes == [.delivered(words: 2, mode: .pasted, appName: "Slack")])
     }
 
@@ -1463,5 +1467,171 @@ final class CapturingProvider: TranscriptionProvider {
         controller.toggle(source: .hotkey)
         #expect(controller.state == .recording)
         #expect(Array(timeline.suffix(2)) == ["state:error:keyRejected", "state:recording"])
+    }
+
+    // MARK: - Review round 1
+
+    // Item 4: a failed clipboard write must not read as "Saved and copied".
+    @Test func testFailedCopyEndsWithATypedErrorAndNoOutcome() async throws {
+        deliveryFailure = DeliveryFailure()
+        let controller = makeController(providers: [okProvider()])
+        controller.toggle(source: .window)
+        await controller.toggleAndWait()
+        guard case .error(let error) = controller.state else {
+            Issue.record("expected deliveryFailed, got \(controller.state)"); return
+        }
+        #expect(error.kind == .deliveryFailed)
+        #expect(error.fix == nil)
+        #expect(error.message == "Couldn't copy the text. It's saved in Useful Voice.")
+        #expect(outcomes.isEmpty)
+        #expect(records.count == 1)          // the dictation itself is still saved
+        #expect(!controller.canRetry)
+    }
+
+    @Test func testFailedDeliveryCompletionActsOnlyOnce() async throws {
+        holdDelivery = true
+        let controller = makeController(providers: [okProvider()])
+        controller.toggle(source: .window)
+        await controller.toggleAndWait()
+        parkedCompletions[0](.failure(DeliveryFailure()))
+        parkedCompletions[0](.success(.copied))      // a late second call
+        #expect(outcomes.isEmpty)
+        guard case .error(let error) = controller.state else {
+            Issue.record("expected an error"); return
+        }
+        #expect(error.kind == .deliveryFailed)
+        #expect(states.filter { if case .error = $0 { return true } else { return false } }.count == 1)
+    }
+
+    // Item 5: start failures are typed by cause.
+    @Test func testStartFailuresAreTypedByCause() {
+        struct Boom: Error, LocalizedError { var errorDescription: String? { "boom" } }
+        let cases: [(Error, DictationError.Kind, DictationFix?)] = [
+            (AudioRecorderError.noInputDevice, .micUnavailable, .openMicrophoneSettings),
+            (AudioRecorderError.inputDeviceLost, .micUnavailable, .openMicrophoneSettings),
+            (AudioRecorderError.diskWriteFailed("Only 3 MB is free."), .diskFull, nil),
+            (AudioRecorderError.formatUnsupported, .recordingFailed, nil),
+            (AudioRecorderError.alreadyRecording, .recordingFailed, nil),
+            (CocoaError(.fileWriteOutOfSpace), .diskFull, nil),
+            (CocoaError(.fileWriteNoPermission), .recordingFailed, nil),
+            (Boom(), .micUnavailable, .openMicrophoneSettings),
+        ]
+        for (cause, kind, fix) in cases {
+            let controller = makeController(providers: [okProvider()])
+            recorder.startError = cause
+            controller.toggle()
+            guard case .error(let error) = controller.state else {
+                Issue.record("expected an error for \(cause)"); continue
+            }
+            #expect(error.kind == kind, "\(cause)")
+            #expect(error.fix == fix, "\(cause)")
+            #expect(error.message == "Couldn't start recording: \(cause.localizedDescription)", "\(cause)")
+        }
+        recorder.startError = nil
+    }
+
+    // Item 6: the recorder already delivers on main and checks its session, so the
+    // controller reacts at once; there is no second hop for a stale call to hide in.
+    @Test func testAutoStopActsSynchronouslyWithNoExtraHop() async throws {
+        let controller = makeController(providers: [okProvider()])
+        controller.toggle(source: .window)
+        recorder.onAutoStop?()
+        #expect(controller.state == .transcribing)
+        await controller.awaitProcessing()
+        #expect(deliveredModes == [.copy])
+    }
+
+    @Test func testAutoStopWhileNotRecordingIsIgnoredSynchronously() async throws {
+        let controller = makeController(providers: [okProvider()])
+        recorder.onAutoStop?()                      // idle
+        #expect(controller.state == .idle)
+        #expect(recorder.startCount == 0)
+        controller.toggle()
+        controller.toggle()                         // transcribing
+        recorder.onAutoStop?()
+        await controller.awaitProcessing()
+        #expect(recorder.startCount == 1)
+        #expect(delivered == ["hello world"])
+    }
+
+    // Item 7: paste only into the app the dictation started in.
+    @Test func testHotkeyDictationStoppedElsewhereDeliversByCopyAndSaysSo() async throws {
+        let controller = makeController(providers: [okProvider()])
+        controller.toggle()                          // started in Slack
+        frontmostApp = FrontmostApp(id: "com.apple.mail", name: "Mail")
+        controller.toggle()                          // stopped after switching apps
+        await controller.awaitProcessing()
+        #expect(deliveredModes == [.copy])
+        #expect(outcomes == [.delivered(words: 2, mode: .copiedNotPasted, appName: "Slack")])
+    }
+
+    @Test func testHotkeyDictationDeliveredWhileUsefulVoiceIsFrontCopies() async throws {
+        let controller = makeController(providers: [okProvider()])
+        controller.toggle()
+        frontmostApp = FrontmostApp(id: "ai.karko.usefulvoice", name: "Useful Voice", isSelf: true)
+        controller.toggle()                          // e.g. stopped from the dock
+        await controller.awaitProcessing()
+        #expect(deliveredModes == [.copy])
+        #expect(outcomes == [.delivered(words: 2, mode: .copiedNotPasted, appName: "Slack")])
+    }
+
+    @Test func testHotkeyDictationStartedInUsefulVoiceAlsoCopiesWhileItIsFront() async throws {
+        frontmostApp = FrontmostApp(id: "ai.karko.usefulvoice", name: "Useful Voice", isSelf: true)
+        let controller = makeController(providers: [okProvider()])
+        controller.toggle()
+        controller.toggle()
+        await controller.awaitProcessing()
+        #expect(deliveredModes == [.copy])
+        #expect(outcomes.last == .delivered(words: 2, mode: .copiedNotPasted, appName: "Useful Voice"))
+    }
+
+    @Test func testSameAppAtDeliveryStillPastes() async throws {
+        let controller = makeController(providers: [okProvider()])
+        controller.toggle()
+        controller.toggle()
+        await controller.awaitProcessing()
+        #expect(deliveredModes == [.paste])
+        #expect(outcomes == [.delivered(words: 2, mode: .pasted, appName: "Slack")])
+    }
+
+    @Test func testWindowAndRetryDeliveriesDoNotLookAtTheFrontmostAppAtDelivery() async throws {
+        let controller = makeController(providers: [okProvider()])
+        controller.toggle(source: .window)
+        controller.toggle(source: .window)
+        await controller.awaitProcessing()
+        #expect(outcomes == [.delivered(words: 2, mode: .copied, appName: nil)])
+        #expect(frontmostLookups == 0)
+    }
+
+    // Retained audio can be discarded (Delete all dictations).
+    @Test func testDiscardRetainedAudioDisablesRetry() async throws {
+        let controller = makeController(providers: [failingProvider(.http(500, "boom"))])
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(controller.canRetry)
+        controller.discardRetainedAudio()
+        #expect(!controller.canRetry)
+        controller.retryLast()
+        #expect(controller.state != .transcribing)
+        #expect(delivered.isEmpty)
+    }
+
+    @Test func testDiscardRetainedAudioIsIgnoredWhileBusy() async throws {
+        holdDelivery = true
+        var attempt = 0
+        let controller = DictationController(
+            recorder: recorder,
+            providers: { attempt += 1; return attempt == 1 ? [self.failingProvider(.http(500, "boom"))] : [self.okProvider()] },
+            store: store,
+            hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
+            recordingsToKeep: 10,
+            deliver: { [weak self] text, mode, done in self?.fakeDeliver(text, mode, done) })
+        wire(controller)
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(controller.canRetry)
+        controller.toggle()                          // new recording; the old audio is still retained
+        controller.discardRetainedAudio()
+        #expect(controller.canRetry)
     }
 }

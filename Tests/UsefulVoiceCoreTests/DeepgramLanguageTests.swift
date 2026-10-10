@@ -577,7 +577,7 @@ struct DetectedLanguageDowngradeTests {
             store: store,
             hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
             recordingsToKeep: 0,
-            deliver: { _, _, done in done(.pasted) },
+            deliver: { _, _, done in done(.success(.pasted)) },
             diagnostics: diagnostics
         )
         // toggleAndWait drives one complete dictation: start, stop, transcribe, and

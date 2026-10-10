@@ -6,6 +6,8 @@ public protocol AudioRecording: AnyObject {
     func stop() throws -> URL
     func cancel()
     var onLevel: ((Float) -> Void)? { get set }
+    /// Called on the main thread, only while the recording that asked is still the
+    /// live one: a stop or cancel in between drops the call.
     var onAutoStop: (() -> Void)? { get set }
     /// True when at least one buffer in the just-finished recording crossed the
     /// speech threshold. False means the user was silent the whole time, so the

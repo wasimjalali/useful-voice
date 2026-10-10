@@ -203,13 +203,15 @@ struct TextInserter {
 
     /// Copy mode: puts `text` on the clipboard and nothing else. No snapshot, no
     /// restore (the user asked for this text to be copied, so it must stay), no
-    /// paste, no secure-input check (nothing is typed anywhere). A failed write
-    /// is logged; the dictation is still in History.
-    func copy(_ text: String) {
+    /// paste, no secure-input check (nothing is typed anywhere). Returns false when
+    /// the write failed (also logged); the dictation is still in History.
+    @discardableResult
+    func copy(_ text: String) -> Bool {
         guard Clipboard.writeString(text, marker: false, to: pasteboard()) else {
             Diagnostics.shared.error("delivery", "could not write the dictation to the clipboard")
-            return
+            return false
         }
+        return true
     }
 
     /// Whether the paste provably landed: the SAME element is still focused and

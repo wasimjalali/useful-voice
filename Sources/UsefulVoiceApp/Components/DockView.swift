@@ -31,6 +31,12 @@ struct DockIssue: Equatable {
                 (lead, rest, icon, tone) = ("Secure field active.", "Dictation is off here.", "lock", .warning)
             case .micUnavailable:
                 (lead, rest, icon, tone) = ("Microphone access is off.", "Dictation can't start.", "exclamationmark.triangle", .warning)
+            case .diskFull:
+                (lead, rest, icon, tone) = ("The disk is full.", "Free up space, then dictate again.", "exclamationmark.triangle", .danger)
+            case .recordingFailed:
+                (lead, rest, icon, tone) = ("Couldn't start recording.", "", "exclamationmark.triangle", .danger)
+            case .deliveryFailed:
+                (lead, rest, icon, tone) = ("Couldn't copy the text.", "It's saved in Useful Voice.", "exclamationmark.triangle", .danger)
             case .stopFailed:
                 (lead, rest, icon, tone) = ("Couldn't stop recording.", saved, "exclamationmark.triangle", .danger)
             case .noSpeech:

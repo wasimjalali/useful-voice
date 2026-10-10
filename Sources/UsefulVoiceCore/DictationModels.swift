@@ -28,6 +28,31 @@ public enum DeliveryResult: Sendable, Equatable {
     case copied
 }
 
+/// Delivery could not put the text where it was meant to go (the clipboard write
+/// failed). The dictation itself is already saved.
+public struct DeliveryFailure: Error, Equatable, Sendable {
+    public init() {}
+}
+
+/// What a delivery reports back to the controller.
+public typealias DeliveryReport = Result<DeliveryResult, DeliveryFailure>
+
+/// The app in front of the user, as the controller needs to know it.
+public struct FrontmostApp: Equatable, Sendable {
+    /// Stable identity (bundle id) used to tell whether the app changed.
+    public let id: String?
+    /// Localized name shown to the user.
+    public let name: String?
+    /// True when it is Useful Voice itself.
+    public let isSelf: Bool
+
+    public init(id: String?, name: String?, isSelf: Bool = false) {
+        self.id = id
+        self.name = name
+        self.isSelf = isSelf
+    }
+}
+
 /// A one-click fix the UI can attach to an error.
 public enum DictationFix: Sendable, Equatable {
     case openMicrophoneSettings
@@ -44,6 +69,13 @@ public struct DictationError: Equatable, Sendable {
         case secureField
         /// Recording could not start (no microphone, permission denied, no disk).
         case micUnavailable
+        /// Recording could not start because the disk is full or not writable.
+        case diskFull
+        /// Recording could not start for another reason (unsupported audio
+        /// format, a recording already running, a file error).
+        case recordingFailed
+        /// The text could not be put on the clipboard. The dictation is saved.
+        case deliveryFailed
         /// Recording started but could not be finished.
         case stopFailed
         /// The recording, or the transcript, held no speech.
@@ -116,6 +148,29 @@ public struct DictationError: Equatable, Sendable {
         }
     }
 
+    /// The error for a recording that would not start, typed by cause so the
+    /// microphone fix is offered only when the microphone is the problem.
+    static func startFailure(_ error: Error) -> DictationError {
+        let message = "Couldn't start recording: \(error.localizedDescription)"
+        let kind: Kind
+        switch error {
+        case let recorderError as AudioRecorderError:
+            switch recorderError {
+            case .noInputDevice, .inputDeviceLost: kind = .micUnavailable
+            case .diskWriteFailed: kind = .diskFull
+            case .formatUnsupported, .alreadyRecording, .notRecording: kind = .recordingFailed
+            }
+        case let cocoa as CocoaError:
+            kind = cocoa.code == .fileWriteOutOfSpace ? .diskFull : .recordingFailed
+        default:
+            // The engine refusing to start is almost always the input device or
+            // its permission.
+            kind = .micUnavailable
+        }
+        return DictationError(kind: kind, message: message,
+                              fix: kind == .micUnavailable ? .openMicrophoneSettings : nil)
+    }
+
     /// The fix for a transcription failure. Retry is offered only where the fault
     /// is likely to pass; a rejected key, no credits or a missing engine need
     /// Settings first (the audio is still retained, so `canRetry` stays true).
@@ -123,7 +178,9 @@ public struct DictationError: Equatable, Sendable {
         switch kind {
         case .noProvider, .keyRejected, .outOfCredits: return .openEngineSettings
         case .offline, .timedOut, .providerFailed, .engineFailed: return .retry
-        case .secureField, .micUnavailable, .stopFailed, .noSpeech, .tooShort: return nil
+        case .secureField, .micUnavailable, .diskFull, .recordingFailed, .deliveryFailed,
+             .stopFailed, .noSpeech, .tooShort:
+            return nil
         }
     }
 }

@@ -72,6 +72,15 @@ struct HUDError: Equatable {
         case .secureField:
             message = "Dictation is off in password fields"
             symbol = "lock"
+        case .diskFull:
+            message = "Disk is full"
+            symbol = "exclamationmark.triangle"
+        case .recordingFailed:
+            message = "Couldn't start recording"
+            symbol = "exclamationmark.triangle"
+        case .deliveryFailed:
+            message = "Couldn't copy the text"
+            symbol = "exclamationmark.triangle"
         case .stopFailed:
             message = "Couldn't stop recording"
             symbol = "exclamationmark.triangle"

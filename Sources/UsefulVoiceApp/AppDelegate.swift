@@ -460,17 +460,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.inserter.deliver(text) { outcome in
                         if outcome == .clipboardOnly {
                             // The HUD shows "Copied. Press ⌘V to paste" from the outcome.
-                            done(.copiedNotPasted)
+                            done(.success(.copiedNotPasted))
                         } else {
-                            done(.pasted)
+                            done(.success(.pasted))
                         }
                     }
                 case .copy:
                     // Saved and copied: the clipboard is the destination, so
                     // nothing is pasted and the user's old clipboard is not
                     // restored over it.
-                    self?.inserter.copy(text)
-                    done(.copied)
+                    if self?.inserter.copy(text) == true {
+                        done(.success(.copied))
+                    } else {
+                        done(.failure(DeliveryFailure()))
+                    }
                 }
             },
             record: { [weak self] record in
@@ -522,7 +525,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.viewModel?.refreshLanguageMemory()
             },
             isSecureInputActive: { IsSecureEventInputEnabled() },
-            frontmostAppName: { NSWorkspace.shared.frontmostApplication?.localizedName }
+            frontmostApp: {
+                let app = NSWorkspace.shared.frontmostApplication
+                return FrontmostApp(
+                    id: app?.bundleIdentifier, name: app?.localizedName,
+                    isSelf: app?.processIdentifier == ProcessInfo.processInfo.processIdentifier)
+            }
         )
         controller.onStateChange = { [weak self] state in
             self?.render(state: state)
@@ -537,6 +545,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // fix as the window and the menu.
         hud.onFix = { [weak self] fix in self?.viewModel?.perform(fix) }
         viewModel.onOpenWindow = { [weak self] in self?.openMainWindow() }
+        viewModel.onRecordingsDeleted = { [weak self] in
+            self?.controller?.discardRetainedAudio()
+        }
         viewModel.onRetry = { [weak self] in
             self?.controller?.retryLast()
         }

@@ -25,6 +25,7 @@ struct SettingsPage: View {
     @State private var silenceTimeout = 60.0
     @State private var recordingsToKeep = 10
     @State private var soundEffectsEnabled = true
+    @State private var appearance = AppearanceChoice.system
     @State private var launchAtLogin = false
 
     @State private var saveMessage = ""
@@ -198,6 +199,18 @@ struct SettingsPage: View {
                 }
                 settingsRow("Sound cues", detail: "Play a quiet tone when recording starts and stops") {
                     Toggle("", isOn: $soundEffectsEnabled).labelsHidden()
+                }
+
+                Divider().overlay(Theme.line)
+
+                // Applies at once, with no restart and no Save.
+                settingsRow("Appearance", detail: "Follow macOS, or keep it light or dark") {
+                    BrandedSegmentedControl(
+                        selection: Binding(get: { appearance },
+                                           set: { appearance = $0; settings.appearance = $0 }),
+                        options: [("System", AppearanceChoice.system),
+                                  ("Light", .light), ("Dark", .dark)])
+                        .frame(width: 220)
                 }
 
                 HStack(spacing: 10) {
@@ -763,6 +776,7 @@ struct SettingsPage: View {
         silenceTimeout = settings.silenceTimeout
         recordingsToKeep = settings.recordingsToKeep
         soundEffectsEnabled = settings.soundEffectsEnabled
+        appearance = settings.appearance
         launchAtLogin = LoginItem.isEnabled
     }
 

@@ -1022,6 +1022,9 @@ class UsefulVoiceApp {
     ipcMain.handle('settings:save', (_event, patch: Partial<AppSettings>) => {
       const next = this.settings.update(patch);
       applyAppearance(next.appearance);
+      // nativeTheme emits 'updated' on a themeSource change; sync anyway so the
+      // window never depends on that event alone.
+      this.syncTheme();
       this.registerHotkey();
       // Goes through the same plan as startup, so the entry written here is the one
       // the launcher will start and the one `--autostart` will therefore arrive on.

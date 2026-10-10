@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
+  DictationOutcomeEvent,
   DictationStateEvent,
+  DictationTelemetry,
   HistoryEntryDTO,
   MemorySnapshotDTO,
   NoteDTO,
@@ -65,6 +67,24 @@ const api = {
     const listener = (_event: unknown, payload: DictationStateEvent): void => handler(payload);
     ipcRenderer.on('dictation:state', listener);
     return () => ipcRenderer.removeListener('dictation:state', listener);
+  },
+  /**
+   * How a dictation ended: delivered (with its word count and how it reached the
+   * user) or cancelled. Sent once per dictation, just before the idle state.
+   */
+  onOutcome: (handler: (outcome: DictationOutcomeEvent) => void): (() => void) => {
+    const listener = (_event: unknown, payload: DictationOutcomeEvent): void => handler(payload);
+    ipcRenderer.on('dictation:outcome', listener);
+    return () => ipcRenderer.removeListener('dictation:outcome', listener);
+  },
+  /**
+   * Level, elapsed time and the last-5-seconds countdowns. Sent to the main window
+   * and the HUD at most ~30 times a second, and only while recording.
+   */
+  onTelemetry: (handler: (telemetry: DictationTelemetry) => void): (() => void) => {
+    const listener = (_event: unknown, payload: DictationTelemetry): void => handler(payload);
+    ipcRenderer.on('dictation:telemetry', listener);
+    return () => ipcRenderer.removeListener('dictation:telemetry', listener);
   },
   onLevel: (handler: (level: number) => void): (() => void) => {
     const listener = (_event: unknown, level: number): void => handler(level);

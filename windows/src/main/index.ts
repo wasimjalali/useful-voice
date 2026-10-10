@@ -8,7 +8,12 @@ import os from 'node:os';
 import { DataStore } from '../core/settings/dataStore.js';
 import { planLoginItem, wasAutoStarted } from '../core/settings/autostart.js';
 import { decideClipboardRestore, isProbablyVerifiable } from '../core/delivery/clipboardRestore.js';
-import { normaliseMemoryLanguage, type AppSettings, type Note } from '../core/models.js';
+import {
+  normaliseMemoryLanguage,
+  type AppSettings,
+  type DictationSource,
+  type Note,
+} from '../core/models.js';
 import { selectKeyterms } from '../core/memory/biasBuilder.js';
 import {
   transcribe as transcribeRequest,
@@ -26,7 +31,6 @@ import {
   Diagnostics,
   clipboardHoldsText,
   foregroundWindow,
-  ownProcessName,
   pasteClipboard,
   playCue,
   restoreClipboard,
@@ -69,7 +73,8 @@ class UsefulVoiceApp {
     startedAt: number;
   } | null = null;
 
-  private audioTargetApp: string | undefined;
+  /** Whether Esc is registered as a global shortcut. It is, only while recording. */
+  private escapeRegistered = false;
   private lastPaste: { text: string; at: number } | null = null;
 
   async start(): Promise<void> {
@@ -124,12 +129,14 @@ class UsefulVoiceApp {
     this.createRecorderWindow();
     this.service = this.buildService();
     this.tray = new TrayController({
-      onToggleDictation: () => void this.toggleDictation(),
+      // The tray is part of the app, not the app the user is dictating into, so a
+      // dictation started here is saved and copied like one started in the window.
+      onToggleDictation: () => void this.toggleDictation('window'),
       onOpenWindow: (page) => this.openWindow(page),
       onQuit: () => void this.quit(),
       onRetry: () => void this.service.retryLast(),
       onCopyLast: () => this.copyLastTranscript(),
-      onCancel: () => void this.service.cancel(),
+      onCancel: () => void this.cancelDictation(),
     });
     this.tray.create();
 
@@ -312,14 +319,20 @@ class UsefulVoiceApp {
 
   private registerHotkey(): void {
     globalShortcut.unregisterAll();
+    // `unregisterAll` also drops Esc, so put it back if a recording is running.
+    this.escapeRegistered = false;
+    this.syncEscapeShortcut(this.service?.currentState === 'recording');
     const accelerator = this.settings.all.hotkey.accelerator;
+    // The tray's "Start dictation (...)" line must show the hotkey from the first
+    // menu open and after it is changed, not only after the next status change.
+    this.tray?.setState({ hotkeyLabel: accelerator });
     if (accelerator.trim().length === 0) {
       this.diagnostics.log('hotkey', 'no hotkey configured');
       return;
     }
     // A failed registration is a real, user-visible problem: another app already
     // owns the combination, so dictation would silently never start.
-    const ok = globalShortcut.register(accelerator, () => void this.toggleDictation());
+    const ok = globalShortcut.register(accelerator, () => void this.toggleDictation('hotkey'));
     if (!ok) {
       this.diagnostics.log('hotkey', `could not register ${accelerator}`);
       this.broadcast('app:save-status', {
@@ -397,7 +410,9 @@ class UsefulVoiceApp {
         stop: async () => this.awaitCapture(),
         cancel: async () => {
           this.recorderWindow?.webContents.send('audio:stop');
-          this.pendingCapture = null;
+          // Reject rather than drop: a stop still waiting for audio ends now instead of
+          // when its own timer fires, by which time a newer dictation may be waiting.
+          this.pendingCapture?.reject(new Error('The recording was cancelled.'));
         },
       },
       transcriber: {
@@ -421,11 +436,14 @@ class UsefulVoiceApp {
           });
         },
       },
-      sink: { deliver: (request) => this.deliver(request.text, request.targetApp) },
+      sink: { deliver: (request) => this.deliver(request.text, request.mode, request.targetApp) },
       settings: () => this.settings.all,
       memory: () => this.data.memorySnapshot(),
       apiKey: async () => this.settings.revealApiKey(),
       onStatus: (status) => this.handleStatus(status),
+      // Before the idle status, so a window can show its done line before it resets.
+      onOutcome: (outcome) => this.broadcast('dictation:outcome', outcome),
+      onTelemetry: (telemetry) => this.sendToMainAndHud('dictation:telemetry', telemetry),
       onDiagnostic: (category, message) => this.diagnostics.log(category, message),
       onCompleted: (outcome) => {
         this.data.appendHistory({
@@ -459,11 +477,12 @@ class UsefulVoiceApp {
     const timeoutMs = 4000;
     return new Promise<CapturedAudio>((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.pendingCapture = null;
+        // Only clear what is still this wait: a newer dictation may own the slot now.
+        if (this.pendingCapture === pending) this.pendingCapture = null;
         reject(new Error('The microphone did not return any audio.'));
       }, timeoutMs);
       timer.unref?.();
-      this.pendingCapture = {
+      const pending: NonNullable<typeof this.pendingCapture> = {
         startedAt: Date.now(),
         resolve: (audio) => {
           clearTimeout(timer);
@@ -476,6 +495,7 @@ class UsefulVoiceApp {
           reject(error);
         },
       };
+      this.pendingCapture = pending;
     });
   }
 
@@ -485,9 +505,11 @@ class UsefulVoiceApp {
       recording: status.state === 'recording',
       transcribing: status.state === 'transcribing' || status.state === 'delivering',
       canRetry: this.service?.canRetry ?? false,
+      // Any finished dictation can be copied again, not only one that failed.
+      canCopyLast: (this.service?.mostRecent ?? null) !== null,
       hotkeyLabel: this.settings.all.hotkey.accelerator,
-      targetApp: status.targetApp,
     });
+    this.syncEscapeShortcut(status.state === 'recording');
 
     if (status.state === 'recording') {
       this.showHud();
@@ -501,26 +523,44 @@ class UsefulVoiceApp {
     }
   }
 
-  private async toggleDictation(): Promise<void> {
-    if (this.service.currentState === 'idle' || this.service.currentState === 'error') {
+  /**
+   * Start or stop a dictation from `source`.
+   *
+   * Only a hotkey start needs the foreground window: that is the app its text is
+   * pasted into. A window start pastes nothing, so it records no target at all.
+   */
+  private async toggleDictation(source: DictationSource): Promise<void> {
+    let targetApp: string | undefined;
+    if (source === 'hotkey' && (this.service.currentState === 'idle' || this.service.currentState === 'error')) {
       // Capture which app is focused NOW, before recording. By the time the
       // transcript is ready the user may have clicked elsewhere, and pasting into
       // the wrong window is worse than not pasting at all.
       const target = await foregroundWindow();
-      if (target) {
-        const own = ownProcessName();
-        if (target.processName.replace(/\.exe$/i, '').toLowerCase() === own) {
-          // Never dictate into our own settings window.
-          this.audioTargetApp = undefined;
-        } else {
-          this.audioTargetApp = target.title || target.processName;
-        }
-      } else {
-        this.audioTargetApp = undefined;
-      }
+      targetApp = target ? target.title || target.processName : undefined;
     }
-    await this.service.toggle({ targetApp: this.audioTargetApp });
+    await this.service.toggle({ source, targetApp });
     void this.data.flush();
+  }
+
+  /**
+   * Esc cancels a recording, and is a global shortcut only while one is running.
+   * Registered for the whole session it would swallow Esc in every other app.
+   */
+  private syncEscapeShortcut(recording: boolean): void {
+    if (recording && !this.escapeRegistered) {
+      this.escapeRegistered = globalShortcut.register('Escape', () => void this.cancelDictation());
+      if (!this.escapeRegistered) this.diagnostics.log('hotkey', 'could not register Escape');
+    } else if (!recording && this.escapeRegistered) {
+      globalShortcut.unregister('Escape');
+      this.escapeRegistered = false;
+    }
+  }
+
+  private async cancelDictation(): Promise<void> {
+    // Only a cancel during delivery can have a paste to take back. Earlier, the paste
+    // Ctrl+Z would reach belongs to the previous dictation, which must be left alone.
+    if (this.service.currentState === 'delivering') await this.undoLastPaste();
+    await this.service.cancel();
   }
 
   /**
@@ -536,7 +576,18 @@ class UsefulVoiceApp {
    * clipboard lives in `decideClipboardRestore`, so the contract is testable without
    * Electron and cannot drift from what the tests assert.
    */
-  private async deliver(text: string, targetApp?: string): Promise<{ delivered: boolean; clipboardFallback: boolean }> {
+  private async deliver(
+    text: string,
+    mode: 'paste' | 'copy',
+    targetApp?: string,
+  ): Promise<{ delivered: boolean; clipboardFallback: boolean }> {
+    if (mode === 'copy') {
+      // Nothing is pasted, so there is nothing to confirm, nothing to restore and
+      // nothing for Ctrl+Z to take back: the dictation simply becomes the clipboard.
+      clipboard.writeText(text);
+      this.lastPaste = null;
+      return { delivered: true, clipboardFallback: false };
+    }
     const target = await foregroundWindow();
     const snapshot = snapshotClipboard();
 
@@ -624,6 +675,15 @@ class UsefulVoiceApp {
     }
   }
 
+  /** For live data the hidden recorder window has no use for. */
+  private sendToMainAndHud(channel: string, payload: unknown): void {
+    for (const window of [this.mainWindow, this.hudWindow]) {
+      if (window && !window.isDestroyed()) {
+        window.webContents.send(channel, payload);
+      }
+    }
+  }
+
   private pushAll(): void {
     this.broadcast('app:save-status', { ok: this.settings.saveError === null });
   }
@@ -668,13 +728,14 @@ class UsefulVoiceApp {
       if (this.hudWindow && !this.hudWindow.isDestroyed()) {
         this.hudWindow.webContents.send('hud:level', level);
       }
+      // The same samples feed the silence watchdog and the window's live telemetry.
+      this.service.reportLevel(level);
     });
 
-    ipcMain.handle('dictation:toggle', () => this.toggleDictation());
-    ipcMain.handle('dictation:cancel', async () => {
-      await this.undoLastPaste();
-      await this.service.cancel();
-    });
+    // Every renderer button is inside the app, so a toggle from here is a window
+    // dictation. The renderer cannot ask for a paste: only the hotkey does that.
+    ipcMain.handle('dictation:toggle', () => this.toggleDictation('window'));
+    ipcMain.handle('dictation:cancel', () => this.cancelDictation());
     ipcMain.handle('dictation:retry', () => this.service.retryLast());
     ipcMain.handle('dictation:copyLast', () => this.copyLastTranscript());
 
@@ -1045,8 +1106,8 @@ class UsefulVoiceApp {
       {
         label: 'Dictation',
         submenu: [
-          { label: 'Start / stop', click: () => void this.toggleDictation() },
-          { label: 'Cancel', click: () => void this.service.cancel() },
+          { label: 'Start / stop', click: () => void this.toggleDictation('window') },
+          { label: 'Cancel', click: () => void this.cancelDictation() },
           { label: 'Retry last', click: () => void this.service.retryLast() },
           { label: 'Copy last transcript', click: () => this.copyLastTranscript() },
         ],
@@ -1285,9 +1346,9 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     // The count is checked against the documented boundary rather than a vague lower
     // bound: `tests/ipcContract.test.ts` pins this same number to the README, so a
     // channel added or lost anywhere fails one of the two.
-    // 51 since the language picker hotkey added `onOpenLanguagePicker`. Kept in step
+    // 53 since `onOutcome` and `onTelemetry` joined `onOpenLanguagePicker`. Kept in step
     // with the README by the comment below.
-    const EXPECTED_API_METHODS = 51;
+    const EXPECTED_API_METHODS = 53;
     record(
       'preload exposes API',
       preloadProbe.hasApi

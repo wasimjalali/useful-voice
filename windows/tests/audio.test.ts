@@ -1,6 +1,10 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   BYTES_PER_SECOND,
+  LEVEL_METER_GAIN,
   MINIMUM_AUDIO_BYTES,
   SPEECH_PEAK_THRESHOLD,
   TARGET_SAMPLE_RATE,
@@ -244,6 +248,63 @@ describe('SilenceWatchdog', () => {
     const loud = new SilenceWatchdog({ timeoutSeconds: 5, silenceThreshold: 0.2 });
     expect(loud.observe(0.1, 1)).toBe(false);
     expect(loud.observe(0.1, 6)).toBe(true);
+  });
+});
+
+describe('SilenceWatchdog countdown', () => {
+  it('expires from the clock alone, with no frame arriving after the last loud one', () => {
+    const watchdog = new SilenceWatchdog({ timeoutSeconds: 10 });
+    watchdog.observe(0.5, 3);
+    expect(watchdog.isExpired(12.9)).toBe(false);
+    expect(watchdog.isExpired(13)).toBe(true);
+  });
+
+  it('measures from the start when nothing was ever loud', () => {
+    const watchdog = new SilenceWatchdog({ timeoutSeconds: 10 });
+    expect(watchdog.isExpired(9.9)).toBe(false);
+    expect(watchdog.isExpired(10)).toBe(true);
+  });
+
+  it('is never expired, and has no countdown, when auto-stop is off', () => {
+    for (const timeoutSeconds of [0, -5]) {
+      const watchdog = new SilenceWatchdog({ timeoutSeconds });
+      expect(watchdog.isExpired(99_999)).toBe(false);
+      expect(watchdog.secondsUntilStop(99_999)).toBeNull();
+    }
+  });
+
+  it('counts the seconds left in whole seconds, rounded up, never below zero', () => {
+    const watchdog = new SilenceWatchdog({ timeoutSeconds: 10 });
+    watchdog.observe(0.5, 0);
+    expect(watchdog.secondsUntilStop(0)).toBe(10);
+    expect(watchdog.secondsUntilStop(5.2)).toBe(5);
+    expect(watchdog.secondsUntilStop(6.5)).toBe(4);
+    expect(watchdog.secondsUntilStop(9.99)).toBe(1);
+    expect(watchdog.secondsUntilStop(10)).toBe(0);
+    expect(watchdog.secondsUntilStop(50)).toBe(0);
+  });
+
+  it('starts the countdown again when speech resumes', () => {
+    const watchdog = new SilenceWatchdog({ timeoutSeconds: 10 });
+    watchdog.observe(0.5, 0);
+    expect(watchdog.secondsUntilStop(8)).toBe(2);
+    watchdog.observe(0.5, 8);
+    expect(watchdog.secondsUntilStop(8.5)).toBe(10);
+  });
+});
+
+describe('level scaling between recorder and watchdog', () => {
+  it('uses one shared gain, so the watchdog divides out exactly what the recorder applied', () => {
+    const captureSource = readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/renderer/capture.ts'),
+      'utf8',
+    );
+    expect(captureSource).toContain('rms(chunk) * LEVEL_METER_GAIN');
+    // Quiet room tone (RMS 0.005) must read as silence after the round trip, speech
+    // (RMS 0.05) must not.
+    const sent = (rmsValue: number): number => Math.min(1, rmsValue * LEVEL_METER_GAIN);
+    expect(sent(0.005) / LEVEL_METER_GAIN).toBeLessThan(0.01);
+    expect(sent(0.05) / LEVEL_METER_GAIN).toBeGreaterThanOrEqual(0.01);
   });
 });
 

@@ -8,13 +8,27 @@
  * filesystem, the API key, or the global hotkey registry on its own.
  */
 
+import type { DictationError } from '../core/models.js';
+
 export interface DictationStateEvent {
   state: 'idle' | 'recording' | 'transcribing' | 'delivering' | 'error';
   message?: string;
-  /** Which app will receive the text, for the HUD. */
+  /** Which app will receive the text, for the HUD. Only a hotkey dictation has one. */
   targetApp?: string;
   elapsedSeconds?: number;
+  /** Set on an error state that has a kind; `message` repeats `error.message`. */
+  error?: DictationError;
 }
+
+export type {
+  DictationDelivery,
+  DictationError,
+  DictationErrorKind,
+  DictationFix,
+  DictationOutcomeEvent,
+  DictationSource,
+  DictationTelemetry,
+} from '../core/models.js';
 
 export interface MemorySnapshotDTO {
   terms: Array<{

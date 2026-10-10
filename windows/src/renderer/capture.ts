@@ -6,7 +6,7 @@
  * process asks for a capture over IPC and this module replies with a finished WAV.
  */
 
-import { encodeWav, rms, peak, containsSpeech, resampleTo16k } from '../core/audio/wav.js';
+import { encodeWav, rms, peak, containsSpeech, resampleTo16k, LEVEL_METER_GAIN } from '../core/audio/wav.js';
 
 export interface CaptureResult {
   wav: ArrayBuffer;
@@ -114,7 +114,7 @@ export async function startCapture(): Promise<void> {
     const now = performance.now();
     if (now - capture.levelTimer > 50) {
       capture.levelTimer = now;
-      window.usefulVoice.sendLevel(Math.min(1, rms(chunk) * 4));
+      window.usefulVoice.sendLevel(Math.min(1, rms(chunk) * LEVEL_METER_GAIN));
     }
   };
 

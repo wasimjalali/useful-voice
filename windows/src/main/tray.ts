@@ -20,9 +20,12 @@ export interface TrayHandlers {
 export interface TrayState {
   recording: boolean;
   transcribing: boolean;
+  /** A failed dictation's audio is still held, so "Retry last recording" works. */
   canRetry: boolean;
+  /** Any dictation has finished, so "Copy last transcript" has something to copy. */
+  canCopyLast: boolean;
+  /** The accelerator as Electron spells it ("Control+Alt+Space"); shown as plain text. */
   hotkeyLabel: string;
-  targetApp?: string;
 }
 
 export class TrayController {
@@ -31,6 +34,7 @@ export class TrayController {
     recording: false,
     transcribing: false,
     canRetry: false,
+    canCopyLast: false,
     hotkeyLabel: '',
   };
 
@@ -60,37 +64,40 @@ export class TrayController {
     if (!this.tray) return;
     const busy = this.state.recording || this.state.transcribing;
 
+    // Win32 menus are static while open, so the first line says what the app is doing
+    // without a live timer.
+    const status = this.state.recording ? 'Recording' : this.state.transcribing ? 'Transcribing' : 'Ready';
+
     const items: Array<Electron.MenuItemConstructorOptions | null> = [
+      { label: status, enabled: false },
+      { type: 'separator' },
       {
         label: this.state.recording
           ? 'Stop and transcribe'
           : this.state.transcribing
             ? 'Transcribing…'
-            : `Start dictating (${this.state.hotkeyLabel || 'no hotkey'})`,
+            : `Start dictation (${formatAccelerator(this.state.hotkeyLabel)})`,
         click: () => this.handlers.onToggleDictation(),
         enabled: !this.state.transcribing,
       },
       busy
-        ? { label: 'Cancel', click: () => this.handlers.onCancel() }
+        ? {
+            // Esc is a shortcut only while recording.
+            label: this.state.recording ? 'Cancel dictation (Esc)' : 'Cancel dictation',
+            click: () => this.handlers.onCancel(),
+          }
         : null,
       this.state.canRetry
-        ? { label: 'Retry last dictation', click: () => this.handlers.onRetry() }
+        ? { label: 'Retry last recording', click: () => this.handlers.onRetry() }
         : null,
-      this.state.canRetry
+      this.state.canCopyLast
         ? { label: 'Copy last transcript', click: () => this.handlers.onCopyLast() }
         : null,
-      { type: 'separator' },
-      {
-        label: this.state.targetApp
-          ? `Dictating into ${this.state.targetApp}`
-          : 'No target app focused',
-        enabled: false,
-      },
       { type: 'separator' },
       { label: 'Dictionary…', click: () => this.handlers.onOpenWindow('dictionary') },
       { label: 'History…', click: () => this.handlers.onOpenWindow('history') },
       { label: 'Notes…', click: () => this.handlers.onOpenWindow('notes') },
-      { label: 'Settings…', click: () => this.handlers.onOpenWindow('settings') },
+      { label: 'Open settings', click: () => this.handlers.onOpenWindow('settings') },
       { type: 'separator' },
       { label: `Useful Voice ${app.getVersion()}`, enabled: false },
       { label: 'Quit', click: () => this.handlers.onQuit() },
@@ -143,6 +150,18 @@ export class TrayController {
 
     return nativeImage.createFromBuffer(pixels, { width: size, height: size });
   }
+}
+
+/**
+ * The hotkey as people say it. Electron spells the modifier "Control" or
+ * "CommandOrControl"; the board and every other string in the app say "Ctrl".
+ */
+export function formatAccelerator(accelerator: string): string {
+  if (accelerator.trim().length === 0) return 'no hotkey';
+  return accelerator
+    .split('+')
+    .map((part) => (/^(control|commandorcontrol|cmdorctrl)$/i.test(part) ? 'Ctrl' : part))
+    .join('+');
 }
 
 function clamp01(value: number): number {

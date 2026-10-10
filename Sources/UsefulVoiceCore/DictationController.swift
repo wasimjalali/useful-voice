@@ -446,12 +446,13 @@ public final class DictationController {
         let token = deliveryToken
         let words = DictationOutcome.wordCount(of: finalText)
         // A hotkey dictation pastes only into the app it started in. If the user
-        // has since moved (or stopped it from Useful Voice's own window), the
-        // paste would land in the wrong place, so deliver by copy and say so.
+        // has since moved (or stopped it from Useful Voice's own window after
+        // starting elsewhere), the paste would land in the wrong place, so deliver
+        // by copy and say so. Started and still in Useful Voice (a note) pastes.
         var deliverMode = deliveryMode
         var pasteRedirected = false
         if deliverMode == .paste, let now = frontmostApp(),
-           now.isSelf || now.id != startApp?.id {
+           now.id != startApp?.id {
             deliverMode = .copy
             pasteRedirected = true
         }

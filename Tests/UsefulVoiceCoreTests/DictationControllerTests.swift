@@ -1575,14 +1575,14 @@ final class CapturingProvider: TranscriptionProvider {
         #expect(outcomes == [.delivered(words: 2, mode: .copiedNotPasted, appName: "Slack")])
     }
 
-    @Test func testHotkeyDictationStartedInUsefulVoiceAlsoCopiesWhileItIsFront() async throws {
+    @Test func testHotkeyDictationStartedAndDeliveredInUsefulVoicePastesThere() async throws {
         frontmostApp = FrontmostApp(id: "ai.karko.usefulvoice", name: "Useful Voice", isSelf: true)
         let controller = makeController(providers: [okProvider()])
-        controller.toggle()
+        controller.toggle()                          // hotkey while typing in a note
         controller.toggle()
         await controller.awaitProcessing()
-        #expect(deliveredModes == [.copy])
-        #expect(outcomes.last == .delivered(words: 2, mode: .copiedNotPasted, appName: "Useful Voice"))
+        #expect(deliveredModes == [.paste])
+        #expect(outcomes.last == .delivered(words: 2, mode: .pasted, appName: "Useful Voice"))
     }
 
     @Test func testSameAppAtDeliveryStillPastes() async throws {

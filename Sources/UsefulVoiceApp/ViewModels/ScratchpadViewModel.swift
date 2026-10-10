@@ -184,40 +184,51 @@ final class ScratchpadViewModel: ObservableObject {
     }
 
     /// Appends text to a note as a new paragraph. Returns the note's previous
-    /// body so the caller's Undo can restore it, or nil when the note is gone.
+    /// body so the caller's Undo can restore it, or nil when the note is gone or
+    /// the note could not be saved (the caller must then say it was not added).
     @discardableResult
     func append(_ text: String, toNoteID id: UUID) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, var note = notes.first(where: { $0.id == id }) else { return nil }
+        guard !trimmed.isEmpty else { return nil }
+        // Commit first, then read: the selected note's unsaved draft must be in the
+        // copy that is written back, or the append would overwrite it.
         if id == selectedID { commitDraft() }
+        guard var note = notes.first(where: { $0.id == id }) else { return nil }
         let previous = note.body
         note.body = [previous, trimmed]
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .joined(separator: "\n\n")
         note.updatedAt = Date()
         store.update(note)
+        syncSaveState()
         refresh()
         if id == selectedID { loadSelectedDraft() }
-        return previous
+        return store.lastSaveError == nil ? previous : nil
     }
 
-    /// Undo for `append`: puts the previous body back.
-    func restoreBody(_ body: String, noteID id: UUID) {
-        guard var note = notes.first(where: { $0.id == id }) else { return }
+    /// Undo for `append`: puts the previous body back. False when it could not be saved.
+    @discardableResult
+    func restoreBody(_ body: String, noteID id: UUID) -> Bool {
+        if id == selectedID { commitDraft() }
+        guard var note = notes.first(where: { $0.id == id }) else { return false }
         note.body = body
         note.updatedAt = Date()
         store.update(note)
+        syncSaveState()
         refresh()
         if id == selectedID { loadSelectedDraft() }
+        return store.lastSaveError == nil
     }
 
+    /// The new note, or nil when nothing was captured or it could not be saved.
     @discardableResult
     func createDictationNote(_ text: String) -> ScratchpadNote? {
         guard let note = store.captureDictation(text) else { return nil }
+        syncSaveState()
         refresh()
         selectedID = note.id
         loadSelectedDraft()
-        return note
+        return store.lastSaveError == nil ? note : nil
     }
 
     func exportMarkdownForSelected() -> String? {

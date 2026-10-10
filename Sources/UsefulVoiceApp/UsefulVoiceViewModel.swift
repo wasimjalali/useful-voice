@@ -35,6 +35,8 @@ final class UsefulVoiceViewModel: ObservableObject {
     var onHotkeyKeycodeChange: ((Int) -> Void)?
     /// Set by the app layer to push a new language-switch key to the live HotkeyManager.
     var onLanguageSwitchKeycodeChange: ((Int) -> Void)?
+    /// Set by the app layer to bring the main window up (closed or behind).
+    var onOpenWindow: (() -> Void)?
     /// Set by the app layer to retry the last failed dictation on its audio.
     var onRetry: (() -> Void)?
     /// Set by the app layer to re-run a history item from retained audio when possible.
@@ -97,7 +99,8 @@ final class UsefulVoiceViewModel: ObservableObject {
         publishFeedback()
     }
 
-    /// Clears the issue, from a close button or after the HUD's 8 s.
+    /// Clears the issue the window shows (the dock row). The HUD's x and its 8 s
+    /// only hide the HUD: the fix stays reachable in the window and the menu.
     func dismissIssue() {
         feedback.dismissIssue()
         publishFeedback()
@@ -125,7 +128,10 @@ final class UsefulVoiceViewModel: ObservableObject {
         switch fix {
         case .openMicrophoneSettings: Self.openPrivacyPane("Privacy_Microphone")
         case .openAccessibilitySettings: Self.openPrivacyPane("Privacy_Accessibility")
-        case .openEngineSettings: navigate(to: "settings", anchor: "engine")
+        case .openEngineSettings:
+            // From the HUD or the menu the window may be closed: open it first.
+            onOpenWindow?()
+            navigate(to: "settings", anchor: "engine")
         case .retry: retry()
         }
     }

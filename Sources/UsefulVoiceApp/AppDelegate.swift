@@ -536,6 +536,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The HUD pill's verb (Retry last recording, Open settings) runs the same
         // fix as the window and the menu.
         hud.onFix = { [weak self] fix in self?.viewModel?.perform(fix) }
+        viewModel.onOpenWindow = { [weak self] in self?.openMainWindow() }
         viewModel.onRetry = { [weak self] in
             self?.controller?.retryLast()
         }

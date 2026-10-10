@@ -26,10 +26,6 @@ struct StreamPage: View {
     let settings: AppSettings
     @StateObject private var store: StreamStore
 
-    /// Keeps the first keyboard focus off the search field, which would otherwise draw
-    /// its focus ring the moment the page opens.
-    @FocusState private var landing: Bool
-
     init(viewModel: UsefulVoiceViewModel, settings: AppSettings) {
         self.viewModel = viewModel
         self.settings = settings
@@ -71,27 +67,8 @@ struct StreamPage: View {
             .padding(.horizontal, 28)
             .padding(.bottom, 16)
         }
-        .background {
-            Color.clear
-                .frame(width: 1, height: 1)
-                .focusable()
-                .focused($landing)
-                .focusEffectDisabled()
-                .accessibilityHidden(true)
-        }
-        .defaultFocus($landing, true)
-        .onAppear {
-            // The window hands the first key view (the search field) focus when it opens,
-            // after defaultFocus ran. Take it back, but only until the person clicks or
-            // types: from then on the focus is theirs.
-            let guardian = FocusReclaim()
-            for delay in [0.0, 0.05, 0.3] {
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                    if guardian.active { landing = true }
-                    if delay >= 0.3 { guardian.stop() }
-                }
-            }
-        }
+        // The search field must not draw a focus ring the moment the page opens.
+        .keepsFirstFieldUnfocused()
         .overlay(alignment: .bottomLeading) {
             if let toast = store.toast {
                 StreamToastView(toast: toast) { store.dismissToast() }
@@ -114,28 +91,6 @@ struct StreamPage: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.surface)
     }
-}
-
-/// Watches the first moments of the page for a click or a key press. Once one happens,
-/// the page stops taking focus back from the search field.
-private final class FocusReclaim {
-    private(set) var active = true
-    private var monitor: Any?
-
-    init() {
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .keyDown]) { [weak self] event in
-            self?.stop()
-            return event
-        }
-    }
-
-    func stop() {
-        active = false
-        if let monitor { NSEvent.removeMonitor(monitor) }
-        monitor = nil
-    }
-
-    deinit { if let monitor { NSEvent.removeMonitor(monitor) } }
 }
 
 /// Offscreen renders only (`UV_STREAM_PREVIEW=teach|note|menu|datejump`): a popover is a

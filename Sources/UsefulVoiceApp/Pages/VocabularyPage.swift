@@ -266,6 +266,7 @@ struct VocabularyPage: View {
             }
             heard = ""
             written = ""
+            soundsLike = ""
         case .suggestions:
             break
         }
@@ -436,16 +437,23 @@ struct VocabularyPage: View {
         case .word(let term):
             memory.removeTerm(id: term.id)
             removed = RemovedRule(message: "Removed \u{201C}\(term.phrase)\u{201D}.") {
+                // Never overwrite a word added again since the remove.
+                guard !memory.terms.contains(where: { $0.phrase.caseInsensitiveCompare(term.phrase) == .orderedSame })
+                else { return toasts.show("Can't undo: \u{201C}\(term.phrase)\u{201D} is already back") }
                 memory.updateTerm(term)
             }
         case .fix(let rule):
             memory.removeReplacement(id: rule.id)
             removed = RemovedRule(message: "Removed \u{201C}\(rule.match)\u{201D}.") {
+                guard !memory.replacements.contains(where: { $0.match.caseInsensitiveCompare(rule.match) == .orderedSame })
+                else { return toasts.show("Can't undo: a fix for \u{201C}\(rule.match)\u{201D} exists now") }
                 memory.updateReplacement(rule)
             }
         case .snippet(let snippet):
             memory.removeSnippet(id: snippet.id)
             removed = RemovedRule(message: "Removed \u{201C}\(snippet.trigger)\u{201D}.") {
+                guard !memory.snippets.contains(where: { $0.trigger.caseInsensitiveCompare(snippet.trigger) == .orderedSame })
+                else { return toasts.show("Can't undo: a snippet for \u{201C}\(snippet.trigger)\u{201D} exists now") }
                 memory.updateSnippet(snippet)
             }
         }

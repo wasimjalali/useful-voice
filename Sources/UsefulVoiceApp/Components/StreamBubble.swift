@@ -79,7 +79,11 @@ struct StreamBubble: View {
                 // Shift+Arrow selections: remember them, and in select mode open Teach a fix
                 // once the selection has stopped changing.
                 onSelectionChange: { range, rect in
-                    guard range.length > 0 else { selection = nil; return }
+                    guard range.length > 0 else {
+                        keyboardSelectionTask?.cancel()   // a collapsed selection must not open Teach a fix
+                        selection = nil
+                        return
+                    }
                     selection = (range, rect)
                     guard store.teachSelectID == record.id else { return }
                     keyboardSelectionTask?.cancel()

@@ -248,11 +248,18 @@ struct StatusPopover: View {
         }
         if health.engineReady, let fix = health.persistentError?.fix {
             switch fix {
-            case .retry:
+            case .retry where viewModel.canRetry:
                 list.append(("Retry last recording", "Retry last recording",
                              { viewModel.perform(fix) }))
+            case .retry:
+                break  // the retained recording is gone (for example after Delete all)
             case .openEngineSettings:
                 list.append(("Open Engine settings", "Open Engine settings",
+                             { viewModel.perform(fix) }))
+            case .openMicrophoneSettings where health.microphone == .allowed:
+                // Permission is fine but the device failed: the Microphone row offers
+                // nothing, so the fix goes here.
+                list.append(("Open Microphone settings", "Open Microphone settings",
                              { viewModel.perform(fix) }))
             case .openMicrophoneSettings, .openAccessibilitySettings:
                 break  // the Microphone and Accessibility rows below offer these

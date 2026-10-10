@@ -166,9 +166,13 @@ struct InsightsPage: View {
         }
     }
 
+    /// Ready for a new dictation: idle, or after a failed one (a start from an
+    /// error is a fresh recording). Only an in-flight dictation blocks it.
     private var dictationIdle: Bool {
-        if case .idle = viewModel.dictationState { return true }
-        return false
+        switch viewModel.dictationState {
+        case .idle, .error: return true
+        case .recording, .transcribing, .delivering: return false
+        }
     }
 
     /// Ghost axes for a new user, so the page keeps its shape.

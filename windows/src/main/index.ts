@@ -90,6 +90,8 @@ const PICKER_HEIGHT = 448;
 const PICKER_MARGIN = 24;
 /** The picker floats 10 px above where the capsule sits. */
 const PICKER_GAP = 10;
+/** Cap on handing focus back: a cold PowerShell takes up to a second. */
+const PICKER_RESTORE_TIMEOUT_MS = 1500;
 
 /** Keep the HUD window's capsule inside a display's work area. */
 function clampHud(area: Electron.Rectangle, x: number, y: number): { x: number; y: number } {
@@ -114,7 +116,15 @@ class UsefulVoiceApp {
   private hudHideTimer: NodeJS.Timeout | null = null;
   /** Where the user left the HUD, per display, as an offset from its default spot. */
   private hudOffsets: Record<string, { dx: number; dy: number }> = {};
-  private hudDrag: { bounds: Electron.Rectangle; x: number; y: number } | null = null;
+  private hudDrag: {
+    bounds: Electron.Rectangle;
+    x: number;
+    y: number;
+    last: { display: Electron.Display; origin: { x: number; y: number } } | null;
+  } | null = null;
+  /** The window the current hotkey recording will paste into, so the picker need not ask Windows. */
+  private recordingHandle: number | undefined;
+  private pickerClosing = false;
   /** The window that was in front when the picker opened, to hand focus back to on close. */
   private pickerReturnTo: number | null = null;
   private pickerOpening = false;
@@ -413,9 +423,18 @@ class UsefulVoiceApp {
   private onHudDrag(phase: unknown, x: unknown, y: unknown): void {
     const window = this.hudWindow;
     if (!window || window.isDestroyed()) return;
+    if (phase === 'end') {
+      // The release (or a cancelled pointer, which reports 0,0) carries no position of its
+      // own: the capsule stays where the last move put it, and a press that never moved
+      // changes and saves nothing.
+      const finished = this.hudDrag;
+      this.hudDrag = null;
+      if (finished?.last) this.rememberHudPosition(finished.last.display, finished.last.origin);
+      return;
+    }
     if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) return;
     if (phase === 'start') {
-      this.hudDrag = { bounds: window.getBounds(), x, y };
+      this.hudDrag = { bounds: window.getBounds(), x, y, last: null };
       return;
     }
     const drag = this.hudDrag;
@@ -425,10 +444,7 @@ class UsefulVoiceApp {
     const display = screen.getDisplayNearestPoint({ x: nextX + HUD_WIDTH / 2, y: nextY + HUD_HEIGHT / 2 });
     const origin = clampHud(display.workArea, nextX, nextY);
     window.setBounds({ ...origin, width: HUD_WIDTH, height: HUD_HEIGHT });
-    if (phase === 'end') {
-      this.hudDrag = null;
-      this.rememberHudPosition(display, origin);
-    }
+    drag.last = { display, origin };
   }
 
   /** Stored as an offset from the default spot, so a resolution or taskbar change keeps it sensible. */
@@ -561,9 +577,16 @@ class UsefulVoiceApp {
     }
     if (this.pickerOpening) return;
     this.pickerOpening = true;
+    const stateAtPress = this.service.currentState;
     void (async () => {
-      // Before the picker exists on screen: afterwards the foreground window would be the picker.
-      const front = await foregroundWindow();
+      // Before the picker exists on screen: afterwards the foreground window would be the
+      // picker. During a hotkey recording the window in front was captured when it started,
+      // so there is nothing to ask Windows (a PowerShell spawn, up to 1,5 s).
+      const known = stateAtPress === 'recording' ? this.recordingHandle : undefined;
+      const front = known === undefined ? await foregroundWindow() : { handle: known };
+      // The state moved on while that ran (recording stopped): the picker would open over
+      // transcribing or delivering and take the foreground the paste needs.
+      if (this.service.currentState !== stateAtPress) return;
       this.pickerReturnTo = front ? front.handle : null;
       const existing = this.pickerWindow && !this.pickerWindow.isDestroyed() ? this.pickerWindow : null;
       const window = existing ?? this.createPickerWindow();
@@ -636,16 +659,39 @@ class UsefulVoiceApp {
   /** `restoreFocus`: hand focus back to the window that was in front when the picker opened. */
   private closeLanguagePicker(restoreFocus: boolean): void {
     const window = this.pickerWindow;
-    if (!window || window.isDestroyed() || !window.isVisible()) return;
-    window.hide();
-    this.syncEscapeShortcut(this.service.currentState === 'recording');
+    if (!window || window.isDestroyed() || !window.isVisible() || this.pickerClosing) return;
     const target = this.pickerReturnTo;
     this.pickerReturnTo = null;
-    if (restoreFocus && target !== null) {
-      void restoreForegroundWindow(target).then((ok) => {
-        if (!ok) this.diagnostics.log('hud', 'could not return focus to the window the picker was opened over');
-      });
+    const finish = (): void => {
+      this.pickerClosing = false;
+      if (!window.isDestroyed()) window.hide();
+      this.syncEscapeShortcut(this.service.currentState === 'recording');
+    };
+    if (!restoreFocus || target === null) {
+      finish();
+      return;
     }
+    // Windows only lets the foreground app hand the foreground to another window, so the
+    // restore runs while the picker is still in front. It is made invisible and click-through
+    // first, so it looks closed at once, and hidden when the restore has finished. The
+    // script leaves things alone when the user clicked elsewhere in the meantime.
+    this.pickerClosing = true;
+    window.setOpacity(0);
+    window.setIgnoreMouseEvents(true);
+    void restoreForegroundWindow(target, {
+      onlyIfForeground: window.getNativeWindowHandle().readUInt32LE(0),
+      timeoutMs: PICKER_RESTORE_TIMEOUT_MS,
+    })
+      .then((ok) => {
+        if (!ok) this.diagnostics.log('hud', 'focus was not returned to the window the picker was opened over');
+      })
+      .finally(() => {
+        if (!window.isDestroyed()) {
+          window.setOpacity(1);
+          window.setIgnoreMouseEvents(false);
+        }
+        finish();
+      });
   }
 
   /** Switch the spoken language. It applies to a recording in progress: it is read at stop. */
@@ -864,6 +910,7 @@ class UsefulVoiceApp {
   private async toggleDictation(source: DictationSource): Promise<void> {
     let targetApp: string | undefined;
     let targetHandle: number | undefined;
+    if (this.service.currentState === 'idle' || this.service.currentState === 'error') this.recordingHandle = undefined;
     if (source === 'hotkey' && (this.service.currentState === 'idle' || this.service.currentState === 'error')) {
       // Capture which app is focused NOW, before recording. By the time the
       // transcript is ready the user may have clicked elsewhere, and pasting into
@@ -871,6 +918,7 @@ class UsefulVoiceApp {
       const target = await foregroundWindow();
       targetApp = target ? target.title || target.processName : undefined;
       targetHandle = target?.handle;
+      this.recordingHandle = targetHandle;
     }
     await this.service.toggle({ source, targetApp, targetHandle });
     void this.data.flush();

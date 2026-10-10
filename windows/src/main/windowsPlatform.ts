@@ -117,17 +117,26 @@ Write-Output ("{0}{1}{2}{1}{3}" -f $h.ToInt64(), [char]31, $name, $sb.ToString()
  *
  * Used when the language picker (a focusable window that took focus from the app being
  * dictated into) closes. The PowerShell child is started by the foreground app, which is
- * one of the cases Windows allows `SetForegroundWindow` for. A minimised window is
+ * one of the cases Windows allows `SetForegroundWindow` for, but only while that app is
+ * still in front: call this BEFORE hiding the picker. `onlyIfForeground` is the picker's
+ * own window handle; when something else is in front by the time the script runs, the
+ * user has clicked elsewhere and nothing is restored. A minimised window is
  * restored first. Returns false when the handle is gone or Windows refused.
  */
-export async function restoreForegroundWindow(handle: number): Promise<boolean> {
-  // The handle is interpolated into a script, so it must be a plain positive integer.
+export async function restoreForegroundWindow(
+  handle: number,
+  options: { onlyIfForeground?: number; timeoutMs?: number } = {},
+): Promise<boolean> {
+  // Handles are interpolated into a script, so they must be plain positive integers.
   if (!Number.isSafeInteger(handle) || handle <= 0) return false;
+  const guard = options.onlyIfForeground;
+  if (guard !== undefined && (!Number.isSafeInteger(guard) || guard <= 0)) return false;
   const script = `
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public class UvRestore {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
@@ -135,12 +144,14 @@ public class UvRestore {
 }
 "@
 $h = [IntPtr]${handle}
+${guard === undefined ? '' : `# The user clicked somewhere else while this started: leave their choice alone.
+if ([UvRestore]::GetForegroundWindow() -ne [IntPtr]${guard}) { Write-Output "moved"; exit 0 }`}
 if (-not [UvRestore]::IsWindow($h)) { Write-Output "gone"; exit 0 }
 if ([UvRestore]::IsIconic($h)) { [void][UvRestore]::ShowWindow($h, 9) }
 Write-Output ([UvRestore]::SetForegroundWindow($h))
 `;
   try {
-    const { stdout } = await runPowerShell(script);
+    const { stdout } = await runPowerShell(script, options.timeoutMs);
     return stdout.trim().split(/\r?\n/).pop() === 'True';
   } catch {
     return false;

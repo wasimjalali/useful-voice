@@ -15,7 +15,9 @@ enum HUDDisplay: Equatable {
     case delivering
     case done(HUDDone)
     /// The text is on the clipboard but could not be pasted.
-    case copiedNotPasted
+    /// Copied but not pasted. The fix is Accessibility when the paste was blocked,
+    /// none when the user simply moved to another app.
+    case copiedNotPasted(fix: DictationFix?)
     case cancelled
     case error(HUDError)
     /// A confirmation that the dictation language was switched.
@@ -148,7 +150,7 @@ extension HUDDisplay {
     /// The fix verb the pill carries, if any.
     var fix: DictationFix? {
         switch self {
-        case .copiedNotPasted: return .openAccessibilitySettings
+        case .copiedNotPasted(let fix): return fix
         case .error(let error): return error.fix
         default: return nil
         }

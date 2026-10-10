@@ -102,6 +102,17 @@ import Combine
         #expect(feedback.outcome == .delivered(words: 3, mode: .copiedNotPasted, appName: "Slack"))
     }
 
+    @Test func testAppChangedCopyRaisesANoticeWithNoAccessibilityFix() {
+        var feedback = DictationFeedback()
+        feedback.apply(state: .delivering)
+        feedback.apply(outcome: .delivered(words: 3, mode: .copiedAppChanged, appName: "Slack"))
+        feedback.apply(state: .idle)
+        #expect(feedback.issue == .copiedAppChanged)
+        #expect(feedback.issue?.fix == nil)
+        #expect(feedback.issue?.message == "Copied. Press \u{2318}V to paste.")
+        #expect(DictationIssue.copiedNotPasted.fix == .openAccessibilitySettings)
+    }
+
     @Test func testPlainPasteAndCopyRaiseNoIssue() {
         for mode in [DeliveryResult.pasted, .copied] {
             var feedback = DictationFeedback()

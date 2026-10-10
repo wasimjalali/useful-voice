@@ -151,11 +151,11 @@ struct HUDView: View {
                     }
                 }
             }
-        case .copiedNotPasted:
+        case .copiedNotPasted(let fix):
             row(trailing: 8) {
                 symbol("doc.on.clipboard")
                 Text("Copied. Press \u{2318}V to paste")
-                fixButton(.openAccessibilitySettings)
+                if let fix { fixButton(fix) }
                 closeButton
             }
         case .cancelled:

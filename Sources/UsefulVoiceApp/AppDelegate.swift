@@ -459,10 +459,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 switch mode {
                 case .paste:
                     self?.inserter.deliver(text) { outcome in
-                        if outcome == .clipboardOnly {
+                        switch outcome {
+                        case .failed:
+                            done(.failure(DeliveryFailure()))
+                        case .clipboardOnly:
                             // The HUD shows "Copied. Press ⌘V to paste" from the outcome.
                             done(.success(.copiedNotPasted))
-                        } else {
+                        case .insertedViaAX, .pasted:
                             done(.success(.pasted))
                         }
                     }
@@ -528,9 +531,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             isSecureInputActive: { IsSecureEventInputEnabled() },
             frontmostApp: {
                 let app = NSWorkspace.shared.frontmostApplication
-                return FrontmostApp(
-                    id: app?.bundleIdentifier, name: app?.localizedName,
-                    isSelf: app?.processIdentifier == ProcessInfo.processInfo.processIdentifier)
+                return FrontmostApp(id: app?.bundleIdentifier, name: app?.localizedName)
             }
         )
         controller.onStateChange = { [weak self] state in
@@ -956,7 +957,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             switch mode {
             case .pasted: hud.show(.done(.inserted(words: words)))
             case .copied: hud.show(.done(.savedAndCopied(words: words)))
-            case .copiedNotPasted: hud.show(.copiedNotPasted)
+            case .copiedNotPasted: hud.show(.copiedNotPasted(fix: .openAccessibilitySettings))
+            case .copiedAppChanged: hud.show(.copiedNotPasted(fix: nil))
             }
         }
     }

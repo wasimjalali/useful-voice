@@ -25,6 +25,11 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         if isFirstShow {
             let hosting = NSHostingController(
                 rootView: RootView(viewModel: viewModel, settings: settings, firstRun: firstRun))
+            // The window alone owns its size. By default the hosting controller turns
+            // the page's own minimum and ideal sizes into the window's limits, so a page
+            // taller than the window grew the window instead of scrolling (and the
+            // limits changed with every page). `minSize` below is the only floor.
+            hosting.sizingOptions = []
             let window = NSWindow(contentViewController: hosting)
             window.title = "Useful Voice"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]

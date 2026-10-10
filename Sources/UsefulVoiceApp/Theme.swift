@@ -245,6 +245,8 @@ enum BrandMotion {
     /// The dock and HUD state morph: inner content cross-fades, width eases with it.
     static let morphDuration: Double = 0.2
     static let morph = easeOut(duration: morphDuration)
+    /// The outgoing half of the morph's content swap (see `AnyTransition.morphSwap`).
+    static let morphOutDuration: Double = 0.08
 
     /// Bubble insert and popover or page entrance: an 8 pt rise and fade.
     static let riseDuration: Double = 0.26
@@ -316,5 +318,18 @@ extension AnyTransition {
                                  identity: RiseTransitionModifier(opacity: 1, offset: 0)),
             removal: .modifier(active: RiseTransitionModifier(opacity: 0, offset: reduce ? 0 : exit),
                                identity: RiseTransitionModifier(opacity: 1, offset: 0)))
+    }
+
+    /// The dock and HUD content swap, in two beats: the old line fades out over the
+    /// first 80 ms and the new one fades in after it, so two lines never overlap
+    /// (a plain cross-fade drew "0:17 esc" through "Transcribing"). The surface still
+    /// eases its width over the whole morph. Reduce Motion swaps instantly.
+    static var morphSwap: AnyTransition {
+        guard !BrandMotion.reduceMotion else { return .identity }
+        let out = BrandMotion.morphOutDuration
+        return .asymmetric(
+            insertion: .opacity.animation(
+                BrandMotion.easeOut(duration: BrandMotion.morphDuration - out).delay(out)),
+            removal: .opacity.animation(BrandMotion.easeIn(duration: out)))
     }
 }

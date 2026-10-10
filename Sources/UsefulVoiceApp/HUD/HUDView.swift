@@ -82,14 +82,18 @@ struct HUDView: View {
     }
 
     /// The stable surface. Only the content inside it fades, so the surface never
-    /// flickers during a state change while its size eases to the new content.
+    /// flickers during a state change while its size eases to the new content. The
+    /// content is clipped to the surface: the new line is laid out at its full width
+    /// at once, and while the surface eases from a narrower state it would otherwise
+    /// spill past the capsule's ends onto the app below.
     private var container: some View {
         ZStack {
             content
                 .id(display.phase)
-                .transition(.opacity)
+                .transition(.morphSwap)
         }
         .frame(minHeight: Self.capsuleHeight)
+        .clipShape(surfaceShape)
         .background(surface)
         .background(GeometryReader { proxy in
             Color.clear.preference(key: CapsuleSizeKey.self, value: proxy.size)
@@ -103,9 +107,13 @@ struct HUDView: View {
     /// fill alone, so it never doubles up behind the ring. Circular corners: a
     /// continuous-corner stroke at a half-height radius draws a stray vertical
     /// segment past each end of the capsule.
+    private var surfaceShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: display.isBubble ? Radius.md : Self.capsuleHeight / 2,
+                         style: .circular)
+    }
+
     private var surface: some View {
-        let radius = display.isBubble ? Radius.md : Self.capsuleHeight / 2
-        let shape = RoundedRectangle(cornerRadius: radius, style: .circular)
+        let shape = surfaceShape
         return ZStack {
             shape
                 .fill(Theme.hudSurface)
@@ -216,6 +224,7 @@ struct HUDView: View {
         }
         .buttonStyle(.plain)
         .fixedSize()
+        .clickableCursor()
         .accessibilityLabel(fix.hudTitle)
     }
 
@@ -231,6 +240,7 @@ struct HUDView: View {
         }
         .buttonStyle(.plain)
         .fixedSize()
+        .clickableCursor()
         .accessibilityLabel("Dismiss")
     }
 

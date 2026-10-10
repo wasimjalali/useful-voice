@@ -168,8 +168,17 @@ struct TextInserter {
         // means the paste did NOT grow the element, so AX insert can't
         // double-insert.
         let runFallback = {
+            // Did the paste change the target without matching the payload? Then it
+            // landed somewhere we can't measure exactly, and an AX insert on top of
+            // it would put the text in twice. An element that stopped answering
+            // counts as changed for the same reason.
+            let targetChanged: Bool = {
+                guard let before = probeBefore, before.charCount != nil else { return false }
+                guard let after = self.focusedProbe() else { return true }
+                return after.identifier != before.identifier || after.charCount != before.charCount
+            }()
             var axInsertGrew = false
-            if probeBefore != nil, !self.isSecureInput(),
+            if probeBefore != nil, !targetChanged, !self.isSecureInput(),
                self.axInsert(text),
                let after = self.focusedProbe(),
                after.identifier == probeBefore?.identifier,
@@ -180,7 +189,7 @@ struct TextInserter {
             }
             let decision = DeliveryPolicy.finalDecision(
                 pastePosted: posted, axVisible: probeBefore?.charCount != nil,
-                axInsertGrew: axInsertGrew)
+                axInsertGrew: axInsertGrew, targetChanged: targetChanged)
             self.apply(decision, restore: restore, completion: completion)
         }
 

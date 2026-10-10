@@ -297,11 +297,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         axPollTimer = nil
         recordingTimer?.invalidate()
         recordingTimer = nil
-        hud.hideImmediately()
         hotkeys.stop()
+        // Cancel first: it shows "Cancelled", which the next line removes.
         if controller?.state == .recording {
             controller?.cancel()
         }
+        hud.hideImmediately()
         viewModel?.flushPendingEdits()
         firstRun?.appWillTerminate()
         // Keep the bytes of any model download in flight: pause it so URLSession
@@ -536,9 +537,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.render(state: state)
             self?.viewModel?.refreshState(state)
             self?.viewModel?.canRetry = self?.controller?.canRetry ?? false
+            // After the view model, so an open menu shows the new Retry, fix and copy items.
+            self?.menuBar?.refresh()
         }
         controller.onOutcome = { [weak self] outcome in
             self?.viewModel?.handle(outcome: outcome)
+            self?.menuBar?.refresh()
             self?.showOutcome(outcome)
         }
         // The HUD pill's verb (Retry last recording, Open settings) runs the same

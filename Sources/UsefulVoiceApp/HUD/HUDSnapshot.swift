@@ -39,13 +39,13 @@ enum SnapshotWriter {
 /// sample data, on a plain canvas standing in for the app in front.
 ///
 /// Names: recording, recordingLoud, silence, transcribing, local, localFa,
-/// inserting, done, doneSaved, copied, cancelled, errorNetwork, errorMic,
+/// inserting, done, doneSaved, copied, cancelled, errorNetwork, errorMic, errorTimedOut, errorSecure,
 /// language, picker.
 @MainActor
 enum HUDSnapshot {
     static let names = ["recording", "recordingLoud", "silence", "transcribing", "local", "localFa",
                         "inserting", "done", "doneSaved", "copied", "cancelled", "errorNetwork",
-                        "errorMic", "language", "picker"]
+                        "errorMic", "errorTimedOut", "errorSecure", "language", "picker"]
 
     private static let englishPartial =
         "the computer quiet so you can run the performance check here, and remove the Devin dependency from the repo before we ship it to everyone on the team on Friday"
@@ -70,6 +70,10 @@ enum HUDSnapshot {
         case "errorMic":
             return .error(HUDError(DictationError(kind: .micUnavailable, message: "",
                                                   fix: .openMicrophoneSettings)))
+        case "errorTimedOut":
+            return .error(HUDError(DictationError(kind: .timedOut, message: "", fix: .retry)))
+        case "errorSecure":
+            return .error(HUDError(DictationError(kind: .secureField, message: "")))
         case "language": return .language(.de)
         default: return nil
         }

@@ -465,7 +465,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         case .clipboardOnly:
                             // The HUD shows "Copied. Press ⌘V to paste" from the outcome.
                             // Only a missing Accessibility grant earns the "Open settings"
-                            // button; with it on, nothing focused took the paste.
+                            // button; with it on, the field we measured did not take it.
                             done(.success(AXIsProcessTrusted() ? .copiedNotLanded : .copiedNotPasted))
                         case .secureFieldCopied:
                             done(.success(.copiedSecureField))

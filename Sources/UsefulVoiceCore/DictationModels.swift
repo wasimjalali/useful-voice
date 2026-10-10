@@ -21,8 +21,8 @@ public enum DeliveryMode: Sendable, Equatable {
 public enum DeliveryResult: Sendable, Equatable {
     /// Inserted into the focused app.
     case pasted
-    /// Paste mode, but nothing landed: the text is on the clipboard for the user
-    /// to paste. This is a notice, not an error.
+    /// Paste mode, but the paste could not be posted because Accessibility is off:
+    /// the text is on the clipboard for the user to paste. A notice, not an error.
     case copiedNotPasted
     /// Copy mode: the text is on the clipboard, as asked.
     case copied
@@ -32,8 +32,9 @@ public enum DeliveryResult: Sendable, Equatable {
     /// Paste mode, but a password field took focus, so nothing was typed into it
     /// and the text was left on the clipboard. Not a permission problem.
     case copiedSecureField
-    /// Paste mode with Accessibility on, but nothing took the paste (no text field
-    /// had focus). The text is on the clipboard. Not a permission problem.
+    /// Paste mode with Accessibility on, but a field we could measure did not change
+    /// after the paste and a direct insert did not verifiably land. The text is on
+    /// the clipboard. Not a permission problem.
     case copiedNotLanded
 }
 
@@ -212,11 +213,12 @@ public enum DictationOutcome: Equatable, Sendable {
 /// or the notice that text was copied but not pasted.
 public enum DictationIssue: Equatable, Sendable {
     case error(DictationError)
-    /// The paste could not land (usually Accessibility is off).
+    /// The paste could not be posted: Accessibility is off.
     case copiedNotPasted
     /// The user switched apps, so the text was copied. Permissions are fine.
     case copiedAppChanged
-    /// Nothing took the paste although Accessibility is on. Permissions are fine.
+    /// The measured field did not take the paste although Accessibility is on.
+    /// Permissions are fine.
     case copiedNotLanded
     /// A password field had focus, so the text was copied instead. No fix.
     case copiedSecureField

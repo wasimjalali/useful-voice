@@ -163,28 +163,36 @@ struct TextInserter {
             return self.restoreClipboard(saved, pb, ourChangeCount)
         }
 
-        // Run when the paste was not confirmed: try a direct AX insert where we
-        // can verify it, then decide. Reaching here with an AX-visible target
-        // means the paste did NOT grow the element, so AX insert can't
-        // double-insert.
-        let runFallback = {
-            // Did the paste change the target without matching the payload? Then it
-            // landed somewhere we can't measure exactly, and an AX insert on top of
-            // it would put the text in twice. An element that stopped answering
-            // counts as changed for the same reason.
+        // AX reports a field's length in UTF-16 units, so the payload is measured the
+        // same way: `text.count` (grapheme clusters) never matched a Persian line with
+        // a ZWNJ, an emoji or a CRLF.
+        let payloadLength = text.utf16.count
+
+        // Run when the paste was not confirmed, with the last probe taken after it:
+        // try a direct AX insert where we can verify it, then decide.
+        let runFallback = { (afterPaste: (identifier: String, charCount: Int?)?) in
+            // Did the posted paste change the target without matching the payload?
+            // Then it landed somewhere we can't measure exactly, and an AX insert on
+            // top of it would put the text in twice. A field that stopped answering
+            // counts as changed for the same reason (the label "Inserted" may then be
+            // optimistic, but nothing is lost: no restore, the dictation stays on the
+            // clipboard and in History).
             let targetChanged: Bool = {
-                guard let before = probeBefore, before.charCount != nil else { return false }
-                guard let after = self.focusedProbe() else { return true }
+                guard posted, let before = probeBefore, before.charCount != nil else { return false }
+                guard let after = afterPaste else { return true }
                 return after.identifier != before.identifier || after.charCount != before.charCount
             }()
+            // Only into a field that reports its length and did not change: an AX
+            // insert we can't verify is never trusted, and after a posted paste into
+            // such a field it would double the text.
             var axInsertGrew = false
-            if probeBefore != nil, !targetChanged, !self.isSecureInput(),
+            if let before = probeBefore, let beforeCount = before.charCount,
+               !targetChanged, !self.isSecureInput(),
                self.axInsert(text),
                let after = self.focusedProbe(),
-               after.identifier == probeBefore?.identifier,
-               let beforeCount = probeBefore?.charCount,
+               after.identifier == before.identifier,
                let afterCount = after.charCount,
-               afterCount - beforeCount == text.count {
+               afterCount - beforeCount == payloadLength {
                 axInsertGrew = true
             }
             let decision = DeliveryPolicy.finalDecision(
@@ -193,24 +201,25 @@ struct TextInserter {
             self.apply(decision, restore: restore, completion: completion)
         }
 
-        guard posted else { runFallback(); return }
+        guard posted else { runFallback(nil); return }
 
         // Checks are scheduled, never blocking, so the target stays responsive
         // while it reads the clipboard and grows.
         schedule(firstCheck) {
-            if self.landed(since: probeBefore, payloadLength: text.count) {
+            if self.landed(since: probeBefore, after: self.focusedProbe(), payloadLength: payloadLength) {
                 _ = restore(true)
                 completion(.pasted)
                 self.onDeliverySettled?()
                 return
             }
             self.schedule(self.finalCheck - self.firstCheck) {
-                if self.landed(since: probeBefore, payloadLength: text.count) {
+                let after = self.focusedProbe()
+                if self.landed(since: probeBefore, after: after, payloadLength: payloadLength) {
                     _ = restore(true)
                     completion(.pasted)
                     self.onDeliverySettled?()
                 } else {
-                    runFallback()
+                    runFallback(after)
                 }
             }
         }
@@ -234,9 +243,10 @@ struct TextInserter {
     /// counts as proof, and neither does growth of the wrong size or growth in a
     /// different element.
     private func landed(since probeBefore: (identifier: String, charCount: Int?)?,
+                        after: (identifier: String, charCount: Int?)?,
                         payloadLength: Int) -> Bool {
         guard let probeBefore else { return false }
-        guard let after = focusedProbe() else { return false }
+        guard let after else { return false }
         guard after.identifier == probeBefore.identifier else { return false }
         return PasteProof(elementIdentifier: after.identifier,
                            beforeCount: probeBefore.charCount,

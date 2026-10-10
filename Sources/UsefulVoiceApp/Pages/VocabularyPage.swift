@@ -232,7 +232,9 @@ struct VocabularyPage: View {
                        focus: AddField) -> some View {
         TextField(placeholder, text: text)
             .premiumInputChrome()
-            .frame(width: width)
+            // Full width when there is room; narrower (not clipped) in a small window,
+            // where the optional third field would otherwise run past the card.
+            .frame(minWidth: (width * 0.55).rounded(), idealWidth: width, maxWidth: width)
             .onSubmit(add)
             .focused($addFocus, equals: focus)
     }

@@ -411,18 +411,6 @@
   cursor: pointer;
 }
 
-.undo-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 9px 14px;
-  border-radius: var(--r-md);
-  background: var(--hud-surface);
-  color: var(--hud-ink);
-  font-size: var(--fs-ui);
-  animation: rise var(--dur-hud-enter) var(--ease-out);
-}
-
 /* ---------- Utilities ---------- */
 
 .spacer { flex: 1; }

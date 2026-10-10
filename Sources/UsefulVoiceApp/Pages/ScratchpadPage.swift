@@ -67,7 +67,7 @@ struct ScratchpadPage: View {
                         scratchpad.createNote()
                         toasts.show("Note created")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.brandPrimary)
                     .tint(Theme.brand)
                     .controlSize(.large)
                     .keyboardShortcut("n", modifiers: .command)
@@ -324,7 +324,7 @@ struct ScratchpadPage: View {
                     scratchpad.createNote()
                     toasts.show("Note created")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.brandPrimary)
                 .tint(Theme.brand)
                 .controlSize(.large)
                 .clickableCursor()
@@ -442,7 +442,7 @@ struct ScratchpadPage: View {
                     importMessage = importSummary(result)
                     toasts.show("Notes imported")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.brandPrimary)
                 .tint(Theme.brand)
                 .clickableCursor()
                 .disabled(importText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

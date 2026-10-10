@@ -244,6 +244,20 @@ public struct HotkeyAssignment: Equatable, Sendable {
     }
 }
 
+/// How the app picks its light or dark look.
+public enum AppearanceChoice: String, CaseIterable, Sendable {
+    /// Follow macOS.
+    case system
+    case light
+    case dark
+}
+
+extension Notification.Name {
+    /// Posted after `AppSettings.appearance` changes, so the app can
+    /// apply it at once with no restart.
+    public static let uvAppearanceDidChange = Notification.Name("uv.appearanceDidChange")
+}
+
 /// Non-secret app configuration. The Deepgram API key lives in Keychain, never here.
 public final class AppSettings {
     private enum Keys {
@@ -258,7 +272,12 @@ public final class AppSettings {
         static let lastExportFolder = "lastExportFolder"
         static let transcriptionEngine = "transcriptionEngine"
         static let localModelID = "localModelID"
+        static let appearance = "appearance"
+        static let dailyWordGoal = "dailyWordGoal"
     }
+
+    /// Words per day the Insights goal ring aims at, until the person sets another.
+    public static let defaultDailyWordGoal = 2500
 
     private let defaults: UserDefaults
 
@@ -384,5 +403,27 @@ public final class AppSettings {
             let resolved = WhisperModelCatalog.model(forID: newValue) ?? WhisperModelCatalog.default
             defaults.set(resolved.id, forKey: Keys.localModelID)
         }
+    }
+
+    /// System, Light or Dark. Defaults to System; an unrecognised stored value
+    /// falls back to it.
+    public var appearance: AppearanceChoice {
+        get {
+            let raw = defaults.string(forKey: Keys.appearance) ?? ""
+            return AppearanceChoice(rawValue: raw) ?? .system
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Keys.appearance)
+            NotificationCenter.default.post(name: .uvAppearanceDidChange, object: nil)
+        }
+    }
+
+    /// Words per day for the Insights goal. A stored value below 1 is ignored.
+    public var dailyWordGoal: Int {
+        get {
+            let stored = defaults.object(forKey: Keys.dailyWordGoal) as? Int ?? Self.defaultDailyWordGoal
+            return stored >= 1 ? stored : Self.defaultDailyWordGoal
+        }
+        set { defaults.set(max(1, newValue), forKey: Keys.dailyWordGoal) }
     }
 }

@@ -110,6 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // after the read returned, so a launch that hit a prompt produced no launch
         // record at all — the one case where a launch record is most useful.
         recordLaunchDiagnostic()
+        Appearance.install(settings: settings)
         ThinScrollbar.install()
         installMainMenu()
         // An offscreen render (`UV_SNAPSHOT`) never needs the key's value, only

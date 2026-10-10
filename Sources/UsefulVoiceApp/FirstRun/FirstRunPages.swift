@@ -53,9 +53,9 @@ struct FREnginePage: View {
                 }
             }
             .padding(3)
-            .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             Text("Deepgram receives your audio to transcribe it. Local models keep it on this Mac. You can switch anytime in Settings.")
-                .font(.system(size: 12.5))
+                .font(.system(size: 12))
                 .lineSpacing(3)
                 .foregroundStyle(Theme.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -72,7 +72,7 @@ struct FREnginePage: View {
                 Spacer()
                 Text("Suggested")
                     .font(.system(size: 12))
-                    .foregroundStyle(Theme.inkFaint)
+                    .foregroundStyle(FRColor.cardFaint)
             }
             Text("In the cloud. Fastest and most accurate.")
                 .font(.system(size: 13))
@@ -85,11 +85,11 @@ struct FREnginePage: View {
                 claimBlock
             }
         }
-        .foregroundStyle(Theme.brandInk)
+        .foregroundStyle(FRColor.cardInk)
         .padding(.horizontal, 20)
         .padding(.vertical, 18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.ink, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(FRColor.cardSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Deepgram Nova-3")
     }
@@ -104,19 +104,19 @@ struct FREnginePage: View {
                     .font(.system(size: 14, weight: .semibold))
             }
             Text("No card needed. That's 500+ hours of dictation.")
-                .font(.system(size: 12.5))
+                .font(.system(size: 12))
                 .foregroundStyle(Theme.accentOnDark)
                 .padding(.top, -4)
             Button(action: model.claimCredit) {
                 HStack(spacing: 8) {
                     Text("Claim your $200")
                         .font(.system(size: 14, weight: .semibold))
-                    ExternalArrowGlyph()
+                    ExternalArrowGlyph(color: FRColor.cardButtonInk)
                 }
-                .foregroundStyle(Theme.ink)
+                .foregroundStyle(FRColor.cardButtonInk)
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .background(Theme.brandInk, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(FRColor.cardInk, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .buttonStyle(.plain)
             .clickableCursor()
@@ -126,7 +126,7 @@ struct FREnginePage: View {
                 step(3, "Paste it here")
             }
             .font(.system(size: 12))
-            .foregroundStyle(Theme.inkFaint)
+            .foregroundStyle(FRColor.cardFaint)
             keyRow
             if let message = keyMessage {
                 FRErrorBanner(text: message)
@@ -135,7 +135,7 @@ struct FREnginePage: View {
                 Button(action: model.keepCurrentKey) {
                     Text("Keep current key")
                         .font(.system(size: 13))
-                        .foregroundStyle(Theme.inkFaint)
+                        .foregroundStyle(FRColor.cardFaint)
                         .underline()
                 }
                 .buttonStyle(.plain)
@@ -147,7 +147,7 @@ struct FREnginePage: View {
 
     private func step(_ number: Int, _ text: String) -> some View {
         HStack(spacing: 5) {
-            Text("\(number)").fontWeight(.semibold).foregroundStyle(Theme.brandInk)
+            Text("\(number)").fontWeight(.semibold).foregroundStyle(FRColor.cardInk)
             Text(text)
         }
     }
@@ -161,7 +161,7 @@ struct FREnginePage: View {
             SecureField("", text: $model.keyText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
-                .foregroundStyle(Theme.brandInk)
+                .foregroundStyle(FRColor.cardInk)
                 .focused($keyFocused)
                 .disabled(model.savingKey)
                 // The field is inserted when "Change key" is pressed, after the
@@ -189,10 +189,10 @@ struct FREnginePage: View {
             Button(action: model.connect) {
                 Text(model.savingKey ? "Saving…" : checking ? "Checking the key…" : "Connect")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(canConnect ? Theme.ink : FRColor.quiet)
+                    .foregroundStyle(canConnect ? FRColor.cardButtonInk : FRColor.quiet)
                     .padding(.horizontal, 16)
                     .frame(height: 40)
-                    .background(canConnect ? Theme.brandInk : FRColor.darkButton,
+                    .background(canConnect ? FRColor.cardInk : FRColor.darkButton,
                                 in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .fixedSize()
             }
@@ -220,7 +220,7 @@ struct FREnginePage: View {
     private var connectedBlock: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
-                CheckGlyph(size: 18, color: Theme.brandInk)
+                CheckGlyph(size: 18, color: FRColor.cardInk)
                 Text("Key saved in your Keychain.")
                     .font(.system(size: 14, weight: .semibold))
             }
@@ -228,7 +228,7 @@ struct FREnginePage: View {
                 Button(action: model.changeKey) {
                     Text("Change key")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.brandInk)
+                        .foregroundStyle(FRColor.cardInk)
                         .padding(.horizontal, 16)
                         .frame(height: 40)
                         .background(FRColor.darkButton, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -238,10 +238,10 @@ struct FREnginePage: View {
                 Button(action: model.continueWithDeepgram) {
                     Text("Continue")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
+                        .foregroundStyle(FRColor.cardButtonInk)
                         .frame(maxWidth: .infinity)
                         .frame(height: 40)
-                        .background(Theme.brandInk, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .background(FRColor.cardInk, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.defaultAction)
@@ -278,7 +278,7 @@ private struct FRLocalRow: View {
             .padding(.vertical, 9)
             .contentShape(Rectangle())
             .background(hovering ? FRColor.hover : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
@@ -306,8 +306,8 @@ struct FRDeepgramKeyPage: View {
                     .lineLimit(1)
                     .padding(.horizontal, 14)
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(Theme.lineStrong, lineWidth: 1.5))
                     .accessibilityLabel("API key, hidden")
             }
@@ -444,7 +444,7 @@ struct FRLocalDownloadPage: View {
         case .stopped(let received, _):
             fraction = Double(received) / Double(max(total, 1))
             trailing = "\(Self.gb(received)) of \(Self.gb(total, unit: true))"
-            fill = Theme.inkFaint
+            fill = Theme.inkMuted
         }
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -458,7 +458,7 @@ struct FRLocalDownloadPage: View {
             FRProgressTrack(fraction: fraction, fill: fill)
             if let footer {
                 Text(footer)
-                    .font(.system(size: 12.5))
+                    .font(.system(size: 12))
                     .foregroundStyle(Theme.inkMuted)
             }
         }
@@ -554,7 +554,7 @@ struct FRMicrophonePage: View {
                     Text(model.micDeviceName).font(.system(size: 14, weight: .semibold))
                     if authorized {
                         Text("Say something to test it")
-                            .font(.system(size: 12.5))
+                            .font(.system(size: 12))
                             .foregroundStyle(Theme.inkMuted)
                     }
                 }
@@ -689,7 +689,7 @@ private struct FRSwitchPicture: View {
     var body: some View {
         HStack(spacing: 0) {
             if on { Spacer(minLength: 0) }
-            Circle().fill(Color.white)
+            Circle().fill(on ? Theme.accentInk : FRColor.switchKnob)
                 .frame(width: 18, height: 18)
                 .shadow(color: .black.opacity(0.2), radius: 1, y: 1)
             if !on { Spacer(minLength: 0) }
@@ -812,7 +812,7 @@ struct FRTryItPage: View {
             }
             .foregroundStyle(Theme.ink)
             FRProgressTrack(fraction: Double(state.received) / Double(max(total, 1)),
-                            fill: state.active ? Theme.ink : Theme.inkFaint)
+                            fill: state.active ? Theme.ink : Theme.inkMuted)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 16)
@@ -867,13 +867,13 @@ struct FRTryItPage: View {
                     Text("Tap \(model.keyLabel), say \"Hello from Useful Voice\", then tap it again.")
                         .font(.system(size: 15))
                         .lineSpacing(3)
-                        .foregroundStyle(Theme.inkFaint)
+                        .foregroundStyle(Theme.inkMuted)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 12)
                         .allowsHitTesting(false)
                 }
             }
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(worked ? Theme.lineStrong : Theme.ink, lineWidth: 1.5))
             .onChange(of: model.practiceText) { _, _ in model.practiceTextChanged() }
             .accessibilityLabel("Practice area")

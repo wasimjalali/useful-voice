@@ -90,8 +90,8 @@ const PICKER_HEIGHT = 448;
 const PICKER_MARGIN = 24;
 /** The picker floats 10 px above where the capsule sits. */
 const PICKER_GAP = 10;
-/** Cap on handing focus back: a cold PowerShell takes up to a second. */
-const PICKER_RESTORE_TIMEOUT_MS = 1500;
+/** Cap on handing focus back: a cold PowerShell with Add-Type is slow, and the picker is invisible meanwhile. */
+const PICKER_RESTORE_TIMEOUT_MS = 3000;
 
 /** Keep the HUD window's capsule inside a display's work area. */
 function clampHud(area: Electron.Rectangle, x: number, y: number): { x: number; y: number } {
@@ -646,6 +646,9 @@ class UsefulVoiceApp {
     void window.loadFile(path.join(__dirname, '../renderer/index.html'), {
       query: { view: 'hud', panel: 'language', theme: resolvedTheme() },
     });
+    window.webContents.on('before-input-event', (event) => {
+      if (this.pickerClosing) event.preventDefault();
+    });
     // A click anywhere else dismisses it, like a menu.
     window.on('blur', () => this.closeLanguagePicker(false));
     window.on('closed', () => {
@@ -678,6 +681,9 @@ class UsefulVoiceApp {
     this.pickerClosing = true;
     window.setOpacity(0);
     window.setIgnoreMouseEvents(true);
+    // Still the foreground window until the restore lands, but invisible: it takes no keys,
+    // and the global Esc (cancel) is registered again at once.
+    this.syncEscapeShortcut(this.service.currentState === 'recording');
     void restoreForegroundWindow(target, {
       onlyIfForeground: window.getNativeWindowHandle().readUInt32LE(0),
       timeoutMs: PICKER_RESTORE_TIMEOUT_MS,
@@ -935,7 +941,9 @@ class UsefulVoiceApp {
    */
   private syncEscapeShortcut(recording: boolean): void {
     // The language picker needs Esc for itself while it is open.
-    const pickerOpen = this.pickerWindow !== null && !this.pickerWindow.isDestroyed() && this.pickerWindow.isVisible();
+    // A picker that is closing is already gone for the user, so Esc is theirs to cancel with again.
+    const pickerOpen =
+      this.pickerWindow !== null && !this.pickerWindow.isDestroyed() && this.pickerWindow.isVisible() && !this.pickerClosing;
     recording = recording && !pickerOpen;
     if (recording && !this.escapeRegistered) {
       this.escapeRegistered = globalShortcut.register('Escape', () => void this.cancelDictation());

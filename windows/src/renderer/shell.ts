@@ -1,5 +1,6 @@
 import { api } from './api.js';
 import { el, icon, ICONS } from './components/dom.js';
+import { createLandingMark } from './components/landingMark.js';
 import type {
   DictationStateEvent,
   HistoryEntryDTO,
@@ -406,17 +407,9 @@ export function mountMain(pages: Record<Page, PageModule>, undoDeleteNote: () =>
   })();
 }
 
-/** The brand mark: a simple monochrome glyph, matching the macOS app. */
+/** The brand mark: the Landing mark, matching the macOS app. */
 function brandMark(): SVGSVGElement {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('class', 'rail-mark');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('fill', 'none');
-  svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '1.7');
-  svg.setAttribute('stroke-linecap', 'round');
-  const bar1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  bar1.setAttribute('d', 'M6 9v6M12 4v16M18 8v8');
-  svg.append(bar1);
+  const svg = createLandingMark({ size: 24, state: 'still' });
+  svg.classList.add('rail-mark');
   return svg;
 }

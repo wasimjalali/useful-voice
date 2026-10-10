@@ -200,6 +200,18 @@ struct SettingsPage: View {
                     Toggle("", isOn: $soundEffectsEnabled).labelsHidden()
                 }
 
+                Divider().overlay(Theme.line)
+
+                // Applies at once, with no restart and no Save.
+                settingsRow("Appearance", detail: "Follow macOS, or keep it light or dark") {
+                    BrandedSegmentedControl(
+                        selection: Binding(get: { settings.appearance },
+                                           set: { settings.appearance = $0 }),
+                        options: [("System", AppearanceChoice.system),
+                                  ("Light", .light), ("Dark", .dark)])
+                        .frame(width: 220)
+                }
+
                 HStack(spacing: 10) {
                     Button("Microphone settings") { openPrivacyPane("Privacy_Microphone") }
                         .clickableCursor()

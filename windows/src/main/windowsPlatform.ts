@@ -113,6 +113,41 @@ Write-Output ("{0}{1}{2}{1}{3}" -f $h.ToInt64(), [char]31, $name, $sb.ToString()
 }
 
 /**
+ * Bring a window back to the foreground, by the handle `foregroundWindow` returned.
+ *
+ * Used when the language picker (a focusable window that took focus from the app being
+ * dictated into) closes. The PowerShell child is started by the foreground app, which is
+ * one of the cases Windows allows `SetForegroundWindow` for. A minimised window is
+ * restored first. Returns false when the handle is gone or Windows refused.
+ */
+export async function restoreForegroundWindow(handle: number): Promise<boolean> {
+  // The handle is interpolated into a script, so it must be a plain positive integer.
+  if (!Number.isSafeInteger(handle) || handle <= 0) return false;
+  const script = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class UvRestore {
+  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+}
+"@
+$h = [IntPtr]${handle}
+if (-not [UvRestore]::IsWindow($h)) { Write-Output "gone"; exit 0 }
+if ([UvRestore]::IsIconic($h)) { [void][UvRestore]::ShowWindow($h, 9) }
+Write-Output ([UvRestore]::SetForegroundWindow($h))
+`;
+  try {
+    const { stdout } = await runPowerShell(script);
+    return stdout.trim().split(/\r?\n/).pop() === 'True';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Our own process name, so delivery can refuse to paste into ourselves.
  */
 export function ownProcessName(): string {

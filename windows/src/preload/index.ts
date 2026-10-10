@@ -104,10 +104,13 @@ const api = {
     return () => ipcRenderer.removeListener('hud:view', listener);
   },
   /**
-   * The HUD window ignores the mouse except over its buttons. The renderer says when the
-   * pointer enters or leaves one, and main toggles click-through to match.
+   * The HUD window ignores the mouse except over the capsule. The renderer says when the
+   * pointer enters or leaves it, and main toggles click-through to match.
    */
-  hudPointer: (overButton: boolean): void => ipcRenderer.send('hud:pointer', overButton),
+  hudPointer: (overCapsule: boolean): void => ipcRenderer.send('hud:pointer', overCapsule),
+  /** The capsule is being dragged: screen coordinates of the pointer, from press to release. */
+  hudDrag: (phase: 'start' | 'move' | 'end', x: number, y: number): void =>
+    ipcRenderer.send('hud:drag', phase, x, y),
   hudAction: (action: HudAction): Promise<void> => ipcRenderer.invoke('hud:action', action),
   /** A line for a screen reader. Sent to whichever window the user is in. */
   onAnnounce: (handler: (text: string, urgency: 'polite' | 'assertive') => void): (() => void) => {

@@ -24,6 +24,8 @@ export interface DictationStatus {
   elapsedSeconds?: number;
   /** Set on an error status that has a kind, never otherwise. `message` repeats `error.message`. */
   error?: DictationError;
+  /** How the text reaches the user, while a dictation is in flight: pasted, or only saved and copied. */
+  delivery?: 'paste' | 'copy';
 }
 
 /** What the recorder must provide. Implemented by the renderer over IPC. */
@@ -693,6 +695,7 @@ export class DictationService {
       status.error = error;
     }
     if (targetApp !== undefined) status.targetApp = targetApp;
+    if (this.session) status.delivery = this.session.source === 'hotkey' ? 'paste' : 'copy';
     if (state === 'recording') status.elapsedSeconds = this.clock.elapsedSeconds();
     this.deps.onStatus(status);
   }

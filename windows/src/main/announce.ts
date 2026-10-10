@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import { hudLabel, type HudView } from '../core/hudModel.js';
+import { fixLabel, hudLabel, type HudView } from '../core/hudModel.js';
 
 /**
  * Tells a screen reader what the HUD is doing.
@@ -56,7 +56,7 @@ function spoken(view: HudView): string {
       return view.stopsIn !== undefined ? `Stops in ${view.stopsIn} seconds` : 'Recording';
     case 'error':
       // The full sentence, not the capsule's short title, plus the fix as it is offered.
-      return view.error.message;
+      return fixLabel(view.error) ? `${view.error.message} ${fixLabel(view.error)} available.` : view.error.message;
     default:
       return hudLabel(view);
   }

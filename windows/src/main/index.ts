@@ -1,7 +1,7 @@
 import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, nativeTheme, shell, screen, Menu } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promises as fs, writeFileSync } from 'node:fs';
+import { promises as fs, readFileSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 
@@ -40,6 +40,7 @@ import {
   Diagnostics,
   clipboardHoldsText,
   foregroundWindow,
+  restoreForegroundWindow,
   pasteClipboard,
   playCue,
   restoreClipboard,
@@ -91,6 +92,14 @@ const PICKER_MARGIN = 24;
 /** The picker floats 10 px above where the capsule sits. */
 const PICKER_GAP = 10;
 
+/** Keep the HUD window's capsule inside a display's work area. */
+function clampHud(area: Electron.Rectangle, x: number, y: number): { x: number; y: number } {
+  return {
+    x: Math.min(Math.max(area.x, x), area.x + area.width - HUD_WIDTH),
+    y: Math.min(Math.max(area.y, y), area.y + area.height - HUD_SHADOW_ROOM - HUD_CAPSULE_HEIGHT),
+  };
+}
+
 class UsefulVoiceApp {
   private settings!: SettingsStore;
   private data!: DataStore;
@@ -104,6 +113,12 @@ class UsefulVoiceApp {
   /** The latest view, sent to the HUD window as soon as its page has loaded. */
   private hudFrame: HudFrame | null = null;
   private hudHideTimer: NodeJS.Timeout | null = null;
+  /** Where the user left the HUD, per display, as an offset from its default spot. */
+  private hudOffsets: Record<string, { dx: number; dy: number }> = {};
+  private hudDrag: { bounds: Electron.Rectangle; x: number; y: number } | null = null;
+  /** The window that was in front when the picker opened, to hand focus back to on close. */
+  private pickerReturnTo: number | null = null;
+  private pickerOpening = false;
   /** The app the current recording will paste into (a hotkey dictation only). */
   private recordingTarget: string | undefined;
   private service!: DictationService;
@@ -173,6 +188,7 @@ class UsefulVoiceApp {
       });
     });
 
+    this.loadHudPositions();
     this.createRecorderWindow();
     this.announcer = new Announcer((text, urgency) => this.sendAnnouncement(text, urgency));
     this.hudModel = new HudModel((frame) => this.onHudFrame(frame));
@@ -325,20 +341,13 @@ class UsefulVoiceApp {
   }
 
   /**
-   * The display the user is working on: the one under the pointer.
-   */
-  private activeWorkArea(): Electron.Rectangle {
-    return screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  }
-
-  /**
    * The HUD window: a fixed transparent area at the bottom centre of the display under
    * the pointer, 32 px above the taskbar. Every state is drawn inside it by the renderer.
    *
    * Deliberately not focusable: it must never steal focus from the app the user is
    * dictating into, which would make the paste land in the wrong place - the bug
    * that made the macOS HUD a panel with `becomesKeyOnlyIfNeeded`. Clicks pass through
-   * the transparent margin; the renderer says when the pointer is over a button.
+   * the transparent margin; the renderer says when the pointer is over the capsule.
    */
   private ensureHudWindow(): BrowserWindow {
     if (this.hudWindow && !this.hudWindow.isDestroyed()) return this.hudWindow;
@@ -372,15 +381,86 @@ class UsefulVoiceApp {
     return window;
   }
 
-  /** Bottom centre of the display under the pointer, 32 px above the taskbar. */
+  /**
+   * Where the HUD window sits on a display: bottom centre, 32 px above the taskbar,
+   * plus wherever the user last dragged it on that display.
+   */
+  private hudOrigin(display: Electron.Display): { x: number; y: number } {
+    const area = display.workArea;
+    const offset = this.hudOffsets[String(display.id)] ?? { dx: 0, dy: 0 };
+    return clampHud(
+      area,
+      Math.round(area.x + (area.width - HUD_WIDTH) / 2) + offset.dx,
+      area.y + area.height - HUD_BOTTOM_GAP - HUD_CAPSULE_HEIGHT - HUD_SHADOW_ROOM + offset.dy,
+    );
+  }
+
   private placeHud(window: BrowserWindow): void {
-    const area = this.activeWorkArea();
-    window.setBounds({
-      x: Math.round(area.x + (area.width - HUD_WIDTH) / 2),
-      y: area.y + area.height - HUD_BOTTOM_GAP - HUD_CAPSULE_HEIGHT - HUD_SHADOW_ROOM,
-      width: HUD_WIDTH,
-      height: HUD_HEIGHT,
-    });
+    const origin = this.hudOrigin(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()));
+    window.setBounds({ ...origin, width: HUD_WIDTH, height: HUD_HEIGHT });
+  }
+
+  /** The user is dragging the capsule: the window follows the pointer. */
+  private onHudDrag(phase: unknown, x: unknown, y: unknown): void {
+    const window = this.hudWindow;
+    if (!window || window.isDestroyed()) return;
+    if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (phase === 'start') {
+      this.hudDrag = { bounds: window.getBounds(), x, y };
+      return;
+    }
+    const drag = this.hudDrag;
+    if (!drag) return;
+    const nextX = drag.bounds.x + Math.round(x - drag.x);
+    const nextY = drag.bounds.y + Math.round(y - drag.y);
+    const display = screen.getDisplayNearestPoint({ x: nextX + HUD_WIDTH / 2, y: nextY + HUD_HEIGHT / 2 });
+    const origin = clampHud(display.workArea, nextX, nextY);
+    window.setBounds({ ...origin, width: HUD_WIDTH, height: HUD_HEIGHT });
+    if (phase === 'end') {
+      this.hudDrag = null;
+      this.rememberHudPosition(display, origin);
+    }
+  }
+
+  /** Stored as an offset from the default spot, so a resolution or taskbar change keeps it sensible. */
+  private rememberHudPosition(display: Electron.Display, origin: { x: number; y: number }): void {
+    const area = display.workArea;
+    this.hudOffsets[String(display.id)] = {
+      dx: origin.x - Math.round(area.x + (area.width - HUD_WIDTH) / 2),
+      dy: origin.y - (area.y + area.height - HUD_BOTTOM_GAP - HUD_CAPSULE_HEIGHT - HUD_SHADOW_ROOM),
+    };
+    try {
+      writeFileSync(this.hudPositionFile(), JSON.stringify(this.hudOffsets), 'utf8');
+    } catch (error) {
+      this.diagnostics.log('hud', `could not save the HUD position: ${(error as Error).message}`);
+    }
+  }
+
+  private hudPositionFile(): string {
+    return path.join(app.getPath('userData'), 'hud-position.json');
+  }
+
+  private loadHudPositions(): void {
+    let raw: string;
+    try {
+      raw = readFileSync(this.hudPositionFile(), 'utf8');
+    } catch (error) {
+      // No file yet is the normal first run.
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        this.diagnostics.log('hud', `could not read the HUD position: ${(error as Error).message}`);
+      }
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as Record<string, { dx?: unknown; dy?: unknown }>;
+      for (const [id, offset] of Object.entries(parsed)) {
+        if (typeof offset?.dx === 'number' && typeof offset?.dy === 'number') {
+          this.hudOffsets[id] = { dx: offset.dx, dy: offset.dy };
+        }
+      }
+    } catch (error) {
+      this.diagnostics.log('hud', `ignored a damaged HUD position file: ${(error as Error).message}`);
+    }
   }
 
   /**
@@ -460,41 +540,54 @@ class UsefulVoiceApp {
   /**
    * The language picker: its own focusable frameless window, because the search field has
    * to take keys and a window of the main app would have to be pulled forward for that.
-   * It opens 10 px above where the capsule sits and hides on a choice, Esc or a click
-   * elsewhere, which hands focus back to the app that was in front: Windows activates the
-   * next window in the stack when the focused one hides. There is no helper in
-   * `windowsPlatform.ts` that sets the foreground window, so the previous window is not
-   * recorded or restored explicitly.
+   * It opens 10 px above where the capsule sits (wherever the user left it). The window
+   * that was in front is recorded before the picker takes focus and brought back when the
+   * picker closes on a choice, Esc or the hotkey. A click on another window closes it too,
+   * and then that window is already where the user wants focus, so nothing is restored.
    */
   private openLanguagePicker(): void {
     if (this.pickerWindow && !this.pickerWindow.isDestroyed() && this.pickerWindow.isVisible()) {
-      this.closeLanguagePicker();
+      this.closeLanguagePicker(true);
       return;
     }
-    const existing = this.pickerWindow && !this.pickerWindow.isDestroyed() ? this.pickerWindow : null;
-    const window = existing ?? this.createPickerWindow();
-    const area = this.activeWorkArea();
-    window.setBounds({
-      x: Math.round(area.x + (area.width - PICKER_WIDTH) / 2),
-      y: Math.max(
-        area.y,
-        area.y + area.height - HUD_BOTTOM_GAP - HUD_CAPSULE_HEIGHT - PICKER_GAP + PICKER_MARGIN - PICKER_HEIGHT,
-      ),
-      width: PICKER_WIDTH,
-      height: PICKER_HEIGHT,
-    });
-    // The picker's own Esc must reach it, so the global Esc (cancel) steps aside while it is open.
-    const reveal = (): void => {
-      if (window.isDestroyed()) return;
-      window.show();
-      window.focus();
-      window.webContents.focus();
-      this.syncEscapeShortcut(this.service.currentState === 'recording');
-      // A fresh page opens itself when it loads; a kept one is told to reset and refocus.
-      if (existing) window.webContents.send('app:openLanguagePicker');
-    };
-    if (window.webContents.isLoading()) window.webContents.once('did-finish-load', reveal);
-    else reveal();
+    if (this.pickerOpening) return;
+    this.pickerOpening = true;
+    void (async () => {
+      // Before the picker exists on screen: afterwards the foreground window would be the picker.
+      const front = await foregroundWindow();
+      this.pickerReturnTo = front ? front.handle : null;
+      const existing = this.pickerWindow && !this.pickerWindow.isDestroyed() ? this.pickerWindow : null;
+      const window = existing ?? this.createPickerWindow();
+      const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+      const origin = this.hudOrigin(display);
+      const area = display.workArea;
+      const capsuleTop = origin.y + HUD_HEIGHT - HUD_SHADOW_ROOM - HUD_CAPSULE_HEIGHT;
+      window.setBounds({
+        x: Math.min(
+          Math.max(area.x, Math.round(origin.x + HUD_WIDTH / 2 - PICKER_WIDTH / 2)),
+          area.x + area.width - PICKER_WIDTH,
+        ),
+        y: Math.max(area.y, capsuleTop - PICKER_GAP + PICKER_MARGIN - PICKER_HEIGHT),
+        width: PICKER_WIDTH,
+        height: PICKER_HEIGHT,
+      });
+      // The picker's own Esc must reach it, so the global Esc (cancel) steps aside while it is open.
+      const reveal = (): void => {
+        if (window.isDestroyed()) return;
+        window.show();
+        window.focus();
+        window.webContents.focus();
+        this.syncEscapeShortcut(this.service.currentState === 'recording');
+        // A fresh page opens itself when it loads; a kept one is told to reset and refocus.
+        if (existing) window.webContents.send('app:openLanguagePicker');
+      };
+      if (window.webContents.isLoading()) window.webContents.once('did-finish-load', reveal);
+      else reveal();
+    })()
+      .catch((error: Error) => this.diagnostics.log('hud', `could not open the language picker: ${error.message}`))
+      .finally(() => {
+        this.pickerOpening = false;
+      });
   }
 
   private createPickerWindow(): BrowserWindow {
@@ -522,7 +615,7 @@ class UsefulVoiceApp {
       query: { view: 'hud', panel: 'language', theme: resolvedTheme() },
     });
     // A click anywhere else dismisses it, like a menu.
-    window.on('blur', () => this.closeLanguagePicker());
+    window.on('blur', () => this.closeLanguagePicker(false));
     window.on('closed', () => {
       this.pickerWindow = null;
       this.syncEscapeShortcut(this.service.currentState === 'recording');
@@ -531,11 +624,19 @@ class UsefulVoiceApp {
     return window;
   }
 
-  private closeLanguagePicker(): void {
+  /** `restoreFocus`: hand focus back to the window that was in front when the picker opened. */
+  private closeLanguagePicker(restoreFocus: boolean): void {
     const window = this.pickerWindow;
     if (!window || window.isDestroyed() || !window.isVisible()) return;
     window.hide();
     this.syncEscapeShortcut(this.service.currentState === 'recording');
+    const target = this.pickerReturnTo;
+    this.pickerReturnTo = null;
+    if (restoreFocus && target !== null) {
+      void restoreForegroundWindow(target).then((ok) => {
+        if (!ok) this.diagnostics.log('hud', 'could not return focus to the window the picker was opened over');
+      });
+    }
   }
 
   /** Switch the spoken language. It applies to a recording in progress: it is read at stop. */
@@ -764,7 +865,7 @@ class UsefulVoiceApp {
     this.hudModel.status(status);
     // Leaving the recording state hands the paste to whatever is in front, so a picker that
     // is still open would be the foreground window and take it.
-    if (status.state === 'transcribing' || status.state === 'delivering') this.closeLanguagePicker();
+    if (status.state === 'transcribing' || status.state === 'delivering') this.closeLanguagePicker(true);
 
     if (status.state === 'recording') {
       void playCue('start').catch(() => undefined);
@@ -940,7 +1041,7 @@ class UsefulVoiceApp {
   }
 
   private broadcast(channel: string, payload?: unknown): void {
-    for (const window of [this.mainWindow, this.recorderWindow, this.hudWindow]) {
+    for (const window of [this.mainWindow, this.recorderWindow, this.hudWindow, this.pickerWindow]) {
       if (window && !window.isDestroyed()) {
         window.webContents.send(channel, payload);
       }
@@ -1011,20 +1112,24 @@ class UsefulVoiceApp {
     ipcMain.handle('dictation:retry', () => this.service.retryLast());
     ipcMain.handle('dictation:copyLast', () => this.copyLastTranscript());
 
-    // The HUD window ignores the mouse except over its buttons.
-    ipcMain.on('hud:pointer', (event, overButton: boolean) => {
+    // The HUD window ignores the mouse except over the capsule.
+    ipcMain.on('hud:pointer', (event, overCapsule: boolean) => {
       const window = this.hudWindow;
       if (!window || window.isDestroyed() || event.sender !== window.webContents) return;
-      if (overButton === true) window.setIgnoreMouseEvents(false);
+      if (overCapsule === true) window.setIgnoreMouseEvents(false);
       else window.setIgnoreMouseEvents(true, { forward: true });
+    });
+    ipcMain.on('hud:drag', (event, phase: unknown, x: unknown, y: unknown) => {
+      if (event.sender !== this.hudWindow?.webContents) return;
+      this.onHudDrag(phase, x, y);
     });
     ipcMain.handle('hud:action', (_event, action: unknown) => this.onHudAction(action));
     ipcMain.handle('app:picker-choose', (_event, value: unknown) => {
       if (typeof value !== 'string') return;
-      this.closeLanguagePicker();
+      this.closeLanguagePicker(true);
       this.setLanguage(value);
     });
-    ipcMain.handle('app:picker-close', () => this.closeLanguagePicker());
+    ipcMain.handle('app:picker-close', () => this.closeLanguagePicker(true));
 
     ipcMain.handle('settings:get', () => ({
       ...this.settings.all,
@@ -1649,9 +1754,9 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     // channel added or lost anywhere fails one of the two.
     // 64: the theme (`getTheme`, `onThemeChanged`), `showDiagnosticsLog`, `onOutcome` +
     // `onTelemetry`, `getFlags`, and the floating windows (`onHudView`, `hudPointer`,
-    // `hudAction`, `onAnnounce`, `pickerChoose`, `pickerClose`, `onSettingsChanged`).
+    // `hudAction`, `hudDrag`, `onAnnounce`, `pickerChoose`, `pickerClose`, `onSettingsChanged`).
     // Kept in step with the README by the comment below.
-    const EXPECTED_API_METHODS = 64;
+    const EXPECTED_API_METHODS = 65;
     record(
       'preload exposes API',
       preloadProbe.hasApi

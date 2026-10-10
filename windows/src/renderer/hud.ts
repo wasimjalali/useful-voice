@@ -57,7 +57,7 @@ function mountHudCapsule(): void {
   /** The frame the capsule currently draws: the only state, always replaced whole. */
   let frame: HudFrame | null = null;
   let leaveTimer = 0;
-  let overButton = 0;
+  let dragging = false;
   /** The mark and the timer of the recording view, patched in place while it lives. */
   let live: { mark: SVGSVGElement; time: HTMLElement; stops: HTMLElement | null } | null = null;
   /** The last three input levels: the three bars show a short trail, so a loud word travels. */
@@ -98,9 +98,6 @@ function mountHudCapsule(): void {
 
     frame = next;
     live = null;
-    // A button that was under the pointer is gone with the old content: its mouseleave never fires.
-    resetPointer();
-
     const content = buildContent(next);
     content.classList.add('hud-inner');
     capsule.setAttribute('aria-label', hudLabel(next));
@@ -169,7 +166,6 @@ function mountHudCapsule(): void {
     if (frame === null) return;
     frame = null;
     live = null;
-    resetPointer();
     capsule.classList.remove('is-entering');
     capsule.classList.add('is-leaving');
     leaveTimer = window.setTimeout(() => {
@@ -180,27 +176,52 @@ function mountHudCapsule(): void {
     }, EXIT_MS);
   }
 
-  function resetPointer(): void {
-    if (overButton > 0) {
-      overButton = 0;
-      api.hudPointer(false);
-    }
-  }
-
-  /** A button the pointer can click: click-through is switched off while the pointer is over it. */
+  /**
+   * A button the pointer can click. The capsule as a whole takes the pointer (click-through
+   * is off while it is over it) so it can be dragged; a press on a button is not a drag.
+   */
   function button(className: string, label: string, action: HudAction, ...children: Array<Node | string>): HTMLButtonElement {
     const node = el('button', { class: className, type: 'button', 'aria-label': label }, ...children);
-    node.addEventListener('mouseenter', () => {
-      overButton += 1;
-      api.hudPointer(true);
-    });
-    node.addEventListener('mouseleave', () => {
-      overButton = Math.max(0, overButton - 1);
-      if (overButton === 0) api.hudPointer(false);
-    });
     node.addEventListener('click', () => void api.hudAction(action));
     return node;
   }
+
+  // The window ignores the mouse except over the capsule; pressing on the capsule (not a
+  // button) and moving drags the window. Main remembers where it was left, per display.
+  let pendingMove: { x: number; y: number } | null = null;
+  capsule.addEventListener('pointerenter', () => api.hudPointer(true));
+  capsule.addEventListener('pointerleave', () => {
+    if (!dragging) api.hudPointer(false);
+  });
+  capsule.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || (event.target as Element).closest('button')) return;
+    dragging = true;
+    capsule.setPointerCapture(event.pointerId);
+    capsule.classList.add('is-dragging');
+    api.hudDrag('start', event.screenX, event.screenY);
+  });
+  capsule.addEventListener('pointermove', (event) => {
+    if (!dragging) return;
+    const first = pendingMove === null;
+    pendingMove = { x: event.screenX, y: event.screenY };
+    if (first) {
+      requestAnimationFrame(() => {
+        if (pendingMove) api.hudDrag('move', pendingMove.x, pendingMove.y);
+        pendingMove = null;
+      });
+    }
+  });
+  const endDrag = (event: PointerEvent): void => {
+    if (!dragging) return;
+    dragging = false;
+    pendingMove = null;
+    capsule.classList.remove('is-dragging');
+    api.hudDrag('end', event.screenX, event.screenY);
+    // Released away from the capsule (it follows the pointer, so rarely): click-through again.
+    if (!capsule.matches(':hover')) api.hudPointer(false);
+  };
+  capsule.addEventListener('pointerup', endDrag);
+  capsule.addEventListener('pointercancel', endDrag);
 
   function closeButton(): HTMLButtonElement {
     return button('hud-x', 'Dismiss', 'dismiss', icon(ICON_PATHS.close, 14));
@@ -220,6 +241,8 @@ function mountHudCapsule(): void {
         return el('div', {}, el('span', { class: 'hud-spin' }), 'Transcribing');
       case 'inserting':
         return el('div', {}, el('span', { class: 'hud-spin' }), 'Inserting');
+      case 'saving':
+        return el('div', {}, el('span', { class: 'hud-spin' }), 'Saving');
       case 'done':
         return el(
           'div',
@@ -258,8 +281,8 @@ function mountHudCapsule(): void {
 
 /**
  * The floating picker. The main process shows this window focused (the search field has to
- * take keys), remembers what was in front and puts it back, and hides the window again on
- * a choice, Esc or a click elsewhere. Each open resets the search and re-reads the pin.
+ * take keys), records the window that was in front and puts focus back on it when the picker
+ * closes on a choice or Esc, and hides the window on a click elsewhere too. Each open resets the search and re-reads the pin.
  */
 function mountLanguageWindow(): void {
   document.body.classList.add('lang-window');

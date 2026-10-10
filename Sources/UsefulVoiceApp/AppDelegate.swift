@@ -32,6 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let localEngine = WhisperCppEngine()
     private var modelManager: LocalModelManager?
     private var recordingTimer: Timer?
+    /// The live recorder, for the countdown to auto-stop shown in the dock.
+    private var audioRecorder: AudioRecorder?
     /// When the current recording began, so the pill can show elapsed mm:ss.
     private var recordingStartedAt: Date?
     private var currentLevel: Float = 0
@@ -47,8 +49,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         default: return false
         }
     }
-    private func toggleDictation() {
-        controller?.toggle()
+    /// The hotkey and the menu bar item start a hotkey dictation (pasted into the
+    /// app in front); the window's mic button passes `.window` (saved and copied).
+    private func toggleDictation(source: DictationSource = .hotkey) {
+        controller?.toggle(source: source)
     }
 
     /// Flips the dictation language between English and German and flashes the
@@ -360,6 +364,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func setUpController() {
         let recorder = AudioRecorder(silenceTimeout: settings.silenceTimeout)
+        self.audioRecorder = recorder
         recorder.onLevel = { [weak self] level in
             DispatchQueue.main.async { self?.currentLevel = level }
         }
@@ -427,7 +432,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             languageMemory: languageMemory,
             scratchpad: scratchpad,
             models: modelManager,
-            onToggle: { [weak self] in self?.toggleDictation() })
+            onToggle: { [weak self] source in self?.toggleDictation(source: source) })
         self.viewModel = viewModel
 
         let controller = DictationController(
@@ -444,13 +449,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 )
             },
             recordingsToKeep: settings.recordingsToKeep,
-            deliver: { [weak self] text, done in
-                self?.inserter.deliver(text) { outcome in
-                    if outcome == .clipboardOnly {
-                        self?.hud.show(.error("Copied. Press Cmd-V to paste."))
-                        self?.hud.hide(after: 4)
+            deliver: { [weak self] text, mode, done in
+                switch mode {
+                case .paste:
+                    self?.inserter.deliver(text) { outcome in
+                        if outcome == .clipboardOnly {
+                            self?.hud.show(.error("Copied. Press Cmd-V to paste."))
+                            self?.hud.hide(after: 4)
+                            done(.copiedNotPasted)
+                        } else {
+                            done(.pasted)
+                        }
                     }
-                    done()
+                case .copy:
+                    // Saved and copied: the clipboard is the destination, so
+                    // nothing is pasted and the user's old clipboard is not
+                    // restored over it.
+                    self?.inserter.copy(text)
+                    done(.copied)
                 }
             },
             record: { [weak self] record in
@@ -501,12 +517,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self?.languageMemory?.suggest(terms)
                 self?.viewModel?.refreshLanguageMemory()
             },
-            isSecureInputActive: { IsSecureEventInputEnabled() }
+            isSecureInputActive: { IsSecureEventInputEnabled() },
+            frontmostAppName: { NSWorkspace.shared.frontmostApplication?.localizedName }
         )
         controller.onStateChange = { [weak self] state in
             self?.render(state: state)
             self?.viewModel?.refreshState(state)
             self?.viewModel?.canRetry = self?.controller?.canRetry ?? false
+        }
+        controller.onOutcome = { [weak self] outcome in
+            self?.viewModel?.handle(outcome: outcome)
         }
         viewModel.onRetry = { [weak self] in
             self?.controller?.retryLast()
@@ -745,6 +765,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     MainActor.assumeIsolated {
                         guard self?.controller?.state == .transcribing else { return }
                         self?.hud.show(.transcribing(partial: text))
+                        self?.viewModel?.telemetry.setPartial(text)
                     }
                 }
             }
@@ -898,10 +919,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             hud.show(.transcribing(partial: nil))
         case .delivering:
             hud.show(.delivering)
-        case .error(let message):
+        case .error(let error):
             stopRecordingTimer()
             setIcon("waveform", tint: nil)
-            hud.show(.error(message))
+            hud.show(.error(error.message))
             hud.hide(after: 6)
         }
     }
@@ -917,8 +938,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                               repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                let elapsed = Int(Date().timeIntervalSince(self.recordingStartedAt ?? Date()))
+                let now = Date()
+                let elapsed = Int(now.timeIntervalSince(self.recordingStartedAt ?? now))
                 self.hud.show(.recording(seconds: elapsed, level: self.currentLevel))
+                self.viewModel?.telemetry.tick(
+                    elapsed: elapsed, level: self.currentLevel,
+                    deadlines: self.audioRecorder?.autoStopDeadlines ?? .none, now: now)
             }
         }
     }

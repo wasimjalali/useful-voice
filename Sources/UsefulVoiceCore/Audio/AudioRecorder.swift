@@ -17,11 +17,15 @@ public protocol AudioRecording: AnyObject {
     /// A failure that ended capture early (the input device disappeared, audio
     /// could not be written). Nil when capture was healthy.
     var captureError: Error? { get }
+    /// When the current recording will stop on its own (silence, maximum
+    /// length). Safe to read from any thread. `.none` when not recording.
+    var autoStopDeadlines: AutoStopDeadlines { get }
 }
 
 public extension AudioRecording {
     func updateSilenceTimeout(_ timeout: TimeInterval) {}
     var captureError: Error? { nil }
+    var autoStopDeadlines: AutoStopDeadlines { .none }
 }
 
 public enum AudioRecorderError: Error, LocalizedError {
@@ -114,6 +118,9 @@ public final class AudioRecorder: AudioRecording, @unchecked Sendable {
     /// and the writer queue.
     private let stateLock = NSLock()
     private var _captureError: Error?
+    /// Published by the writer queue after every buffer, read from the main
+    /// thread. Guarded by `stateLock`; the real-time tap thread never touches it.
+    private var _autoStopDeadlines = AutoStopDeadlines.none
 
     public var onLevel: ((Float) -> Void)?
     /// Fires when the silence timeout or max duration is hit, or when capture
@@ -131,6 +138,32 @@ public final class AudioRecorder: AudioRecording, @unchecked Sendable {
     public var captureError: Error? {
         stateLock.lock(); defer { stateLock.unlock() }
         return _captureError
+    }
+
+    /// Absolute times at which silence or the length cap will end this
+    /// recording. The watchdog itself lives on `writerQueue`; this is a snapshot
+    /// of its deadline, republished after each buffer, so readers never touch
+    /// the watchdog or block on the queue.
+    public var autoStopDeadlines: AutoStopDeadlines {
+        stateLock.lock(); defer { stateLock.unlock() }
+        return _autoStopDeadlines
+    }
+
+    private func publishDeadlines(_ deadlines: AutoStopDeadlines) {
+        stateLock.lock()
+        _autoStopDeadlines = deadlines
+        stateLock.unlock()
+    }
+
+    /// Writer-queue only. Recomputes the deadlines from the live session.
+    private func republishDeadlinesLocked() {
+        guard let startedAt = session.startedAt, session.writer != nil else {
+            publishDeadlines(.none)
+            return
+        }
+        publishDeadlines(AutoStopDeadlines(startedAt: startedAt,
+                                           watchdog: session.watchdog,
+                                           maxDuration: maxDuration))
     }
 
     public init(silenceTimeout: TimeInterval = 60,
@@ -162,6 +195,7 @@ public final class AudioRecorder: AudioRecording, @unchecked Sendable {
         silenceTimeout = timeout
         writerQueue.async { [weak self] in
             self?.session.watchdog = SilenceWatchdog(timeout: timeout)
+            self?.republishDeadlinesLocked()
         }
     }
 
@@ -198,6 +232,7 @@ public final class AudioRecorder: AudioRecording, @unchecked Sendable {
                                        watchdog: SilenceWatchdog(timeout: silenceTimeout),
                                        startedAt: Date(),
                                        id: sessionID)
+                self.republishDeadlinesLocked()
             } catch {
                 writerError = error
             }
@@ -225,6 +260,7 @@ public final class AudioRecorder: AudioRecording, @unchecked Sendable {
             writerQueue.sync {
                 try? self.session.writer?.finish()
                 self.session.writer = nil
+                self.republishDeadlinesLocked()
             }
             if let url = fileURL { try? FileManager.default.removeItem(at: url) }
             fileURL = nil
@@ -277,6 +313,9 @@ public final class AudioRecorder: AudioRecording, @unchecked Sendable {
             stateLock.unlock()
         }
         session.id = UUID()
+        // The session is over: no countdown may outlive it. The writer is
+        // still set here, so clear explicitly rather than via the republish.
+        publishDeadlines(.none)
     }
 
     private func teardownEngine() {
@@ -318,7 +357,7 @@ public final class AudioRecorder: AudioRecording, @unchecked Sendable {
               let converter = AVAudioConverter(from: hwFormat, to: targetFormat) else {
             // The device is gone and did not come back. End the recording cleanly
             // rather than hanging in .recording forever.
-            failCapture(with: AudioRecorderError.inputDeviceLost)
+            failCapture(with: AudioRecorderError.inputDeviceLost, sessionID: sessionID)
             return
         }
 
@@ -331,17 +370,30 @@ public final class AudioRecorder: AudioRecording, @unchecked Sendable {
             engine.prepare()
             try engine.start()
         } catch {
-            failCapture(with: AudioRecorderError.inputDeviceLost)
+            failCapture(with: AudioRecorderError.inputDeviceLost, sessionID: sessionID)
         }
         _ = url
     }
 
     /// Latches a capture failure and asks the app layer to stop the recording.
-    private func failCapture(with error: Error) {
+    private func failCapture(with error: Error, sessionID: UUID) {
         stateLock.lock()
         if _captureError == nil { _captureError = error }
         stateLock.unlock()
-        DispatchQueue.main.async { [weak self] in self?.onAutoStop?() }
+        fireAutoStop(for: sessionID)
+    }
+
+    /// Asks the app layer to stop the recording, but only if `sessionID` is still
+    /// the live session when the request reaches the main thread. A stop or
+    /// cancel in between invalidates the session, so a request queued before it
+    /// can never end the NEXT recording the user starts.
+    private func fireAutoStop(for sessionID: UUID) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let isCurrent = self.writerQueue.sync { self.session.id == sessionID }
+            guard isCurrent else { return }
+            self.onAutoStop?()
+        }
     }
 
     /// Fails fast when the destination volume cannot hold a minute of audio
@@ -435,14 +487,16 @@ public final class AudioRecorder: AudioRecording, @unchecked Sendable {
                     if self._captureError == nil { self._captureError = wrapped }
                     self.stateLock.unlock()
                     self.session.autoStopFired = true
-                    DispatchQueue.main.async { [weak self] in self?.onAutoStop?() }
+                    self.fireAutoStop(for: sessionID)
                     return
                 }
             }
 
+            self.republishDeadlinesLocked()
+
             if shouldStop {
                 self.session.autoStopFired = true
-                DispatchQueue.main.async { [weak self] in self?.onAutoStop?() }
+                self.fireAutoStop(for: sessionID)
             }
         }
     }

@@ -216,11 +216,11 @@ struct RootView: View {
         case .home:
             HomePage(viewModel: viewModel)
         case .languageMemory:
-            LanguageMemoryPage(viewModel: viewModel.languageMemory)
+            VocabularyPage(viewModel: viewModel) // TEMP until merge
         case .insights:
             InsightsPage(viewModel: viewModel)
         case .scratchpad:
-            ScratchpadPage(viewModel: viewModel)
+            NotesPage(viewModel: viewModel) // TEMP until merge
         case .history:
             HistoryPage(viewModel: viewModel)
         case .settings:

@@ -39,12 +39,12 @@ enum SnapshotWriter {
 /// sample data, on a plain canvas standing in for the app in front.
 ///
 /// Names: recording, recordingLoud, silence, transcribing, local, localFa,
-/// inserting, done, doneSaved, copied, cancelled, errorNetwork, errorMic, errorTimedOut, errorSecure,
+/// inserting, done, doneSaved, copied, copiedAppChanged, cancelled, errorNetwork, errorMic, errorTimedOut, errorSecure,
 /// language, picker.
 @MainActor
 enum HUDSnapshot {
     static let names = ["recording", "recordingLoud", "silence", "transcribing", "local", "localFa",
-                        "inserting", "done", "doneSaved", "copied", "cancelled", "errorNetwork",
+                        "inserting", "done", "doneSaved", "copied", "copiedAppChanged", "cancelled", "errorNetwork",
                         "errorMic", "errorTimedOut", "errorSecure", "language", "picker"]
 
     private static let englishPartial =
@@ -64,6 +64,7 @@ enum HUDSnapshot {
         case "done": return .done(.inserted(words: 24))
         case "doneSaved": return .done(.savedAndCopied(words: 24))
         case "copied": return .copiedNotPasted(fix: .openAccessibilitySettings)
+        case "copiedAppChanged": return .copiedNotPasted(fix: nil)
         case "cancelled": return .cancelled
         case "errorNetwork":
             return .error(HUDError(DictationError(kind: .offline, message: "", fix: .retry)))

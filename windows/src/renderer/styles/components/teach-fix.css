@@ -1,0 +1,30 @@
+/* ==========================================================================
+   Teach a fix: the popover under the selected words
+   ========================================================================== */
+
+.tf {
+  display: grid;
+  gap: 12px;
+  width: 308px;
+  padding: 14px;
+}
+
+.tf-title { margin: 0; font-size: var(--fs-ui); font-weight: 600; }
+
+.tf-field { display: grid; gap: 4px; }
+.tf-field label { font-size: var(--fs-meta); color: var(--ink-muted); }
+
+.tf-heard,
+.tf-heard:focus {
+  background: var(--sunken);
+  border-color: var(--control-edge);
+  box-shadow: none;
+  cursor: default;
+}
+
+.tf-error { margin: 0; font-size: var(--fs-meta); color: var(--danger); }
+.tf-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+@media (pointer: coarse) {
+  .tf .field-input { height: 40px; }
+}

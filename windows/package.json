@@ -24,12 +24,13 @@
     "test:watch": "vitest",
     "start": "npm run build && electron .",
     "self-test": "npm run build && electron . --self-test --report=self-test-report.txt",
+    "e2e": "npm run build && playwright test",
     "verify": "npm run typecheck && npm test && npm run build && npm run self-test",
     "dist": "npm run build && electron-builder --win --publish never",
     "dist:portable": "npm run build && electron-builder --win portable --publish never"
   },
-  "dependencies": {},
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@types/node": "^22.10.2",
     "electron": "43.7.0",
     "electron-builder": "^25.1.8",
@@ -63,11 +64,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "artifactName": "${productName}-${version}-${arch}.${ext}",

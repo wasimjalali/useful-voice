@@ -150,6 +150,68 @@ export interface MemoryProcessingResult {
   memoryHitIds: string[];
 }
 
+/**
+ * Where a dictation started. Captured once, at recording start, and kept for that
+ * dictation: stopping it, an auto-stop or Esc never change it.
+ *
+ * `hotkey` pastes into the window that was frontmost at the start. `window` (the main
+ * window's mic button, the tray, the app menu) never pastes: it copies and saves.
+ */
+export type DictationSource = 'hotkey' | 'window';
+
+/** Why a dictation failed, so the UI can attach the right fix instead of parsing text. */
+export type DictationErrorKind =
+  | 'micUnavailable'
+  | 'stopFailed'
+  | 'noSpeech'
+  | 'tooShort'
+  | 'noProvider'
+  | 'keyRejected'
+  | 'outOfCredits'
+  | 'offline'
+  | 'timedOut'
+  | 'providerFailed'
+  | 'deliveryFailed'
+  /** The text reached the user but could not be written to the history. */
+  | 'saveFailed';
+
+/** What the user can do about an error. Absent means there is nothing to offer. */
+export type DictationFix = 'openMicrophoneSettings' | 'openEngineSettings' | 'retry';
+
+export interface DictationError {
+  kind: DictationErrorKind;
+  message: string;
+  fix?: DictationFix;
+}
+
+/**
+ * How a finished dictation reached the user.
+ *
+ * `pasted`: into the app that was frontmost. `copiedNotPasted`: a hotkey dictation
+ * whose paste could not be confirmed, so the text stays on the clipboard. `copied`:
+ * a window or retry dictation, saved and copied on purpose ("Saved and copied").
+ */
+export type DictationDelivery = 'pasted' | 'copiedNotPasted' | 'copied';
+
+/** Sent once per dictation, before the idle status. */
+export type DictationOutcomeEvent =
+  | { kind: 'delivered'; words: number; result: DictationDelivery; appName?: string }
+  | { kind: 'cancelled' };
+
+/**
+ * Live numbers for the window and the HUD, sent only while recording.
+ *
+ * `silenceRemaining` and `maxRemaining` are whole seconds and are present only when
+ * 5 s or fewer remain before the matching auto-stop.
+ */
+export interface DictationTelemetry {
+  /** Input level, 0 to 1. */
+  level: number;
+  elapsedSeconds: number;
+  silenceRemaining?: number;
+  maxRemaining?: number;
+}
+
 export interface DictationRecord {
   id: string;
   text: string;

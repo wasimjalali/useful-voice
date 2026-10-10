@@ -57,6 +57,23 @@ export class SilenceWatchdog {
     return Math.max(0, elapsedSeconds - (this.lastLoudAt ?? 0));
   }
 
+  /**
+   * Whether the silence limit has been reached at this moment.
+   *
+   * Decided from the last loud frame and the clock, not from a frame arriving, so it
+   * still fires when the input stops delivering buffers (an unplugged device).
+   */
+  isExpired(elapsedSeconds: number): boolean {
+    if (this.timeoutSeconds <= 0) return false;
+    return this.silenceSeconds(elapsedSeconds) >= this.timeoutSeconds;
+  }
+
+  /** Whole seconds left before auto-stop, rounded up, or null when auto-stop is off. */
+  secondsUntilStop(elapsedSeconds: number): number | null {
+    if (this.timeoutSeconds <= 0) return null;
+    return Math.max(0, Math.ceil(this.timeoutSeconds - this.silenceSeconds(elapsedSeconds)));
+  }
+
   reset(): void {
     this.lastLoudAt = null;
   }

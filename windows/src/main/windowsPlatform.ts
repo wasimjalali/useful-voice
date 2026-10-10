@@ -48,19 +48,6 @@ export async function pasteClipboard(): Promise<boolean> {
 }
 
 /**
- * Send the target's undo shortcut, used to take back a paste that provably landed
- * when the user cancels within the undo window.
- */
-export async function sendUndo(): Promise<boolean> {
-  try {
-    await runPowerShell('$wshell = New-Object -ComObject WScript.Shell; $wshell.SendKeys("^z")');
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Which window has focus right now.
  *
  * Used for two things: showing the user which app will receive their text, and
@@ -87,10 +74,10 @@ $h = [UvForeground]::GetForegroundWindow()
 $len = [UvForeground]::GetWindowTextLength($h)
 $sb = New-Object System.Text.StringBuilder ($len + 1)
 [void][UvForeground]::GetWindowText($h, $sb, $sb.Capacity)
-$pid = 0
-[void][UvForeground]::GetWindowThreadProcessId($h, [ref]$pid)
+$procId = 0
+[void][UvForeground]::GetWindowThreadProcessId($h, [ref]$procId)
 $name = ""
-try { $name = (Get-Process -Id $pid -ErrorAction Stop).ProcessName } catch {}
+try { $name = (Get-Process -Id $procId -ErrorAction Stop).ProcessName } catch {}
 # A unit-separator character is used rather than a tab: PowerShell would need a
 # backtick escape for a tab, and the backtick collides with JS template syntax.
 Write-Output ("{0}{1}{2}{1}{3}" -f $h.ToInt64(), [char]31, $name, $sb.ToString())
@@ -109,6 +96,52 @@ Write-Output ("{0}{1}{2}{1}{3}" -f $h.ToInt64(), [char]31, $name, $sb.ToString()
     };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Bring a window back to the foreground, by the handle `foregroundWindow` returned.
+ *
+ * Used when the language picker (a focusable window that took focus from the app being
+ * dictated into) closes. The PowerShell child is started by the foreground app, which is
+ * one of the cases Windows allows `SetForegroundWindow` for, but only while that app is
+ * still in front: call this BEFORE hiding the picker. `onlyIfForeground` is the picker's
+ * own window handle; when something else is in front by the time the script runs, the
+ * user has clicked elsewhere and nothing is restored. A minimised window is
+ * restored first. Returns false when the handle is gone or Windows refused.
+ */
+export async function restoreForegroundWindow(
+  handle: number,
+  options: { onlyIfForeground?: number; timeoutMs?: number } = {},
+): Promise<boolean> {
+  // Handles are interpolated into a script, so they must be plain positive integers.
+  if (!Number.isSafeInteger(handle) || handle <= 0) return false;
+  const guard = options.onlyIfForeground;
+  if (guard !== undefined && (!Number.isSafeInteger(guard) || guard <= 0)) return false;
+  const script = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class UvRestore {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+}
+"@
+$h = [IntPtr]${handle}
+${guard === undefined ? '' : `# The user clicked somewhere else while this started: leave their choice alone.
+if ([UvRestore]::GetForegroundWindow() -ne [IntPtr]${guard}) { Write-Output "moved"; exit 0 }`}
+if (-not [UvRestore]::IsWindow($h)) { Write-Output "gone"; exit 0 }
+if ([UvRestore]::IsIconic($h)) { [void][UvRestore]::ShowWindow($h, 9) }
+Write-Output ([UvRestore]::SetForegroundWindow($h))
+`;
+  try {
+    const { stdout } = await runPowerShell(script, options.timeoutMs);
+    return stdout.trim().split(/\r?\n/).pop() === 'True';
+  } catch {
+    return false;
   }
 }
 

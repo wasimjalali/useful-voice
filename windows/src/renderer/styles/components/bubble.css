@@ -1,0 +1,167 @@
+/* ==========================================================================
+   Bubble: one dictation in the Stream
+   ========================================================================== */
+
+.bubble {
+  position: relative;
+  width: fit-content;
+  min-width: 300px;
+  max-width: min(640px, 100%);
+  padding: 12px 16px 12px;
+  margin: 0 0 14px;
+  font-size: var(--fs-body);
+  line-height: 1.55;
+  outline: none;
+  transition: box-shadow var(--dur-hover) var(--ease-out), background var(--dur-hover) var(--ease-out);
+}
+
+.bubble:hover,
+.bubble:focus-within {
+  box-shadow: var(--shadow-lift), 0 0 0 1px var(--line-strong);
+}
+
+.bubble:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.bubble.is-selected {
+  background: color-mix(in srgb, var(--ink) 4%, var(--bubble));
+  box-shadow: 0 0 0 2px var(--ink);
+}
+
+.bubble.is-teaching { box-shadow: 0 0 0 2px var(--ink); }
+
+.bubble-check {
+  position: absolute;
+  left: -26px;
+  top: 16px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--brand-ink);
+}
+
+.bubble-text {
+  margin: 0;
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+
+.bubble-text.is-rtl { font-size: var(--fs-title); line-height: 1.7; }
+
+.bubble-text.is-clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.bubble-teach {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: var(--fs-ui);
+  font-weight: 600;
+}
+
+.bubble-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--fs-ui);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bubble-more-up { display: inline-flex; transform: rotate(180deg); }
+
+.bubble-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  min-height: 26px;
+  margin-top: 4px;
+  font-size: var(--fs-meta);
+  line-height: 1.4;
+  color: var(--ink-muted);
+}
+
+.bubble-meta i { font-style: normal; }
+
+.bubble-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--line-strong);
+  cursor: pointer;
+}
+
+.bubble-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity var(--dur-hover) var(--ease-out);
+}
+
+.bubble:hover .bubble-actions,
+.bubble:focus-within .bubble-actions,
+.bubble.is-teaching .bubble-actions { opacity: 1; }
+
+.bubble-action { width: 26px; height: 26px; }
+
+/* Matches inside a dictation, and what changed between the original and the kept text. */
+.bubble mark.hit,
+.bubble ins {
+  padding: 0 2px;
+  border-radius: var(--r-xs);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.bubble s {
+  color: var(--ink-muted);
+  text-decoration-color: var(--ink-muted);
+  text-decoration-thickness: 1.5px;
+}
+
+::highlight(uv-fix-target) {
+  background-color: color-mix(in srgb, var(--ink) 16%, transparent);
+}
+
+/* A dictation that just arrived rises 8 px into place and keeps the raised shadow for a second. */
+.bubble.is-rising { animation: bubble-rise var(--dur-enter) var(--ease-out), bubble-settle 1200ms var(--ease-out); }
+
+@keyframes bubble-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes bubble-settle {
+  0%, 80% { box-shadow: var(--shadow-raise); }
+}
+
+@media (pointer: coarse) {
+  .bubble-action { width: 40px; height: 40px; }
+  .bubble-actions { opacity: 1; }
+  .bubble-meta { min-height: 40px; }
+}

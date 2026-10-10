@@ -6,7 +6,8 @@
  * process asks for a capture over IPC and this module replies with a finished WAV.
  */
 
-import { encodeWav, rms, peak, containsSpeech, resampleTo16k } from '../../core/audio/wav.js';
+import { encodeWav, rms, peak, containsSpeech, resampleTo16k, LEVEL_METER_GAIN } from '../../core/audio/wav.js';
+import { CaptureStartTracker } from '../../core/audio/captureStart.js';
 
 export interface CaptureResult {
   wav: ArrayBuffer;
@@ -16,6 +17,8 @@ export interface CaptureResult {
 }
 
 interface Capture {
+  /** The main process's name for this recording; every message about it carries it. */
+  token: string;
   stream: MediaStream;
   context: AudioContext;
   source: MediaStreamAudioSourceNode;
@@ -29,9 +32,30 @@ interface Capture {
 
 let active: Capture | null = null;
 
-/** Whether capture is currently running, so a double press cannot start two. */
-export function isCapturing(): boolean {
-  return active !== null;
+/** The start that is still waiting for the microphone, so a discard can reach it. */
+const starts = new CaptureStartTracker();
+
+/** Whether the capture for `token` is running. */
+export function isCapturing(token: string): boolean {
+  return active?.token === token;
+}
+
+/** Release everything a capture holds. Safe to call twice. */
+async function release(capture: Capture): Promise<void> {
+  capture.processor.onaudioprocess = null;
+  for (const track of capture.stream.getTracks()) track.onended = null;
+  try {
+    capture.processor.disconnect();
+    capture.source.disconnect();
+  } catch {
+    // Already disconnected.
+  }
+  for (const track of capture.stream.getTracks()) track.stop();
+  try {
+    await capture.context.close();
+  } catch {
+    // Already closed.
+  }
 }
 
 /**
@@ -42,9 +66,34 @@ export function isCapturing(): boolean {
  * read back from the actual context and the audio is resampled if it differs -
  * rather than rendering a 48 kHz buffer into a 16 kHz header, which would play back
  * three times too fast and transcribe as noise.
+ *
+ * Returns false when the main process discarded this start while the microphone was
+ * still opening: whatever was opened is closed again and nothing is recording.
+ * A capture that is already running is never reused for a new token; it is stopped
+ * first, because its audio belongs to a recording nobody is waiting for.
+ *
+ * `onLost` is called once if the device goes away while recording (unplugged,
+ * disabled, access revoked), so the main process can end the dictation.
  */
-export async function startCapture(): Promise<void> {
-  if (active) return;
+export async function startCapture(token: string, onLost: (message: string) => void): Promise<boolean> {
+  const ticket = starts.begin(token);
+  try {
+    return await open(token, ticket, onLost);
+  } finally {
+    starts.finish(ticket);
+  }
+}
+
+async function open(
+  token: string,
+  ticket: { cancelled: boolean },
+  onLost: (message: string) => void,
+): Promise<boolean> {
+  if (active) {
+    const stale = active;
+    active = null;
+    await release(stale);
+  }
 
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error('Audio capture is not available in this environment.');
@@ -76,58 +125,94 @@ export async function startCapture(): Promise<void> {
     throw error;
   }
 
-  const context = new AudioContext();
-  // Chrome may start it suspended; resume so audio actually flows.
-  if (context.state === 'suspended') await context.resume();
+  // Anything below can throw (the AudioContext constructor, resume, the node factories).
+  // The stream is already open, so a throw must close it, or the microphone stays live
+  // with nobody holding it.
+  let opened: AudioContext | null = null;
+  try {
+    // The main process may have given up while the permission prompt or the driver was
+    // thinking. The stream is open now, so close it rather than leave the microphone live.
+    const abandon = (): boolean => {
+      if (!ticket.cancelled) return false;
+      for (const track of stream.getTracks()) track.stop();
+      return true;
+    };
+    if (abandon()) return false;
 
-  const source = context.createMediaStreamSource(stream);
-  // A ScriptProcessorNode is used rather than an AudioWorklet because a worklet
-  // needs a separate module file served over a URL, and the number of samples per
-  // callback is not performance-critical here.
-  const processor = context.createScriptProcessor(4096, 1, 1);
-
-  const capture: Capture = {
-    stream,
-    context,
-    source,
-    processor,
-    chunks: [],
-    startedAt: performance.now(),
-    peak: 0,
-    hadSpeech: false,
-    levelTimer: 0,
-  };
-
-  processor.onaudioprocess = (event) => {
-    const input = event.inputBuffer.getChannelData(0);
-    // Copy: the buffer is reused by the audio thread, so holding a reference would
-    // capture whatever the next callback writes.
-    const chunk = new Float32Array(input.length);
-    chunk.set(input);
-    capture.chunks.push(chunk);
-
-    capture.peak = Math.max(capture.peak, peak(chunk));
-    if (containsSpeech(chunk)) capture.hadSpeech = true;
-
-    // Push the level for the HUD meter on a timer, not per callback: an unfiltered
-    // flood would swamp the IPC channel.
-    const now = performance.now();
-    if (now - capture.levelTimer > 50) {
-      capture.levelTimer = now;
-      window.usefulVoice.sendLevel(Math.min(1, rms(chunk) * 4));
+    const context = (opened = new AudioContext());
+    // Chrome may start it suspended; resume so audio actually flows.
+    if (context.state === 'suspended') await context.resume();
+    if (ticket.cancelled) {
+      for (const track of stream.getTracks()) track.stop();
+      await context.close().catch(() => undefined);
+      return false;
     }
-  };
 
-  source.connect(processor);
-  // A ScriptProcessorNode only runs while connected to a destination. The gain is
-  // zero so nothing is played back, which would otherwise feed the microphone back
-  // into the speakers.
-  const silence = context.createGain();
-  silence.gain.value = 0;
-  processor.connect(silence);
-  silence.connect(context.destination);
+    const source = context.createMediaStreamSource(stream);
+    // A ScriptProcessorNode is used rather than an AudioWorklet because a worklet
+    // needs a separate module file served over a URL, and the number of samples per
+    // callback is not performance-critical here.
+    const processor = context.createScriptProcessor(4096, 1, 1);
 
-  active = capture;
+    const capture: Capture = {
+      token,
+      stream,
+      context,
+      source,
+      processor,
+      chunks: [],
+      startedAt: performance.now(),
+      peak: 0,
+      hadSpeech: false,
+      levelTimer: 0,
+    };
+
+    processor.onaudioprocess = (event) => {
+      const input = event.inputBuffer.getChannelData(0);
+      // Copy: the buffer is reused by the audio thread, so holding a reference would
+      // capture whatever the next callback writes.
+      const chunk = new Float32Array(input.length);
+      chunk.set(input);
+      capture.chunks.push(chunk);
+
+      capture.peak = Math.max(capture.peak, peak(chunk));
+      if (containsSpeech(chunk)) capture.hadSpeech = true;
+
+      // Push the level for the HUD meter on a timer, not per callback: an unfiltered
+      // flood would swamp the IPC channel.
+      const now = performance.now();
+      if (now - capture.levelTimer > 50) {
+        capture.levelTimer = now;
+        window.usefulVoice.sendLevel(Math.min(1, rms(chunk) * LEVEL_METER_GAIN));
+      }
+    };
+
+    source.connect(processor);
+    // A ScriptProcessorNode only runs while connected to a destination. The gain is
+    // zero so nothing is played back, which would otherwise feed the microphone back
+    // into the speakers.
+    const silence = context.createGain();
+    silence.gain.value = 0;
+    processor.connect(silence);
+    silence.connect(context.destination);
+
+    // The device going away mid-recording is the one failure no stop will ever report.
+    for (const track of stream.getTracks()) {
+      track.onended = () => {
+        if (active !== capture) return;
+        active = null;
+        void release(capture);
+        onLost('NotFoundError: the microphone was disconnected.');
+      };
+    }
+
+    active = capture;
+    return true;
+  } catch (error) {
+    for (const track of stream.getTracks()) track.stop();
+    await opened?.close().catch(() => undefined);
+    throw error;
+  }
 }
 
 /**
@@ -136,12 +221,13 @@ export async function startCapture(): Promise<void> {
  * Always stops the tracks, even on the error paths: a leaked track keeps the
  * microphone-in-use indicator lit and prevents other apps from recording.
  */
-export async function stopCapture(): Promise<CaptureResult> {
+export async function stopCapture(token: string): Promise<CaptureResult> {
   const capture = active;
-  if (!capture) throw new Error('Recording is not running.');
+  if (!capture || capture.token !== token) throw new Error('Recording is not running.');
   active = null;
 
   capture.processor.onaudioprocess = null;
+  for (const track of capture.stream.getTracks()) track.onended = null;
   try {
     capture.processor.disconnect();
     capture.source.disconnect();
@@ -180,22 +266,15 @@ export async function stopCapture(): Promise<CaptureResult> {
   };
 }
 
-/** Abandon the current capture, discarding the audio. */
-export async function cancelCapture(): Promise<void> {
+/**
+ * Abandon the capture for `token`, discarding the audio. Reaches a start that is still
+ * waiting for the microphone as well as one that is already recording; a token that
+ * is neither is left alone.
+ */
+export async function cancelCapture(token: string): Promise<void> {
+  starts.discard(token);
   const capture = active;
-  if (!capture) return;
+  if (!capture || capture.token !== token) return;
   active = null;
-  capture.processor.onaudioprocess = null;
-  try {
-    capture.processor.disconnect();
-    capture.source.disconnect();
-  } catch {
-    // Already disconnected.
-  }
-  for (const track of capture.stream.getTracks()) track.stop();
-  try {
-    await capture.context.close();
-  } catch {
-    // Already closed.
-  }
+  await release(capture);
 }

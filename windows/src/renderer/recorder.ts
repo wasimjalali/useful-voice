@@ -13,31 +13,43 @@ export function mountRecorder(): void {
     root.append(el('div', { class: 'recorder-note' }, 'Audio capture host. This window is never shown.'));
   }
 
-  api.onStartRecording(() => {
+  api.onStartRecording((token) => {
     void (async () => {
       try {
-        await startCapture();
+        const started = await startCapture(token, (message) => {
+          void api.sendAudioError(message, token);
+        });
+        // A discarded start has nothing to report: the main process already moved on.
+        if (started) await api.sendAudioStarted(token);
       } catch (error) {
         // Report the failure so the main process can show actionable advice
         // instead of waiting for a capture that will never arrive.
-        await api.sendAudioError((error as Error).message);
+        await api.sendAudioError((error as Error).message, token);
       }
     })();
   });
 
-  api.onStopRecording(() => {
+  api.onStopRecording(({ token, discard }) => {
     void (async () => {
-      if (!isCapturing()) return;
+      if (discard) {
+        // A cancelled recording: nobody wants the audio, so it is never encoded or sent.
+        await cancelCapture(token);
+        return;
+      }
+      if (!isCapturing(token)) {
+        await api.sendAudioError('Recording is not running.', token);
+        return;
+      }
       try {
-        const result = await stopCapture();
-        await api.sendAudio(result.wav, {
+        const result = await stopCapture(token);
+        await api.sendAudio(token, result.wav, {
           durationSeconds: result.durationSeconds,
           peak: result.peak,
           hadSpeech: result.hadSpeech,
         });
       } catch (error) {
-        await api.sendAudioError((error as Error).message);
-        await cancelCapture();
+        await api.sendAudioError((error as Error).message, token);
+        await cancelCapture(token);
       }
     })();
   });

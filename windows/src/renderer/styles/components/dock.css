@@ -1,0 +1,296 @@
+/* ==========================================================================
+   Dock: the bar at the bottom of the Stream, in every state
+   ========================================================================== */
+
+.dock {
+  position: relative;
+  width: min(100%, 820px);
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  padding: 12px 14px 12px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xl);
+  background: var(--bubble);
+  box-shadow: var(--shadow-raise);
+  transition: background-color var(--dur-state) var(--ease-out), border-color var(--dur-state) var(--ease-out);
+}
+
+.dock.is-warn {
+  background: var(--warning-soft);
+  border-color: color-mix(in srgb, var(--warning) 40%, transparent);
+}
+
+.dock.is-bad {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+}
+
+/* The multi-select bar takes the dock's place and is dark in both themes, like the HUD. */
+.dock.is-selection {
+  background: var(--hud-surface);
+  border-color: transparent;
+  color: var(--hud-ink);
+}
+
+.dock-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+/* A change of state cross-fades in 200 ms while the tone colours ease on the dock itself. */
+.dock-inner.is-swapping { animation: dock-swap var(--dur-state) var(--ease-out); }
+
+.dock-inner.is-leaving {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  bottom: 12px;
+  left: 12px;
+  width: auto;
+  pointer-events: none;
+  /* Out faster than the new content comes in, so the two texts overlap for a moment only. */
+  animation: dock-leave 100ms linear forwards;
+}
+
+@keyframes dock-leave {
+  to { opacity: 0; }
+}
+
+@keyframes dock-swap {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---------- Mic ---------- */
+
+.dock-mic {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--brand);
+  color: var(--brand-ink);
+  box-shadow: 0 1px 3px rgb(23 23 23 / 0.18);
+  cursor: pointer;
+  transition: background var(--dur-hover) var(--ease-out), transform var(--dur-hover) var(--ease-out);
+}
+
+.dock-mic:hover:not(:disabled) { background: var(--brand-strong); }
+.dock-mic:active:not(:disabled) { transform: scale(0.96); }
+
+.dock-mic:disabled {
+  background: var(--sunken);
+  color: var(--ink-muted);
+  box-shadow: none;
+  cursor: default;
+}
+
+.dock-stop {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  background: var(--brand-ink);
+}
+
+/* ---------- Status ---------- */
+
+.dock-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--fs-body);
+  white-space: nowrap;
+}
+
+.dock-status b { font-weight: 600; }
+.dock-status .kbd { margin: 0 2px; }
+.dock-muted { color: var(--ink-muted); }
+
+.dock-error { white-space: normal; line-height: 1.35; }
+
+.dock-tone-icon { display: inline-flex; flex: none; }
+.dock.is-warn .dock-tone-icon { color: var(--warning); }
+.dock.is-bad .dock-tone-icon { color: var(--danger); }
+
+.dock-action { height: 32px; background: var(--surface); flex: none; }
+
+.dock-spinner {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--ink);
+  border-radius: 50%;
+  animation: dock-spin 800ms linear infinite;
+}
+
+@keyframes dock-spin { to { transform: rotate(360deg); } }
+
+/* ---------- Recording ---------- */
+
+.dock-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: dock-breathe 1.4s ease-in-out infinite;
+}
+
+@keyframes dock-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+
+.dock .landing-mark { color: var(--ink); }
+
+.dock-time {
+  min-width: 46px;
+  font-size: var(--fs-figure);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.dock-stops { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-body); white-space: nowrap; }
+.dock-stops b { font-weight: 600; }
+.dock-stops .dock-muted { font-size: var(--fs-ui); }
+
+.dock-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-ui);
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+/* ---------- Right cluster ---------- */
+
+.dock .lang-picker { flex: none; }
+
+.dock .lang-trigger {
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  gap: 6px;
+  border: 1px solid var(--edge);
+  border-radius: var(--r-pill);
+  background: var(--sunken);
+  font-size: var(--fs-meta);
+  font-weight: 500;
+}
+
+.dock .lang-trigger:hover { background: var(--line); }
+.dock .lang-picker.is-open .lang-trigger { background: var(--line); border-color: var(--edge); }
+.dock .lang-trigger-label { flex: none; }
+.dock .lang-trigger svg { flex: none; color: var(--ink-muted); }
+.dock .lang-trigger-chevron { display: inline-flex; }
+
+/* The dock sits at the bottom of the window, so the picker opens upward. */
+.dock .lang-popup { top: auto; bottom: calc(100% + 8px); right: 0; }
+
+.dock-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--edge);
+  border-radius: var(--r-pill);
+  background: var(--sunken);
+  color: var(--ink);
+  font-size: var(--fs-meta);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--dur-hover) var(--ease-out);
+}
+
+.dock-chip:hover { background: var(--line); }
+.dock-chip svg { color: var(--ink-muted); }
+
+.dock-format {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: background var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out);
+}
+
+.dock-format:hover { background: var(--sunken); color: var(--ink); }
+
+.dock-format[aria-pressed="true"] {
+  background: var(--sunken);
+  border-color: var(--control-edge);
+  color: var(--ink);
+}
+
+.dock-dismiss { flex: none; }
+
+/* ---------- Selection bar ---------- */
+
+.dock-selected { margin-left: 4px; font-size: var(--fs-body); font-weight: 600; }
+
+.dock-selection-hint {
+  font-size: var(--fs-body);
+  color: color-mix(in srgb, var(--hud-ink) 72%, transparent);
+}
+
+.dock-cancel-selection {
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--hud-ink);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dock-cancel-selection:hover { background: var(--hud-wash); }
+
+.dock-add {
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--hud-ink);
+  color: var(--hud-surface);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dock.is-selection :focus-visible { outline-color: var(--hud-ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  .dock-dot { animation: none; }
+  .dock-spinner { animation: none; border-color: var(--ink-muted); }
+  .dock-inner.is-swapping { animation: none; }
+  .dock-inner.is-leaving { animation: none; opacity: 0; }
+}
+
+@media (pointer: coarse) {
+  .dock { min-height: 72px; }
+  .dock .lang-trigger, .dock-chip, .dock-format, .dock-action { height: 40px; }
+  .dock-format { width: 40px; }
+}
+
+.dock kbd, .st-empty kbd { font-family: inherit; }

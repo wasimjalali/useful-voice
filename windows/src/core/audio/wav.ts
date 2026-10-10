@@ -194,6 +194,13 @@ export function containsSpeech(samples: Float32Array): boolean {
   return peak(samples) >= SPEECH_PEAK_THRESHOLD;
 }
 
+/**
+ * Gain applied to RMS before a level is sent from the recorder to the main process
+ * (`min(1, rms * LEVEL_METER_GAIN)`). The silence watchdog divides it back out so it
+ * compares real RMS against its threshold.
+ */
+export const LEVEL_METER_GAIN = 4;
+
 /** Level 0..1 for the visual meter, from RMS. */
 export function meterLevel(samples: Float32Array): number {
   const value = rms(samples);

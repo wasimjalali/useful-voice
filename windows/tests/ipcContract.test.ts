@@ -77,6 +77,8 @@ const channelsReceivedByMain = unique(extracts(mainSource, /ipcMain\.on\(\s*'([^
 const channelsSentToRenderer = unique([
   ...extracts(mainSource, /webContents\.send\(\s*'([^']+)'/g),
   ...extracts(mainSource, /this\.broadcast\(\s*'([^']+)'/g),
+  // The same idea for live telemetry, which goes to the main window and the HUD only.
+  ...extracts(mainSource, /this\.sendToMainAndHud\(\s*'([^']+)'/g),
 ]);
 
 const allChannels = unique([
@@ -211,6 +213,76 @@ describe('main -> renderer', () => {
         `${channel} must be forwarded to the renderer by the preload`,
       ).toContain(channel);
     }
+  });
+});
+
+describe('dictation telemetry and outcome channels', () => {
+  it('broadcasts the outcome and telemetry and forwards both to the renderer', () => {
+    for (const channel of ['dictation:outcome', 'dictation:telemetry']) {
+      expect(channelsSentToRenderer, `${channel} must be sent by main`).toContain(channel);
+      expect(channelsSubscribedByPreload, `${channel} must be forwarded by the preload`).toContain(channel);
+    }
+  });
+
+  it('sends live telemetry to the main window and the HUD only, never the recorder', () => {
+    // The hidden recorder window has no use for it, and a level every ~33 ms is not free.
+    const sender = /private sendToMainAndHud[\s\S]*?\n  }\n/.exec(mainSource);
+    expect(sender, 'sendToMainAndHud must exist').not.toBeNull();
+    expect(sender?.[0]).toContain('this.mainWindow');
+    expect(sender?.[0]).toContain('this.hudWindow');
+    expect(sender?.[0]).not.toContain('recorderWindow');
+    expect(mainSource).toContain("this.sendToMainAndHud('dictation:telemetry'");
+  });
+
+  it('sends the outcome from the service callback, not from the status handler', () => {
+    // The outcome is ordered before the idle status inside the service. A second
+    // sender in `handleStatus` would put it after.
+    const handler = /private handleStatus[\s\S]*?\n  }\n/.exec(mainSource);
+    expect(handler?.[0]).not.toContain('dictation:outcome');
+    // The HUD model hears the outcome first, then it is broadcast; both happen in the callback.
+    expect(mainSource).toMatch(/onOutcome: \(outcome\) => \{[^}]*this\.broadcast\('dictation:outcome', outcome\)/);
+  });
+
+  it('lets the renderer start a dictation only as a window dictation', () => {
+    // Pasting is the hotkey's privilege: the renderer API takes no source argument.
+    expect(mainSource).toContain("ipcMain.handle('dictation:toggle', () => this.toggleDictation('window'))");
+    expect(mainSource).toContain("globalShortcut.register(accelerator, () => void this.toggleDictation('hotkey'))");
+    expect(preloadSource).toContain("toggleDictation: (): Promise<void> => ipcRenderer.invoke('dictation:toggle')");
+  });
+});
+
+describe('recorder window protocol', () => {
+  it('tags every capture message with its token, so a late one cannot reach the next recording', () => {
+    expect(preloadSource).toContain("ipcRenderer.invoke('audio:started', token)");
+    expect(preloadSource).toMatch(/sendAudio: \(\s*token: string,/);
+    expect(preloadSource).toContain("ipcRenderer.invoke('audio:captured', token, wav, meta)");
+    expect(preloadSource).toContain("ipcRenderer.invoke('audio:error', message, token)");
+    expect(mainSource).toContain('this.recorder.handleStarted(token)');
+    expect(mainSource).toContain('this.recorder.handleCaptured(token,');
+    expect(mainSource).toContain('this.recorder.handleError(token, message)');
+  });
+
+  it('accepts recorder messages only from the recorder window, and only with a token', () => {
+    expect(mainSource).toContain('event.sender === this.recorderWindow.webContents');
+    for (const channel of ['audio:started', 'audio:captured', 'audio:error']) {
+      const start = mainSource.indexOf(`ipcMain.handle('${channel}'`);
+      expect(start, `${channel} handler`).toBeGreaterThan(0);
+      const body = mainSource.slice(start, start + 400);
+      expect(body, `${channel} must check the sender`).toContain('fromRecorder(event)');
+      expect(body, `${channel} must require a string token`).toContain("typeof token !== 'string'");
+    }
+    expect(mainSource).toContain('validateCapture(wav, meta)');
+    // The level stream feeds the silence watchdog, so it gets the same checks.
+    const level = mainSource.indexOf("ipcMain.on('audio:level'");
+    expect(level, 'audio:level handler').toBeGreaterThan(0);
+    const levelBody = mainSource.slice(level, level + 400);
+    expect(levelBody).toContain('fromRecorder(event)');
+    expect(levelBody).toContain('Number.isFinite(level)');
+  });
+
+  it('keeps the old fire-and-forget start and the untagged pending slot out of main', () => {
+    expect(mainSource).not.toContain('pendingCapture');
+    expect(mainSource).not.toContain("webContents.send('audio:start')");
   });
 });
 

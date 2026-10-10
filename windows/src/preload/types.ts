@@ -8,16 +8,36 @@
  * filesystem, the API key, or the global hotkey registry on its own.
  */
 
+import type { DictationError } from '../core/models.js';
+
+export type { HudFrame } from '../core/hudModel.js';
+
+/** What a HUD button asks the main process to do. */
+export type HudAction = 'dismiss' | 'retry' | 'openMicrophoneSettings' | 'openEngineSettings';
+
 export interface DictationStateEvent {
   state: 'idle' | 'recording' | 'transcribing' | 'delivering' | 'error';
   message?: string;
-  /** Which app will receive the text, for the HUD. */
+  /** Which app will receive the text, for the HUD. Only a hotkey dictation has one. */
   targetApp?: string;
   elapsedSeconds?: number;
+  /** Pasted into the app in front, or only saved and copied (a window or retry dictation). */
+  delivery?: 'paste' | 'copy';
+  /** Set on an error state that has a kind; `message` repeats `error.message`. */
+  error?: DictationError;
 }
 
 /** The theme the window is drawn in. `system` is resolved by the main process. */
 export type ResolvedTheme = 'light' | 'dark';
+export type {
+  DictationDelivery,
+  DictationError,
+  DictationErrorKind,
+  DictationFix,
+  DictationOutcomeEvent,
+  DictationSource,
+  DictationTelemetry,
+} from '../core/models.js';
 
 export interface MemorySnapshotDTO {
   terms: Array<{

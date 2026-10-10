@@ -1,7 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
+  DictationOutcomeEvent,
   DictationStateEvent,
+  DictationTelemetry,
   HistoryEntryDTO,
+  HudAction,
+  HudFrame,
   MemorySnapshotDTO,
   NoteDTO,
   ResolvedTheme,
@@ -40,25 +44,32 @@ const api = {
    * Audio API lives. The main process asks for it over these channels and the
    * renderer replies with encoded audio.
    */
-  onStartRecording: (handler: () => void): (() => void) => {
-    const listener = (): void => handler();
+  onStartRecording: (handler: (token: string) => void): (() => void) => {
+    const listener = (_event: unknown, payload: { token: string }): void => handler(payload.token);
     ipcRenderer.on('audio:start', listener);
     return () => ipcRenderer.removeListener('audio:start', listener);
   },
-  onStopRecording: (handler: () => void): (() => void) => {
-    const listener = (): void => handler();
+  /** `discard`: throw the audio away and send nothing (a cancelled recording). */
+  onStopRecording: (handler: (request: { token: string; discard: boolean }) => void): (() => void) => {
+    const listener = (_event: unknown, payload: { token: string; discard?: boolean }): void =>
+      handler({ token: payload.token, discard: payload.discard === true });
     ipcRenderer.on('audio:stop', listener);
     return () => ipcRenderer.removeListener('audio:stop', listener);
   },
+  /** The microphone is open for `token`. The main process waits for this before it says "recording". */
+  sendAudioStarted: (token: string): Promise<void> => ipcRenderer.invoke('audio:started', token),
   /**
    * Send captured audio to the main process.
    *
    * The payload is a plain ArrayBuffer so it survives structured cloning without
    * an extra copy through a Node Buffer.
    */
-  sendAudio: (wav: ArrayBuffer, meta: { durationSeconds: number; peak: number; hadSpeech: boolean }): Promise<void> =>
-    ipcRenderer.invoke('audio:captured', wav, meta),
-  sendAudioError: (message: string): Promise<void> => ipcRenderer.invoke('audio:error', message),
+  sendAudio: (
+    token: string,
+    wav: ArrayBuffer,
+    meta: { durationSeconds: number; peak: number; hadSpeech: boolean },
+  ): Promise<void> => ipcRenderer.invoke('audio:captured', token, wav, meta),
+  sendAudioError: (message: string, token: string): Promise<void> => ipcRenderer.invoke('audio:error', message, token),
   sendLevel: (level: number): void => ipcRenderer.send('audio:level', level),
 
   // ---- state ----
@@ -67,13 +78,56 @@ const api = {
     ipcRenderer.on('dictation:state', listener);
     return () => ipcRenderer.removeListener('dictation:state', listener);
   },
+  /**
+   * How a dictation ended: delivered (with its word count and how it reached the
+   * user) or cancelled. Sent once per dictation, just before the idle state.
+   */
+  onOutcome: (handler: (outcome: DictationOutcomeEvent) => void): (() => void) => {
+    const listener = (_event: unknown, payload: DictationOutcomeEvent): void => handler(payload);
+    ipcRenderer.on('dictation:outcome', listener);
+    return () => ipcRenderer.removeListener('dictation:outcome', listener);
+  },
+  /**
+   * Level, elapsed time and the last-5-seconds countdowns. Sent to the main window
+   * and the HUD at most ~30 times a second, and only while recording.
+   */
+  onTelemetry: (handler: (telemetry: DictationTelemetry) => void): (() => void) => {
+    const listener = (_event: unknown, payload: DictationTelemetry): void => handler(payload);
+    ipcRenderer.on('dictation:telemetry', listener);
+    return () => ipcRenderer.removeListener('dictation:telemetry', listener);
+  },
   onLevel: (handler: (level: number) => void): (() => void) => {
     const listener = (_event: unknown, level: number): void => handler(level);
     ipcRenderer.on('hud:level', listener);
     return () => ipcRenderer.removeListener('hud:level', listener);
   },
-  onNavigate: (handler: (page: string) => void): (() => void) => {
-    const listener = (_event: unknown, page: string): void => handler(page);
+  /**
+   * What the HUD window should draw: the latest view, or null once it should sink away.
+   * The window draws only this, so a stale view can never be left on screen.
+   */
+  onHudView: (handler: (frame: HudFrame | null) => void): (() => void) => {
+    const listener = (_event: unknown, payload: HudFrame | null): void => handler(payload);
+    ipcRenderer.on('hud:view', listener);
+    return () => ipcRenderer.removeListener('hud:view', listener);
+  },
+  /**
+   * The HUD window ignores the mouse except over the capsule. The renderer says when the
+   * pointer enters or leaves it, and main toggles click-through to match.
+   */
+  hudPointer: (overCapsule: boolean): void => ipcRenderer.send('hud:pointer', overCapsule),
+  /** The capsule is being dragged: screen coordinates of the pointer, from press to release. */
+  hudDrag: (phase: 'start' | 'move' | 'end', x: number, y: number): void =>
+    ipcRenderer.send('hud:drag', phase, x, y),
+  hudAction: (action: HudAction): Promise<void> => ipcRenderer.invoke('hud:action', action),
+  /** A line for a screen reader. Sent to whichever window the user is in. */
+  onAnnounce: (handler: (text: string, urgency: 'polite' | 'assertive') => void): (() => void) => {
+    const listener = (_event: unknown, payload: { text: string; urgency: 'polite' | 'assertive' }): void =>
+      handler(payload.text, payload.urgency);
+    ipcRenderer.on('app:announce', listener);
+    return () => ipcRenderer.removeListener('app:announce', listener);
+  },
+  onNavigate: (handler: (page: string, anchor?: string) => void): (() => void) => {
+    const listener = (_event: unknown, page: string, anchor?: string): void => handler(page, anchor);
     // `app:` like every other app-lifecycle channel: the tray and the second-instance
     // handler use this to send the renderer to a page from outside its own UI.
     ipcRenderer.on('app:navigate', listener);
@@ -81,11 +135,11 @@ const api = {
   },
 
   /**
-   * Fires when the language-picker hotkey is pressed.
+   * Fires in the floating language picker window each time the hotkey (or the tray)
+   * opens it, so it can reset its search and take focus.
    *
-   * The hotkey is global, so it can arrive while the user is in another
-   * application; the main process brings the window forward and this tells the
-   * renderer to open its picker.
+   * The hotkey is global, so it can arrive while the user is in another application.
+   * The picker is its own focusable window and the main window stays where it is.
    */
   onOpenLanguagePicker: (handler: () => void): (() => void) => {
     const listener = (): void => handler();
@@ -113,7 +167,17 @@ const api = {
   onNotesChanged: (handler: () => void): (() => void) =>
     subscribe('notes:changed', handler),
 
+  // ---- language picker window ----
+  /** The floating picker chose a language (or closed without one). */
+  pickerChoose: (value: string): Promise<void> => ipcRenderer.invoke('app:picker-choose', value),
+  pickerClose: (): Promise<void> => ipcRenderer.invoke('app:picker-close'),
+
   // ---- settings ----
+  /**
+   * Settings changed somewhere the renderer did not initiate: the language picker or the
+   * tray menu. A page showing those values refetches.
+   */
+  onSettingsChanged: (handler: () => void): (() => void) => subscribe('settings:changed', handler),
   getSettings: (): Promise<SettingsDTO> => ipcRenderer.invoke('settings:get'),
   saveSettings: (patch: Partial<SettingsDTO>): Promise<SettingsDTO> => ipcRenderer.invoke('settings:save', patch),
   setApiKey: (key: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('settings:set-api-key', key),
@@ -175,6 +239,7 @@ const api = {
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('app:open-external', url),
   getDiagnostics: (): Promise<{ version: string; platform: string; logPath: string; recentErrors: string[] }> =>
     ipcRenderer.invoke('app:diagnostics'),
+  getFlags: (): Promise<{ previewFeatures: boolean }> => ipcRenderer.invoke('app:flags'),
   showDiagnosticsLog: (): Promise<void> => ipcRenderer.invoke('app:show-log'),
   getSaveStatus: (): Promise<{ ok: boolean; message?: string }> => ipcRenderer.invoke('app:save-status'),
   onSaveStatus: (handler: (status: { ok: boolean; message?: string }) => void): (() => void) => {

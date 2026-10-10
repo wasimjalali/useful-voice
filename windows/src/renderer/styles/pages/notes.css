@@ -1,0 +1,107 @@
+/* Notes: a 260 px list and the document. Plain text, Markdown as typed. */
+
+.notes-page { position: relative; height: 100%; min-height: 420px; }
+
+.notes-page-empty { height: auto; }
+.notes-empty { max-width: none; }
+.notes-empty-action { margin-top: 14px; }
+
+.notes-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  height: 100%;
+  min-height: 420px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.notes-listpane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+}
+
+.notes-searchwrap {
+  position: relative;
+  padding: 12px 12px 8px;
+  color: var(--ink-muted);
+}
+.notes-searchwrap svg { position: absolute; left: 24px; top: 21px; pointer-events: none; }
+.notes-search { padding-left: 32px; }
+
+.notes-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.notes-none { margin: 12px 16px; font-size: var(--fs-ui); }
+
+.notes-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 16px;
+  border: 0;
+  background: transparent;
+  text-align: start;
+  color: var(--ink);
+  cursor: pointer;
+  min-width: 0;
+  transition: background var(--dur-hover) var(--ease-out);
+}
+.notes-row:hover { background: var(--sunken); }
+.notes-row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+.notes-row[aria-selected="true"] { background: var(--sunken); box-shadow: inset 2px 0 0 var(--ink); }
+.notes-row-title { font-size: var(--fs-body); font-weight: 600; }
+.notes-row-preview { font-size: var(--fs-ui); color: var(--ink-muted); }
+.notes-row-none { font-style: italic; }
+.notes-row-meta { font-size: var(--fs-meta); color: var(--ink-muted); }
+
+.notes-doc { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.notes-toolbar { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.notes-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 28px 40px 40px; }
+.notes-column { max-width: 68ch; display: flex; flex-direction: column; }
+
+.notes-title {
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.notes-title::placeholder, .notes-body::placeholder { color: var(--ink-muted); }
+.notes-title:focus, .notes-body:focus { outline: none; }
+.notes-meta { margin: 6px 0 22px; font-size: var(--fs-ui); color: var(--ink-muted); }
+
+.notes-body {
+  width: 100%;
+  min-height: 360px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.6;
+  resize: none;
+  field-sizing: content;
+  /* Each paragraph picks its own direction, so a Persian note reads right to left
+     while the list and toolbar stay left to right. */
+  unicode-bidi: plaintext;
+  text-align: start;
+}
+
+.notes-toast { position: absolute; right: 16px; bottom: 16px; }
+.notes-toast .toast-action { margin-left: 4px; }
+
+@media (pointer: coarse) {
+  .notes-row { min-height: 40px; }
+  .notes-toolbar .btn { height: 40px; }
+}
+
+.notes-saveerror { margin: 12px 16px 0; align-items: center; gap: 8px; flex-wrap: wrap; }
+.notes-saveerror span { flex: 1; min-width: 200px; }

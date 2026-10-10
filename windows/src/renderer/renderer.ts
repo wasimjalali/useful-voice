@@ -1,11 +1,13 @@
 import { followTheme } from './components/theme.js';
+import { loadFlags } from './components/flags.js';
 import { mountHud } from './hud.js';
-import { renderDictionary } from './pages/vocabulary.js';
-import { notesHeaderActions, renderNotes, undoDeleteNote } from './pages/notes.js';
+import * as notes from './pages/notes.js';
+import * as vocabulary from './pages/vocabulary.js';
+import * as insights from './pages/insights.js';
+import * as settings from './pages/settings.js';
+import * as stream from './pages/stream.js';
 import { mountRecorder } from './recorder.js';
-import { renderSettings } from './pages/settings.js';
-import { historyHeaderActions, homeHeaderActions, renderHistory, renderHome } from './pages/stream.js';
-import { mountMain } from './shell.js';
+import { mountMain, type PageModule } from './shell.js';
 
 /**
  * The renderer entry point.
@@ -20,19 +22,23 @@ import { mountMain } from './shell.js';
 
 const view = new URLSearchParams(window.location.search).get('view') ?? 'main';
 
+/** A page's optional `headerActionsFor<Page>` export. */
+function actions(module: object, name: string): () => Node[] {
+  const exported = (module as Record<string, unknown>)[name];
+  return typeof exported === 'function' ? (exported as () => Node[]) : () => [];
+}
+
 followTheme();
 
 if (view === 'recorder') mountRecorder();
 else if (view === 'hud') mountHud();
 else {
-  mountMain(
-    {
-      home: { render: renderHome, headerActions: homeHeaderActions },
-      dictionary: { render: renderDictionary, headerActions: () => [] },
-      history: { render: renderHistory, headerActions: historyHeaderActions },
-      notes: { render: renderNotes, headerActions: notesHeaderActions },
-      settings: { render: renderSettings, headerActions: () => [] },
-    },
-    undoDeleteNote,
-  );
+  const pages: Record<'stream' | 'notes' | 'vocabulary' | 'insights' | 'settings', PageModule> = {
+    stream: { render: stream.renderStreamPage, headerActions: actions(stream, 'headerActionsForStream') },
+    notes: { render: notes.renderNotesPage, headerActions: actions(notes, 'headerActionsForNotes') },
+    vocabulary: { render: vocabulary.renderVocabularyPage, headerActions: actions(vocabulary, 'headerActionsForVocabulary') },
+    insights: { render: insights.renderInsightsPage, headerActions: actions(insights, 'headerActionsForInsights') },
+    settings: { render: settings.renderSettingsPage, headerActions: actions(settings, 'headerActionsForSettings') },
+  };
+  void loadFlags().then(() => mountMain(pages));
 }

@@ -259,7 +259,7 @@ export function mountMain(pages: Record<Page, PageModule>): void {
     saveStatus: state.saveStatus,
   });
 
-  const brand = el('div', { class: 'rail-brand' }, createLandingMark({ size: 28, state: 'still' }));
+  const brand = el('div', { class: 'rail-brand' }, createLandingMark({ size: 20, state: 'still' }));
   const navItems = new Map<Page, HTMLButtonElement>();
   for (const page of PAGES) {
     navItems.set(

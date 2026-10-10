@@ -41,8 +41,15 @@
 .rail-brand {
   display: grid;
   place-items: center;
-  margin-bottom: 14px;
-  color: var(--ink);
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 14px;
+  border-radius: var(--r-sm);
+  /* The mark's tile is dark in both themes, like the app icon; on a dark canvas a
+     1px tone ring keeps its edge. */
+  background: var(--mark-tile);
+  box-shadow: inset 0 0 0 1px var(--mark-ring);
+  color: var(--hud-ink);
 }
 
 .rail-nav,

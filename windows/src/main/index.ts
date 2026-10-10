@@ -60,6 +60,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  */
 
 /** How long the clipboard restore is deferred after a paste, in milliseconds. */
+/**
+ * `--e2e` (Playwright suite only): windows are created hidden and no tray icon or
+ * global hotkey is registered, so a test run never takes the screen, the menu bar
+ * or a key combination from the person at the machine.
+ */
+const E2E = process.argv.includes('--e2e');
+
 const CLIPBOARD_RESTORE_DELAY_MS = 700;
 
 /** How long a cancelled paste can still be taken back with Ctrl+Z. */
@@ -182,7 +189,7 @@ class UsefulVoiceApp {
       onSetLanguage: (code) => this.setLanguage(code),
       onSetFormatting: (enabled) => this.setFormatting(enabled),
     });
-    this.tray.create();
+    if (!E2E) this.tray.create();
     this.syncTray();
 
     this.registerHotkey();
@@ -194,6 +201,8 @@ class UsefulVoiceApp {
     // rewrite the entry, and Windows' own Startup Apps page can disable it behind
     // the app's back, so the stored preference is the thing to trust.
     this.applyLoginItem(settings.launchAtLogin, 'startup');
+    // The suite drives the main window, which a normal launch leaves to the tray.
+    if (E2E) void this.openWindow('stream');
   }
 
   /**
@@ -279,6 +288,7 @@ class UsefulVoiceApp {
         minHeight: 560,
         backgroundColor: canvasColor(theme),
         title: 'Useful Voice',
+        show: !E2E,
         // No native title bar: the page draws a 32px canvas strip, and Windows draws the
         // caption buttons over it. Without a native frame there is no menu bar, so the
         // menu's actions live in the tray and in Settings (see buildApplicationMenu).
@@ -307,7 +317,7 @@ class UsefulVoiceApp {
         query: { view: 'main', theme },
       });
       this.mainWindow.webContents.on('did-finish-load', () => this.pushAll());
-    } else {
+    } else if (!E2E) {
       this.mainWindow.show();
       this.mainWindow.focus();
     }
@@ -577,6 +587,7 @@ class UsefulVoiceApp {
   // ---- hotkey ------------------------------------------------------------
 
   private registerHotkey(): void {
+    if (E2E) return;
     globalShortcut.unregisterAll();
     // `unregisterAll` also drops Esc, so put it back if a recording is running.
     this.escapeRegistered = false;

@@ -14,9 +14,8 @@ enum HUDDisplay: Equatable {
     case transcribing(partial: String?, local: Bool)
     case delivering
     case done(HUDDone)
-    /// The text is on the clipboard but could not be pasted.
-    /// Copied but not pasted. The fix is Accessibility when the paste was blocked,
-    /// none when the user simply moved to another app.
+    /// The text is on the clipboard but could not be pasted. The fix is Accessibility
+    /// when the paste was blocked, none when the user simply moved to another app.
     case copiedNotPasted(fix: DictationFix?)
     case cancelled
     case error(HUDError)

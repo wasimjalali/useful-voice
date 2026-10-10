@@ -218,13 +218,13 @@ struct RootView: View {
         case .languageMemory:
             LanguageMemoryPage(viewModel: viewModel.languageMemory)
         case .insights:
-            InsightsPage(viewModel: viewModel)
+            InsightsPage(viewModel: viewModel, settings: settings) // TEMP until merge
         case .scratchpad:
             ScratchpadPage(viewModel: viewModel)
         case .history:
             HistoryPage(viewModel: viewModel)
         case .settings:
-            SettingsPage(settings: settings, viewModel: viewModel, firstRun: firstRun)
+            SettingsPage(settings: settings, viewModel: viewModel, firstRun: firstRun, anchor: .constant(nil)) // TEMP until merge
         }
     }
 }

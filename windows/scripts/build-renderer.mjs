@@ -54,11 +54,54 @@ async function buildRenderer() {
     );
   }
 
-  await fs.copyFile(path.join(rendererSrc, 'styles.css'), path.join(rendererOut, 'styles.css'));
+  const styles = await bundleStyles();
+  await fs.writeFile(path.join(rendererOut, 'styles.css'), styles);
   await fs.copyFile(path.join(rendererSrc, 'index.html'), path.join(rendererOut, 'index.html'));
   await assertPresent('renderer assets', rendererOut, ['renderer.js', 'styles.css', 'index.html']);
 
   console.log(`renderer  -> dist/renderer  (${describe(contents.length)})`);
+}
+
+/**
+ * Concatenate every `.css` file under `src/renderer/styles/` into the one stylesheet
+ * the page loads (the page is a `file://` URL under a strict CSP, so there is no
+ * `@import` and no second request).
+ *
+ * The order is fixed so the cascade is predictable and a new file needs no
+ * registration: `tokens.css`, `components.css`, `components/*.css` and then
+ * `pages/*.css`, each group alphabetical. Any other `.css` file under `styles/`
+ * follows, so it is never silently dropped.
+ */
+async function bundleStyles() {
+  const stylesDir = path.join(rendererSrc, 'styles');
+  const all = await listCss(stylesDir);
+  const rank = (file) => {
+    if (file === 'tokens.css') return 0;
+    if (file === 'components.css') return 1;
+    if (file.startsWith('components/')) return 2;
+    if (file.startsWith('pages/')) return 3;
+    return 4;
+  };
+  all.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  for (const required of ['tokens.css', 'components.css']) {
+    if (!all.includes(required)) throw new Error(`renderer styles missing: styles/${required}`);
+  }
+  const parts = [];
+  for (const file of all) {
+    parts.push(`/* ${file} */\n${await fs.readFile(path.join(stylesDir, file), 'utf8')}`);
+  }
+  return parts.join('\n');
+}
+
+/** Relative, forward-slash paths of every `.css` file below `directory`. */
+async function listCss(directory, prefix = '') {
+  const found = [];
+  for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+    const relative = prefix + entry.name;
+    if (entry.isDirectory()) found.push(...await listCss(path.join(directory, entry.name), `${relative}/`));
+    else if (entry.name.endsWith('.css')) found.push(relative);
+  }
+  return found;
 }
 
 async function buildPreload() {

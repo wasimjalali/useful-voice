@@ -6,7 +6,7 @@
  * process asks for a capture over IPC and this module replies with a finished WAV.
  */
 
-import { encodeWav, rms, peak, containsSpeech, resampleTo16k } from '../core/audio/wav.js';
+import { encodeWav, rms, peak, containsSpeech, resampleTo16k } from '../../core/audio/wav.js';
 
 export interface CaptureResult {
   wav: ArrayBuffer;

@@ -21,7 +21,7 @@ import {
   DEEPGRAM_LANGUAGES,
   MULTILINGUAL_CODE_SWITCHING,
   findLanguage,
-} from '../core/transcription/languages.js';
+} from '../../core/transcription/languages.js';
 
 /** A row entry: a mode or a language. */
 interface PickerOption {

@@ -1,0 +1,98 @@
+/* ==========================================================================
+   Useful Voice — design tokens
+   Copied verbatim from the Useful brand system. Monochrome by construction:
+   the only hues in this file are the three status roles.
+   ========================================================================== */
+
+:root {
+  --canvas: #f8f8f8;
+  --rail: #f8f8f8;
+  --surface: #ffffff;
+  --sunken: #f0f0f0;
+
+  --ink: #171717;
+  --ink-muted: #5c5c5c;
+  --ink-faint: #a3a3a3;
+
+  --brand: #171717;
+  --brand-ink: #fafafa;
+
+  --accent: #171717;
+  --accent-strong: #0a0a0a;
+  --accent-soft: #f0f0f0;
+  --accent-deep: #171717;
+  --accent-on-dark: #d4d4d4;
+  --accent-ink: #ffffff;
+
+  --border: #ebebeb;
+  --border-strong: #e0e0e0;
+
+  /* Status: the only hues in the entire system. */
+  --success: #0f6f56;
+  --success-soft: #e4f4ee;
+  --warning: #8a5300;
+  --warning-soft: #fbf1de;
+  --danger: #b23c22;
+  --danger-soft: #fbeae5;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --shadow-sm: 0 1px 2px rgb(23 23 23 / 0.04);
+  --shadow-card: 0 1px 0 rgb(23 23 23 / 0.03), 0 18px 40px -24px rgb(23 23 23 / 0.18);
+  --shadow-raise: 0 1px 0 rgb(23 23 23 / 0.04), 0 22px 44px -22px rgb(23 23 23 / 0.22);
+  --shadow-pop: 0 24px 56px -28px rgb(23 23 23 / 0.28);
+  --shadow-rail: inset 0 1px 0 rgb(255 255 255 / 0.78), inset 0 -1px 0 rgb(23 23 23 / 0.03);
+
+  /* Geist is the brand font. It is not bundled in this build (the app must
+     work offline and ship no font binaries), so the stack asks for Geist first
+     and falls back to the platform UI font — the same allowance the macOS build
+     makes with SF Pro. The Windows system font first in the fallback list keeps
+     the UI native there. */
+  --font-sans: "Geist", "Segoe UI Variable Text", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", "Cascadia Code", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+body { font-size: 13px; }
+
+button, input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::selection { background: var(--accent-soft); color: var(--brand); }
+
+/* Thin scrollbars, as the system specifies. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: var(--ink-faint);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track { background: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

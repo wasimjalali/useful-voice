@@ -1,0 +1,81 @@
+/* ==========================================================================
+   HUD — the floating recording pill
+   ========================================================================== */
+
+body.hud {
+  background: transparent;
+  overflow: hidden;
+}
+
+.hud-pill {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 100%;
+  margin: 4px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--accent-ink);
+  box-shadow: var(--shadow-pop);
+  animation: rise 200ms var(--ease-out);
+}
+
+.hud-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--danger);
+  flex-shrink: 0;
+}
+.hud-dot.working { background: var(--warning); }
+.hud-dot.busy { animation: pulse 1.2s ease-in-out infinite; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.hud-meter {
+  flex: 1;
+  height: 3px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.22);
+  overflow: hidden;
+  min-width: 40px;
+}
+.hud-meter-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent-on-dark);
+  border-radius: 999px;
+  transition: width 80ms linear;
+}
+
+.hud-time {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-on-dark);
+}
+
+.hud-state { font-size: 12px; color: var(--accent-on-dark); }
+
+.hud-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  margin: 4px;
+  padding: 0 16px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-pop);
+  font-size: 12.5px;
+  color: var(--danger);
+}
+
+/* The recording view is never visible; it exists only to host audio capture. */
+body.recorder { background: transparent; overflow: hidden; }
+.recorder-note { padding: 16px; font-size: 12px; color: var(--ink-faint); }

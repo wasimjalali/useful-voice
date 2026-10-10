@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 /**
  * The renderer end of the data-change contract, checked statically.
  *
- * `src/renderer/renderer.ts` needs a DOM and a live preload bridge, so it cannot be
+ * The renderer (`src/renderer/`) needs a DOM and a live preload bridge, so it cannot be
  * imported here — nothing in this file executes it. What it does check is the wiring
  * shape that the fix depends on, because that shape is what a later refactor is most
  * likely to break without noticing:
@@ -41,7 +41,24 @@ function readSource(relativePath: string): string {
   return readFileSync(path.resolve(here, relativePath), 'utf8').replace(/\r\n/g, '\n');
 }
 
-const rendererSource = readSource('../src/renderer/renderer.ts');
+/** Every file under a directory with one of the extensions, as paths relative to it, sorted. */
+function filesUnder(relativeDirectory: string, extension: string): string[] {
+  const directory = path.resolve(here, relativeDirectory);
+  const found: string[] = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const child = `${relativeDirectory}/${entry.name}`;
+    if (entry.isDirectory()) found.push(...filesUnder(child, extension));
+    else if (entry.name.endsWith(extension)) found.push(child);
+  }
+  return found.sort();
+}
+
+/**
+ * The renderer was split from one file into a shell, pages and components. The wiring
+ * checks below care about the code, not which file holds it, so they read all of it.
+ */
+const rendererSource = filesUnder('../src/renderer', '.ts').map(readSource).join('\n');
+const stylesSource = filesUnder('../src/renderer/styles', '.css').map(readSource).join('\n');
 
 /**
  * The text of a top-level declaration, up to the first closing brace in column 0.
@@ -139,7 +156,7 @@ describe('page transitions', () => {
   });
 
   it('defines the animation in CSS and applies it only to page switches', () => {
-    const styles = readSource('../src/renderer/styles.css');
+    const styles = stylesSource;
     expect(styles).toMatch(/\.page-enter\s*{[^}]*page-in\s+300ms\s+var\(--ease-out\)/);
     expect(styles).toMatch(/@keyframes\s+page-in\s*{/);
     // The shared reduced-motion kill switch must still cover it.
@@ -156,13 +173,13 @@ describe('page transitions', () => {
 });
 
 describe('the on-brand select', () => {
-  const dropdownSource = readSource('../src/renderer/dropdown.ts');
+  const dropdownSource = readSource('../src/renderer/components/dropdown.ts');
 
   it('replaces the native select everywhere in the renderer', () => {
     // A select is drawn by the OS, so it cannot follow the design system.
     expect(rendererSource).not.toContain("el('select'");
     expect(rendererSource).not.toContain('field-select');
-    expect(rendererSource).toContain("import { dropdown } from './dropdown.js';");
+    expect(rendererSource).toContain("import { dropdown } from '../components/dropdown.js';");
     expect(rendererSource).toContain('const control = dropdown({');
   });
 

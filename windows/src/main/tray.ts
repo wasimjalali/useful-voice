@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, Menu, nativeImage, nativeTheme, Tray, type NativeImage } from 'electron';
+import { DEEPGRAM_LANGUAGES, MULTILINGUAL_CODE_SWITCHING } from '../core/transcription/languages.js';
 
 /**
  * The tray icon and its menu.
@@ -28,6 +29,9 @@ export interface TrayHandlers {
   onRetry: () => void;
   onCopyLast: () => void;
   onCancel: () => void;
+  /** A language was picked in the Language submenu. */
+  onSetLanguage: (code: string) => void;
+  onSetFormatting: (enabled: boolean) => void;
 }
 
 export interface TrayState {
@@ -39,6 +43,12 @@ export interface TrayState {
   canCopyLast: boolean;
   /** The accelerator as Electron spells it ("Control+Alt+Space"); shown as plain text. */
   hotkeyLabel: string;
+  /** The pinned language: `auto`, `multi` or a code. Checked in the Language submenu. */
+  languagePin: string;
+  /** "Auto-format transcript". */
+  formattingEnabled: boolean;
+  /** The app a hotkey dictation will paste into, shown while recording. */
+  insertingInto?: string | undefined;
 }
 
 export class TrayController {
@@ -49,6 +59,8 @@ export class TrayController {
     canRetry: false,
     canCopyLast: false,
     hotkeyLabel: '',
+    languagePin: 'auto',
+    formattingEnabled: true,
   };
 
   constructor(private readonly handlers: TrayHandlers) {}
@@ -60,7 +72,7 @@ export class TrayController {
     this.tray.setToolTip('Useful Voice: press your hotkey to dictate');
     // Left click opens the window: the most common reason to click the tray icon
     // is to see what the app is doing.
-    this.tray.on('click', () => this.handlers.onOpenWindow('home'));
+    this.tray.on('click', () => this.handlers.onOpenWindow('stream'));
     this.render();
   }
 
@@ -78,51 +90,7 @@ export class TrayController {
 
   private render(): void {
     if (!this.tray) return;
-    const busy = this.state.recording || this.state.transcribing;
-
-    // Win32 menus are static while open, so the first line says what the app is doing
-    // without a live timer.
-    const status = this.state.recording ? 'Recording' : this.state.transcribing ? 'Transcribing' : 'Ready';
-
-    const items: Array<Electron.MenuItemConstructorOptions | null> = [
-      { label: status, enabled: false },
-      { type: 'separator' },
-      {
-        label: this.state.recording
-          ? 'Stop and transcribe'
-          : this.state.transcribing
-            ? 'Transcribing…'
-            : `Start dictation (${formatAccelerator(this.state.hotkeyLabel)})`,
-        click: () => this.handlers.onToggleDictation(),
-        enabled: !this.state.transcribing,
-      },
-      busy
-        ? {
-            // Esc is a shortcut only while recording.
-            label: this.state.recording ? 'Cancel dictation (Esc)' : 'Cancel dictation',
-            click: () => this.handlers.onCancel(),
-          }
-        : null,
-      this.state.canRetry
-        ? { label: 'Retry last recording', click: () => this.handlers.onRetry() }
-        : null,
-      this.state.canCopyLast
-        ? { label: 'Copy last transcript', click: () => this.handlers.onCopyLast() }
-        : null,
-      { type: 'separator' },
-      { label: 'Dictionary…', click: () => this.handlers.onOpenWindow('dictionary') },
-      { label: 'History…', click: () => this.handlers.onOpenWindow('history') },
-      { label: 'Notes…', click: () => this.handlers.onOpenWindow('notes') },
-      { label: 'Open settings', click: () => this.handlers.onOpenWindow('settings') },
-      { type: 'separator' },
-      { label: `Useful Voice ${app.getVersion()}`, enabled: false },
-      { label: 'Quit', click: () => this.handlers.onQuit() },
-    ];
-
-    const template = items.filter(
-      (item): item is Electron.MenuItemConstructorOptions => item !== null,
-    );
-    this.tray.setContextMenu(Menu.buildFromTemplate(template));
+    this.tray.setContextMenu(Menu.buildFromTemplate(buildTrayTemplate(this.state, this.handlers)));
     this.tray.setToolTip(
       this.state.recording
         ? 'Useful Voice: recording'
@@ -155,6 +123,90 @@ export class TrayController {
     }
     return image;
   }
+}
+
+/**
+ * The tray menu, as the board draws it (a-58 idle, a-59 recording). A native menu, so
+ * the status is a disabled first line and cannot carry a live timer: Win32 menus are
+ * static while open, which is why it says "Recording" and not "Recording 0:12".
+ */
+export function buildTrayTemplate(
+  state: TrayState,
+  handlers: TrayHandlers,
+): Electron.MenuItemConstructorOptions[] {
+  const status = state.recording ? 'Recording' : state.transcribing ? 'Transcribing' : 'Ready';
+  const hotkey = formatAccelerator(state.hotkeyLabel);
+
+  const language: Electron.MenuItemConstructorOptions[] = [
+    languageItem('Auto-detect', 'auto', state, handlers),
+    languageItem('Multiple languages', MULTILINGUAL_CODE_SWITCHING.code, state, handlers),
+    { type: 'separator' },
+    ...DEEPGRAM_LANGUAGES.map((entry) =>
+      languageItem(
+        entry.nativeName === entry.name ? entry.name : `${entry.nativeName} (${entry.name})`,
+        entry.code,
+        state,
+        handlers,
+      ),
+    ),
+  ];
+
+  const items: Array<Electron.MenuItemConstructorOptions | null> = [
+    { label: status, enabled: false },
+    { type: 'separator' },
+    state.transcribing
+      ? { label: 'Transcribing…', enabled: false }
+      : {
+          label: `${state.recording ? 'Stop' : 'Start'} dictation (${hotkey})`,
+          click: () => handlers.onToggleDictation(),
+        },
+    state.recording
+      ? {
+          // Esc is a shortcut only while recording. Shown as a hint: the app registers it itself.
+          label: 'Cancel dictation',
+          accelerator: 'Esc',
+          registerAccelerator: false,
+          click: () => handlers.onCancel(),
+        }
+      : state.transcribing
+        ? { label: 'Cancel dictation', click: () => handlers.onCancel() }
+        : null,
+    state.recording && state.insertingInto
+      ? { label: `Inserting into: ${state.insertingInto}`, enabled: false }
+      : null,
+    { label: 'Retry last recording', enabled: state.canRetry, click: () => handlers.onRetry() },
+    { label: 'Copy last transcript', enabled: state.canCopyLast, click: () => handlers.onCopyLast() },
+    { type: 'separator' },
+    { label: 'Language', submenu: language },
+    {
+      label: 'Auto-format transcript',
+      type: 'checkbox',
+      checked: state.formattingEnabled,
+      click: (item) => handlers.onSetFormatting(item.checked),
+    },
+    { type: 'separator' },
+    { label: 'Open Useful Voice', click: () => handlers.onOpenWindow('stream') },
+    { label: 'Open settings', click: () => handlers.onOpenWindow('settings') },
+    { type: 'separator' },
+    { label: 'Quit Useful Voice', click: () => handlers.onQuit() },
+  ];
+  return items.filter((item): item is Electron.MenuItemConstructorOptions => item !== null);
+}
+
+function languageItem(
+  label: string,
+  code: string,
+  state: TrayState,
+  handlers: TrayHandlers,
+): Electron.MenuItemConstructorOptions {
+  return {
+    label,
+    type: 'checkbox',
+    checked: state.languagePin === code,
+    // A checkbox flips itself when clicked; the pin is what the menu shows, so it is rebuilt
+    // from the settings after the change.
+    click: () => handlers.onSetLanguage(code),
+  };
 }
 
 /**

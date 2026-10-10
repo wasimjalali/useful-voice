@@ -1,81 +1,183 @@
 /* ==========================================================================
-   HUD: the floating recording pill
+   HUD: the capsule that floats over other apps
+   The window is a fixed transparent area at the bottom centre of the display. Every
+   state is drawn inside it and morphs in CSS, so the window never resizes. Clicks pass
+   through the transparent margin; main switches that off while the pointer is over a
+   button. The capsule is ink in both themes (--hud-*).
    ========================================================================== */
 
-/* The HUD window is transparent: the page behind the pill must not paint the canvas. */
+/* The HUD window is transparent: nothing behind the capsule may paint the canvas. */
 html:has(> body.hud),
 body.hud {
   background: transparent;
   overflow: hidden;
 }
 
-.hud-pill {
+.hud-stage {
+  position: fixed;
+  inset: 0;
   display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  /* Room under the capsule for its shadow. The window sits 32 px above the taskbar. */
+  padding-bottom: 28px;
+}
+
+.hud-capsule {
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  height: 100%;
-  margin: 4px;
-  padding: 0 16px;
+  height: 40px;
+  max-width: 100%;
   border-radius: var(--r-pill);
   background: var(--hud-surface);
   color: var(--hud-ink);
-  box-shadow: var(--shadow-pop);
-  animation: rise var(--dur-state) var(--ease-out);
+  font-size: var(--fs-ui);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  box-shadow: 0 0 0 0.5px rgb(255 255 255 / 0.14), 0 10px 28px -8px rgb(0 0 0 / 0.4);
+  transition: width var(--dur-state) var(--ease-out);
 }
+[data-theme='dark'] .hud-capsule {
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.14), 0 12px 32px -6px rgb(0 0 0 / 0.7);
+}
+
+.hud-capsule.is-hidden { opacity: 0; visibility: hidden; }
+.hud-capsule.is-entering { animation: hud-enter var(--dur-hud-enter) var(--ease-out) both; }
+.hud-capsule.is-leaving { animation: hud-exit var(--dur-hud-exit) ease-in both; }
+
+@keyframes hud-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes hud-exit {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(6px); }
+}
+
+/* One state's content. A state change cross-fades in 200 ms while the width eases. */
+.hud-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  padding: 0 16px;
+}
+.hud-inner.has-x { padding-right: 8px; }
+.hud-inner.is-fading-in { animation: hud-fade var(--dur-state) var(--ease-out) both; }
+.hud-inner.is-leaving {
+  position: absolute;
+  top: 0;
+  left: 0;
+  animation: hud-fade-out var(--dur-state) var(--ease-out) both;
+  pointer-events: none;
+}
+
+@keyframes hud-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes hud-fade-out { from { opacity: 1; } to { opacity: 0; } }
+
+.hud-inner svg { flex: none; }
 
 .hud-dot {
   width: 8px;
   height: 8px;
   border-radius: var(--r-pill);
   background: var(--hud-danger);
-  flex-shrink: 0;
+  flex: none;
+  animation: hud-breathe 1.1s ease-in-out infinite alternate;
 }
-.hud-dot.working { background: var(--hud-warning); }
-.hud-dot.busy { animation: pulse 1.2s ease-in-out infinite; }
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+@keyframes hud-breathe {
+  from { opacity: 1; }
+  to { opacity: 0.8; }
 }
 
-.hud-meter {
-  flex: 1;
-  height: 3px;
-  border-radius: var(--r-pill);
-  background: var(--hud-track);
-  overflow: hidden;
-  min-width: 40px;
-}
-.hud-meter-fill {
-  height: 100%;
-  width: 0%;
-  background: var(--hud-mark);
-  border-radius: var(--r-pill);
-  transition: width 80ms linear;
-}
+.hud-inner .landing-mark { color: var(--hud-mark); }
 
-.hud-time {
-  font-family: var(--font-mono);
-  font-size: var(--fs-meta);
-  font-variant-numeric: tabular-nums;
-  color: var(--hud-mark);
-}
+.hud-time { font-variant-numeric: tabular-nums; }
+.hud-stops { font-weight: 500; }
+.hud-dim { opacity: 0.72; font-weight: 400; }
 
-.hud-state { font-size: var(--fs-meta); color: var(--hud-mark); }
-
-.hud-error {
-  display: flex;
+.hud-kbd {
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  height: 100%;
-  margin: 4px;
-  padding: 0 16px;
-  border-radius: var(--r-md);
-  background: var(--surface);
-  border: 1px solid var(--line-strong);
-  box-shadow: var(--shadow-pop);
-  font-size: var(--fs-ui);
-  color: var(--danger);
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--r-xs);
+  background: rgb(255 255 255 / 0.14);
+  color: var(--hud-ink);
+  font: inherit;
+  font-size: var(--fs-label);
+  font-weight: 600;
+}
+
+.hud-spin {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--r-pill);
+  border: 2px solid rgb(255 255 255 / 0.25);
+  border-top-color: currentColor;
+  flex: none;
+  animation: hud-rotate 800ms linear infinite;
+}
+@keyframes hud-rotate { to { transform: rotate(360deg); } }
+
+/* A fix verb: 26 px tall, a pill inside the capsule. */
+.hud-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: rgb(255 255 255 / 0.16);
+  color: var(--hud-ink);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  cursor: pointer;
+}
+.hud-btn:hover { background: rgb(255 255 255 / 0.24); }
+
+/* The close target: 24 px, the minimum for a pointer. */
+.hud-x {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: rgb(255 255 255 / 0.12);
+  color: var(--hud-ink);
+  cursor: pointer;
+}
+.hud-x:hover { background: rgb(255 255 255 / 0.2); }
+.hud-btn:focus-visible,
+.hud-x:focus-visible { outline: 2px solid var(--hud-ink); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  /* Instant swaps. The bars still follow the input level, with no ripple. The record dot
+     is solid and the spinner is a static ring beside the word Transcribing. */
+  .hud-capsule,
+  .hud-inner,
+  .hud-capsule.is-entering,
+  .hud-capsule.is-leaving { animation: none; transition: none; }
+  .hud-dot { animation: none; }
+  .hud-spin { animation: none; border-color: currentColor; }
+}
+
+/* Read by screen readers, invisible to everyone else. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* The recording view is never visible; it exists only to host audio capture. */

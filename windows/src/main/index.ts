@@ -15,6 +15,8 @@ import {
   type Note,
 } from '../core/models.js';
 import { selectKeyterms } from '../core/memory/biasBuilder.js';
+import { HUD_EXIT_MS, HudModel, languageLabel, type HudFrame } from '../core/hudModel.js';
+import { normaliseLanguageCode } from '../core/transcription/languages.js';
 import {
   transcribe as transcribeRequest,
   type DeepgramConfig,
@@ -28,6 +30,7 @@ import {
   titleBarOverlayFor,
 } from './theme.js';
 import { TrayController } from './tray.js';
+import { Announcer } from './announce.js';
 import {
   DictationService,
   type CapturedAudio,
@@ -62,6 +65,25 @@ const CLIPBOARD_RESTORE_DELAY_MS = 700;
 /** How long a cancelled paste can still be taken back with Ctrl+Z. */
 const UNDO_WINDOW_MS = 6000;
 
+/**
+ * The HUD window is a fixed transparent area, big enough for the widest state, so the
+ * capsule morphs in CSS and the window never resizes. The capsule is 40 px tall and
+ * sits 32 px above the taskbar; the rest of the height is room for its shadow and its
+ * 8 px rise.
+ */
+const HUD_WIDTH = 520;
+const HUD_HEIGHT = 96;
+const HUD_CAPSULE_HEIGHT = 40;
+const HUD_SHADOW_ROOM = 28;
+const HUD_BOTTOM_GAP = 32;
+
+/** The language picker panel is 300 by 400; its window adds 24 px all round for the pop shadow. */
+const PICKER_WIDTH = 348;
+const PICKER_HEIGHT = 448;
+const PICKER_MARGIN = 24;
+/** The picker floats 10 px above where the capsule sits. */
+const PICKER_GAP = 10;
+
 class UsefulVoiceApp {
   private settings!: SettingsStore;
   private data!: DataStore;
@@ -69,6 +91,14 @@ class UsefulVoiceApp {
   private recorderWindow: BrowserWindow | null = null;
   private mainWindow: BrowserWindow | null = null;
   private hudWindow: BrowserWindow | null = null;
+  private pickerWindow: BrowserWindow | null = null;
+  private hudModel!: HudModel;
+  private announcer!: Announcer;
+  /** The latest view, sent to the HUD window as soon as its page has loaded. */
+  private hudFrame: HudFrame | null = null;
+  private hudHideTimer: NodeJS.Timeout | null = null;
+  /** The app the current recording will paste into (a hotkey dictation only). */
+  private recordingTarget: string | undefined;
   private service!: DictationService;
   private diagnostics!: Diagnostics;
 
@@ -137,6 +167,8 @@ class UsefulVoiceApp {
     });
 
     this.createRecorderWindow();
+    this.announcer = new Announcer((text, urgency) => this.sendAnnouncement(text, urgency));
+    this.hudModel = new HudModel((frame) => this.onHudFrame(frame));
     this.service = this.buildService();
     this.tray = new TrayController({
       // The tray is part of the app, not the app the user is dictating into, so a
@@ -147,8 +179,11 @@ class UsefulVoiceApp {
       onRetry: () => void this.service.retryLast(),
       onCopyLast: () => this.copyLastTranscript(),
       onCancel: () => void this.cancelDictation(),
+      onSetLanguage: (code) => this.setLanguage(code),
+      onSetFormatting: (enabled) => this.setFormatting(enabled),
     });
     this.tray.create();
+    this.syncTray();
 
     this.registerHotkey();
     this.registerIpc();
@@ -280,23 +315,26 @@ class UsefulVoiceApp {
   }
 
   /**
-   * A small always-on-top window shown while recording.
+   * The display the user is working on: the one under the pointer.
+   */
+  private activeWorkArea(): Electron.Rectangle {
+    return screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  }
+
+  /**
+   * The HUD window: a fixed transparent area at the bottom centre of the display under
+   * the pointer, 32 px above the taskbar. Every state is drawn inside it by the renderer.
    *
    * Deliberately not focusable: it must never steal focus from the app the user is
-   * dictating into, which would make the paste land in the wrong place — the bug
-   * that made the macOS HUD a panel with `becomesKeyOnlyIfNeeded`.
+   * dictating into, which would make the paste land in the wrong place - the bug
+   * that made the macOS HUD a panel with `becomesKeyOnlyIfNeeded`. Clicks pass through
+   * the transparent margin; the renderer says when the pointer is over a button.
    */
-  private showHud(): void {
-    if (this.hudWindow && !this.hudWindow.isDestroyed()) {
-      this.hudWindow.showInactive();
-      return;
-    }
-    const { width } = screen.getPrimaryDisplay().workAreaSize;
-    this.hudWindow = new BrowserWindow({
-      width: 280,
-      height: 64,
-      x: Math.round(width / 2 - 140),
-      y: 24,
+  private ensureHudWindow(): BrowserWindow {
+    if (this.hudWindow && !this.hudWindow.isDestroyed()) return this.hudWindow;
+    const window = new BrowserWindow({
+      width: HUD_WIDTH,
+      height: HUD_HEIGHT,
       frame: false,
       resizable: false,
       movable: false,
@@ -304,6 +342,7 @@ class UsefulVoiceApp {
       skipTaskbar: true,
       alwaysOnTop: true,
       transparent: true,
+      hasShadow: false,
       show: false,
       webPreferences: {
         preload: path.join(__dirname, '../preload/index.js'),
@@ -311,18 +350,213 @@ class UsefulVoiceApp {
         nodeIntegration: false,
       },
     });
-    this.hudWindow.setIgnoreMouseEvents(true);
-    void this.hudWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
+    window.setIgnoreMouseEvents(true, { forward: true });
+    void window.loadFile(path.join(__dirname, '../renderer/index.html'), {
       query: { view: 'hud', theme: resolvedTheme() },
     });
-    this.hudWindow.once('ready-to-show', () => this.hudWindow?.showInactive());
-    this.hudWindow.on('closed', () => {
+    window.webContents.on('did-finish-load', () => this.pushHudFrame());
+    window.on('closed', () => {
       this.hudWindow = null;
+    });
+    this.hudWindow = window;
+    return window;
+  }
+
+  /** Bottom centre of the display under the pointer, 32 px above the taskbar. */
+  private placeHud(window: BrowserWindow): void {
+    const area = this.activeWorkArea();
+    window.setBounds({
+      x: Math.round(area.x + (area.width - HUD_WIDTH) / 2),
+      y: area.y + area.height - HUD_BOTTOM_GAP - HUD_CAPSULE_HEIGHT - HUD_SHADOW_ROOM,
+      width: HUD_WIDTH,
+      height: HUD_HEIGHT,
     });
   }
 
-  private hideHud(): void {
-    if (this.hudWindow && !this.hudWindow.isDestroyed()) this.hudWindow.hide();
+  /**
+   * A new HUD view (or none). The window draws only the latest one, so a stale view can
+   * never be left on screen, and a persistent one is gone when the next dictation starts.
+   */
+  private onHudFrame(frame: HudFrame | null): void {
+    this.hudFrame = frame;
+    if (this.hudHideTimer) {
+      clearTimeout(this.hudHideTimer);
+      this.hudHideTimer = null;
+    }
+    if (frame) {
+      const window = this.ensureHudWindow();
+      if (!window.isVisible()) {
+        this.placeHud(window);
+        // Back to click-through: a button from the last view may have left it switched off.
+        window.setIgnoreMouseEvents(true, { forward: true });
+        window.showInactive();
+      }
+    } else if (this.hudWindow && !this.hudWindow.isDestroyed()) {
+      // After the exit animation has played.
+      this.hudHideTimer = setTimeout(() => {
+        this.hudHideTimer = null;
+        if (this.hudWindow && !this.hudWindow.isDestroyed()) this.hudWindow.hide();
+      }, HUD_EXIT_MS + 60);
+    }
+    this.pushHudFrame();
+    this.announcer.hud(frame);
+  }
+
+  private pushHudFrame(): void {
+    const window = this.hudWindow;
+    if (!window || window.isDestroyed() || window.webContents.isLoading()) return;
+    window.webContents.send('hud:view', this.hudFrame);
+  }
+
+  /**
+   * Speak a line to a screen reader. Electron has no UI Automation notification API, so
+   * the line goes to a live region in the window the user is in: the main window when it
+   * has focus, the HUD window otherwise (see `announce.ts`).
+   */
+  private sendAnnouncement(text: string, urgency: 'polite' | 'assertive'): void {
+    const main = this.mainWindow;
+    const target = main && !main.isDestroyed() && main.isFocused() ? main : this.hudWindow;
+    if (!target || target.isDestroyed()) return;
+    const send = (): void => target.webContents.send('app:announce', { text, urgency });
+    if (target.webContents.isLoading()) target.webContents.once('did-finish-load', send);
+    else send();
+  }
+
+  /** What a HUD button asked for. */
+  private async onHudAction(action: unknown): Promise<void> {
+    switch (action) {
+      case 'dismiss':
+        this.hudModel.dismiss();
+        return;
+      case 'retry':
+        this.hudModel.dismiss();
+        await this.service.retryLast();
+        return;
+      case 'openMicrophoneSettings':
+        this.hudModel.dismiss();
+        await shell.openExternal('ms-settings:privacy-microphone').catch((error: Error) =>
+          this.diagnostics.log('hud', `could not open the microphone settings: ${error.message}`),
+        );
+        return;
+      case 'openEngineSettings':
+        this.hudModel.dismiss();
+        await this.openWindow('settings');
+        return;
+      default:
+        this.diagnostics.log('hud', `ignored an unknown HUD action: ${String(action)}`);
+    }
+  }
+
+  /**
+   * The language picker: its own focusable frameless window, because the search field has
+   * to take keys and a window of the main app would have to be pulled forward for that.
+   * It opens 10 px above where the capsule sits and hides on a choice, Esc or a click
+   * elsewhere, which hands focus back to the app that was in front: Windows activates the
+   * next window in the stack when the focused one hides. There is no helper in
+   * `windowsPlatform.ts` that sets the foreground window, so the previous window is not
+   * recorded or restored explicitly.
+   */
+  private openLanguagePicker(): void {
+    if (this.pickerWindow && !this.pickerWindow.isDestroyed() && this.pickerWindow.isVisible()) {
+      this.closeLanguagePicker();
+      return;
+    }
+    const existing = this.pickerWindow && !this.pickerWindow.isDestroyed() ? this.pickerWindow : null;
+    const window = existing ?? this.createPickerWindow();
+    const area = this.activeWorkArea();
+    window.setBounds({
+      x: Math.round(area.x + (area.width - PICKER_WIDTH) / 2),
+      y: Math.max(
+        area.y,
+        area.y + area.height - HUD_BOTTOM_GAP - HUD_CAPSULE_HEIGHT - PICKER_GAP + PICKER_MARGIN - PICKER_HEIGHT,
+      ),
+      width: PICKER_WIDTH,
+      height: PICKER_HEIGHT,
+    });
+    // The picker's own Esc must reach it, so the global Esc (cancel) steps aside while it is open.
+    const reveal = (): void => {
+      if (window.isDestroyed()) return;
+      window.show();
+      window.focus();
+      window.webContents.focus();
+      this.syncEscapeShortcut(this.service.currentState === 'recording');
+      // A fresh page opens itself when it loads; a kept one is told to reset and refocus.
+      if (existing) window.webContents.send('app:openLanguagePicker');
+    };
+    if (window.webContents.isLoading()) window.webContents.once('did-finish-load', reveal);
+    else reveal();
+  }
+
+  private createPickerWindow(): BrowserWindow {
+    const window = new BrowserWindow({
+      width: PICKER_WIDTH,
+      height: PICKER_HEIGHT,
+      frame: false,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      transparent: true,
+      hasShadow: false,
+      show: false,
+      webPreferences: {
+        preload: path.join(__dirname, '../preload/index.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    void window.loadFile(path.join(__dirname, '../renderer/index.html'), {
+      query: { view: 'hud', panel: 'language', theme: resolvedTheme() },
+    });
+    // A click anywhere else dismisses it, like a menu.
+    window.on('blur', () => this.closeLanguagePicker());
+    window.on('closed', () => {
+      this.pickerWindow = null;
+      this.syncEscapeShortcut(this.service.currentState === 'recording');
+    });
+    this.pickerWindow = window;
+    return window;
+  }
+
+  private closeLanguagePicker(): void {
+    const window = this.pickerWindow;
+    if (!window || window.isDestroyed() || !window.isVisible()) return;
+    window.hide();
+    this.syncEscapeShortcut(this.service.currentState === 'recording');
+  }
+
+  /** Switch the spoken language. It applies to a recording in progress: it is read at stop. */
+  private setLanguage(code: string): void {
+    const language = normaliseLanguageCode(code);
+    this.settings.update({ languagePin: language });
+    this.broadcast('settings:changed');
+    this.syncTray();
+    this.hudModel.language(languageLabel(language));
+  }
+
+  private setFormatting(enabled: boolean): void {
+    this.settings.update({ formattingEnabled: enabled });
+    this.broadcast('settings:changed');
+    this.syncTray();
+  }
+
+  /** Everything the tray menu shows, read from where it lives. */
+  private syncTray(): void {
+    const state = this.service?.currentState ?? 'idle';
+    this.tray?.setState({
+      recording: state === 'recording',
+      transcribing: state === 'transcribing' || state === 'delivering',
+      canRetry: this.service?.canRetry ?? false,
+      // Any finished dictation can be copied again, not only one that failed.
+      canCopyLast: (this.service?.mostRecent ?? null) !== null,
+      hotkeyLabel: this.settings.all.hotkey.accelerator,
+      languagePin: this.settings.all.languagePin,
+      formattingEnabled: this.settings.all.formattingEnabled,
+      insertingInto: state === 'recording' ? this.recordingTarget : undefined,
+    });
   }
 
   async quit(): Promise<void> {
@@ -350,7 +584,7 @@ class UsefulVoiceApp {
     const accelerator = this.settings.all.hotkey.accelerator;
     // The tray's "Start dictation (...)" line must show the hotkey from the first
     // menu open and after it is changed, not only after the next status change.
-    this.tray?.setState({ hotkeyLabel: accelerator });
+    this.syncTray();
     if (accelerator.trim().length === 0) {
       this.diagnostics.log('hotkey', 'no hotkey configured');
       return;
@@ -404,26 +638,6 @@ class UsefulVoiceApp {
     }
   }
 
-  /**
-   * Opens the language picker in the main window, bringing it forward.
-   *
-   * Unlike macOS — which floats a panel over the app being dictated into — the
-   * picker here needs a window that can hold focus for the search field, so the main
-   * window is shown. It is not possible to give a Chromium window a searchable
-   * popup without one, and a non-searchable overlay would defeat the point.
-   */
-  private openLanguagePicker(): void {
-    const window = this.mainWindow;
-    if (!window || window.isDestroyed()) {
-      this.diagnostics.log('hotkey', 'language picker requested with no main window');
-      return;
-    }
-    if (window.isMinimized()) window.restore();
-    window.show();
-    window.focus();
-    window.webContents.send('app:openLanguagePicker');
-  }
-
   // ---- dictation ---------------------------------------------------------
 
   private buildService(): DictationService {
@@ -467,8 +681,14 @@ class UsefulVoiceApp {
       apiKey: async () => this.settings.revealApiKey(),
       onStatus: (status) => this.handleStatus(status),
       // Before the idle status, so a window can show its done line before it resets.
-      onOutcome: (outcome) => this.broadcast('dictation:outcome', outcome),
-      onTelemetry: (telemetry) => this.sendToMainAndHud('dictation:telemetry', telemetry),
+      onOutcome: (outcome) => {
+        this.hudModel.outcome(outcome);
+        this.broadcast('dictation:outcome', outcome);
+      },
+      onTelemetry: (telemetry) => {
+        this.hudModel.telemetry(telemetry);
+        this.sendToMainAndHud('dictation:telemetry', telemetry);
+      },
       onDiagnostic: (category, message) => this.diagnostics.log(category, message),
       onCompleted: (outcome) => {
         this.data.appendHistory({
@@ -526,23 +746,18 @@ class UsefulVoiceApp {
 
   private handleStatus(status: DictationStatus): void {
     this.broadcast('dictation:state', status);
-    this.tray?.setState({
-      recording: status.state === 'recording',
-      transcribing: status.state === 'transcribing' || status.state === 'delivering',
-      canRetry: this.service?.canRetry ?? false,
-      // Any finished dictation can be copied again, not only one that failed.
-      canCopyLast: (this.service?.mostRecent ?? null) !== null,
-      hotkeyLabel: this.settings.all.hotkey.accelerator,
-    });
+    this.recordingTarget = status.state === 'recording' ? status.targetApp : undefined;
+    this.syncTray();
     this.syncEscapeShortcut(status.state === 'recording');
+    // The HUD follows every state, errors included: one model decides what it shows.
+    this.hudModel.status(status);
+    // Leaving the recording state hands the paste to whatever is in front, so a picker that
+    // is still open would be the foreground window and take it.
+    if (status.state === 'transcribing' || status.state === 'delivering') this.closeLanguagePicker();
 
     if (status.state === 'recording') {
-      this.showHud();
       void playCue('start').catch(() => undefined);
-    } else if (status.state === 'idle') {
-      this.hideHud();
     } else if (status.state === 'error') {
-      this.hideHud();
       this.diagnostics.log('dictation', status.message ?? 'error');
       void playCue('error').catch(() => undefined);
     }
@@ -572,6 +787,9 @@ class UsefulVoiceApp {
    * Registered for the whole session it would swallow Esc in every other app.
    */
   private syncEscapeShortcut(recording: boolean): void {
+    // The language picker needs Esc for itself while it is open.
+    const pickerOpen = this.pickerWindow !== null && !this.pickerWindow.isDestroyed() && this.pickerWindow.isVisible();
+    recording = recording && !pickerOpen;
     if (recording && !this.escapeRegistered) {
       this.escapeRegistered = globalShortcut.register('Escape', () => void this.cancelDictation());
       if (!this.escapeRegistered) this.diagnostics.log('hotkey', 'could not register Escape');
@@ -781,6 +999,21 @@ class UsefulVoiceApp {
     ipcMain.handle('dictation:cancel', () => this.cancelDictation());
     ipcMain.handle('dictation:retry', () => this.service.retryLast());
     ipcMain.handle('dictation:copyLast', () => this.copyLastTranscript());
+
+    // The HUD window ignores the mouse except over its buttons.
+    ipcMain.on('hud:pointer', (event, overButton: boolean) => {
+      const window = this.hudWindow;
+      if (!window || window.isDestroyed() || event.sender !== window.webContents) return;
+      if (overButton === true) window.setIgnoreMouseEvents(false);
+      else window.setIgnoreMouseEvents(true, { forward: true });
+    });
+    ipcMain.handle('hud:action', (_event, action: unknown) => this.onHudAction(action));
+    ipcMain.handle('app:picker-choose', (_event, value: unknown) => {
+      if (typeof value !== 'string') return;
+      this.closeLanguagePicker();
+      this.setLanguage(value);
+    });
+    ipcMain.handle('app:picker-close', () => this.closeLanguagePicker());
 
     ipcMain.handle('settings:get', () => ({
       ...this.settings.all,
@@ -1397,9 +1630,11 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     // The count is checked against the documented boundary rather than a vague lower
     // bound: `tests/ipcContract.test.ts` pins this same number to the README, so a
     // channel added or lost anywhere fails one of the two.
-    // 56: the theme (`getTheme`, `onThemeChanged`), `showDiagnosticsLog`, and
-    // `onOutcome` + `onTelemetry`. Kept in step with the README by the comment below.
-    const EXPECTED_API_METHODS = 56;
+    // 63: the theme (`getTheme`, `onThemeChanged`), `showDiagnosticsLog`,
+    // `onOutcome` + `onTelemetry`, and the floating windows (`onHudView`, `hudPointer`,
+    // `hudAction`, `onAnnounce`, `pickerChoose`, `pickerClose`, `onSettingsChanged`).
+    // Kept in step with the README by the comment below.
+    const EXPECTED_API_METHODS = 63;
     record(
       'preload exposes API',
       preloadProbe.hasApi

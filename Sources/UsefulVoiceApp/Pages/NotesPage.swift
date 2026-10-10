@@ -37,8 +37,8 @@ struct NotesPage: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.surface)
         .overlay(alignment: .bottomTrailing) {
-            if scratchpad.undoableDeletion != nil {
-                NotesUndoToast {
+            if let deletion = scratchpad.undoableDeletion {
+                NotesUndoToast(message: Self.deletedMessage(deletion.note)) {
                     scratchpad.undoDelete()
                 }
                 .padding(20)
@@ -55,6 +55,13 @@ struct NotesPage: View {
         }
         .sheet(isPresented: $showImport) { importSheet }
         .onDisappear { scratchpad.commitDraft() }
+    }
+
+    /// Undo covers the latest delete only (the view model keeps one), so the toast
+    /// names the note it will bring back.
+    private static func deletedMessage(_ note: ScratchpadNote) -> String {
+        let title = note.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? "Note deleted." : "Deleted \u{201C}\(title)\u{201D}."
     }
 
     // MARK: - Header
@@ -88,6 +95,8 @@ struct NotesPage: View {
 
     private var newNoteButton: some View {
         Button {
+            // A search that hides the new note would leave it open but unlisted.
+            scratchpad.query = ""
             scratchpad.createNote()
         } label: {
             Label("New note", systemImage: "plus")
@@ -108,6 +117,7 @@ struct NotesPage: View {
                 .foregroundStyle(Theme.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)
             Button("New note") {
+                scratchpad.query = ""
                 scratchpad.createNote()
             }
             .buttonStyle(.brandPrimary)
@@ -262,10 +272,11 @@ struct NotesPage: View {
     }
 
     private var draftTags: [String] {
-        scratchpad.draftTags
+        var seen = Set<String>()
+        return scratchpad.draftTags
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
     /// Word count and last edit as one quiet line under the title.

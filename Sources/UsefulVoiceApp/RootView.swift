@@ -229,36 +229,9 @@ struct RootView: View {
     }
 }
 
-/// The same dark waveform tile as the macOS app icon.
+/// The app icon tile: the Landing mark on the dark tile.
 private struct AppIconMark: View {
     var body: some View {
-        Group {
-            if let image = Self.image {
-                Image(nsImage: image)
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFit()
-            } else {
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(Theme.ink)
-            }
-        }
-        .frame(width: 44, height: 44)
-        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        LandingTile(size: 44, radius: 11)
     }
-
-    private static let image: NSImage? = {
-        if let url = Bundle.main.url(forResource: "SadaaLogo", withExtension: "png"),
-           let image = NSImage(contentsOf: url) {
-            return image
-        }
-        if let url = Bundle.main.url(forResource: "Sadaa", withExtension: "icns"),
-           let image = NSImage(contentsOf: url) {
-            return image
-        }
-        if let appIcon = NSApplication.shared.applicationIconImage, appIcon.isValid {
-            return appIcon
-        }
-        return nil
-    }()
 }

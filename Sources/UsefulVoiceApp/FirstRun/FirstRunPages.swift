@@ -9,8 +9,7 @@ struct FRWelcomePage: View {
 
     var body: some View {
         VStack(spacing: 28) {
-            WaveMark(size: 104, radius: 26, barWidth: 9, gap: 8,
-                     heights: [22, 38, 56, 38, 22], animated: true)
+            LandingTile(size: 104, radius: 26, animated: true)
             VStack(spacing: 10) {
                 Text("Welcome to Useful Voice")
                     .font(.system(size: 30, weight: .semibold))
@@ -648,8 +647,7 @@ struct FRAccessibilityPage: View {
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.inkMuted)
                 HStack(spacing: 10) {
-                    WaveMark(size: 28, radius: 7, barWidth: 2.5, gap: 2,
-                             heights: [6, 10, 14, 10, 6])
+                    LandingTile(size: 28, radius: 7)
                     Text("Useful Voice")
                         .font(.system(size: 14, weight: .medium))
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -889,8 +887,7 @@ struct FRDonePage: View {
 
     var body: some View {
         VStack(spacing: 22) {
-            WaveMark(size: 72, radius: 18, barWidth: 6, gap: 5,
-                     heights: [16, 27, 40, 27, 16])
+            LandingTile(size: 72, radius: 18)
             Text("You're all set")
                 .font(.system(size: 28, weight: .semibold))
                 .tracking(-0.56)
@@ -902,8 +899,7 @@ struct FRDonePage: View {
                 divider
                 row(lead: AnyView(FRKeyCap(label: "Esc")), text: "Cancel a recording")
                 divider
-                row(lead: AnyView(WaveMark(size: 26, radius: 6, barWidth: 2.5, gap: 2,
-                                           heights: [5, 9, 13, 9, 5])),
+                row(lead: AnyView(LandingTile(size: 26, radius: 6)),
                     text: "Find Useful Voice in your menu bar. It has no Dock icon.")
                 divider
                 row(lead: AnyView(FRKeyCap(label: "Dictionary")),

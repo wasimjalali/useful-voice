@@ -17,6 +17,7 @@ struct StreamBubble: View {
     @State private var moreOpen = false
     @State private var selection: (range: NSRange, rect: CGRect)?
     @State private var teach: Teach?
+    @State private var keyboardSelectionTask: Task<Void, Never>?
 
     private struct Teach {
         let range: NSRange
@@ -46,8 +47,10 @@ struct StreamBubble: View {
 
     private var spec: StreamTextSpec {
         var spec: StreamTextSpec
-        if showsOriginal, let original, let diff = StreamText.diff(original: original, final: record.text) {
-            spec = diff
+        if showsOriginal, let original {
+            // Too long to diff cheaply: show the engine's raw text, unmarked.
+            spec = StreamText.diff(original: original, final: record.text)
+                ?? StreamTextSpec(text: original, spans: [], rtl: StreamFormat.isRTL(original))
         } else {
             let text = excerpt ?? record.text
             spec = StreamTextSpec(
@@ -72,6 +75,19 @@ struct StreamBubble: View {
                 onSelectionEnd: { range, rect in
                     selection = (range, rect)
                     if store.teachSelectID == record.id { beginTeach() }
+                },
+                // Shift+Arrow selections: remember them, and in select mode open Teach a fix
+                // once the selection has stopped changing.
+                onSelectionChange: { range, rect in
+                    guard range.length > 0 else { selection = nil; return }
+                    selection = (range, rect)
+                    guard store.teachSelectID == record.id else { return }
+                    keyboardSelectionTask?.cancel()
+                    keyboardSelectionTask = Task {
+                        try? await Task.sleep(nanoseconds: 700_000_000)
+                        guard !Task.isCancelled, store.teachSelectID == record.id else { return }
+                        beginTeach()
+                    }
                 },
                 onShiftClick: { store.shiftClick(record.id) },
                 // A click drops the old selection. It must not move focus: that would end
@@ -113,6 +129,12 @@ struct StreamBubble: View {
         .onHover { hovering = $0 }
         .brandAnimation(BrandMotion.control, value: hovering)
         .brandAnimation(BrandMotion.control, value: isSelected)
+        // A selection is a range in the text that was on screen: drop it when that text
+        // changes (an excerpt, Show original, a new search).
+        .onChange(of: spec.text) { _, _ in
+            selection = nil
+            teach = nil
+        }
         .popover(isPresented: Binding(get: { store.menuID == record.id },
                                       set: { if !$0, store.menuID == record.id { store.menuID = nil } }),
                  arrowEdge: .bottom) {

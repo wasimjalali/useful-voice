@@ -478,20 +478,25 @@ final class StreamStore: ObservableObject {
 
     func addToNote(_ records: [DictationRecord], note: ScratchpadNote) {
         let text = records.map(\.text).joined(separator: "\n\n")
-        guard let previous = viewModel.scratchpad.append(text, toNoteID: note.id) else {
-            show("Couldn't add to the note", kind: .danger)
+        let scratchpad = viewModel.scratchpad
+        // Nil means the note is gone or the save failed: never say it was added.
+        guard let previous = scratchpad.append(text, toNoteID: note.id) else {
+            show("Couldn't add to \(note.title). Notes can't be saved right now.", kind: .danger)
             return
         }
-        let scratchpad = viewModel.scratchpad
         clearSelection()
-        show("Added to \(note.title)") { scratchpad.restoreBody(previous, noteID: note.id) }
+        show("Added to \(note.title)") { [weak self] in
+            if !scratchpad.restoreBody(previous, noteID: note.id) {
+                self?.show("Couldn't undo. Notes can't be saved right now.", kind: .danger)
+            }
+        }
     }
 
     func addToNewNote(_ records: [DictationRecord]) {
         let text = records.map(\.text).joined(separator: "\n\n")
         let scratchpad = viewModel.scratchpad
         guard let note = scratchpad.createDictationNote(text) else {
-            show("Couldn't create the note", kind: .danger)
+            show("Couldn't create the note. Notes can't be saved right now.", kind: .danger)
             return
         }
         clearSelection()

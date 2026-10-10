@@ -382,7 +382,7 @@ struct StreamDock: View {
         }
         .accessibilityLabel("Language")
         .accessibilityValue(name)
-        .help(phaseIsRecording ? "Applies to your next dictation" : "Language")
+        .help(phaseIsRecording ? "Applies to this recording" : "Language")
     }
 
     private var phaseIsRecording: Bool { viewModel.dictationState == .recording }

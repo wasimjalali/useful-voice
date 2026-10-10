@@ -13,6 +13,8 @@ struct VocabularyPage: View {
     @State private var heard = ""
     @State private var written = ""
     @State private var word = ""
+    @State private var soundsLike = ""
+    @State private var removed: RemovedRule?
     @State private var trigger = ""
     @State private var expansion = ""
     @State private var showImport = false
@@ -20,6 +22,16 @@ struct VocabularyPage: View {
     @State private var importText = ""
     @State private var importMessage = ""
     @FocusState private var addFocus: AddField?
+
+    /// What Undo puts back after a remove. Only the latest remove is undoable.
+    private struct RemovedRule: Identifiable {
+        let id = UUID()
+        let message: String
+        let restore: () -> Void
+    }
+
+    /// How long "Removed ... Undo" stays up.
+    private static let undoSeconds: Double = 5
 
     init(viewModel: UsefulVoiceViewModel) {
         self.memory = viewModel.languageMemory
@@ -56,6 +68,24 @@ struct VocabularyPage: View {
         .pageColumn(maxWidth: 1200)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.surface)
+        .overlay(alignment: .bottomTrailing) {
+            if let removed {
+                NotesUndoToast(message: removed.message) {
+                    removed.restore()
+                    self.removed = nil
+                }
+                .padding(20)
+                .transition(.brandRise())
+            }
+        }
+        .brandAnimation(BrandMotion.hudEnter, value: removed?.id)
+        .task(id: removed?.id) {
+            guard let id = removed?.id else { return }
+            AccessibilityNotification.Announcement("\(removed?.message ?? "") Undo available.").post()
+            try? await Task.sleep(for: .seconds(Self.undoSeconds))
+            guard !Task.isCancelled, removed?.id == id else { return }
+            removed = nil
+        }
         .sheet(isPresented: $showImport) { importSheet }
     }
 
@@ -158,6 +188,8 @@ struct VocabularyPage: View {
             case .words:
                 sentenceLabel("Always write")
                 field("Word or phrase", text: $word, width: 220, focus: .first)
+                sentenceLabel("sounds like")
+                field("Optional", text: $soundsLike, width: 200, focus: .second)
             case .snippets:
                 sentenceLabel("When I say")
                 field("Trigger", text: $trigger, width: 200, focus: .first)
@@ -168,6 +200,10 @@ struct VocabularyPage: View {
                 field("What it hears", text: $heard, width: 200, focus: .first)
                 sentenceLabel("write")
                 field("What you want", text: $written, width: 200, focus: .second)
+                if filter == .all && trimmed(heard).isEmpty && !trimmed(written).isEmpty {
+                    sentenceLabel("sounds like")
+                    field("Optional", text: $soundsLike, width: 160, focus: .third)
+                }
             case .suggestions:
                 EmptyView()
             }
@@ -189,7 +225,7 @@ struct VocabularyPage: View {
             .fixedSize()
     }
 
-    private enum AddField: Hashable { case first, second }
+    private enum AddField: Hashable { case first, second, third }
 
     private func field(_ placeholder: String, text: Binding<String>, width: CGFloat,
                        focus: AddField) -> some View {
@@ -235,9 +271,18 @@ struct VocabularyPage: View {
         }
     }
 
+    /// The optional "sounds like" text is stored as pronunciations, comma separated,
+    /// the way the old page did.
     private func addWord(_ phrase: String) {
-        memory.addTerm(phrase: phrase, priority: .high)
-        toasts.show("Added \u{201C}\(phrase)\u{201D}")
+        let pronunciations = soundsLike
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        memory.addTerm(phrase: phrase, pronunciations: pronunciations, priority: .high)
+        soundsLike = ""
+        toasts.show(pronunciations.isEmpty
+                    ? "Added \u{201C}\(phrase)\u{201D}"
+                    : "Added \u{201C}\(phrase)\u{201D} with sound-alike fixes")
     }
 
     // MARK: - Content
@@ -384,17 +429,25 @@ struct VocabularyPage: View {
         }
     }
 
+    /// Removes at once and offers Undo for 5 s. Undo re-adds the same value with its id,
+    /// use count and every other field. Only the latest remove can be undone.
     private func remove(_ item: VocabularyItem) {
         switch item {
         case .word(let term):
             memory.removeTerm(id: term.id)
-            toasts.show("Word removed", kind: .info)
+            removed = RemovedRule(message: "Removed \u{201C}\(term.phrase)\u{201D}.") {
+                memory.updateTerm(term)
+            }
         case .fix(let rule):
             memory.removeReplacement(id: rule.id)
-            toasts.show("Fix removed", kind: .info)
+            removed = RemovedRule(message: "Removed \u{201C}\(rule.match)\u{201D}.") {
+                memory.updateReplacement(rule)
+            }
         case .snippet(let snippet):
             memory.removeSnippet(id: snippet.id)
-            toasts.show("Snippet removed", kind: .info)
+            removed = RemovedRule(message: "Removed \u{201C}\(snippet.trigger)\u{201D}.") {
+                memory.updateSnippet(snippet)
+            }
         }
     }
 

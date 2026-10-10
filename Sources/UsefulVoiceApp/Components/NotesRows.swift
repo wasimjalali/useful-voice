@@ -115,11 +115,17 @@ struct NotesTagBar: View {
 
     @State private var newTag = ""
 
+    /// Each tag once, in order: a duplicate would break the chip identity.
+    private var shownTags: [String] {
+        var seen = Set<String>()
+        return tags.filter { seen.insert($0).inserted }
+    }
+
     var body: some View {
         HStack(spacing: 8) {
-            ForEach(tags, id: \.self) { tag in
+            ForEach(shownTags, id: \.self) { tag in
                 NotesTagChip(tag: tag) {
-                    onChange(tags.filter { $0 != tag })
+                    onChange(shownTags.filter { $0 != tag })
                 }
             }
             TextField("Add tag", text: $newTag)
@@ -128,17 +134,19 @@ struct NotesTagBar: View {
                 .foregroundStyle(Theme.ink)
                 .frame(width: 96)
                 .onSubmit(commit)
+                // Tags are stored comma separated, so a comma can never be part of one.
+                .onChange(of: newTag) { _, value in
+                    if value.contains(",") { newTag = value.replacingOccurrences(of: ",", with: "") }
+                }
             Spacer(minLength: 0)
         }
     }
 
     private func commit() {
-        let tag = newTag
-            .replacingOccurrences(of: ",", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let tag = newTag.trimmingCharacters(in: .whitespacesAndNewlines)
         newTag = ""
         guard !tag.isEmpty, !tags.contains(tag) else { return }
-        onChange(tags + [tag])
+        onChange(shownTags + [tag])
     }
 }
 
@@ -210,13 +218,18 @@ struct PageMoreMenu<Content: View>: View {
 /// The dark "Note deleted. Undo" capsule from the board (a-84). It sits on the page
 /// for five seconds after a delete.
 struct NotesUndoToast: View {
+    /// Names the one thing Undo brings back: always the most recent delete.
+    let message: String
     let onUndo: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            Text("Note deleted.")
+            Text(message)
                 .font(.uv(.ui, .medium))
                 .foregroundStyle(Theme.hudInk)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: 320, alignment: .leading)
             Button(action: onUndo) {
                 Text("Undo")
                     .font(.uv(.ui, .semibold))
@@ -229,7 +242,7 @@ struct NotesUndoToast: View {
             }
             .buttonStyle(.plain)
             .clickableCursor()
-            .accessibilityLabel("Undo delete")
+            .accessibilityLabel("Undo")
         }
         .padding(.leading, 16)
         .padding(.trailing, 6)

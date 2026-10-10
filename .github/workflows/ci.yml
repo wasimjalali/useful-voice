@@ -67,5 +67,19 @@ jobs:
       - name: Build
         run: npm run build
 
+      # The redesign end to end on a real Windows desktop: Playwright drives the built
+      # app (hidden windows, fixture data, no tray or hotkeys) through filter, search,
+      # Teach a fix and the dark theme. The report and screenshots are kept.
+      - name: E2E
+        run: npx playwright test
+
+      - name: E2E report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-e2e
+          path: windows/e2e-results
+          if-no-files-found: ignore
+
       - name: Package
         run: npx electron-builder --win --publish never

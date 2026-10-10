@@ -1,4 +1,5 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { seedUserData } from './fixtures.js';
@@ -9,10 +10,12 @@ import { seedUserData } from './fixtures.js';
 // whole app to dark from Settings and check every page still renders there.
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const shots = process.env.E2E_OUT ? path.join(process.env.E2E_OUT, 'shots') : path.join(root, 'e2e-results', 'shots');
+const out = process.env.E2E_OUT ?? path.join(root, 'e2e-results');
+const shots = path.join(out, 'shots');
 
 let app: ElectronApplication;
 let win: Page;
+let userData: string;
 
 async function mainWindow(electronApp: ElectronApplication): Promise<Page> {
   for (let i = 0; i < 100; i += 1) {
@@ -30,24 +33,33 @@ async function go(section: 'Stream' | 'Notes' | 'Vocabulary' | 'Insights' | 'Set
 
 async function shot(name: string): Promise<void> {
   await win.waitForTimeout(350); // let the page-enter beat finish
-  await win.screenshot({ path: path.join(shots, `${name}.png`) });
+  const file = path.join(shots, `${name}.png`);
+  await win.screenshot({ path: file });
+  await test.info().attach(name, { path: file, contentType: 'image/png' });
 }
 
 test.beforeAll(async () => {
-  const userData = await seedUserData();
+  userData = await seedUserData();
   const env = { ...process.env } as Record<string, string>;
   delete env.ELECTRON_RUN_AS_NODE;
   app = await electron.launch({
     args: [path.join(root, 'dist', 'main', 'index.js'), `--user-data-dir=${userData}`, '--e2e'],
     env,
+    // `_electron.launch` bypasses the config's `use` options, so video and trace
+    // are switched on here.
+    recordVideo: { dir: path.join(out, 'video'), size: { width: 1180, height: 740 } },
   });
+  await app.context().tracing.start({ screenshots: true, snapshots: true });
   win = await mainWindow(app);
   await win.setViewportSize({ width: 1180, height: 740 });
   await win.waitForSelector('.st-title');
 });
 
 test.afterAll(async () => {
+  await app?.context().tracing.stop({ path: path.join(out, 'trace.zip') });
   await app?.close();
+  // The scratch user-data folder this run created.
+  if (userData) await fs.rm(userData, { recursive: true, force: true });
 });
 
 test('filter, search and teach a fix, then switch to dark', async () => {

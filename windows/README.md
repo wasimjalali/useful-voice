@@ -121,7 +121,7 @@ that it did.
 
 ### Where the security boundary is
 
-The renderer can call 64 named preload methods and nothing else. It cannot read the
+The renderer can call 64 named IPC channels and nothing else. It cannot read the
 filesystem, and it can never read the API key — it can only ask whether one is
 configured. The key is encrypted with DPAPI via Electron's `safeStorage`, so it is
 unreadable from another Windows account or from a copy of the file on another

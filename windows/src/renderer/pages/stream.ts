@@ -502,10 +502,16 @@ async function addToNote(target: NoteDTO | null, texts: string[]): Promise<void>
   if (target === null) {
     const created = await api.saveNote({ title: titleFrom(texts[0] ?? ''), body: addition });
     title = created.title;
-    // Undo removes the note only while it still holds exactly what was added.
+    // Undo deletes the note only while it is exactly as it was created: same title, same
+    // body and not saved again since (a rename in Notes changes the title and updatedAt).
     undo = () => enqueueForNote(created.id, async () => {
       const latest = await freshNote(created.id);
-      if (latest === undefined || latest.body.trimEnd() !== addition.trimEnd()) return false;
+      if (
+        latest === undefined
+        || latest.title !== created.title
+        || latest.body !== created.body
+        || latest.updatedAt !== created.updatedAt
+      ) return false;
       await api.deleteNote(created.id);
       return true;
     });
@@ -520,15 +526,16 @@ async function addToNote(target: NoteDTO | null, texts: string[]): Promise<void>
       return { id: latest.id, title: latest.title, suffix };
     });
     title = added.title;
-    // Undo takes back only the paragraph that was appended, and only if it is still the end
-    // of the note unchanged. Anything typed since stays.
+    // Undo takes back exactly the paragraph that was appended, and only while the note still
+    // ends with exactly that text. Anything typed after it, even whitespace, makes it refuse.
     undo = () => enqueueForNote(added.id, async () => {
       const latest = await freshNote(added.id);
-      if (latest === undefined) return false;
-      const body = latest.body.trimEnd();
-      if (!body.endsWith(added.suffix.trimEnd())) return false;
-      const rest = body.slice(0, body.length - added.suffix.trimEnd().length);
-      await api.saveNote({ id: latest.id, title: latest.title, body: rest });
+      if (latest === undefined || !latest.body.endsWith(added.suffix)) return false;
+      await api.saveNote({
+        id: latest.id,
+        title: latest.title,
+        body: latest.body.slice(0, latest.body.length - added.suffix.length),
+      });
       return true;
     });
   }

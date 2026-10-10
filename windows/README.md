@@ -19,10 +19,10 @@ is split by what is actually provable on each platform.
 
 | Area | Evidence |
 | --- | --- |
-| All platform-free logic | `npm test` — **258 tests, 9 files**, run on macOS |
+| All platform-free logic | `npm test` — **460 tests, 17 files**, run on macOS |
 | Type safety | `npm run typecheck` — clean |
 | Build | `npm run build` — main, preload and renderer all emitted |
-| Preload↔renderer contract | `npm run self-test` — API exposed, 64 channels, no Node leak |
+| Preload↔renderer contract | `npm run self-test` — API exposed, 64 methods, no Node leak |
 | Renderer loads under CSP | `npm run self-test` — shell paints, 5 nav items |
 | Audio-capable recorder window | `npm run self-test` — `getUserMedia` and `AudioContext` present |
 | Keyterm ceiling | `npm run self-test` — 400 terms compressed to 400 tokens, 384 dropped |

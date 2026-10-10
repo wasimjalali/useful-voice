@@ -9,10 +9,10 @@
   grid-template-columns: 200px minmax(0, 640px);
   gap: 48px;
   align-items: start;
-  animation: fade-in var(--dur-enter) var(--ease-out);
 }
-/* The shell adds .page-enter on a real page switch. A translate would shift the
-   geometry the index scrolls against, so this page fades instead. */
+/* The shell adds .page-enter on a real page switch only, so a repaint does not
+   animate. A translate would shift the geometry the index scrolls against, so
+   this page fades in instead. */
 .settings-page.page-enter { animation: fade-in var(--dur-enter) var(--ease-out); }
 
 @media (max-width: 900px) {

@@ -21,15 +21,26 @@ struct LandingMark: View {
         /// lockstep. `phase` nil means no ripple (Reduce Motion).
         static func channels(level: Float, phase: Double?) -> [Float] {
             let norm = Double(min(max(level * 11, 0), 1))
-            return (0..<3).map { k in
-                let range = Self.ranges[k]
-                var value = range.lo + norm * (range.hi - range.lo) * 0.85
-                if let phase {
-                    let ripple = sin(phase * (6 + 5 * norm) * range.speed + Double(k) * 1.3)
-                    value += ripple * (0.04 + 0.18 * norm)
-                }
-                return Float(min(max(value, range.lo), range.hi))
+            var out: [Float] = []
+            for k in 0..<3 {
+                out.append(channel(k, norm: norm, phase: phase))
             }
+            return out
+        }
+
+        /// One bar's channel. Split out, with explicit types, so older compilers
+        /// type-check it in time.
+        private static func channel(_ k: Int, norm: Double, phase: Double?) -> Float {
+            let range = ranges[k]
+            let span: Double = range.hi - range.lo
+            var value: Double = range.lo + norm * span * 0.85
+            if let phase {
+                let rate: Double = (6 + 5 * norm) * range.speed
+                let ripple: Double = sin(phase * rate + Double(k) * 1.3)
+                let depth: Double = 0.04 + 0.18 * norm
+                value += ripple * depth
+            }
+            return Float(min(max(value, range.lo), range.hi))
         }
         private static let ranges: [(lo: Double, hi: Double, speed: Double)] = [
             (0.30, 1.35, 1.0), (0.35, 1.15, 1.17), (0.40, 1.10, 0.89)

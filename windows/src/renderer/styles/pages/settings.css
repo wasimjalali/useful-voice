@@ -1,0 +1,142 @@
+/* ==========================================================================
+   Settings page: an in-page index on the left, grouped forms on the right.
+   One surface per group, hairline dividers, 48 px rows, label left, control right.
+   Type: 11 notes, 12 hints, 13 labels and controls, 15 group titles.
+   ========================================================================== */
+
+.settings-page {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 640px);
+  gap: 48px;
+  align-items: start;
+  animation: fade-in var(--dur-enter) var(--ease-out);
+}
+/* The shell adds .page-enter on a real page switch. A translate would shift the
+   geometry the index scrolls against, so this page fades instead. */
+.settings-page.page-enter { animation: fade-in var(--dur-enter) var(--ease-out); }
+
+@media (max-width: 900px) {
+  .settings-page { grid-template-columns: 1fr; gap: 20px; }
+  .s-index { position: static; flex-direction: row; flex-wrap: wrap; }
+}
+
+/* Index */
+.s-index {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.s-index-item {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: var(--fs-body);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out);
+}
+.s-index-item:hover { background: var(--sunken); color: var(--ink); }
+.s-index-item[aria-current="true"] {
+  background: var(--sunken);
+  color: var(--ink);
+  font-weight: 550;
+  /* A shape cue besides the tint: a 2px ink bar on the leading edge. */
+  box-shadow: inset 2px 0 0 var(--ink);
+}
+
+/* Groups */
+.s-groups { display: flex; flex-direction: column; gap: 32px; min-width: 0; padding-bottom: 48px; }
+.s-group { scroll-margin-top: 8px; }
+.s-group-title { margin: 0 0 10px; font-size: var(--fs-title); font-weight: 600; letter-spacing: -0.005em; }
+
+.s-surface {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+/* Rows */
+.s-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 48px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.s-row:last-child { border-bottom: 0; }
+.s-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: var(--fs-body); color: var(--ink); }
+.s-hint { font-size: var(--fs-meta); color: var(--ink-muted); line-height: 1.45; }
+.s-hint:empty { display: none; }
+.s-hint-bad { color: var(--danger); }
+.s-control { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; min-width: 0; font-size: var(--fs-ui); }
+.s-buttons { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.s-fixed { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-muted); }
+
+.s-note { margin: 10px 4px 0; font-size: var(--fs-meta); color: var(--ink-muted); line-height: 1.5; }
+
+/* Fields inside rows */
+.s-goal { width: 110px; text-align: right; font-variant-numeric: tabular-nums; }
+.s-hotkey { width: 220px; flex: none; }
+.s-capture { min-width: 160px; font-variant-numeric: tabular-nums; }
+.s-capture-field {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 220px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--ink);
+  border-radius: var(--r-sm);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+  background: var(--surface);
+}
+
+/* The key row stacks its controls under the label when they need the room. */
+.s-row-key { align-items: flex-start; padding-top: 12px; padding-bottom: 12px; }
+.s-row-key > .s-label { padding-top: 6px; flex: 0 1 200px; }
+.s-row-key > .s-label:only-child { padding-top: 6px; }
+.s-key-control { flex-direction: row; }
+.s-row-key .s-control { flex: 1; justify-content: flex-end; }
+.s-row-key .field-input { width: 260px; }
+.s-row-key .s-control:has(.field-input) { flex-direction: column; align-items: flex-end; }
+
+.s-danger { background: var(--danger-soft); border-color: transparent; font-weight: 600; }
+.s-danger:hover:not(:disabled) { border-color: var(--danger); }
+
+/* Diagnostics */
+.s-log-wrap { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.s-log {
+  margin: 0;
+  max-height: 200px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  color: var(--ink);
+}
+.s-log-empty { color: var(--ink-muted); }
+
+/* Toast: top right of the stage, where the header's actions sit. */
+.s-toasts { position: fixed; top: 58px; right: 38px; z-index: 40; }
+.s-toast { gap: 8px; padding: 0 16px 0 12px; border: 1px solid var(--hud-wash); }
+.s-toast svg { flex: none; }
+.s-toast-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--hud-danger); flex: none; }
+
+/* Touch: rows and buttons at 40 px when a touch screen is present. */
+@media (pointer: coarse) {
+  .settings-page .btn,
+  .settings-page .field-input,
+  .settings-page .s-capture-field { height: 40px; }
+  .s-index-item { min-height: 40px; }
+}

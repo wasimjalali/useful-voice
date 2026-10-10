@@ -11,6 +11,20 @@ Cross-platform dictation app. macOS: Swift (`Sources/UsefulVoiceCore`,
 - Windows: `cd windows && npm run verify` (typecheck + vitest + build +
   Electron self-test)
 - Packaging smoke: `cd windows && npx electron-builder --win --dir`
+- Windows E2E: `cd windows && env -u ELECTRON_RUN_AS_NODE npm run e2e` (Playwright drives the
+  built app with `--e2e --user-data-dir=<scratch>`: hidden windows, fixture data, no tray or
+  global hotkeys). `E2E_OUT=<dir>` moves the HTML report, traces, videos and screenshots
+  (default `windows/e2e-results/`). CI runs it on `windows-latest` and uploads the report.
+
+## Windows renderer layout
+
+`windows/src/renderer/`: `renderer.ts` (entry) wires `shell.ts` (rail, header, banners,
+navigation with `navigate(page, anchor?)`) to `pages/{stream,notes,vocabulary,insights,settings}.ts`;
+shared pieces live in `components/` and styles in `styles/` (`tokens.css` with the
+`[data-theme]` light and dark blocks, `components.css`, `components/*.css`, `pages/*.css`; the
+build concatenates every file in that order). `hud.ts` draws the HUD and floating language
+picker windows. `--preview-features` shows controls whose backend has not shipped
+(`components/flags.ts`).
 
 ## `ELECTRON_RUN_AS_NODE` gotcha
 

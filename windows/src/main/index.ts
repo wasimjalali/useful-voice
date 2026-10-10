@@ -1715,6 +1715,11 @@ export async function runSelfTest(): Promise<SelfTestResult> {
   return { ok: checks.every((check) => check.ok), checks };
 }
 
+// `--user-data-dir=<path>` points every store at a scratch folder, so the E2E suite
+// runs on fixture data and never touches (or reads) the real install's history.
+const userDataArg = process.argv.find((arg) => arg.startsWith('--user-data-dir='));
+if (userDataArg) app.setPath('userData', path.resolve(userDataArg.slice('--user-data-dir='.length)));
+
 // `--self-test` runs the headless verification and exits, so a build can be checked
 // without a human watching the screen.
 if (process.argv.includes('--self-test')) {

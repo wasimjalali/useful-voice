@@ -69,6 +69,18 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * or a key combination from the person at the machine.
  */
 const E2E = process.argv.includes('--e2e');
+if (E2E) {
+  // CI runners have no GPU; software rendering keeps hidden windows painting.
+  app.disableHardwareAcceleration();
+  // Window lifecycle on stdout, so a failed run says where it stopped.
+  app.on('web-contents-created', (_event, contents) => {
+    const tag = (): string => `[e2e] ${contents.id} ${contents.getURL() || '(blank)'}`;
+    contents.on('did-finish-load', () => console.log(`${tag()} loaded`));
+    contents.on('did-fail-load', (_e, code, description) => console.log(`${tag()} failed ${code} ${description}`));
+    contents.on('render-process-gone', (_e, details) => console.log(`${tag()} renderer gone ${details.reason}`));
+    contents.on('console-message', (_e, level, message) => { if (level >= 2) console.log(`${tag()} console ${message}`); });
+  });
+}
 
 const CLIPBOARD_RESTORE_DELAY_MS = 700;
 

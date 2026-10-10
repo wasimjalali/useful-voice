@@ -19,12 +19,13 @@ let userData: string;
 /** The app's own stdout and stderr, shown when the launch fails. */
 const appOutput: string[] = [];
 
+/** Resolves to `fallback` if `promise` takes longer than `ms`, so diagnostics never hang. */
+function within<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([promise.catch(() => fallback), new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))]);
+}
+
 async function locationOf(page: Page): Promise<string> {
-  try {
-    return await page.evaluate(() => location.href);
-  } catch {
-    return '';
-  }
+  return within(page.evaluate(() => location.href), 2_000, page.url());
 }
 
 async function mainWindow(electronApp: ElectronApplication): Promise<Page> {
@@ -39,9 +40,11 @@ async function mainWindow(electronApp: ElectronApplication): Promise<Page> {
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   const seen = await Promise.all(electronApp.windows().map(locationOf));
-  const fromMain = await electronApp
-    .evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map((w) => w.webContents.getURL()))
-    .catch((error: Error) => [`(main unreachable: ${error.message})`]);
+  const fromMain = await within(
+    electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map((w) => w.webContents.getURL())),
+    5_000,
+    ['(main did not answer)'],
+  );
   throw new Error(
     `the main window never opened\npages: ${seen.join(' | ') || 'none'}\nmain: ${fromMain.join(' | ')}\n${appOutput.join('')}`,
   );

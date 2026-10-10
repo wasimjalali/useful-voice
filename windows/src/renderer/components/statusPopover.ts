@@ -59,6 +59,15 @@ export function computeHealth(input: HealthInput, goToEngine: () => void): Healt
     engine = { label: 'Engine', tone: 'warn', text: 'No key', fix: { label: 'Add key', run: goToEngine } };
   } else if (kind === 'keyRejected') {
     engine = { label: 'Engine', tone: 'bad', text: 'Key rejected', fix: { label: 'Open Engine settings', run: goToEngine } };
+  } else if (kind === 'outOfCredits') {
+    engine = { label: 'Engine', tone: 'bad', text: 'Out of credits', fix: { label: 'Open Engine settings', run: goToEngine } };
+  } else if (kind === 'timedOut' || kind === 'providerFailed') {
+    engine = {
+      label: 'Engine',
+      tone: 'bad',
+      text: kind === 'timedOut' ? 'Timed out' : 'Not responding',
+      fix: { label: 'Retry last recording', run: () => void api.retryLast() },
+    };
   } else if (kind === 'offline') {
     engine = { label: 'Engine', tone: 'warn', text: 'Offline', fix: { label: 'Retry last recording', run: () => void api.retryLast() } };
   } else {

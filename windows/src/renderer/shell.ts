@@ -112,6 +112,16 @@ export function render(): void {
   renderImpl();
 }
 
+let renderChromeImpl: () => void = () => {};
+
+/**
+ * Repaints the status button and the window banner alone. Call it after anything that
+ * changes what they read (`state.settings.hasApiKey` after Add key or Remove key).
+ */
+export function renderChrome(): void {
+  renderChromeImpl();
+}
+
 /**
  * The language picker currently on screen, if Settings is open.
  *
@@ -343,6 +353,7 @@ export function mountMain(pages: Record<Page, PageModule>): void {
   }
 
   renderImpl = renderAll;
+  renderChromeImpl = renderChrome;
 
   // ---- Boot and subscriptions ------------------------------------------
 
@@ -401,7 +412,19 @@ export function mountMain(pages: Record<Page, PageModule>): void {
   });
 
   // Tray and floating-picker changes (language, auto-format) land in Settings too.
-  api.onSettingsChanged(() => void refresh());
+  // Only the settings are refetched, then the page repaints. A repaint is skipped while
+  // a field in the page has focus, so a tray change never steals typing; the chrome
+  // (status, banner) still updates.
+  api.onSettingsChanged(() => {
+    void api.getSettings().then((settings) => {
+      state.settings = settings;
+      const active = document.activeElement;
+      const typing = active instanceof HTMLElement && active.closest('.stage-body') !== null
+        && active.matches('input, textarea, select');
+      if (typing) renderChrome();
+      else render();
+    });
+  });
 
   api.onMemoryChanged(() => {
     void loadIfActive(['stream', 'vocabulary'], () => api.getMemory().then((memory) => {

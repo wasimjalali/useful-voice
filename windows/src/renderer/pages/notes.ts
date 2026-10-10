@@ -16,6 +16,8 @@ let draft: { id: string; title: string; body: string } | null = null;
 let saveTimer = 0;
 let saveError: string | null = null;
 let retryDelay = 1000;
+// Bumped when a draft is discarded, so a save that is still in flight for it is ignored when it returns.
+let generation = 0;
 let focusRequest: { field: 'title' | 'body' | 'search'; start: number; end: number } | null = null;
 let undo: { note: { id: string; title: string; body: string; createdAt: string; updatedAt: string }; index: number; timer: number } | null = null;
 
@@ -269,9 +271,15 @@ function selectNote(id: string): void {
 async function flushSave(): Promise<boolean> {
   window.clearTimeout(saveTimer);
   const pending = draft;
-  if (!pending) return true;
+  if (!pending) {
+    saveError = null;
+    retryDelay = 1000;
+    return true;
+  }
+  const started = generation;
   try {
     const saved = await api.saveNote({ id: pending.id, title: pending.title.trim() ? pending.title : '', body: pending.body });
+    if (started !== generation) return true;
     // Patch the one note in place: a full refresh would replace the list under the editor.
     const at = state.notes.findIndex((note) => note.id === saved.id);
     if (at >= 0) state.notes[at] = saved;
@@ -284,6 +292,7 @@ async function flushSave(): Promise<boolean> {
     }
     return true;
   } catch (error) {
+    if (started !== generation) return true;
     const first = saveError === null;
     saveError = error instanceof Error ? error.message : String(error);
     if (first) failure('Could not save the note', error);
@@ -296,6 +305,7 @@ async function flushSave(): Promise<boolean> {
 
 function discardChanges(): void {
   window.clearTimeout(saveTimer);
+  generation++;
   draft = null;
   saveError = null;
   retryDelay = 1000;
@@ -335,8 +345,11 @@ async function copyMarkdown(title: string, body: string): Promise<void> {
 
 async function deleteSelected(id: string): Promise<void> {
   if (draft?.id === id) {
-    // The edit belongs to the note being deleted, so it is moot: do not let a failing save block the delete.
+    // Save the pending edit first so Undo brings back the latest text. If the save fails the note is
+    // being deleted anyway, so go on and drop the draft instead of letting the failure block the delete.
+    await flushSave();
     window.clearTimeout(saveTimer);
+    generation++;
     draft = null;
     saveError = null;
     retryDelay = 1000;

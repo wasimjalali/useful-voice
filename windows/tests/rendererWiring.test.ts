@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
  * The renderer end of the data-change contract, checked statically.
  *
  * The renderer (`src/renderer/`) needs a DOM and a live preload bridge, so it cannot be
- * imported here — nothing in this file executes it. What it does check is the wiring
+ * imported here - nothing in this file executes it. What it does check is the wiring
  * shape that the fix depends on, because that shape is what a later refactor is most
  * likely to break without noticing:
  *
@@ -30,7 +30,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
  * Read as text with line endings normalised to LF.
  *
  * Not cosmetic. This file searches the source for exact strings such as `"\n}\n"`,
- * which can never match a CRLF checkout — and a Windows runner checks out with CRLF
+ * which can never match a CRLF checkout - and a Windows runner checks out with CRLF
  * unless `.gitattributes` says otherwise. That is exactly what happened: this test
  * threw `could not find the end of: function mountMain(` on windows-latest and
  * reported zero tests, while passing on macOS. `.gitattributes` now forces LF, and

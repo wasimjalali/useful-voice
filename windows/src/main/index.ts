@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, shell, screen, Menu } from 'electron';
+import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, nativeTheme, shell, screen, Menu } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promises as fs, writeFileSync } from 'node:fs';
@@ -16,6 +16,12 @@ import {
   type TranscriptionHint,
 } from '../core/transcription/deepgramProvider.js';
 import { SettingsStore } from './settingsStore.js';
+import {
+  applyAppearance,
+  canvasColor,
+  resolvedTheme,
+  titleBarOverlayFor,
+} from './theme.js';
 import { TrayController } from './tray.js';
 import {
   DictationService,
@@ -109,6 +115,10 @@ class UsefulVoiceApp {
     if (this.settings.saveError) {
       this.diagnostics.log('settings', this.settings.saveError.message);
     }
+
+    // Before any window exists, so the first paint is already in the right theme.
+    applyAppearance(this.settings.all.appearance);
+    nativeTheme.on('updated', () => this.syncTheme());
 
     this.data = new DataStore(path.join(app.getPath('userData'), 'data.json'));
     await this.data.load();
@@ -211,7 +221,7 @@ class UsefulVoiceApp {
       },
     });
     void this.recorderWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
-      query: { view: 'recorder' },
+      query: { view: 'recorder', theme: resolvedTheme() },
     });
   }
 
@@ -219,25 +229,40 @@ class UsefulVoiceApp {
     if (page === 'hud') return;
 
     if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      const theme = resolvedTheme();
       this.mainWindow = new BrowserWindow({
         width: 1040,
         height: 720,
         minWidth: 820,
         minHeight: 560,
-        backgroundColor: '#f8f8f8',
+        backgroundColor: canvasColor(theme),
         title: 'Useful Voice',
-        autoHideMenuBar: false,
+        // No native title bar: the page draws a 32px canvas strip, and Windows draws the
+        // caption buttons over it. Without a native frame there is no menu bar, so the
+        // menu's actions live in the tray and in Settings (see buildApplicationMenu).
+        titleBarStyle: 'hidden',
+        titleBarOverlay: titleBarOverlayFor(theme),
         webPreferences: {
           preload: path.join(__dirname, '../preload/index.js'),
           contextIsolation: true,
           nodeIntegration: false,
         },
       });
+      this.mainWindow.setMenuBarVisibility(false);
       this.mainWindow.on('closed', () => {
         this.mainWindow = null;
       });
+      // The hidden menu still owns the accelerators on Windows, but Ctrl+N is the one
+      // app-specific shortcut, so it is also handled here and cannot be lost with the
+      // frame.
+      this.mainWindow.webContents.on('before-input-event', (event, input) => {
+        if (input.type === 'keyDown' && input.control && !input.alt && !input.shift && input.key.toLowerCase() === 'n') {
+          event.preventDefault();
+          void this.openWindow('notes');
+        }
+      });
       await this.mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
-        query: { view: 'main' },
+        query: { view: 'main', theme },
       });
       this.mainWindow.webContents.on('did-finish-load', () => this.pushAll());
     } else {
@@ -281,7 +306,7 @@ class UsefulVoiceApp {
     });
     this.hudWindow.setIgnoreMouseEvents(true);
     void this.hudWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
-      query: { view: 'hud' },
+      query: { view: 'hud', theme: resolvedTheme() },
     });
     this.hudWindow.once('ready-to-show', () => this.hudWindow?.showInactive());
     this.hudWindow.on('closed', () => {
@@ -616,6 +641,24 @@ class UsefulVoiceApp {
 
   // ---- windows and IPC ---------------------------------------------------
 
+  /**
+   * Bring everything the OS draws in line with the resolved theme, and tell the pages.
+   *
+   * Runs on `nativeTheme` 'updated', which fires both when the user changes the
+   * Appearance setting (`themeSource`) and when Windows flips between light and dark
+   * while the setting is System.
+   */
+  private syncTheme(): void {
+    const theme = resolvedTheme();
+    const window = this.mainWindow;
+    if (window && !window.isDestroyed()) {
+      window.setBackgroundColor(canvasColor(theme));
+      // Documented for win32 and linux only, where the overlay exists.
+      if (process.platform !== 'darwin') window.setTitleBarOverlay(titleBarOverlayFor(theme));
+    }
+    this.broadcast('app:theme', theme);
+  }
+
   private broadcast(channel: string, payload?: unknown): void {
     for (const window of [this.mainWindow, this.recorderWindow, this.hudWindow]) {
       if (window && !window.isDestroyed()) {
@@ -684,6 +727,7 @@ class UsefulVoiceApp {
     }));
     ipcMain.handle('settings:save', (_event, patch: Partial<AppSettings>) => {
       const next = this.settings.update(patch);
+      applyAppearance(next.appearance);
       this.registerHotkey();
       // Goes through the same plan as startup, so the entry written here is the one
       // the launcher will start and the one `--autostart` will therefore arrive on.
@@ -975,6 +1019,9 @@ class UsefulVoiceApp {
       if (/^https:\/\//i.test(url)) await shell.openExternal(url);
     });
 
+    ipcMain.handle('app:get-theme', () => resolvedTheme());
+    ipcMain.handle('app:show-log', () => shell.showItemInFolder(this.diagnostics.path));
+
     ipcMain.handle('app:diagnostics', () => ({
       version: app.getVersion(),
       platform: `${process.platform} ${os.release()}`,
@@ -1019,8 +1066,11 @@ class UsefulVoiceApp {
   }
 
   private buildApplicationMenu(): void {
-    // A conventional menu bar, which Windows users expect. Without one, standard
-    // shortcuts like Ctrl+C in a text field would not work.
+    // The main window has no native frame, so this menu bar is never shown (see
+    // `openWindow`). It is kept because it still owns the standard edit shortcuts and
+    // the accelerators. Its actions are reachable from the UI instead: Retry last
+    // recording and Copy last transcript from the tray, Help > Deepgram API keys from
+    // the key card in Settings, and Open diagnostics log from the Diagnostics card.
     const template: Electron.MenuItemConstructorOptions[] = [
       {
         label: 'File',
@@ -1175,6 +1225,7 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     'history:get': [],
     'notes:get': [],
     'app:save-status': { ok: true },
+    'app:get-theme': 'light',
   };
   for (const [channel, value] of Object.entries(stubs)) {
     ipcMain.handle(channel, () => value);
@@ -1285,9 +1336,9 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     // The count is checked against the documented boundary rather than a vague lower
     // bound: `tests/ipcContract.test.ts` pins this same number to the README, so a
     // channel added or lost anywhere fails one of the two.
-    // 51 since the language picker hotkey added `onOpenLanguagePicker`. Kept in step
-    // with the README by the comment below.
-    const EXPECTED_API_METHODS = 51;
+    // 54 since the theme (`getTheme`, `onThemeChanged`) and `showDiagnosticsLog` were
+    // added. Kept in step with the README by the comment below.
+    const EXPECTED_API_METHODS = 54;
     record(
       'preload exposes API',
       preloadProbe.hasApi

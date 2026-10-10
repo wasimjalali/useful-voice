@@ -39,7 +39,7 @@ export function isCapturing(): boolean {
  *
  * Explicitly requests 16 kHz mono, which is what Deepgram wants. The browser may
  * ignore the request (some drivers only offer 44.1/48 kHz), so the captured rate is
- * read back from the actual context and the audio is resampled if it differs —
+ * read back from the actual context and the audio is resampled if it differs -
  * rather than rendering a 48 kHz buffer into a 16 kHz header, which would play back
  * three times too fast and transcribe as noise.
  */

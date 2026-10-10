@@ -9,7 +9,7 @@
  * behaviour at each end of these ranges is worth being able to test directly.
  */
 
-import { normaliseMemoryLanguage, type AppSettings } from '../models.js';
+import { APPEARANCES, DEFAULT_SETTINGS, normaliseMemoryLanguage, type AppSettings } from '../models.js';
 
 /**
  * Longest recording the user may choose.
@@ -25,6 +25,8 @@ export const MIN_RECORDING_SECONDS = 30;
 export const MIN_SILENCE_TIMEOUT_SECONDS = 15;
 export const MAX_SILENCE_TIMEOUT_SECONDS = 120;
 export const MAX_RECORDINGS_TO_KEEP = 200;
+export const MIN_DAILY_WORD_GOAL = 100;
+export const MAX_DAILY_WORD_GOAL = 100000;
 /** Matches the keyterm selection ceiling, so the two cannot disagree. */
 export const MAX_DICTIONARY_BIAS_BUDGET = 100;
 
@@ -59,6 +61,12 @@ export function normaliseSettings(settings: AppSettings): AppSettings {
       0,
       MAX_DICTIONARY_BIAS_BUDGET,
     ),
+    // An unknown theme falls back to following the system rather than leaving the
+    // window with no data-theme and so no tokens.
+    appearance: APPEARANCES.includes(settings.appearance) ? settings.appearance : DEFAULT_SETTINGS.appearance,
+    dailyWordGoal: Number.isFinite(settings.dailyWordGoal)
+      ? clamp(Math.round(settings.dailyWordGoal), MIN_DAILY_WORD_GOAL, MAX_DAILY_WORD_GOAL)
+      : DEFAULT_SETTINGS.dailyWordGoal,
     // A stored language has to be one the provider can actually be asked for.
     // An unrecognised code would either error or, worse, make Deepgram fall back
     // to a weaker model that does not support `keyterm` — silently dropping the

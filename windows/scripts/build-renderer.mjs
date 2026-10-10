@@ -4,16 +4,16 @@
  *
  * Two targets, deliberately built differently:
  *
- *   * **renderer** — an ES module, loaded by Chromium via `<script type="module">`.
+ *   * **renderer** - an ES module, loaded by Chromium via `<script type="module">`.
  *     The page is a `file://` URL under a strict CSP, so everything must be inlined
  *     into one file; Chromium cannot resolve bare specifiers or npm packages.
  *
- *   * **preload** — CommonJS, *not* ESM. Electron's preload loader **ignores the
+ *   * **preload** - CommonJS, *not* ESM. Electron's preload loader **ignores the
  *     `"type": "module"` field** in package.json, so a `.js` preload is evaluated as
  *     CommonJS regardless, and an ESM preload must carry the `.mjs` extension. Since
  *     tsc emits `.js`, a plain compiled preload would be parsed as CommonJS while
  *     containing `import` statements, fail to load, and leave `window.usefulVoice`
- *     undefined — a dead UI with no visible cause. Bundling as CommonJS sidesteps
+ *     undefined - a dead UI with no visible cause. Bundling as CommonJS sidesteps
  *     the extension rule entirely, which is what Electron's docs recommend.
  */
 
@@ -57,7 +57,8 @@ async function buildRenderer() {
   const styles = await bundleStyles();
   await fs.writeFile(path.join(rendererOut, 'styles.css'), styles);
   await fs.copyFile(path.join(rendererSrc, 'index.html'), path.join(rendererOut, 'index.html'));
-  await assertPresent('renderer assets', rendererOut, ['renderer.js', 'styles.css', 'index.html']);
+  await fs.copyFile(path.join(rendererSrc, 'theme-boot.js'), path.join(rendererOut, 'theme-boot.js'));
+  await assertPresent('renderer assets', rendererOut, ['renderer.js', 'styles.css', 'index.html', 'theme-boot.js']);
 
   console.log(`renderer  -> dist/renderer  (${describe(contents.length)})`);
 }

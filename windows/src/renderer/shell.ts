@@ -86,7 +86,7 @@ export function render(): void {
  *
  * A single mutable reference rather than a captured one: `renderSettings` runs on
  * every render and builds a fresh picker, so a listener holding the first instance
- * would be opening a detached element — silently doing nothing, which is the worst
+ * would be opening a detached element - silently doing nothing, which is the worst
  * way for a hotkey to fail.
  */
 export const activeLanguagePicker: { current: { open: () => void } | null } = { current: null };
@@ -137,7 +137,7 @@ export function navigate(page: Page): void {
  *  - **Only a visible page.** An external change to a page the user is not looking at
  *    is picked up when they navigate to it, so a background broadcast never causes
  *    work nobody sees. Home counts as a visible page for memory and history because it
- *    renders the same counters and the four most recent dictations as those pages do —
+ *    renders the same counters and the four most recent dictations as those pages do -
  *    and it is the screen in front of the user while they dictate.
  *  - **The fetch is patched into state, never into the whole snapshot.** A full
  *    `refresh()` here would replace every collection and re-render forms, which is
@@ -169,7 +169,7 @@ async function loadIfActive(pages: Page | readonly Page[], load: () => Promise<v
  * The dictionary's add-forms are the only fields whose value lives in the DOM alone:
  * their buttons read the inputs when pressed and nothing mirrors them into `state`. A
  * background repaint would silently drop a half-typed word, so the repaint is skipped
- * instead — the freshly fetched data is already in `state` and appears the moment the
+ * instead - the freshly fetched data is already in `state` and appears the moment the
  * user does anything that repaints (pressing Add, switching section or page).
  *
  * The other pages do not need this. The history search box and the note editor mirror
@@ -210,7 +210,10 @@ export function mountMain(pages: Record<Page, PageModule>, undoDeleteNote: () =>
   );
   const body = el('div', { class: 'stage-body' });
   const stage = el('main', { class: 'stage' }, header, body);
-  root.append(el('div', { class: 'shell' }, rail, el('div', { class: 'stage-wrap' }, stage)));
+  root.append(
+    el('div', { class: 'titlebar' }),
+    el('div', { class: 'shell' }, rail, el('div', { class: 'stage-wrap' }, stage)),
+  );
 
   function renderAll(): void {
     // Nav

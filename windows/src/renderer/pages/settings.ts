@@ -69,6 +69,16 @@ export function renderSettings(): Node {
               'Remove key',
             )
           : null,
+        // Was Help > Deepgram API keys in the menu bar the frameless window no longer has.
+        el(
+          'button',
+          {
+            class: 'btn btn-ghost',
+            type: 'button',
+            onclick: () => void api.openExternal('https://console.deepgram.com/'),
+          } as never,
+          'Get a key',
+        ),
         keyStatus,
       ),
     ),
@@ -90,7 +100,7 @@ export function renderSettings(): Node {
 
   rows.append(
     // Replaces a native <select> that (a) could not be searched and (b) offered
-    // `multi` — code-switching — labelled "Detect automatically". A user choosing
+    // `multi` - code-switching - labelled "Detect automatically". A user choosing
     // what they were told was detection was silently sent the wrong mode.
     settingRow('Spoken language', 'Detects the language as you speak, or pin one.',
       languagePickerControl.element),
@@ -158,6 +168,36 @@ export function renderSettings(): Node {
   dictationCard.append(rows);
   page.append(dictationCard);
 
+  // --- Appearance ---
+  const appearanceCard = el('div', { class: 'card card-pad' });
+  appearanceCard.append(el('p', { class: 'section-label' }, 'Appearance'));
+  appearanceCard.append(
+    el(
+      'div',
+      { style: 'margin-top:12px' as never },
+      el(
+        'div',
+        { class: 'segmented', role: 'group', 'aria-label': 'Appearance' } as never,
+        ...([
+          ['system', 'System'],
+          ['light', 'Light'],
+          ['dark', 'Dark'],
+        ] as const).map(([value, label]) =>
+          el(
+            'button',
+            {
+              type: 'button',
+              'aria-pressed': settings.appearance === value ? 'true' : 'false',
+              onclick: () => void saveSettings({ appearance: value }),
+            } as never,
+            label,
+          ),
+        ),
+      ),
+    ),
+  );
+  page.append(appearanceCard);
+
   // --- Diagnostics ---
   const diagCard = el('div', { class: 'card card-pad' });
   diagCard.append(el('p', { class: 'section-label' }, 'Diagnostics'));
@@ -185,6 +225,16 @@ export function renderSettings(): Node {
           onclick: () => void loadDiagnostics(log),
         } as never,
         'Refresh log',
+      ),
+      // Was Help > Open diagnostics log in the menu bar the frameless window no longer has.
+      el(
+        'button',
+        {
+          class: 'btn btn-secondary',
+          type: 'button',
+          onclick: () => void api.showDiagnosticsLog(),
+        } as never,
+        'Open log',
       ),
     ),
   );
@@ -280,7 +330,7 @@ function selectRow(
   options: Array<[string, string]>,
   onChange: (value: string) => void,
 ): Node {
-  // A native <select> is drawn by the OS and ignores the design system — the
+  // A native <select> is drawn by the OS and ignores the design system - the
   // same reason the language row uses a custom picker.
   const control = dropdown({
     value,

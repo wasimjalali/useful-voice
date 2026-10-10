@@ -16,14 +16,14 @@
   height: 34px;
   padding: 0 10px 0 12px;
   background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: 9px;
+  border: 1px solid var(--control-edge);
+  border-radius: var(--r-sm);
   color: var(--ink);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--fs-meta);
   font-weight: 600;
   cursor: pointer;
-  transition: background 140ms var(--ease-out), border-color 140ms var(--ease-out);
+  transition: background var(--dur-hover) var(--ease-out), border-color var(--dur-hover) var(--ease-out);
 }
 
 .select-trigger:hover { background: var(--sunken); }
@@ -38,7 +38,7 @@
   text-align: left;
 }
 
-.select-trigger-chevron { color: var(--ink-muted); font-size: 10px; }
+.select-trigger-chevron { color: var(--ink-muted); font-size: var(--fs-label); }
 
 .select-popup {
   display: none;
@@ -48,15 +48,15 @@
   right: 0;
   min-width: 190px;
   background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: 14px;
-  box-shadow: 0 12px 22px rgb(0 0 0 / 16%);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop);
   overflow: hidden;
 }
 
 .select-picker.is-open .select-popup {
   display: block;
-  animation: select-pop 160ms var(--ease-out);
+  animation: select-pop var(--dur-hud-exit) var(--ease-out);
 }
 
 @keyframes select-pop {

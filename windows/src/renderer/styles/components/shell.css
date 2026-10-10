@@ -1,11 +1,26 @@
 /* ==========================================================================
-   Shell: rail + stage
+   Shell: title strip, rail and stage
    ========================================================================== */
+
+/* The window has no native title bar. This canvas strip is the drag area, and Windows
+   draws the caption buttons over its right end (titleBarOverlay, same colour). */
+.titlebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--titlebar-h);
+  background: var(--canvas);
+  -webkit-app-region: drag;
+  app-region: drag;
+  z-index: 10;
+}
 
 .shell {
   display: flex;
   height: 100vh;
   width: 100%;
+  padding-top: var(--titlebar-h);
   overflow: hidden;
   background: var(--canvas);
 }
@@ -13,7 +28,7 @@
 .rail {
   width: 248px;
   flex-shrink: 0;
-  padding: 16px 12px;
+  padding: 8px 12px 16px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -37,7 +52,7 @@
 }
 
 .rail-wordmark {
-  font-size: 14px;
+  font-size: var(--fs-body);
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -58,13 +73,13 @@
   width: 100%;
   padding: 8px 10px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--ink-muted);
-  font-size: 13px;
+  font-size: var(--fs-ui);
   text-align: left;
   cursor: pointer;
-  transition: background 150ms var(--ease-out), color 150ms var(--ease-out);
+  transition: background var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out);
 }
 
 .nav-item:hover { background: var(--sunken); color: var(--ink); }
@@ -72,11 +87,13 @@
   background: var(--sunken);
   color: var(--ink);
   font-weight: 550;
+  /* A shape cue besides the tint: a 2px ink bar on the leading edge. */
+  box-shadow: inset 2px 0 0 var(--ink);
 }
 .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
 
 .rail-operator {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
   padding-top: 12px;
   display: flex;
   flex-direction: column;
@@ -98,7 +115,7 @@
   flex-direction: column;
   overflow: hidden;
   background: var(--surface);
-  border-radius: 24px;
+  border-radius: var(--r-2xl);
   box-shadow: var(--shadow-card);
 }
 
@@ -108,11 +125,11 @@
   justify-content: space-between;
   gap: 16px;
   padding: 20px 28px 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
 }
 
 .stage-title {
-  font-size: 19px;
+  font-size: var(--fs-figure);
   font-weight: 600;
   letter-spacing: -0.02em;
   margin: 0;
@@ -120,7 +137,7 @@
 
 .stage-subtitle {
   margin: 3px 0 0;
-  font-size: 13px;
+  font-size: var(--fs-ui);
   color: var(--ink-muted);
 }
 

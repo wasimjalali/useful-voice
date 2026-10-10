@@ -25,6 +25,7 @@ struct SettingsPage: View {
     @State private var silenceTimeout = 60.0
     @State private var recordingsToKeep = 10
     @State private var soundEffectsEnabled = true
+    @State private var appearance = AppearanceChoice.system
     @State private var launchAtLogin = false
 
     @State private var saveMessage = ""
@@ -205,8 +206,8 @@ struct SettingsPage: View {
                 // Applies at once, with no restart and no Save.
                 settingsRow("Appearance", detail: "Follow macOS, or keep it light or dark") {
                     BrandedSegmentedControl(
-                        selection: Binding(get: { settings.appearance },
-                                           set: { settings.appearance = $0 }),
+                        selection: Binding(get: { appearance },
+                                           set: { appearance = $0; settings.appearance = $0 }),
                         options: [("System", AppearanceChoice.system),
                                   ("Light", .light), ("Dark", .dark)])
                         .frame(width: 220)
@@ -775,6 +776,7 @@ struct SettingsPage: View {
         silenceTimeout = settings.silenceTimeout
         recordingsToKeep = settings.recordingsToKeep
         soundEffectsEnabled = settings.soundEffectsEnabled
+        appearance = settings.appearance
         launchAtLogin = LoginItem.isEnabled
     }
 

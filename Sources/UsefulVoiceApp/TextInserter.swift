@@ -24,7 +24,8 @@ struct PasteProof: Equatable {
     let beforeCount: Int?
     /// Character count now, when readable.
     let afterCount: Int?
-    /// Length of the text we were trying to insert.
+    /// Length of the text we were trying to insert, in UTF-16 units (what AX
+    /// counts), never grapheme clusters.
     let payloadLength: Int
 
     var growth: Int? {

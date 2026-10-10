@@ -33,8 +33,9 @@ public enum DeliveryResult: Sendable, Equatable {
     /// and the text was left on the clipboard. Not a permission problem.
     case copiedSecureField
     /// Paste mode with Accessibility on, but a field we could measure did not change
-    /// after the paste and a direct insert did not verifiably land. The text is on
-    /// the clipboard. Not a permission problem.
+    /// after the paste and a direct insert did not verifiably land, or the paste
+    /// could not be posted although Accessibility is on. The text is on the
+    /// clipboard. Not a permission problem.
     case copiedNotLanded
 }
 

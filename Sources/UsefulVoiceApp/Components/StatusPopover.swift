@@ -65,7 +65,7 @@ struct ShellHealth {
     private(set) var engine: Engine
     let microphone: SystemAccess.Microphone
     let accessibilityOn: Bool
-    let issue: DictationIssue?
+    private(set) var issue: DictationIssue?
 
     @MainActor
     init(viewModel: UsefulVoiceViewModel, settings: AppSettings, access: SystemAccess) {
@@ -89,8 +89,17 @@ struct ShellHealth {
             let name = viewModel.providerName
             engine = .ready(name.hasPrefix("Deepgram") ? "Deepgram Nova-3" : name)
         }
-        // Snapshot-only forcing of the engine banners.
+        // Snapshot-only forcing of the engine banners and of a retained failure.
         if ProcessInfo.processInfo.environment["UV_SNAPSHOT"] != nil {
+            switch ProcessInfo.processInfo.environment["UV_STATUS_ISSUE"] {
+            case "timedOut":
+                issue = .error(DictationError(kind: .timedOut,
+                    message: "Deepgram took too long to answer.", fix: .retry))
+            case "outOfCredits":
+                issue = .error(DictationError(kind: .outOfCredits,
+                    message: "Your Deepgram account is out of credits.", fix: .openEngineSettings))
+            default: break
+            }
             switch ProcessInfo.processInfo.environment["UV_BANNER"] {
             case "keyMissing": engine = .needsKey
             case "keyInvalid": engine = .rejected
@@ -106,8 +115,15 @@ struct ShellHealth {
         return false
     }
 
+    /// A failed last dictation that is still retained, so its fix stays reachable after
+    /// the HUD is gone.
+    var persistentError: DictationError? {
+        if case .error(let error)? = issue, WindowBanner.isPersistent(error.kind) { return error }
+        return nil
+    }
+
     var level: Level {
-        if !engineReady { return .problem }
+        if !engineReady || persistentError != nil { return .problem }
         if microphone != .allowed || !accessibilityOn { return .needsAccess }
         return .ready
     }
@@ -187,7 +203,10 @@ struct StatusPopover: View {
 
     private var engineBadge: PremiumStatusBadge {
         switch health.engine {
-        case .ready(let name): return .init(kind: .ok, icon: "checkmark.circle", text: name)
+        case .ready(let name):
+            return health.persistentError == nil
+                ? .init(kind: .ok, icon: "checkmark.circle", text: name)
+                : .init(kind: .bad, icon: "xmark.circle", text: "Last try failed")
         case .needsKey: return .init(kind: .warn, icon: "exclamationmark.triangle", text: "Needs key")
         case .needsModel: return .init(kind: .warn, icon: "exclamationmark.triangle", text: "Needs model")
         case .rejected: return .init(kind: .bad, icon: "xmark.circle", text: "Key rejected")
@@ -226,6 +245,18 @@ struct StatusPopover: View {
         default:
             list.append(("Open Engine settings", "Open Engine settings",
                          { viewModel.perform(.openEngineSettings) }))
+        }
+        if health.engineReady, let fix = health.persistentError?.fix {
+            switch fix {
+            case .retry:
+                list.append(("Retry last recording", "Retry last recording",
+                             { viewModel.perform(fix) }))
+            case .openEngineSettings:
+                list.append(("Open Engine settings", "Open Engine settings",
+                             { viewModel.perform(fix) }))
+            case .openMicrophoneSettings, .openAccessibilitySettings:
+                break  // the Microphone and Accessibility rows below offer these
+            }
         }
         switch health.microphone {
         case .allowed: break

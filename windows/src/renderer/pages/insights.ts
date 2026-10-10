@@ -17,6 +17,7 @@ const RANGES: Array<[Range, string]> = [
 ];
 
 let range: Range = '30d';
+let heroObserver: ResizeObserver | null = null;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -115,12 +116,23 @@ function hero(goal: number): HTMLElement {
  * shrink the axis labels below the 11 px floor on a narrow window.
  */
 function heroChart(goal: number): HTMLElement {
+  // A repaint builds a new chart: the old one's observer has nothing left to watch.
+  heroObserver?.disconnect();
   const holder = el('div', { class: 'ins-hero-chart' });
   const draw = (): void => {
     holder.replaceChildren(emptyChart(goal, Math.max(320, Math.round(holder.clientWidth || 440))));
   };
   draw();
-  new ResizeObserver(draw).observe(holder);
+  const observer = new ResizeObserver(() => {
+    // The page was left or repainted: stop observing instead of redrawing a detached node.
+    if (!holder.isConnected) {
+      observer.disconnect();
+      return;
+    }
+    draw();
+  });
+  observer.observe(holder);
+  heroObserver = observer;
   return holder;
 }
 

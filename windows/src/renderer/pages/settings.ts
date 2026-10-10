@@ -3,7 +3,7 @@ import { el, icon, ICONS } from '../components/dom.js';
 import { dropdown } from '../components/dropdown.js';
 import { previewFeatures } from '../components/flags.js';
 import { languagePicker } from '../components/languagePicker.js';
-import { state, refresh, activeLanguagePicker } from '../shell.js';
+import { state, refresh, renderChrome, activeLanguagePicker } from '../shell.js';
 import type { SettingsDTO } from '../../preload/types.js';
 
 // ---- Settings ---------------------------------------------------------
@@ -62,12 +62,36 @@ function toast(message: string, kind: 'ok' | 'bad' = 'ok'): void {
   toastTimer = window.setTimeout(() => host.replaceChildren(), kind === 'bad' ? 6000 : 1800);
 }
 
+function messageOf(error: unknown, fallback: string): string {
+  if (!(error instanceof Error) || error.message.length === 0) return fallback;
+  // Electron wraps a main-process throw as "Error invoking remote method 'x': Error: msg".
+  return error.message.replace(/^Error invoking remote method '[^']*': (Error: )?/, '') || fallback;
+}
+
+/** The ends of a hotkey capture still listening; at most one at a time. */
+let endCapture: (() => void) | null = null;
+
+const CTRL_OR_ALT = /(^|\+)(control|ctrl|commandorcontrol|cmdorctrl|alt|option)(\+|$)/i;
+
+/**
+ * Why a typed hotkey cannot be used, or null when it can. Global shortcuts need Ctrl
+ * or Alt (a bare key would swallow typing everywhere), and the two hotkeys must differ.
+ * An empty value is the caller's business (the language hotkey may be off).
+ */
+function hotkeyRefusal(value: string, other: string): string | null {
+  if (!CTRL_OR_ALT.test(value)) return 'Add Ctrl or Alt, like Ctrl+Alt+Space.';
+  if (other.trim().length > 0 && other.trim().toLowerCase() === value.trim().toLowerCase()) {
+    return "Dictation and the language picker can't share a hotkey.";
+  }
+  return null;
+}
+
 /** Save one patch. Failures surface as a toast; the caller decides how to roll back. */
 async function save(patch: Partial<SettingsDTO>): Promise<boolean> {
   try {
     state.settings = await api.saveSettings(patch);
   } catch (error) {
-    toast(error instanceof Error ? error.message : 'The setting could not be saved.', 'bad');
+    toast(messageOf(error, 'The setting could not be saved.'), 'bad');
     return false;
   }
   toast('Saved');
@@ -77,6 +101,9 @@ async function save(patch: Partial<SettingsDTO>): Promise<boolean> {
 export function renderSettingsPage(anchor?: string): HTMLElement {
   const settings = state.settings;
   if (!settings) return el('div', { class: 'muted' }, 'Loading…');
+
+  // A repaint builds a new page: a capture still listening belongs to the old one.
+  endCapture?.();
 
   const page = el('div', { class: 'settings-page' });
   const host = el('div', { class: 's-toasts', role: 'status', 'aria-live': 'polite' } as never);
@@ -101,7 +128,7 @@ export function renderSettingsPage(anchor?: string): HTMLElement {
   addGroup('general', generalGroup(settings));
   addGroup('engine', engineGroup());
   addGroup('formatting', formattingGroup(settings));
-  addGroup('hotkeys', hotkeysGroup(settings));
+  addGroup('hotkeys', hotkeysGroup());
   addGroup('appearance', appearanceGroup(settings));
   addGroup('data', dataGroup(settings, page));
   addGroup('importExport', importExportGroup());
@@ -358,39 +385,57 @@ function keyRow(): HTMLElement {
       draw();
       return;
     }
-    const result = await api.setApiKey(value);
-    if (!result.ok) {
-      status = { kind: 'bad', text: result.error ?? 'The key could not be saved.' };
+    try {
+      const result = await api.setApiKey(value);
+      if (!result.ok) {
+        status = { kind: 'bad', text: result.error ?? 'The key could not be saved.' };
+        draw();
+        return;
+      }
+      state.settings = await api.getSettings();
+    } catch (error) {
+      status = { kind: 'bad', text: messageOf(error, 'The key could not be saved.') };
       draw();
       return;
     }
-    state.settings = await api.getSettings();
     editing = false;
     status = null;
     draw();
+    // The key banner and the status button in the shell read hasApiKey.
+    renderChrome();
     toast('Saved');
   };
 
   const testKey = async (): Promise<void> => {
     status = { kind: 'busy', text: 'Checking…' };
     draw();
-    const result = await api.testApiKey();
-    if (result.ok) {
-      status = { kind: 'ok', text: result.message };
-    } else {
-      // A rejected key is replaced, not retried: open the field with the danger edge.
-      status = { kind: 'bad', text: result.message };
-      editing = true;
+    try {
+      const result = await api.testApiKey();
+      if (result.ok) {
+        status = { kind: 'ok', text: result.message };
+      } else {
+        // A rejected key is replaced, not retried: open the field with the danger edge.
+        status = { kind: 'bad', text: result.message };
+        editing = true;
+      }
+    } catch (error) {
+      status = { kind: 'bad', text: messageOf(error, 'The key could not be checked.') };
     }
     draw();
   };
 
   const removeKey = async (): Promise<void> => {
-    await api.clearApiKey();
-    state.settings = await api.getSettings();
+    try {
+      await api.clearApiKey();
+      state.settings = await api.getSettings();
+    } catch (error) {
+      toast(messageOf(error, 'The key could not be removed.'), 'bad');
+      return;
+    }
     editing = false;
     status = null;
     draw();
+    renderChrome();
     toast('Key removed');
   };
 
@@ -425,14 +470,17 @@ function formattingGroup(settings: SettingsDTO): HTMLElement {
   return wrapper;
 }
 
-function hotkeysGroup(settings: SettingsDTO): HTMLElement {
+function hotkeysGroup(): HTMLElement {
+  const dictation = (): string => state.settings?.hotkey.accelerator ?? '';
+  const language = (): string => state.settings?.languageSwitchHotkey?.accelerator ?? '';
   return surface(
-    hotkeyRow('Dictation', settings.hotkey.accelerator, false, (value) =>
-      save({ hotkey: { ...(state.settings?.hotkey ?? settings.hotkey), accelerator: value } }),
+    hotkeyRow('Dictation', dictation, language, false, (value) =>
+      save({ hotkey: { ...(state.settings?.hotkey ?? { pushToTalk: false }), accelerator: value } }),
     ),
     hotkeyRow(
       'Language picker',
-      settings.languageSwitchHotkey?.accelerator ?? '',
+      language,
+      dictation,
       true,
       (value) => save({ languageSwitchHotkey: { accelerator: value, pushToTalk: false } }),
       'Opens the language picker while you dictate. Leave empty to turn it off.',
@@ -444,10 +492,15 @@ function hotkeysGroup(settings: SettingsDTO): HTMLElement {
 /**
  * A hotkey row. Capturing a combination by pressing it is a preview feature; today's
  * control is a text field holding the combination.
+ *
+ * `read` returns the saved combination and is called again after every save, so a
+ * rollback after a failed save goes back to what is stored now, not to what the page
+ * was built with. `other` is the other hotkey, which this one must differ from.
  */
 function hotkeyRow(
   label: string,
-  current: string,
+  read: () => string,
+  other: () => string,
   allowEmpty: boolean,
   onSave: (accelerator: string) => Promise<boolean>,
   hintText?: string,
@@ -465,29 +518,47 @@ function hotkeyRow(
   if (!previewFeatures()) {
     const input = el('input', {
       class: 'field-input s-hotkey',
-      value: displayAccelerator(current),
+      value: displayAccelerator(read()),
       'aria-label': label,
       placeholder: allowEmpty ? 'Off' : '',
     } as never);
+    const refuse = (message: string): void => {
+      input.classList.add('err');
+      showHint(message, true);
+    };
+    input.addEventListener('input', () => {
+      input.classList.remove('err');
+      showHint(hintText, false);
+    });
     input.addEventListener('change', () => {
-      const value = input.value.trim();
+      const value = storedAccelerator(input.value);
       if (value.length === 0 && !allowEmpty) {
-        input.value = displayAccelerator(state.settings?.hotkey.accelerator ?? current);
-        showHint('A dictation hotkey is required.', true);
+        refuse('A dictation hotkey is required.');
         return;
       }
-      showHint(hintText, false);
-      void onSave(storedAccelerator(value)).then((ok) => {
-        if (!ok) input.value = displayAccelerator(current);
+      const refusal = value.length === 0 ? null : hotkeyRefusal(value, other());
+      if (refusal) {
+        refuse(refusal);
+        return;
+      }
+      void onSave(value).then((ok) => {
+        // Whatever the outcome, show what is stored now.
+        input.value = displayAccelerator(read());
+        if (ok) {
+          input.classList.remove('err');
+          showHint(hintText, false);
+        } else {
+          refuse('The hotkey could not be saved.');
+        }
       });
     });
     control.append(input);
     return wrapper;
   }
 
-  let value = current;
   const draw = (listening: boolean): void => {
     if (!listening) {
+      const value = read();
       control.replaceChildren(
         el(
           'button',
@@ -503,16 +574,21 @@ function hotkeyRow(
     );
   };
 
-  let onKey: ((event: KeyboardEvent) => void) | null = null;
   const stop = (): void => {
-    if (onKey) window.removeEventListener('keydown', onKey, true);
-    onKey = null;
+    endCapture?.();
     draw(false);
   };
   const listen = (): void => {
+    endCapture?.();
     showHint(hintText, false);
     draw(true);
-    onKey = (event) => {
+    const onKey = (event: KeyboardEvent): void => {
+      // The page was repainted or left while this was listening: let go, and leave
+      // the key alone for whoever has focus now.
+      if (!control.isConnected) {
+        endCapture?.();
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       if (event.key === 'Escape') {
@@ -525,23 +601,25 @@ function hotkeyRow(
         showHint("That key can't be used.", true);
         return;
       }
-      if (!event.ctrlKey && !event.altKey) {
-        showHint('Add Ctrl or Alt, like Ctrl+Alt+Space.', true);
-        return;
-      }
       const accelerator = [
         event.ctrlKey ? 'Control' : null,
         event.altKey ? 'Alt' : null,
         event.shiftKey ? 'Shift' : null,
         main,
       ].filter(Boolean).join('+');
+      const refusal = hotkeyRefusal(accelerator, other());
+      if (refusal) {
+        showHint(refusal, true);
+        return;
+      }
       showHint(hintText, false);
-      void onSave(accelerator).then((ok) => {
-        if (ok) value = accelerator;
-        stop();
-      });
+      void onSave(accelerator).then(() => stop());
     };
     window.addEventListener('keydown', onKey, true);
+    endCapture = () => {
+      window.removeEventListener('keydown', onKey, true);
+      endCapture = null;
+    };
   };
   draw(false);
   return wrapper;
@@ -633,7 +711,12 @@ function deleteRow(page: HTMLElement): HTMLElement {
 
 async function confirmDelete(page: HTMLElement, opener: HTMLElement): Promise<void> {
   // The count in the dialog is read now, so it is exactly what Delete will remove.
-  state.history = await api.getHistory();
+  try {
+    state.history = await api.getHistory();
+  } catch (error) {
+    toast(messageOf(error, 'The dictations could not be counted.'), 'bad');
+    return;
+  }
   const count = state.history.length;
   if (count === 0) {
     toast('There are no dictations to delete.');
@@ -677,7 +760,14 @@ async function confirmDelete(page: HTMLElement, opener: HTMLElement): Promise<vo
   confirm.addEventListener('click', () => {
     void (async () => {
       confirm.setAttribute('disabled', 'true');
-      await api.clearHistory();
+      try {
+        await api.clearHistory();
+      } catch (error) {
+        // Keep the dialog so the user can try again or cancel.
+        confirm.removeAttribute('disabled');
+        toast(messageOf(error, 'The dictations could not be deleted.'), 'bad');
+        return;
+      }
       state.history = [];
       close();
       toast(`Deleted ${grouped(count)} ${noun}`);
@@ -690,9 +780,13 @@ async function confirmDelete(page: HTMLElement, opener: HTMLElement): Promise<vo
 
 function importExportGroup(): HTMLElement {
   const run = (call: () => Promise<{ ok: boolean; message: string }>, refreshAfter = false) => async (): Promise<void> => {
-    const result = await call();
-    toast(result.message, result.ok ? 'ok' : 'bad');
-    if (refreshAfter && result.ok) await refresh();
+    try {
+      const result = await call();
+      toast(result.message, result.ok ? 'ok' : 'bad');
+      if (refreshAfter && result.ok) await refresh();
+    } catch (error) {
+      toast(messageOf(error, 'That did not work.'), 'bad');
+    }
   };
   const button = (label: string, action: () => Promise<void>): HTMLElement =>
     el('button', { class: 'btn btn-secondary', type: 'button', onclick: () => void action() } as never, label);
@@ -725,15 +819,21 @@ function diagnosticsGroup(info: ReturnType<typeof api.getDiagnostics>): HTMLElem
   const copy = el('button', { class: 'btn btn-secondary', type: 'button', disabled: true } as never, 'Copy report');
   let report = '';
   copy.addEventListener('click', () => {
-    void api.copyToClipboard(report).then(() => toast('Copied'));
+    api.copyToClipboard(report).then(
+      () => toast('Copied'),
+      (error: unknown) => toast(messageOf(error, 'The report could not be copied.'), 'bad'),
+    );
   });
-  void info.then((data) => {
+  info.then((data) => {
     const hasProblems = data.recentErrors.length > 0;
     log.textContent = hasProblems ? data.recentErrors.join('\n') : 'Nothing recorded yet.';
     log.classList.toggle('s-log-empty', !hasProblems);
     report = [`Useful Voice ${data.version}`, `Platform: ${data.platform}`, '', ...data.recentErrors].join('\n');
     // Both buttons wait for something to copy (a-72): Open log stays, it opens a file.
     copy.toggleAttribute('disabled', !hasProblems);
+  }, (error: unknown) => {
+    log.textContent = messageOf(error, 'The log could not be read.');
+    log.classList.add('s-log-empty');
   });
   return surface(
     el('div', { class: 's-log-wrap' }, log),
@@ -751,8 +851,10 @@ function diagnosticsGroup(info: ReturnType<typeof api.getDiagnostics>): HTMLElem
 
 function aboutGroup(info: ReturnType<typeof api.getDiagnostics>): HTMLElement {
   const version = el('span', { class: 'tnum' }, '');
-  void info.then((data) => {
+  info.then((data) => {
     version.textContent = data.version;
+  }, () => {
+    version.textContent = 'Unknown';
   });
   return surface(row('Version', version));
 }

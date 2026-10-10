@@ -5,12 +5,10 @@ import Carbon.HIToolbox
 import UsefulVoiceCore
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
-    private var formattingMenuItem: NSMenuItem?
-    /// The three Language submenu items, kept so a hotkey switch can refresh
-    /// their checkmarks without rebuilding the menu.
-    private var languageMenuItems: [NSMenuItem] = []
+    /// The menu bar menu and its header row (see MenuBarMenu).
+    private var menuBar: MenuBarMenu?
     private let languagePicker = LanguagePickerPanel()
     private let settings = AppSettings()
     private let hotkeys = HotkeyManager()
@@ -55,10 +53,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         controller?.toggle(source: source)
     }
 
-    /// Flips the dictation language between English and German and flashes the
-    /// new language in the HUD. Ignored while dictation is in flight so the
-    /// language never changes out from under an active recording.
-    /// Opens the language picker.
+    /// Opens the language picker, anchored above the HUD capsule. Ignored while
+    /// dictation is in flight so the language never changes out from under an
+    /// active recording.
     ///
     /// This used to cycle English↔German in place. That cannot work once the
     /// catalogue has ten languages: tapping a key repeatedly is a poor way to reach
@@ -68,28 +65,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func switchLanguage() {
         guard !isDictationBusy else { return }
         languagePicker.show(
+            anchor: hud.capsuleAnchor(),
             // Read lazily so the picker always reflects the live setting.
             current: { [weak self] in self?.settings.languagePin ?? .auto },
             onSelect: { [weak self] chosen in
                 guard let self else { return }
                 self.settings.languagePin = chosen
                 self.viewModel?.refreshConfig()   // keep Home + Settings in sync
-                self.syncLanguageMenu()
-                // Confirms the change in the same pill the cycle used to use, so
-                // the feedback is unchanged even though the interaction is new.
+                self.menuBar?.syncLanguage()
+                // Confirms the change in the HUD for 1 s (the HUD hides itself).
                 self.hud.show(.language(chosen))
-                self.hud.hide(after: 1.3)
             }
         )
-    }
-
-    /// Refreshes the Language submenu checkmarks to match the stored pin, used
-    /// after a hotkey switch and whenever the menu is about to open.
-    private func syncLanguageMenu() {
-        for item in languageMenuItems {
-            guard let raw = item.representedObject as? String else { continue }
-            item.state = settings.languagePin.rawValue == raw ? .on : .off
-        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -112,7 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Recorded before the key cache is primed, because priming can block
         // indefinitely on a keychain authorization dialog. It previously ran only
         // after the read returned, so a launch that hit a prompt produced no launch
-        // record at all — the one case where a launch record is most useful.
+        // record at all - the one case where a launch record is most useful.
         recordLaunchDiagnostic()
         Appearance.install(settings: settings)
         ThinScrollbar.install()
@@ -122,8 +109,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // differently signed copy of the app.
         if ProcessInfo.processInfo.environment["UV_SNAPSHOT"] == nil { primeKeyCache() }
         chimes.isEnabled = { [settings] in settings.soundEffectsEnabled }
-        if !isSnapshot { setUpStatusItem() }
         setUpController()
+        if !isSnapshot { setUpStatusItem() }
         setUpFirstRun()
         // `UV_SNAPSHOT=<png path>@<width>x<height>` renders the page named by
         // `UV_START_SECTION` to a PNG and quits, with no window and no focus change.
@@ -133,6 +120,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard parts.count == 2, dims.count == 2 else {
                 fputs("UV_SNAPSHOT must look like /tmp/page.png@1280x860\n", stderr)
                 exit(2)
+            }
+            let url = URL(fileURLWithPath: String(parts[0]))
+            let size = NSSize(width: dims[0], height: dims[1])
+            let appearance = Appearance.nsAppearance(for: settings.appearance)
+            // `UV_HUD_STATE=<state>` renders the HUD (or the language picker) with
+            // sample data, and `UV_MENU_HEADER=idle|recording` the menu bar header.
+            if let state = ProcessInfo.processInfo.environment["UV_HUD_STATE"] {
+                HUDSnapshot.render(state, size: size, appearance: appearance, to: url) { ok in
+                    exit(ok ? 0 : 1)
+                }
+                return
+            }
+            if let header = ProcessInfo.processInfo.environment["UV_MENU_HEADER"] {
+                MenuHeaderSnapshot.render(header, appearance: appearance, to: url) { ok in
+                    exit(ok ? 0 : 1)
+                }
+                return
             }
             guard let firstRun else { exit(1) }
             mainWindow.snapshot(viewModel: viewModel, settings: settings, firstRun: firstRun,
@@ -202,13 +206,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Records one line describing this launch.
     ///
     /// Why: on a healthy install nothing is ever logged, so `diagnostics.log` would
-    /// stay empty and could not answer the obvious first question — "which build was
+    /// stay empty and could not answer the obvious first question - "which build was
     /// this, and was anything different about it?". One line per launch makes the log
     /// a usable timeline, and the file is capped, so this cannot grow without bound.
     ///
     /// Contains no user content: version, build, and two booleans.
     /// Facts known immediately at launch. Deliberately says nothing about the key,
-    /// which is not known yet — see `recordKeyStateDiagnostic`.
+    /// which is not known yet - see `recordKeyStateDiagnostic`.
     private func recordLaunchDiagnostic() {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
@@ -255,7 +259,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 // The key state is recorded separately, once it is actually known.
                 // It cannot be part of the launch line: the read is asynchronous and
                 // can block on a keychain prompt, so reading it there reported
-                // "no key cached" on every launch — wrong every single time, which
+                // "no key cached" on every launch - wrong every single time, which
                 // is worse than no line at all. And this callback never runs at all
                 // while a prompt is unanswered, which is why the key state is its
                 // own record rather than a field on the launch record.
@@ -455,8 +459,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 case .paste:
                     self?.inserter.deliver(text) { outcome in
                         if outcome == .clipboardOnly {
-                            self?.hud.show(.error("Copied. Press Cmd-V to paste."))
-                            self?.hud.hide(after: 4)
+                            // The HUD shows "Copied. Press ⌘V to paste" from the outcome.
                             done(.copiedNotPasted)
                         } else {
                             done(.pasted)
@@ -528,7 +531,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         controller.onOutcome = { [weak self] outcome in
             self?.viewModel?.handle(outcome: outcome)
+            self?.showOutcome(outcome)
         }
+        // The HUD pill's verb (Retry last recording, Open settings) runs the same
+        // fix as the window and the menu.
+        hud.onFix = { [weak self] fix in self?.viewModel?.perform(fix) }
         viewModel.onRetry = { [weak self] in
             self?.controller?.retryLast()
         }
@@ -558,7 +565,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let audioURL = URL(fileURLWithPath: audioPath)
         // Reprocess in the language the dictation ran in, not whatever is
-        // pinned now — a German record re-runs its German rules even if the
+        // pinned now - a German record re-runs its German rules even if the
         // user has since switched to English. `resolvedPin` validates the
         // stored union: a stored `multi` re-sends `language=multi`, an
         // unknown stored code resolves to `.auto` (detect_language) rather
@@ -587,8 +594,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let chain = buildProviders()
         guard !chain.isEmpty else {
             viewModel?.reprocessHistoryTextOnly(record)
-            hud.show(.error("No provider configured. Reprocessed with local memory only."))
-            hud.hide(after: 4)
+            hud.show(.error(HUDError(message: "No engine set up", fix: .openEngineSettings)))
             return
         }
 
@@ -608,14 +614,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let transcript else {
             let detail = (lastError as? ProviderError).map(Self.describeProviderError)
                 ?? lastError?.localizedDescription ?? "unknown error"
-            hud.show(.error("Reprocess failed: \(detail)"))
-            hud.hide(after: 5)
+            Diagnostics.shared.warning("reprocess", "reprocess failed: \(detail)")
+            hud.show(.error(HUDError(message: "Reprocess failed")))
             return
         }
 
         guard !transcript.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            hud.show(.error("Reprocess returned no speech."))
-            hud.hide(after: 4)
+            hud.show(.error(HUDError(message: "No speech detected", symbol: "waveform.slash")))
             return
         }
 
@@ -647,8 +652,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         history?.append(reprocessed)
         viewModel?.refreshLanguageMemory()
         viewModel?.refreshRecent()
-        hud.show(.done)
-        hud.hide(after: 1.0)
+        hud.show(.done(.reprocessed))
     }
 
     private func formatForHistoryReprocess(raw: String,
@@ -723,7 +727,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// A local selection that cannot run (model missing or invalid) returns an
     /// `UnavailableProvider` rather than an empty chain, so the dictation fails
     /// with "download it in Settings" instead of the generic no-provider error.
-    /// Local is never silently swapped for Deepgram — choosing it means no
+    /// Local is never silently swapped for Deepgram - choosing it means no
     /// audio leaves the machine.
     private func buildProviders(showPartials: Bool = false) -> [TranscriptionProvider] {
         let model = modelManager?.activeModel ?? WhisperModelCatalog.default
@@ -765,7 +769,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated {
                         guard self?.controller?.state == .transcribing else { return }
-                        self?.hud.show(.transcribing(partial: text))
+                        self?.hud.show(.transcribing(partial: text, local: true))
                         self?.viewModel?.telemetry.setPartial(text)
                     }
                 }
@@ -844,8 +848,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // start the tap without requiring a relaunch.
         // The first-run flow has its own Accessibility step, so no pill there.
         if firstRun?.active != true {
-            hud.show(.error("Enable Accessibility for Useful Voice in System Settings to use the hotkey."))
-            hud.hide(after: 6)
+            hud.show(.error(HUDError(message: "Accessibility access is off", symbol: "hand.raised",
+                                     fix: .openAccessibilitySettings)))
         }
         startAccessibilityPoll()
     }
@@ -897,18 +901,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // than read from a closure so the tap thread never touches main-actor
         // state directly.
         hotkeys.isRecordingActive = (state == .recording)
+        menuBar?.apply(state: state)
         switch state {
         case .idle:
             stopRecordingTimer()
             setIcon(tint: nil)
-            if lastDictationState == .delivering {
-                // A dictation just landed: flash a brief success confirmation
-                // before the pill fades out, the way WhisperFlow and friends do.
-                hud.show(.done)
-                hud.hide(after: 1.0)
-            } else {
-                hud.hide(after: 0.4)
-            }
+            // Done, cancelled and "copied" are shown by the outcome, which fires
+            // just before this and ends on its own timer. Only a progress state
+            // still on screen is cleared here.
+            hud.hideIfProgress()
         case .recording:
             chimes.playStart()
             startRecordingTimer()
@@ -917,36 +918,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if lastDictationState == .recording { chimes.playStop() }
             stopRecordingTimer()
             setIcon(tint: .systemOrange)
-            hud.show(.transcribing(partial: nil))
+            hud.show(.transcribing(partial: nil, local: settings.transcriptionEngine == .whisperLocal))
         case .delivering:
             hud.show(.delivering)
         case .error(let error):
             stopRecordingTimer()
             setIcon(tint: nil)
-            hud.show(.error(error.message))
-            hud.hide(after: 6)
+            // Stays until the next dictation starts, the pill's button or the x is
+            // clicked, or 8 s pass. The fix stays in the window and the menu.
+            hud.show(.error(HUDError(error)))
+        }
+    }
+
+    /// The HUD for how a dictation ended: done (1,2 s), cancelled (1,5 s), or the
+    /// copied-not-pasted notice (until the next dictation, a click or 8 s).
+    private func showOutcome(_ outcome: DictationOutcome) {
+        switch outcome {
+        case .cancelled:
+            hud.show(.cancelled)
+        case .delivered(let words, let mode, _):
+            switch mode {
+            case .pasted: hud.show(.done(.inserted(words: words)))
+            case .copied: hud.show(.done(.savedAndCopied(words: words)))
+            case .copiedNotPasted: hud.show(.copiedNotPasted)
+            }
         }
     }
 
     private func startRecordingTimer() {
         recordingStartedAt = Date()
-        hud.show(.recording(seconds: 0, level: 0))
+        hud.show(.recording(seconds: 0, level: 0, stopsIn: nil))
         // Push the live mic level at ~30Hz so the wave's amplitude tracks speech
         // promptly (the bars ripple continuously on their own via TimelineView;
         // this keeps the loudness envelope responsive). The seconds field drives
-        // the pill's elapsed mm:ss, recomputed from the start time each tick.
-        recordingTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0,
-                                              repeats: true) { [weak self] _ in
+        // the elapsed m:ss, recomputed from the start time each tick.
+        let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 let now = Date()
                 let elapsed = Int(now.timeIntervalSince(self.recordingStartedAt ?? now))
-                self.hud.show(.recording(seconds: elapsed, level: self.currentLevel))
                 self.viewModel?.telemetry.tick(
                     elapsed: elapsed, level: self.currentLevel,
                     deadlines: self.audioRecorder?.autoStopDeadlines ?? .none, now: now)
+                // "Stops in 5 s" for whichever automatic stop comes first.
+                let stopsIn = [self.viewModel?.telemetry.silenceRemaining,
+                               self.viewModel?.telemetry.maxRemaining].compactMap { $0 }.min()
+                self.hud.show(.recording(seconds: elapsed, level: self.currentLevel, stopsIn: stopsIn))
+                self.menuBar?.tick(seconds: elapsed, level: self.currentLevel)
             }
         }
+        recordingTimer = timer
+        // .common so the menu header's timer keeps counting while the menu is open
+        // (the menu tracks in its own run-loop mode, where a default-mode timer freezes).
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     private func stopRecordingTimer() {
@@ -987,96 +1011,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Status item and menu
 
     private func setUpStatusItem() {
+        guard let viewModel else { return }
         let item = NSStatusBar.system.statusItem(
             withLength: NSStatusItem.squareLength)
         item.button?.image = Self.statusItemImage(tint: nil)
-        let menu = NSMenu()
-
-        let openItem = NSMenuItem(title: "Open Useful Voice",
-                                  action: #selector(openMainWindow),
-                                  keyEquivalent: "")
-        openItem.target = self
-        menu.addItem(openItem)
-        menu.addItem(.separator())
-
-        let toggleItem = NSMenuItem(title: "Start/Stop Dictation",
-                                    action: #selector(menuToggle),
-                                    keyEquivalent: "")
-        toggleItem.target = self
-        menu.addItem(toggleItem)
-        menu.addItem(.separator())
-
-        // Every language the catalogue offers, not the two the enum used to have.
-        // A menu bar menu scrolls natively, so unlike the settings popover it needs
-        // no height cap of its own.
-        let languageMenu = NSMenu()
-        languageMenuItems = []
-        for pin in LanguagePin.allCases {
-            let item = NSMenuItem(title: pin.displayName,
-                                  action: #selector(setLanguage(_:)),
-                                  keyEquivalent: "")
-            item.target = self
-            item.representedObject = pin.rawValue
-            item.state = settings.languagePin == pin ? .on : .off
-            languageMenu.addItem(item)
-            languageMenuItems.append(item)
-        }
-        let languageItem = NSMenuItem(title: "Language",
-                                      action: nil, keyEquivalent: "")
-        menu.setSubmenu(languageMenu, for: languageItem)
-        menu.addItem(languageItem)
-
-        // Quick auto-format switch, mirrors the Settings toggle. When off,
-        // Deepgram's smart_format is disabled and transcripts come back raw.
-        let formattingItem = NSMenuItem(title: "Auto-format transcript",
-                                        action: #selector(toggleSmartFormatting),
-                                        keyEquivalent: "")
-        formattingItem.target = self
-        formattingItem.state = settings.formattingEnabled ? .on : .off
-        menu.addItem(formattingItem)
-        formattingMenuItem = formattingItem
-
-        let settingsItem = NSMenuItem(title: "Settings…",
-                                      action: #selector(openMainWindow),
-                                      keyEquivalent: ",")
-        settingsItem.target = self
-        menu.addItem(settingsItem)
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit Useful Voice",
-                                action: #selector(NSApplication.terminate(_:)),
-                                keyEquivalent: "q"))
-        menu.delegate = self
-        item.menu = menu
+        let menuBar = MenuBarMenu(
+            settings: settings,
+            viewModel: viewModel,
+            actions: .init(
+                toggleDictation: { [weak self] in self?.toggleDictation() },
+                cancelDictation: { [weak self] in
+                    if self?.controller?.state == .recording { self?.controller?.cancel() }
+                },
+                openMainWindow: { [weak self] in self?.openMainWindow() },
+                openSettings: { [weak self] anchor in
+                    // Open on Settings (UV-038): the window used to open on whatever
+                    // section it had, for "Settings" too.
+                    self?.openMainWindow()
+                    self?.viewModel?.navigate(to: "settings", anchor: anchor)
+                },
+                copy: { [weak self] text in self?.inserter.copy(text) },
+                setLanguage: { [weak self] pin in
+                    self?.settings.languagePin = pin
+                    self?.viewModel?.refreshConfig()   // keep the window in sync with the menu
+                }))
+        item.menu = menuBar.menu
         statusItem = item
-    }
-
-    /// Keep the menu's checkmarks in sync with settings each time it opens, so a
-    /// change made on the Settings page is reflected here too.
-    func menuWillOpen(_ menu: NSMenu) {
-        formattingMenuItem?.state = settings.formattingEnabled ? .on : .off
-        // Smart formatting is a Deepgram option; local models format on their own.
-        formattingMenuItem?.isHidden = settings.transcriptionEngine == .whisperLocal
-        syncLanguageMenu()
-    }
-
-    @objc private func menuToggle() {
-        toggleDictation()
-    }
-
-    @objc private func toggleSmartFormatting() {
-        // Off = raw transcript, Deepgram's smart_format is disabled.
-        // Takes effect on the next dictation (the provider is built per use).
-        settings.formattingEnabled.toggle()
-        formattingMenuItem?.state = settings.formattingEnabled ? .on : .off
-    }
-
-    @objc private func setLanguage(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String else { return }
-        let pin = LanguagePin(code: raw)
-        settings.languagePin = pin
-        sender.menu?.items.forEach { $0.state = .off }
-        sender.state = .on
-        viewModel?.refreshConfig()   // keep Home + Settings in sync with the menu
+        self.menuBar = menuBar
+        // The controller already ran: show its current state, not "Ready".
+        if let state = controller?.state { menuBar.apply(state: state) }
     }
 
     @objc private func openMainWindow() {
@@ -1091,9 +1054,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         AVCaptureDevice.requestAccess(for: .audio) { granted in
             if !granted {
                 DispatchQueue.main.async { [weak self] in
-                    self?.hud.show(.error(
-                        "Enable Microphone for Useful Voice in System Settings."))
-                    self?.hud.hide(after: 6)
+                    self?.hud.show(.error(HUDError(message: "Microphone access is off", symbol: "mic.slash",
+                                                   fix: .openMicrophoneSettings)))
                 }
             }
         }

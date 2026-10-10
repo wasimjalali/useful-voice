@@ -292,7 +292,7 @@ extension InsightsData {
                     let sum = data.hours[start..<(start + 3)].reduce(0, +)
                     if sum > bestSum { bestSum = sum; bestStart = start }
                 }
-                data.peakWindow = "Most words from \(InsightsFormat.hour(bestStart)) to \(InsightsFormat.hour(bestStart + 3))"
+                data.peakWindow = "Most words from \(InsightsFormat.hour(bestStart)) to \(InsightsFormat.hour((bestStart + 3) % 24))"
             }
         }
 
@@ -334,7 +334,7 @@ extension InsightsData {
         // Quiet facts. Only those with a real number behind them.
         var quiet: [InsightsQuietFact] = []
         let fixes = inputs.replacements.reduce(0) { $0 + $1.usageCount }
-        if fixes > 0 { quiet.append(.init(value: InsightsFormat.grouped(fixes), label: "fixes applied")) }
+        if fixes > 0 { quiet.append(.init(value: InsightsFormat.grouped(fixes), label: "fixes applied, all time")) }
         let timed = inputs.records.filter {
             !$0.provider.hasSuffix("reprocess") && ($0.durationSeconds ?? 0) > 0
                 && (startDate == nil || $0.createdAt >= startDate!)
@@ -553,5 +553,30 @@ extension InsightsData {
             let own = Locale(identifier: code).localizedString(forLanguageCode: code)
             return (own ?? code).localizedCapitalized
         }
+    }
+}
+
+/// Remembers the last built `InsightsData`, so a redraw that changes nothing the page reads
+/// (a dictation state change, a hover) does not walk 1.000 records again.
+final class InsightsCache {
+    private struct Key: Equatable {
+        let range: InsightsRange
+        let revision: Int
+        let goal: Int
+        let day: Date
+    }
+
+    private var key: Key?
+    private var data: InsightsData?
+
+    func data(range: InsightsRange, revision: Int, goal: Int, now: Date = Date(),
+              build: () -> InsightsData) -> InsightsData {
+        let next = Key(range: range, revision: revision, goal: goal,
+                       day: InsightsData.calendar().startOfDay(for: now))
+        if let data, key == next { return data }
+        let built = build()
+        key = next
+        data = built
+        return built
     }
 }

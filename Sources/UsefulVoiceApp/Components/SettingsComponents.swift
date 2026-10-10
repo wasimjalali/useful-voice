@@ -155,6 +155,8 @@ private struct SettingsIndexRow: View {
 
 /// The board's stepper: a track holding minus, the value and plus.
 struct SettingsStepper: View {
+    /// Read by VoiceOver ("Daily goal").
+    let label: String
     @Binding var value: Int
     let range: ClosedRange<Int>
     var step = 1
@@ -173,6 +175,7 @@ struct SettingsStepper: View {
         .padding(2)
         .background(Theme.line, in: RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
         .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
         .accessibilityValue(format(value))
         .accessibilityAdjustableAction { direction in
             switch direction {
@@ -376,8 +379,10 @@ struct HotkeyCaptureField: View {
         refusal = nil
         capturing = true
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { event in
+            // Command shortcuts (quit, close window) keep working while listening.
+            if event.type == .keyDown, event.modifierFlags.contains(.command) { return event }
             handle(event)
-            return nil
+            return event.type == .keyDown ? nil : event
         }
     }
 
@@ -408,35 +413,42 @@ struct HotkeyCaptureField: View {
 
 // MARK: - Files
 
+/// What a save or open panel did: finished, was cancelled, or failed with a reason.
+enum SettingsFileResult<Value> {
+    case done(Value)
+    case cancelled
+    case failed(String)
+}
+
 /// Save panels and open panels for the Import and export group.
 enum SettingsFiles {
     @MainActor
-    static func save(_ text: String, suggestedName: String, type: UTType) -> URL? {
+    static func save(_ text: String, suggestedName: String, type: UTType) -> SettingsFileResult<URL> {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = suggestedName
         panel.allowedContentTypes = [type]
         panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        guard panel.runModal() == .OK, let url = panel.url else { return .cancelled }
         do {
             try text.write(to: url, atomically: true, encoding: .utf8)
-            return url
+            return .done(url)
         } catch {
             Diagnostics.shared.error("export", "could not write \(url.lastPathComponent): \(error.localizedDescription)")
-            return nil
+            return .failed("\(url.lastPathComponent) could not be written. \(error.localizedDescription)")
         }
     }
 
     @MainActor
-    static func open(types: [UTType]) -> String? {
+    static func open(types: [UTType]) -> SettingsFileResult<String> {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        guard panel.runModal() == .OK, let url = panel.url else { return .cancelled }
         do {
-            return try String(contentsOf: url, encoding: .utf8)
+            return .done(try String(contentsOf: url, encoding: .utf8))
         } catch {
             Diagnostics.shared.error("import", "could not read \(url.lastPathComponent): \(error.localizedDescription)")
-            return nil
+            return .failed("\(url.lastPathComponent) could not be read. \(error.localizedDescription)")
         }
     }
 }

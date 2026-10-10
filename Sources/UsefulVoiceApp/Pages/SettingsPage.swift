@@ -30,13 +30,13 @@ struct SettingsPage: View {
     @State private var silenceTimeout = 60.0
     @State private var recordingsToKeep = 10
     @State private var soundEffectsEnabled = true
-    @State private var launchAtLogin = false
     @State private var appearance: AppearanceChoice = .system
     @State private var dailyGoal = AppSettings.defaultDailyWordGoal
     @State private var isTesting = false
     @State private var testResult: ProviderHealthResult?
-    @State private var microphone = PermissionState.unknown
-    @State private var accessibility = PermissionState.unknown
+    /// Login item, permissions and the dictation count, read once and refreshed on appear and
+    /// when the app comes forward, never on every body evaluation.
+    @StateObject private var system: SettingsSystemState
     @State private var confirmation: Confirmation?
     /// The group at the top of the scroll view: drives the index, and scrolls when set.
     @State private var topGroup: String? = SettingsPage.groups[0].id
@@ -64,11 +64,9 @@ struct SettingsPage: View {
         _silenceTimeout = State(initialValue: settings.silenceTimeout)
         _recordingsToKeep = State(initialValue: settings.recordingsToKeep)
         _soundEffectsEnabled = State(initialValue: settings.soundEffectsEnabled)
-        _launchAtLogin = State(initialValue: LoginItem.isEnabled)
         _appearance = State(initialValue: settings.appearance)
         _dailyGoal = State(initialValue: settings.dailyWordGoal)
-        _microphone = State(initialValue: Self.microphoneState())
-        _accessibility = State(initialValue: Self.accessibilityState())
+        _system = StateObject(wrappedValue: SettingsSystemState(history: viewModel.historyStore))
         switch SettingsSnapshot.state {
         case "noKey":
             _hasDeepgramKey = State(initialValue: false)
@@ -118,9 +116,13 @@ struct SettingsPage: View {
                 form
             }
         }
+        // Under the confirmation nothing behind it can be reached by Tab or VoiceOver.
+        .disabled(confirmation != nil)
+        .accessibilityHidden(confirmation != nil)
         .background(Theme.surface)
         .overlay { dialog }
         .onAppear(perform: load)
+        .onChange(of: viewModel.usageRevision) { _, _ in system.refreshCount() }
         // The setup flow can change the engine and the key: re-read only those, so edits
         // elsewhere on the page survive. (AppSettings is not observable, so the end of the
         // flow is the signal.)
@@ -137,7 +139,7 @@ struct SettingsPage: View {
         }
         // Permissions change in System Settings, so look again when the app comes forward.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            refreshPermissions()
+            system.refresh()
         }
     }
 
@@ -196,7 +198,7 @@ struct SettingsPage: View {
                 LanguagePickerButton(selection: languageBinding).frame(width: 200)
             }
             SettingsRow(title: "Daily goal") {
-                SettingsStepper(value: $dailyGoal, range: 100...1_000_000, step: 100,
+                SettingsStepper(label: "Daily goal", value: $dailyGoal, range: 100...1_000_000, step: 100,
                                 format: SettingsFormat.number, editable: true, onCommit: {
                     settings.dailyWordGoal = dailyGoal
                     viewModel.refreshUsage()
@@ -205,7 +207,7 @@ struct SettingsPage: View {
                 Text("words").font(.uv(.meta)).foregroundStyle(Theme.inkMuted)
             }
             SettingsRow(title: "Start at login",
-                        detail: LoginItem.status.needsUserApproval
+                        detail: system.loginNeedsApproval
                             ? "Allow it in System Settings, under Login Items." : nil) {
                 Toggle("", isOn: launchBinding).labelsHidden().accessibilityLabel("Start at login")
             }
@@ -213,12 +215,12 @@ struct SettingsPage: View {
                 Toggle("", isOn: soundBinding).labelsHidden().accessibilityLabel("Sound cues")
             }
             SettingsRow(title: "Microphone") {
-                PremiumStatusBadge(kind: microphone.kind, text: microphone.text)
+                PremiumStatusBadge(kind: system.microphone.kind, text: system.microphone.text)
                 Button("Open System Settings") { UsefulVoiceViewModel.openPrivacyPane("Privacy_Microphone") }
                     .buttonStyle(.brandSecondary).clickableCursor()
             }
             SettingsRow(title: "Accessibility") {
-                PremiumStatusBadge(kind: accessibility.kind, text: accessibility.text)
+                PremiumStatusBadge(kind: system.accessibility.kind, text: system.accessibility.text)
                 Button("Open System Settings") { UsefulVoiceViewModel.openPrivacyPane("Privacy_Accessibility") }
                     .buttonStyle(.brandSecondary).clickableCursor()
             }
@@ -561,21 +563,21 @@ struct SettingsPage: View {
             SettingsRow(title: "Keep recordings",
                         detail: recordingsToKeep == 0 ? "Off. Retry needs a saved recording."
                             : "Lets you retry and reprocess the last \(recordingsToKeep).") {
-                SettingsStepper(value: $recordingsToKeep, range: 0...50, onCommit: {
+                SettingsStepper(label: "Keep recordings", value: $recordingsToKeep, range: 0...50, onCommit: {
                     settings.recordingsToKeep = recordingsToKeep
                     viewModel.refreshConfig()
                     saved()
                 })
             }
-            SettingsRow(title: "Delete all dictations") {
-                let count = viewModel.historyStore.all().count
+            SettingsRow(title: "Delete all dictations",
+                        detail: dictationBusy ? "Finish or cancel the current dictation first." : nil) {
                 Button {
-                    confirmation = .allDictations(count: count)
+                    confirmation = .allDictations(count: viewModel.historyStore.all().count)
                 } label: {
                     Label("Delete all dictations...", systemImage: "trash")
                 }
                 .buttonStyle(.brandDanger)
-                .disabled(count == 0)
+                .disabled(system.dictationCount == 0 || dictationBusy)
                 .clickableCursor()
             }
         }
@@ -625,8 +627,21 @@ struct SettingsPage: View {
     }
 
     private func export(_ text: String, _ name: String, _ type: UTType) {
-        if let url = SettingsFiles.save(text, suggestedName: name, type: type) {
-            toasts.show("Exported \(url.lastPathComponent)")
+        switch SettingsFiles.save(text, suggestedName: name, type: type) {
+        case .done(let url): toasts.show("Exported \(url.lastPathComponent)")
+        case .failed(let reason): toasts.show("Could not export. \(reason)", kind: .danger)
+        case .cancelled: break
+        }
+    }
+
+    /// The text of the file the person picked. A cancel is silent; a read failure is a toast.
+    private func readFile(_ types: [UTType]) -> String? {
+        switch SettingsFiles.open(types: types) {
+        case .done(let text): return text
+        case .failed(let reason):
+            toasts.show("Could not import. \(reason)", kind: .danger)
+            return nil
+        case .cancelled: return nil
         }
     }
 
@@ -635,7 +650,7 @@ struct SettingsPage: View {
     }
 
     private func importVocabularyJSON() {
-        guard let json = SettingsFiles.open(types: [.json]) else { return }
+        guard let json = readFile([.json]) else { return }
         guard let result = viewModel.languageMemory.importSnapshotJSON(json) else {
             toasts.show("The JSON backup could not be read.", kind: .danger)
             return
@@ -644,7 +659,7 @@ struct SettingsPage: View {
     }
 
     private func importCSV(_ run: (String) -> LanguageMemoryImportResult) {
-        guard let csv = SettingsFiles.open(types: [.commaSeparatedText, .plainText]) else { return }
+        guard let csv = readFile([.commaSeparatedText, .plainText]) else { return }
         report(run(csv))
     }
 
@@ -656,7 +671,7 @@ struct SettingsPage: View {
     }
 
     private func importNotesJSON() {
-        guard let json = SettingsFiles.open(types: [.json]) else { return }
+        guard let json = readFile([.json]) else { return }
         guard let result = viewModel.scratchpad.importJSON(json) else {
             toasts.show("The JSON backup could not be read.", kind: .danger)
             return
@@ -755,7 +770,8 @@ struct SettingsPage: View {
             SettingsConfirmDialog(
                 title: "Delete all dictations?",
                 message: "This removes \(InsightsFormat.grouped(count)) dictations and their saved recordings "
-                    + "from this Mac. Notes and your vocabulary stay. You can't undo this.",
+                    + "from this Mac. Notes and your vocabulary stay, and Insights keep your lifetime totals. "
+                    + "You can't undo this.",
                 confirmTitle: "Delete \(InsightsFormat.grouped(count)) dictations",
                 onCancel: { confirmation = nil },
                 onConfirm: {
@@ -767,34 +783,61 @@ struct SettingsPage: View {
         }
     }
 
-    /// Clears the history and the saved recordings. Notes, vocabulary and the lifetime usage
-    /// totals behind Insights are not touched.
+    /// True while a dictation is recording, transcribing or delivering: its audio is in use.
+    private var dictationBusy: Bool {
+        switch viewModel.dictationState {
+        case .recording, .transcribing, .delivering: return true
+        case .idle, .error: return false
+        }
+    }
+
+    /// Clears the history, then the saved recordings. Notes, vocabulary and the lifetime
+    /// usage totals behind Insights are not touched. The recordings are only deleted once the
+    /// history clear has been saved: a failed save leaves both alone.
     private func deleteAllDictations(count: Int) {
+        guard !dictationBusy else {
+            toasts.show("Finish or cancel the current dictation first.", kind: .danger)
+            return
+        }
         viewModel.historyStore.clear()
         viewModel.refreshRecent()
-        var failed = 0
-        let folder = supportFolder.appendingPathComponent("Recordings")
-        if FileManager.default.fileExists(atPath: folder.path) {
-            do {
-                let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
-                for file in files where ["wav", "txt"].contains(file.pathExtension) {
-                    do { try FileManager.default.removeItem(at: file) } catch {
-                        failed += 1
-                        Diagnostics.shared.error("settings", "could not delete \(file.lastPathComponent): \(error.localizedDescription)")
-                    }
-                }
-            } catch {
-                failed += 1
-                Diagnostics.shared.error("settings", "could not list recordings: \(error.localizedDescription)")
-            }
-        }
+        system.refreshCount()
         if let problem = viewModel.historyStore.lastSaveError {
-            toasts.show("Could not delete the dictations: \(problem)", kind: .danger)
-        } else if failed > 0 {
+            toasts.show("Could not delete the dictations: \(problem). Your recordings were kept.", kind: .danger)
+            return
+        }
+        // The app's own folder, and the temporary one the store falls back to when the first
+        // cannot be created.
+        var failed = 0
+        for folder in [supportFolder.appendingPathComponent("Recordings"),
+                       FileManager.default.temporaryDirectory.appendingPathComponent("UsefulVoice-Recordings")] {
+            failed += Self.removeRecordings(in: folder)
+        }
+        viewModel.recordingsDeleted()
+        if failed > 0 {
             toasts.show("Deleted the dictations, but \(failed) recordings could not be removed.", kind: .danger)
         } else {
             toasts.show("Deleted \(InsightsFormat.grouped(count)) dictations", kind: .info)
         }
+    }
+
+    /// Removes the .wav and .txt files in a recordings folder. Returns how many it could not.
+    private static func removeRecordings(in folder: URL) -> Int {
+        guard FileManager.default.fileExists(atPath: folder.path) else { return 0 }
+        var failed = 0
+        do {
+            let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+            for file in files where ["wav", "txt"].contains(file.pathExtension) {
+                do { try FileManager.default.removeItem(at: file) } catch {
+                    failed += 1
+                    Diagnostics.shared.error("settings", "could not delete \(file.lastPathComponent): \(error.localizedDescription)")
+                }
+            }
+        } catch {
+            failed += 1
+            Diagnostics.shared.error("settings", "could not list \(folder.lastPathComponent): \(error.localizedDescription)")
+        }
+        return failed
     }
 
     // MARK: - Bindings that save
@@ -859,11 +902,11 @@ struct SettingsPage: View {
 
     private var launchBinding: Binding<Bool> {
         Binding(
-            get: { launchAtLogin },
+            get: { system.launchAtLogin },
             set: { newValue in
                 do {
                     try LoginItem.setEnabled(newValue)
-                    launchAtLogin = newValue
+                    system.refresh()
                     saved()
                 } catch {
                     toasts.show("Could not update the login setting", kind: .danger)
@@ -895,27 +938,9 @@ struct SettingsPage: View {
         silenceTimeout = settings.silenceTimeout
         recordingsToKeep = settings.recordingsToKeep
         soundEffectsEnabled = settings.soundEffectsEnabled
-        launchAtLogin = LoginItem.isEnabled
         appearance = settings.appearance
         dailyGoal = settings.dailyWordGoal
-        refreshPermissions()
-    }
-
-    private func refreshPermissions() {
-        microphone = Self.microphoneState()
-        accessibility = Self.accessibilityState()
-    }
-
-    private static func microphoneState() -> PermissionState {
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .authorized: return .allowed
-        case .notDetermined: return .notAsked
-        default: return .blocked
-        }
-    }
-
-    private static func accessibilityState() -> PermissionState {
-        AXIsProcessTrusted() ? .allowed : .pastesCopyOnly
+        system.refresh()
     }
 
     // MARK: - Deepgram key actions
@@ -1081,5 +1106,40 @@ private enum PermissionState {
         case .pastesCopyOnly: return "Off, pastes become copy only"
         case .unknown: return "Checking"
         }
+    }
+}
+
+/// What the page reads from the system and the history. Created once with the page, and read
+/// again on appear, when the app comes forward and when a dictation lands.
+@MainActor
+private final class SettingsSystemState: ObservableObject {
+    @Published var launchAtLogin = false
+    @Published var loginNeedsApproval = false
+    @Published var microphone = PermissionState.unknown
+    @Published var accessibility = PermissionState.unknown
+    @Published var dictationCount = 0
+
+    private let history: DictationHistory
+
+    init(history: DictationHistory) {
+        self.history = history
+        refresh()
+    }
+
+    func refresh() {
+        let login = LoginItem.status
+        launchAtLogin = login.isOn
+        loginNeedsApproval = login.needsUserApproval
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized: microphone = .allowed
+        case .notDetermined: microphone = .notAsked
+        default: microphone = .blocked
+        }
+        accessibility = AXIsProcessTrusted() ? .allowed : .pastesCopyOnly
+        refreshCount()
+    }
+
+    func refreshCount() {
+        dictationCount = history.all().count
     }
 }

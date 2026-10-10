@@ -94,10 +94,10 @@ struct HUDError: Equatable {
             message = "No engine set up"
             symbol = "exclamationmark.triangle"
         case .keyRejected:
-            message = "Deepgram key was rejected"
+            message = "Deepgram key rejected"
             symbol = "key"
         case .outOfCredits:
-            message = "Deepgram is out of credits"
+            message = "Deepgram out of credits"
             symbol = "exclamationmark.triangle"
         case .timedOut:
             message = "Timed out"

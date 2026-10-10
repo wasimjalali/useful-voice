@@ -93,6 +93,8 @@ final class UsefulVoiceViewModel: ObservableObject {
     func recordingsDeleted() {
         onRecordingsDeleted?()
         canRetry = false
+        // A Retry offered for audio that is now gone would be a dead button.
+        if lastIssue?.fix == .retry { dismissIssue() }
     }
 
     func refreshState(_ state: DictationState) {
@@ -108,8 +110,9 @@ final class UsefulVoiceViewModel: ObservableObject {
         publishFeedback()
     }
 
-    /// Clears the issue the window shows (the dock row). The HUD's x and its 8 s
-    /// only hide the HUD: the fix stays reachable in the window and the menu.
+    /// Clears the issue the window shows (the dock row), when its fix no longer
+    /// applies. The HUD's x and its 8 s only hide the HUD: the fix stays
+    /// reachable in the window and the menu until the next dictation.
     func dismissIssue() {
         feedback.dismissIssue()
         publishFeedback()

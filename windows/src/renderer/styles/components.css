@@ -59,7 +59,7 @@
 
 .btn:hover:not(:disabled) { background: var(--line); }
 .btn:active { transform: scale(0.98); }
-.btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+.btn:disabled { opacity: 0.55; cursor: default; transform: none; }
 
 /* Secondary is the default look; the class names it explicitly where a page wants to. */
 .btn-secondary { background: var(--sunken); color: var(--ink); }
@@ -112,7 +112,8 @@
   cursor: pointer;
   transition: background var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out);
 }
-.icon-btn:hover { background: var(--accent-soft); color: var(--ink); }
+.icon-btn:hover:not(:disabled) { background: var(--accent-soft); color: var(--ink); }
+.icon-btn:disabled { opacity: 0.55; cursor: default; }
 .icon-btn svg { width: 16px; height: 16px; }
 
 /* ---------- Fields ---------- */
@@ -272,6 +273,7 @@
   background: var(--ink-muted);
   transition: transform var(--dur-hover) var(--ease-out), background var(--dur-hover) var(--ease-out);
 }
+.switch:disabled { opacity: 0.55; cursor: default; }
 .switch[aria-checked="true"] { background: var(--accent); box-shadow: none; }
 .switch[aria-checked="true"]::after { transform: translateX(14px); background: var(--accent-ink); }
 
@@ -368,6 +370,8 @@
   place-items: center;
   background: var(--scrim);
   z-index: 50;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
   animation: fade-in var(--dur-state) var(--ease-out);
 }
 .dialog-panel {
@@ -405,28 +409,6 @@
   color: var(--hud-ink);
   font-weight: 600;
   cursor: pointer;
-}
-
-.undo-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 9px 14px;
-  border-radius: var(--r-md);
-  background: var(--hud-surface);
-  color: var(--hud-ink);
-  font-size: var(--fs-ui);
-  animation: rise var(--dur-hud-enter) var(--ease-out);
-}
-.undo-bar button {
-  border: 0;
-  background: transparent;
-  color: var(--hud-ink);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-  font-weight: 550;
-  padding: 0;
 }
 
 /* ---------- Utilities ---------- */

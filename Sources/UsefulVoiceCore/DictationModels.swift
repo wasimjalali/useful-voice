@@ -21,8 +21,8 @@ public enum DeliveryMode: Sendable, Equatable {
 public enum DeliveryResult: Sendable, Equatable {
     /// Inserted into the focused app.
     case pasted
-    /// Paste mode, but nothing landed: the text is on the clipboard for the user
-    /// to paste. This is a notice, not an error.
+    /// Paste mode, but the paste could not be posted because Accessibility is off:
+    /// the text is on the clipboard for the user to paste. A notice, not an error.
     case copiedNotPasted
     /// Copy mode: the text is on the clipboard, as asked.
     case copied
@@ -32,6 +32,11 @@ public enum DeliveryResult: Sendable, Equatable {
     /// Paste mode, but a password field took focus, so nothing was typed into it
     /// and the text was left on the clipboard. Not a permission problem.
     case copiedSecureField
+    /// Paste mode with Accessibility on, but a field we could measure did not change
+    /// after the paste and a direct insert did not verifiably land, or the paste
+    /// could not be posted although Accessibility is on. The text is on the
+    /// clipboard. Not a permission problem.
+    case copiedNotLanded
 }
 
 /// Delivery could not put the text where it was meant to go (the clipboard write
@@ -209,17 +214,20 @@ public enum DictationOutcome: Equatable, Sendable {
 /// or the notice that text was copied but not pasted.
 public enum DictationIssue: Equatable, Sendable {
     case error(DictationError)
-    /// The paste could not land (usually Accessibility is off).
+    /// The paste could not be posted: Accessibility is off.
     case copiedNotPasted
     /// The user switched apps, so the text was copied. Permissions are fine.
     case copiedAppChanged
+    /// The measured field did not take the paste although Accessibility is on.
+    /// Permissions are fine.
+    case copiedNotLanded
     /// A password field had focus, so the text was copied instead. No fix.
     case copiedSecureField
 
     public var message: String {
         switch self {
         case .error(let error): return error.message
-        case .copiedNotPasted, .copiedAppChanged, .copiedSecureField: return "Copied. Press \u{2318}V to paste."
+        case .copiedNotPasted, .copiedAppChanged, .copiedSecureField, .copiedNotLanded: return "Copied. Press \u{2318}V to paste."
         }
     }
 
@@ -229,7 +237,7 @@ public enum DictationIssue: Equatable, Sendable {
         switch self {
         case .error(let error): return error.fix
         case .copiedNotPasted: return .openAccessibilitySettings
-        case .copiedAppChanged, .copiedSecureField: return nil
+        case .copiedAppChanged, .copiedSecureField, .copiedNotLanded: return nil
         }
     }
 }
@@ -267,6 +275,7 @@ public struct DictationFeedback: Equatable, Sendable {
             case .copiedNotPasted: issue = .copiedNotPasted
             case .copiedAppChanged: issue = .copiedAppChanged
             case .copiedSecureField: issue = .copiedSecureField
+            case .copiedNotLanded: issue = .copiedNotLanded
             case .pasted, .copied: break
             }
         }

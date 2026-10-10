@@ -5,29 +5,43 @@ import UsefulVoiceCore
 private struct ClickableCursorModifier: ViewModifier {
     let enabled: Bool
     @Environment(\.isEnabled) private var isEnabled
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        let active = enabled && isEnabled
+        if #available(macOS 15, *) {
+            content.pointerStyle(active ? .link : nil)
+        } else {
+            content.modifier(LegacyClickableCursor(active: active))
+        }
+    }
+}
+
+/// macOS 14 fallback: push and pop the hand on hover, and re-evaluate when the control
+/// is enabled or disabled while the pointer rests on it.
+private struct LegacyClickableCursor: ViewModifier {
+    let active: Bool
+    @State private var hovering = false
     @State private var cursorPushed = false
 
     func body(content: Content) -> some View {
         content
             .onHover { inside in
-                guard enabled, isEnabled else {
-                    popIfNeeded()
-                    return
-                }
-                if inside, !cursorPushed {
-                    NSCursor.pointingHand.push()
-                    cursorPushed = true
-                } else if !inside {
-                    popIfNeeded()
-                }
+                hovering = inside
+                sync()
             }
+            .onChange(of: active) { _, _ in sync() }
             .onDisappear {
-                popIfNeeded()
+                hovering = false
+                sync()
             }
     }
 
-    private func popIfNeeded() {
-        if cursorPushed {
+    private func sync() {
+        if active, hovering, !cursorPushed {
+            NSCursor.pointingHand.push()
+            cursorPushed = true
+        } else if !(active && hovering), cursorPushed {
             NSCursor.pop()
             cursorPushed = false
         }
@@ -251,6 +265,9 @@ private struct BrandSwitchBody: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // On the button, so the hand covers exactly what toggles (the track, and a
+        // label if one is ever shown).
+        .clickableCursor()
         .focusEffectDisabled()
         .overlay(alignment: .trailing) {
             if isFocused {
@@ -261,7 +278,6 @@ private struct BrandSwitchBody: View {
             }
         }
         .opacity(isEnabled ? 1 : 0.55)
-        .clickableCursor()
         .accessibilityAddTraits(.isToggle)
         .accessibilityValue(configuration.isOn ? "On" : "Off")
     }
@@ -287,41 +303,6 @@ private struct BrandSwitchBody: View {
 }
 
 // MARK: - Chip, key cap and status pill
-
-/// A filter or tag chip: 26 pt, pill, quiet by default, solid ink when selected.
-/// Display-only when `action` is nil.
-struct BrandChip: View {
-    let title: String
-    var selected = false
-    var action: (() -> Void)?
-
-    @State private var hovering = false
-
-    var body: some View {
-        if let action {
-            Button(action: action) { chip }
-                .buttonStyle(.plain)
-                .onHover { hovering = $0 }
-                .clickableCursor()
-                .accessibilityAddTraits(selected ? [.isSelected] : [])
-        } else {
-            chip
-        }
-    }
-
-    private var chip: some View {
-        Text(title)
-            .font(.uv(.meta))
-            .lineLimit(1)
-            .foregroundStyle(selected ? Theme.accentInk : Theme.inkMuted)
-            .padding(.horizontal, 10)
-            .frame(height: 26)
-            .background(selected ? Theme.accent : (hovering ? Theme.line : Theme.sunken), in: Capsule())
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .circular)
-                .strokeBorder(selected ? Color.clear : Theme.edge, lineWidth: 1))
-            .brandAnimation(BrandMotion.control, value: hovering)
-    }
-}
 
 /// A key cap such as "Right Command": 20 pt, 6 pt radius, a 1 pt bottom edge.
 struct BrandKbd: View {
@@ -460,6 +441,8 @@ struct PremiumSearchField: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(Theme.inkMuted)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .clickableCursor()
@@ -517,29 +500,29 @@ struct BrandedMenuPicker<Value: Hashable>: View {
             }
             .font(.uv(.ui, .medium))
             .foregroundStyle(Theme.ink)
+            .padding(.horizontal, 12)
             .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
+            .frame(height: 34)
+            .background(
+                RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                    .fill(hovering || isPresented ? Theme.sunken : Theme.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                    .strokeBorder(isPresented ? Theme.ink : Theme.controlEdge, lineWidth: 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 12)
-        .frame(height: 34)
-        .background(
-            RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
-                .fill(hovering || isPresented ? Theme.sunken : Theme.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
-                .strokeBorder(isPresented ? Theme.ink : Theme.controlEdge, lineWidth: 1)
-        )
         .fixedSize(horizontal: false, vertical: true)
         .onHover { hovering = $0 }
         .brandAnimation(BrandMotion.control, value: hovering)
         .brandAnimation(BrandMotion.control, value: isPresented)
+        .clickableCursor()
         .popover(isPresented: $isPresented, arrowEdge: .bottom) { menuList }
         .help(title)
         .accessibilityLabel(title)
         .accessibilityValue(selectedLabel)
-        .clickableCursor()
     }
 
     private var menuList: some View {
@@ -922,31 +905,6 @@ struct CommandMetric: View {
             RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
                 .strokeBorder(Theme.line, lineWidth: 1)
         )
-    }
-}
-
-struct CommandToolbarButton: View {
-    let systemImage: String
-    let title: String
-    var tint: Color = Theme.ink
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .labelStyle(.iconOnly)
-                .font(.uv(.meta, .semibold))
-                .frame(width: 30, height: 30)
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(tint)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
-                .strokeBorder(tint.opacity(0.24), lineWidth: 1)
-        )
-        .help(title)
-        .clickableCursor()
     }
 }
 

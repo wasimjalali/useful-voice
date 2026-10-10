@@ -53,14 +53,21 @@ public enum DeliveryPolicy {
     ///   - axVisible: the focused element exposed a character count, so its
     ///     growth can be measured and a direct AX insert can be verified.
     ///   - axInsertGrew: a direct AX insert was attempted and the element grew.
+    ///   - targetChanged: the measured element changed after the paste, but not by
+    ///     exactly the payload (its count moved by another amount, or the app
+    ///     re-created it). Web composers do this: Claude's and Slack's report a
+    ///     count one or two off, so a paste that landed read as a miss.
     public static func finalDecision(pastePosted: Bool,
                                      axVisible: Bool,
-                                     axInsertGrew: Bool) -> DeliveryDecision {
+                                     axInsertGrew: Bool,
+                                     targetChanged: Bool = false) -> DeliveryDecision {
         if axVisible {
             // We can measure this element. If a direct AX insert grew it, that
-            // landed; otherwise neither paste nor AX insert put anything in, so
-            // it is a real miss and the user must paste by hand.
-            return axInsertGrew ? .insertedViaAXRestore : .keepDictationManual
+            // landed. If the paste changed it without matching the payload, the
+            // paste almost certainly landed: treat it like an AX-blind target. Only
+            // an element neither one touched is a real miss to paste by hand.
+            if axInsertGrew { return .insertedViaAXRestore }
+            return pastePosted && targetChanged ? .keepDictationPasted : .keepDictationManual
         }
         // AX-blind target. If we managed to post the paste, assume it landed
         // (these apps handle Cmd-V) but keep the dictation as a safety net. If we

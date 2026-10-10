@@ -60,7 +60,17 @@ final class HUDPanel: NSObject {
         hideTimer?.invalidate()
         hideTimer = nil
 
-        if model.display != display { model.display = display }
+        if model.display != display {
+            if isShowing {
+                model.display = display
+            } else {
+                // Coming back from hidden: swap without the morph. Animating it faded
+                // the last outcome ("Copied…") out over the new "0:00" as it entered.
+                var swap = Transaction()
+                swap.disablesAnimations = true
+                withTransaction(swap) { model.display = display }
+            }
+        }
         announce(display)
 
         if panel == nil { buildPanel() }

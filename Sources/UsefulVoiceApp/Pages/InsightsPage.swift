@@ -162,7 +162,6 @@ struct InsightsPage: View {
             .controlSize(.large)
             // A dictation already running would be stopped by the toggle.
             .disabled(!dictationIdle)
-            .clickableCursor()
         }
     }
 
@@ -213,6 +212,7 @@ struct InsightsPage: View {
         return InsightsTile(title: "Goal and streak", meta: meta) {
             HStack(spacing: 26) {
                 InsightsRings(goal: goalFraction, streak: streakFraction)
+                    .fitSquare(170, minScale: 0.7)
                 VStack(alignment: .leading, spacing: 18) {
                     legendFigure(color: InsightsInk.k1, label: "Daily goal",
                                  value: InsightsFormat.grouped(d.todayWords),
@@ -240,6 +240,7 @@ struct InsightsPage: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .layoutPriority(1)
             }
             .frame(maxHeight: .infinity)
         }
@@ -286,10 +287,10 @@ struct InsightsPage: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .frame(maxWidth: 120, maxHeight: .infinity, alignment: .topLeading)
+                .frame(minWidth: 88, maxWidth: 120, maxHeight: .infinity, alignment: .topLeading)
+                .layoutPriority(1)
                 Spacer(minLength: 0)
                 InsightsRadial(hours: d.hours, empty: d.peakHour == nil)
-                    .padding(.trailing, -6)
             }
             .frame(maxHeight: .infinity)
         }

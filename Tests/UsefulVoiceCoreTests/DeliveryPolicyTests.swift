@@ -30,6 +30,24 @@ import Testing
         #expect(decision.needsManualPasteHint)
     }
 
+    @Test func testMeasuredTargetThatChangedOffByOneCountsAsPasted() {
+        // Claude's composer: the paste landed, but the count moved by one less than
+        // the payload (or the field was re-created). That read as a miss and showed
+        // "Copied. Press ⌘V" with an Accessibility button although the text was in.
+        let decision = DeliveryPolicy.finalDecision(
+            pastePosted: true, axVisible: true, axInsertGrew: false, targetChanged: true)
+        #expect(decision == .keepDictationPasted)
+        #expect(decision.restoresUserClipboard == false)
+        #expect(decision.needsManualPasteHint == false)
+    }
+
+    @Test func testChangedTargetWithoutAPostedPasteIsStillAMiss() {
+        // The paste never went out; a change in the field was the user typing.
+        let decision = DeliveryPolicy.finalDecision(
+            pastePosted: false, axVisible: true, axInsertGrew: false, targetChanged: true)
+        #expect(decision == .keepDictationManual)
+    }
+
     // MARK: - The happy paths that DO restore
 
     @Test func testAXInsertThatGrewRestoresClipboard() {

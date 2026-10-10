@@ -113,6 +113,18 @@ import Combine
         #expect(DictationIssue.copiedNotPasted.fix == .openAccessibilitySettings)
     }
 
+    @Test func testMissWithAccessibilityOnRaisesANoticeWithNoAccessibilityFix() {
+        // Accessibility is granted, so "Open settings" would send the user to a
+        // permission that is already on (the owner hit exactly this).
+        var feedback = DictationFeedback()
+        feedback.apply(state: .delivering)
+        feedback.apply(outcome: .delivered(words: 3, mode: .copiedNotLanded, appName: "Claude"))
+        feedback.apply(state: .idle)
+        #expect(feedback.issue == .copiedNotLanded)
+        #expect(feedback.issue?.fix == nil)
+        #expect(feedback.issue?.message == "Copied. Press \u{2318}V to paste.")
+    }
+
     @Test func testSecureFieldCopyRaisesANoticeWithNoFix() {
         var feedback = DictationFeedback()
         feedback.apply(state: .delivering)

@@ -162,24 +162,26 @@ struct LandingMark: View {
     }
 }
 
-/// The dark app-icon tile with the mark in it (rail logo, first run).
+/// The app-icon tile with the mark in it (rail logo, first run): the dark tile
+/// (`app-icon-dark.svg`) in the light appearance and the light tile
+/// (`app-icon-light.svg`) in the dark one, so the logo always stands out from
+/// the canvas instead of sinking into a dark rail.
 struct LandingTile: View {
     let size: CGFloat
     var radius: CGFloat? = nil
     var animated = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let r = radius ?? size * 0.25
+        let dark = colorScheme == .dark
         LandingMark(style: animated && !reduceMotion ? .idle : .still,
-                    size: size * 0.55, fill: Theme.hudInk)
+                    size: size * 0.55, fill: dark ? Theme.markTile : Theme.hudInk)
             .frame(width: size, height: size)
-            // The tile is dark in both appearances (the board's dark default
-            // tile); on a dark canvas a 1px tone ring keeps its edge visible.
-            .background(Theme.markTile, in: RoundedRectangle(cornerRadius: r, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: r, style: .continuous)
-                .strokeBorder(Theme.tone, lineWidth: 1))
+            .background(dark ? Theme.hudInk : Theme.markTile,
+                        in: RoundedRectangle(cornerRadius: r, style: .continuous))
             .accessibilityElement()
             .accessibilityLabel("Useful Voice")
     }

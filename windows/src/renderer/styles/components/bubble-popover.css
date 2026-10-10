@@ -11,6 +11,8 @@
   border-radius: var(--r-md);
   box-shadow: var(--shadow-pop);
   animation: floating-in var(--dur-state) var(--ease-out);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .floating[data-placement="above"] { animation-name: floating-in-up; }
@@ -46,7 +48,7 @@
 .bm-item svg { flex: none; color: var(--ink-muted); }
 .bm-item:hover:not(:disabled), .bm-item:focus-visible { background: var(--sunken); outline: none; }
 .bm-item:focus-visible { box-shadow: inset 2px 0 0 var(--ink); }
-.bm-item:disabled { color: var(--ink-muted); cursor: not-allowed; }
+.bm-item:disabled { color: var(--ink-muted); cursor: default; }
 .bm-item.is-danger { color: var(--danger); }
 .bm-item.is-danger svg { color: var(--danger); }
 .bm-sep { height: 1px; margin: 4px 6px; background: var(--line); }

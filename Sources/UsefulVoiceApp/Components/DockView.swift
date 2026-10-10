@@ -21,7 +21,7 @@ struct DockIssue: Equatable {
         detail = issue.message
         fix = issue.fix
         switch issue {
-        case .copiedNotPasted, .copiedAppChanged, .copiedSecureField:
+        case .copiedNotPasted, .copiedAppChanged, .copiedSecureField, .copiedNotLanded:
             (lead, rest, icon, tone, micOff) = ("Copied.", "Press \u{2318}V to paste.", "exclamationmark.triangle", .warning, false)
         case .error(let error):
             let saved = canRetry ? "Your recording is saved on this Mac." : ""
@@ -174,7 +174,7 @@ struct StreamDock: View {
                 switch mode {
                 case .pasted: return .done(words: words, destination: app.map { "Inserted into \($0)" } ?? "Inserted")
                 case .copied: return .done(words: words, destination: "Saved and copied")
-                case .copiedNotPasted, .copiedAppChanged, .copiedSecureField: break
+                case .copiedNotPasted, .copiedAppChanged, .copiedSecureField, .copiedNotLanded: break
                 }
             }
             return .idle
@@ -189,13 +189,13 @@ struct StreamDock: View {
             ZStack(alignment: .leading) {
                 content(phase: phase, issue: issue)
                     .id(phase.key)
-                    .transition(.opacity)
+                    .transition(.morphSwap)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             trailing(phase: phase, issue: issue)
                 .fixedSize(horizontal: true, vertical: false)
                 .id(phase.key + "-trailing")
-                .transition(.opacity)
+                .transition(.morphSwap)
         }
         .padding(.leading, 12)
         .padding(.trailing, 14)
@@ -259,7 +259,7 @@ struct StreamDock: View {
         }
         .buttonStyle(.plain)
         .disabled(busy)
-        .clickableCursor()
+        .clickableCursor(!busy)
         .accessibilityLabel(recording ? "Stop dictation" : "Start dictation")
     }
 

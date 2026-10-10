@@ -25,8 +25,9 @@ struct StreamPage: View {
     let settings: AppSettings
     @StateObject private var store: StreamStore
 
-    /// The one column the header, timeline and dock share, so they keep one left edge.
-    private static let columnWidth: CGFloat = 876
+    /// Keeps the first keyboard focus off the search field, which would otherwise draw
+    /// its focus ring the moment the page opens.
+    @FocusState private var landing: Bool
 
     init(viewModel: UsefulVoiceViewModel, settings: AppSettings) {
         self.viewModel = viewModel
@@ -60,10 +61,23 @@ struct StreamPage: View {
             .padding(.horizontal, 28)
             .padding(.bottom, 16)
         }
-        .frame(maxWidth: Self.columnWidth)
-        .frame(maxWidth: .infinity)
-        .background(Theme.surface)
-        .overlay(alignment: .bottom) {
+        .background {
+            Color.clear
+                .frame(width: 1, height: 1)
+                .focusable()
+                .focused($landing)
+                .focusEffectDisabled()
+                .accessibilityHidden(true)
+        }
+        .defaultFocus($landing, true)
+        .onAppear {
+            // The window hands the first key view (the search field) focus when it opens,
+            // after defaultFocus ran. Take it back until the person clicks the field.
+            for delay in [0.0, 0.05, 0.3] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { landing = true }
+            }
+        }
+        .overlay(alignment: .bottomLeading) {
             if let toast = store.toast {
                 StreamToastView(toast: toast) { store.dismissToast() }
                     .padding(.bottom, 16 + 64 + 12)
@@ -160,7 +174,7 @@ private struct StreamFilterRow: View {
                 .padding(.horizontal, 2)
             }
             Button { store.exportShown() } label: {
-                Image(systemName: "square.and.arrow.down")
+                Image(systemName: "arrow.down.to.line")
             }
             .buttonStyle(PremiumIconButtonStyle())
             .help("Copy as text")

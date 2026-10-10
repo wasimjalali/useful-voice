@@ -13,6 +13,7 @@ struct StreamTimeline: View {
     @State private var atBottom = true
 
     private static let bottomID = "stream-bottom"
+    static let scrollSpace = "stream-scroll"
 
     var body: some View {
         ZStack {
@@ -46,6 +47,7 @@ struct StreamTimeline: View {
                     .padding(.horizontal, 28)
                     .padding(.bottom, 24)
                 }
+                .coordinateSpace(name: Self.scrollSpace)
                 .defaultScrollAnchor(.bottom)
                 .onChange(of: store.focusedID) { _, id in
                     guard let id else { return }
@@ -112,6 +114,8 @@ private struct StreamDayBand: View {
     let jump: (Date) -> Void
 
     @State private var open = false
+    /// True while the band is stuck to the top of the list: the hairline shows then.
+    @State private var pinned = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -140,6 +144,17 @@ private struct StreamDayBand: View {
         .padding(.top, 12)
         .padding(.bottom, 8)
         .background(Theme.surface)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Theme.line).frame(height: 1).opacity(pinned ? 1 : 0)
+        }
         .padding(.horizontal, -28)
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onChange(of: proxy.frame(in: .named(StreamTimeline.scrollSpace)).minY) { _, y in
+                        pinned = y <= 1
+                    }
+            }
+        }
     }
 }

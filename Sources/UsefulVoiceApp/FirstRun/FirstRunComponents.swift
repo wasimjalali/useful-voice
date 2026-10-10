@@ -4,16 +4,24 @@ import UsefulVoiceCore
 
 /// Colors the first-run mockups use that Theme has no role for.
 enum FRColor {
+    // The Deepgram card is dark in both themes, so everything on it is fixed.
     static let darkField = Theme.rgb(0x23, 0x23, 0x23)
     static let darkFieldLine = Theme.rgb(0x3A, 0x3A, 0x3A)
     static let darkRule = Theme.rgb(0x2E, 0x2E, 0x2E)
     static let darkButton = Theme.rgb(0x33, 0x33, 0x33)
     static let quiet = Theme.rgb(0x8C, 0x8C, 0x8C)
-    static let rowLine = Theme.rgb(0xE4, 0xE4, 0xE4)
-    static let track = Theme.rgb(0xDC, 0xDC, 0xDC)
-    static let hover = Theme.rgb(0xE6, 0xE6, 0xE6)
-    static let meterQuiet = Theme.rgb(0xD4, 0xD4, 0xD4)
-    static let toggleOff = Theme.rgb(0xD4, 0xD4, 0xD4)
+    static let cardSurface = Theme.hudSurface
+    static let cardInk = Theme.hudInk
+    static let cardButtonInk = Theme.rgb(0x17, 0x17, 0x17)
+    static let cardFaint = Theme.rgb(0xA3, 0xA3, 0xA3)
+
+    static let rowLine = Theme.dynamic(light: 0xE4E4E4, dark: 0x2A2A2A)
+    static let track = Theme.dynamic(light: 0xDCDCDC, dark: 0x333333)
+    static let hover = Theme.dynamic(light: 0xE6E6E6, dark: 0x2C2C2C)
+    static let meterQuiet = Theme.dynamic(light: 0xD4D4D4, dark: 0x3A3A3A)
+    static let toggleOff = Theme.dynamic(light: 0xD4D4D4, dark: 0x3A3A3A)
+    static let switchKnob = Theme.dynamic(light: 0xFFFFFF, dark: 0xE0E0E0)
+    static let spinnerTrack = Theme.dynamic(light: 0xD9D9D9, dark: 0x3A3A3A)
 }
 
 // MARK: - Glyphs
@@ -121,7 +129,7 @@ struct WaitingSpinner: View {
                     .frame(width: 14, height: 14)
             } else {
                 Circle()
-                    .stroke(Theme.rgb(0xD9, 0xD9, 0xD9), lineWidth: 2)
+                    .stroke(FRColor.spinnerTrack, lineWidth: 2)
                     .overlay(Circle().trim(from: 0, to: 0.25).stroke(Theme.ink, lineWidth: 2))
                     .frame(width: 14, height: 14)
                     .rotationEffect(.degrees(turn ? 360 : 0))
@@ -184,7 +192,7 @@ struct FRPrimaryButton: View {
                 .foregroundStyle(Theme.brandInk)
                 .frame(maxWidth: .infinity)
                 .frame(height: 44)
-                .background(Theme.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(Theme.ink, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
         .keyboardShortcut(.defaultAction)
@@ -272,7 +280,7 @@ struct FRErrorBanner: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.dangerSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(Theme.dangerSoft, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .combine)
         .onAppear { Self.announce(text) }
         .onChange(of: text) { _, next in Self.announce(next) }
@@ -290,11 +298,11 @@ struct FRKeyCap: View {
             .padding(.horizontal, 10)
             .frame(height: 26)
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(Theme.surface)
                     .shadow(color: FRColor.track, radius: 0, x: 0, y: 1)
             )
-            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .strokeBorder(FRColor.track, lineWidth: 1))
             .fixedSize()
     }

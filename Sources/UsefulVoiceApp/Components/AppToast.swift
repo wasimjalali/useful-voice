@@ -32,13 +32,13 @@ final class AppToastCenter: ObservableObject {
 
         hideWorkItem?.cancel()
         let item = Item(message: trimmed, kind: kind)
-        withAnimation(.easeOut(duration: 0.18)) {
+        withAnimation(BrandMotion.resolved(BrandMotion.hudEnter)) {
             current = item
         }
 
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.current?.id == item.id else { return }
-            withAnimation(.easeIn(duration: 0.16)) {
+            withAnimation(BrandMotion.resolved(BrandMotion.hudExit)) {
                 self.current = nil
             }
         }
@@ -48,7 +48,7 @@ final class AppToastCenter: ObservableObject {
 
     func dismiss() {
         hideWorkItem?.cancel()
-        withAnimation(.easeIn(duration: 0.16)) {
+        withAnimation(BrandMotion.resolved(BrandMotion.hudExit)) {
             current = nil
         }
     }
@@ -64,17 +64,19 @@ struct PremiumToastHost: View {
                 PremiumToastBanner(item: item) {
                     toasts.dismiss()
                 }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(.brandRise())
                 .padding(.bottom, 22)
                 .padding(.horizontal, 24)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(toasts.current != nil)
-        .animation(.easeOut(duration: 0.18), value: toasts.current?.id)
+        .animation(BrandMotion.resolved(BrandMotion.hudEnter), value: toasts.current?.id)
     }
 }
 
+/// The board's toast: an always-dark capsule (hud surface and ink) with a status
+/// glyph, the message and a 24 pt close target.
 private struct PremiumToastBanner: View {
     let item: AppToastCenter.Item
     let onDismiss: () -> Void
@@ -82,14 +84,12 @@ private struct PremiumToastBanner: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.uv(.ui, .semibold))
                 .foregroundStyle(tint)
-                .frame(width: 28, height: 28)
-                .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
 
             Text(item.message)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Theme.ink)
+                .font(.uv(.ui, .medium))
+                .foregroundStyle(Theme.hudInk)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -97,34 +97,37 @@ private struct PremiumToastBanner: View {
 
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Theme.muted)
-                    .frame(width: 22, height: 22)
+                    .font(.uv(.label, .bold))
+                    .foregroundStyle(Theme.hudInk.opacity(0.7))
+                    .frame(width: 24, height: 24)
+                    .background(Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: Radius.xs, style: .continuous))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .clickableCursor()
             .help("Dismiss")
+            .accessibilityLabel("Dismiss")
         }
-        .padding(.leading, 12)
-        .padding(.trailing, 10)
-        .padding(.vertical, 11)
+        .padding(.leading, 14)
+        .padding(.trailing, 8)
+        .padding(.vertical, 7)
+        .frame(minHeight: 38)
         .frame(maxWidth: 420)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Theme.line, lineWidth: 1)
-        )
-        .shadow(color: Theme.brand.opacity(0.10), radius: 14, x: 0, y: 6)
+        .background(Theme.hudSurface, in: RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
+            .strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5))
+        .themeShadow(.pop)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(item.message)
     }
 
+    /// The glyph sits on the dark toast in both themes, so it takes the dark-palette
+    /// status colors.
     private var tint: Color {
         switch item.kind {
-        case .success: return Theme.success
-        case .info: return Theme.brand
-        case .danger: return Theme.danger
+        case .success: return Theme.rgb(0x4C, 0xC3, 0x9B)
+        case .info: return Theme.hudInk
+        case .danger: return Theme.hudDanger
         }
     }
 

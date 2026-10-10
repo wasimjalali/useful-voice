@@ -101,13 +101,13 @@ struct SettingsPage: View {
         ) {
             WrappingHStack(horizontalSpacing: 10, verticalSpacing: 8) {
                 Button(isTesting ? "Testing" : "Test connection") { testConnection() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.brandSecondary)
                     .tint(Theme.brand)
                     .controlSize(.large)
                     .clickableCursor()
                     .disabled(isTesting)
                 Button("Save settings") { save() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.brandPrimary)
                     .tint(Theme.brand)
                     .controlSize(.large)
                     .clickableCursor()

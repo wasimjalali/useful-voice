@@ -11,6 +11,13 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# With full Xcode selected, swift-testing ships with the toolchain and the CLT
+# workaround below breaks the build: its Testing.framework no longer matches
+# Xcode's TestingMacros plugin ("no member named '__SourceBounds'").
+if xcode-select -p 2>/dev/null | grep -q '\.app/'; then
+  exec swift test "$@"
+fi
+
 CF=/Library/Developer/CommandLineTools/Library/Developer/Frameworks
 FW="$CF/Testing.framework"
 

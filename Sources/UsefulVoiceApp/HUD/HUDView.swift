@@ -72,7 +72,7 @@ struct HUDView: View {
             // running time, and a quiet hint that Esc cancels: everything a
             // dictation app like WhisperFlow shows while you speak.
             RecordingDot(reduceMotion: reduceMotion)
-            UsefulVoiceWaveBars(style: .live(level: level), fill: Theme.hudMark)
+            LandingMark(level: level, size: 22, fill: Theme.hudMark)
             Text(Self.timecode(seconds))
                 .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(Theme.hudInk)
@@ -196,91 +196,5 @@ private struct KeyHint: View {
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .strokeBorder(Theme.hudInk.opacity(0.16), lineWidth: 1)
             )
-    }
-}
-
-/// The Useful Voice mark, rendered live: five rounded bars in the logo's
-/// 0.4 / 0.7 / 1.0 / 0.7 / 0.4 mountain. In `.live` mode the bars rise with the
-/// mic level while always holding the mountain silhouette, so the pill reads as
-/// the logo even in silence. `.still` is the resting mark used as a small glyph.
-struct UsefulVoiceWaveBars: View {
-    enum Style: Equatable { case live(level: Float), still }
-    let style: Style
-    var barHeight: CGFloat = 22
-    var barWidth: CGFloat = 4
-    var spacing: CGFloat = 3
-    var fill: Color = Theme.ink
-    var peakFill: Color? = nil
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    /// The logo's silhouette.
-    private let weights: [CGFloat] = [0.4, 0.7, 1.0, 0.7, 0.4]
-    /// Shortest a bar ever gets, so the mark never collapses to a flat line.
-    private let floorRatio: CGFloat = 0.18
-    /// Height held at silence, as a fraction of each bar's full height: keeps the
-    /// mountain readable with no sound.
-    private let restRatio: CGFloat = 0.6
-    /// Mic-level sensitivity. The recorder's level is roughly 0...1 already; this
-    /// opens up the usable speaking range.
-    private let gain: CGFloat = 11
-
-    var body: some View {
-        switch style {
-        case .still:
-            bars { fraction(at: $0, level: 0, phase: 0, animated: false) }
-        case .live(let level):
-            if reduceMotion {
-                // Reduced motion: follow loudness only, no ripple, gentle ease.
-                bars { fraction(at: $0, level: level, phase: 0, animated: false) }
-                    .animation(.easeOut(duration: 0.12), value: level)
-            } else {
-                // A continuous time source so the bars ripple EVERY frame, not
-                // only when a new level sample arrives (~10-30Hz). The mic level
-                // sets the wave's amplitude; time gives it the flow. This is what
-                // makes the mark read as a live waveform instead of a slow pulse.
-                TimelineView(.animation) { timeline in
-                    let phase = timeline.date.timeIntervalSinceReferenceDate
-                    bars { fraction(at: $0, level: level, phase: phase, animated: true) }
-                }
-            }
-        }
-    }
-
-    private func bars(_ heightFraction: @escaping (Int) -> CGFloat) -> some View {
-        HStack(spacing: spacing) {
-            ForEach(weights.indices, id: \.self) { index in
-                Capsule()
-                    .fill(index == 2 ? (peakFill ?? fill) : fill)
-                    .frame(width: barWidth, height: pixels(heightFraction(index)))
-            }
-        }
-        .frame(width: CGFloat(weights.count) * barWidth + CGFloat(weights.count - 1) * spacing,
-               height: barHeight, alignment: .center)
-    }
-
-    /// Maps a 0...1 fraction of full height to pixels, never below the floor so
-    /// the mark never collapses to a flat line.
-    private func pixels(_ fraction: CGFloat) -> CGFloat {
-        let floor = barHeight * floorRatio
-        let span = barHeight - floor
-        return floor + span * min(max(fraction, 0), 1)
-    }
-
-    /// Height fraction (0...1) for one bar. The bar sits on the logo's resting
-    /// mountain, rises with loudness, and ripples with a per-bar phase offset so
-    /// the five bars travel as a wave instead of pulsing in lockstep. The ripple
-    /// is barely there in silence and grows with the mic level; the wave also
-    /// speeds up as you get louder, for an energetic, realistic feel.
-    private func fraction(at index: Int, level: Float,
-                          phase: Double, animated: Bool) -> CGFloat {
-        let norm = min(max(CGFloat(level) * gain, 0), 1)
-        let base = weights[index] * (restRatio + (1 - restRatio) * norm)
-        guard animated else { return base }
-        let speed = 7.0 + 7.0 * Double(norm)          // quiet = calm, loud = lively
-        let offset = Double(index) * 0.9              // staggers the bars into a wave
-        let ripple = sin(phase * speed + offset)      // -1...1
-        let amplitude = 0.05 + 0.25 * norm            // gentle idle, strong on sound
-        return base + CGFloat(ripple) * amplitude * weights[index]
     }
 }

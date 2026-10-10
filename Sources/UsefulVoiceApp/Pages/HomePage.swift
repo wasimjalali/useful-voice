@@ -93,7 +93,7 @@ struct HomePage: View {
 
             if viewModel.canRetry {
                 Button("Retry last recording") { viewModel.retry() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.brandSecondary)
                     .tint(Theme.brand)
                     .controlSize(.large)
                     .clickableCursor()
@@ -130,7 +130,7 @@ struct HomePage: View {
                         .buttonStyle(.borderless)
                         .clickableCursor()
                         Button("Copy") { copy(latest.text) }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.brandSecondary)
                             .tint(Theme.brand)
                             .clickableCursor()
                     }

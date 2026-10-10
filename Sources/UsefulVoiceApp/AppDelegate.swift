@@ -94,7 +94,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // on and straight back off) and draw a second HUD pill. The duplicate is
         // reachable because `make run` leaves a live bundle in dist/ with the
         // same bundle identifier and signature as the /Applications copy.
-        if SingleInstance.yieldToExistingInstance() { return }
+        // An offscreen render (`UV_SNAPSHOT`) installs no event tap and adds no
+        // status item, so it may run beside the copy the user is dictating with.
+        let isSnapshot = ProcessInfo.processInfo.environment["UV_SNAPSHOT"] != nil
+        if !isSnapshot, SingleInstance.yieldToExistingInstance() { return }
         // Settles the English default for new installs while an existing one
         // stays on Auto-detect. Must run before anything reads the language.
         // A forced first-run preview saves nothing, so it skips this too.
@@ -107,6 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // after the read returned, so a launch that hit a prompt produced no launch
         // record at all — the one case where a launch record is most useful.
         recordLaunchDiagnostic()
+        Appearance.install(settings: settings)
         ThinScrollbar.install()
         installMainMenu()
         // An offscreen render (`UV_SNAPSHOT`) never needs the key's value, only
@@ -114,7 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // differently signed copy of the app.
         if ProcessInfo.processInfo.environment["UV_SNAPSHOT"] == nil { primeKeyCache() }
         chimes.isEnabled = { [settings] in settings.soundEffectsEnabled }
-        setUpStatusItem()
+        if !isSnapshot { setUpStatusItem() }
         setUpController()
         setUpFirstRun()
         // `UV_SNAPSHOT=<png path>@<width>x<height>` renders the page named by
@@ -875,7 +879,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch state {
         case .idle:
             stopRecordingTimer()
-            setIcon("waveform", tint: nil)
+            setIcon(tint: nil)
             if lastDictationState == .delivering {
                 // A dictation just landed: flash a brief success confirmation
                 // before the pill fades out, the way WhisperFlow and friends do.
@@ -887,17 +891,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .recording:
             chimes.playStart()
             startRecordingTimer()
-            setIcon("record.circle.fill", tint: .systemRed)
+            setIcon(tint: .systemRed)
         case .transcribing:
             if lastDictationState == .recording { chimes.playStop() }
             stopRecordingTimer()
-            setIcon("waveform", tint: .systemOrange)
+            setIcon(tint: .systemOrange)
             hud.show(.transcribing(partial: nil))
         case .delivering:
             hud.show(.delivering)
         case .error(let message):
             stopRecordingTimer()
-            setIcon("waveform", tint: nil)
+            setIcon(tint: nil)
             hud.show(.error(message))
             hud.hide(after: 6)
         }
@@ -926,12 +930,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         recordingStartedAt = nil
     }
 
-    private func setIcon(_ symbol: String, tint: NSColor?) {
-        let image = NSImage(systemSymbolName: symbol,
-                            accessibilityDescription: "Useful Voice")
-        image?.isTemplate = (tint == nil)
-        statusItem?.button?.image = image
-        statusItem?.button?.contentTintColor = tint
+    private func setIcon(tint: NSColor?) {
+        statusItem?.button?.image = Self.statusItemImage(tint: tint)
+        statusItem?.button?.contentTintColor = nil
+    }
+
+    /// The Landing mark as an 18 pt menu bar image (StatusItem.png and @2x in
+    /// Resources). With no tint it is a template, so the menu bar colours it for
+    /// light, dark and the highlighted state. With a tint (recording, transcribing)
+    /// it is drawn in that colour and is not a template.
+    /// Resolved once. A bare `swift run` has no bundle Resources: it falls back to
+    /// a system glyph and logs it, rather than crashing the menu bar app.
+    private static let statusMark: NSImage = {
+        if let mark = NSImage(named: "StatusItem") { return mark }
+        Diagnostics.shared.record(level: .warning, category: "launch",
+                                  message: "StatusItem.png missing from Resources; using a system glyph")
+        return NSImage(systemSymbolName: "waveform", accessibilityDescription: nil) ?? NSImage()
+    }()
+
+    private static func statusItemImage(tint: NSColor?) -> NSImage {
+        let mark = statusMark.copy() as! NSImage
+        mark.accessibilityDescription = "Useful Voice"
+        guard let tint else {
+            mark.isTemplate = true
+            return mark
+        }
+        let tinted = NSImage(size: mark.size, flipped: false) { rect in
+            mark.draw(in: rect)
+            tint.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        tinted.accessibilityDescription = "Useful Voice"
+        tinted.isTemplate = false
+        return tinted
     }
 
     // MARK: - Status item and menu
@@ -939,8 +971,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func setUpStatusItem() {
         let item = NSStatusBar.system.statusItem(
             withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "waveform",
-                                     accessibilityDescription: "Useful Voice")
+        item.button?.image = Self.statusItemImage(tint: nil)
         let menu = NSMenu()
 
         let openItem = NSMenuItem(title: "Open Useful Voice",

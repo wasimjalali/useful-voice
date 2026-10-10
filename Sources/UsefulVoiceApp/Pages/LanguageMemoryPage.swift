@@ -149,7 +149,7 @@ struct LanguageMemoryPage: View {
                         viewModel.acceptSuggestion(suggestion.id, as: suggestion.kind)
                         toasts.show("Added to dictionary")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.brandPrimary)
                     .tint(Theme.brand)
                     .controlSize(.small)
                     .clickableCursor()
@@ -348,7 +348,7 @@ struct LanguageMemoryPage: View {
 
     private func addButton(disabled: Bool, action: @escaping () -> Void) -> some View {
         Button("Add", action: action)
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.brandPrimary)
             .tint(Theme.brand)
             .controlSize(.large)
             .clickableCursor()
@@ -430,7 +430,7 @@ struct LanguageMemoryPage: View {
                 Button("Cancel") { showImport = false }
                     .clickableCursor()
                 Button("Import") { performImport() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.brandPrimary)
                     .tint(Theme.brand)
                     .clickableCursor()
                     .disabled(importText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

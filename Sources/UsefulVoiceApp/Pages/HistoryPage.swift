@@ -339,7 +339,7 @@ struct HistoryPage: View {
                                     : "\(result.replacementCount) corrections learned")
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.brandPrimary)
                 .tint(Theme.brand)
                 .clickableCursor()
                 .disabled(

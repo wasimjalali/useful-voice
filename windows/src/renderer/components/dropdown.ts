@@ -2,14 +2,14 @@
  * A compact, on-brand dropdown for short, fixed option lists.
  *
  * Replaces the native `<select>` the settings rows used to use. A select is drawn
- * by the OS, so it was the one control on the page that ignored the design system —
+ * by the OS, so it was the one control on the page that ignored the design system -
  * every other field is a bordered white box with a 9px radius. Unlike the language
  * picker this list is short, so it needs no search field.
  *
  * Keyboard model: focus stays on the trigger, and Up/Down move a virtual highlight
  * (`aria-activedescendant`) rather than DOM focus. Tab therefore leaves the control
  * instead of walking through every option, and Enter always picks the highlighted
- * row — the two can never disagree.
+ * row - the two can never disagree.
  */
 
 export interface DropdownOption {

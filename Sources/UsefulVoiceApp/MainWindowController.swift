@@ -86,6 +86,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             rootView: RootView(viewModel: viewModel, settings: settings, firstRun: firstRun))
         let offscreen = NSWindow(contentRect: NSRect(origin: .zero, size: size),
                                  styleMask: [.borderless], backing: .buffered, defer: false)
+        // The offscreen window is never shown, so give it the app appearance explicitly:
+        // the dynamic colors resolve against it when the content is drawn.
+        offscreen.appearance = Appearance.nsAppearance(for: settings.appearance)
         offscreen.contentView = hosting
         hosting.frame = NSRect(origin: .zero, size: size)
         // Give SwiftUI a moment to run onAppear work and lay the page out.

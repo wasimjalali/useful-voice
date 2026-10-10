@@ -168,7 +168,7 @@ struct MemorySuggestionRow: View {
                 .buttonStyle(.borderless)
                 .clickableCursor()
             Button("Add", action: onAccept)
-                .buttonStyle(.bordered)
+                .buttonStyle(.brandSecondary)
                 .tint(Theme.brand)
                 .clickableCursor()
         }

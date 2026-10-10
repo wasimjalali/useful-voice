@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * Generate the Windows application icon.
+ * Generate the Windows application icon and the tray icons.
  *
- * The icon is produced in code rather than committed as a binary so it stays in
- * step with the brand mark and can be regenerated on any machine. The mark is the
- * same one the macOS bundle and the renderer use: three waveform bars in the brand
- * ink on a white rounded square.
+ * Everything is drawn in code from the Landing mark (three round sound bars landing
+ * on a square-cut I-beam caret), so the output stays in step with the SVG masters in
+ * assets/branding/ and can be regenerated on any machine. Two cuts exist: the 24 unit
+ * master and a 16 unit cut hand-hinted to whole pixels. Sizes where one unit lands on
+ * a whole number of pixels use those cuts 1:1 (or doubled), so every edge is crisp.
  *
- * Windows wants a multi-resolution .ico containing at least 16, 32, 48 and 256 px.
- * All sizes are rendered from the same vector description so small sizes stay
- * legible instead of being downscaled blurs.
+ * Writes build/icon.ico (16, 20, 24, 32, 40, 48, 64, 128, 256), build/icon.png (512)
+ * and build/tray/tray-<taskbar>-<state>-<px>.png for light and dark taskbars.
  */
 
 import { promises as fs } from 'node:fs';
@@ -19,77 +19,120 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = path.join(root, 'build');
+const trayDir = path.join(outDir, 'tray');
 
-/** Brand ink (#171717) on white, matching the design system. */
-const INK = [0x17, 0x17, 0x17];
-const SURFACE = [0xff, 0xff, 0xff];
+const hex = (value) => [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+const INK = hex(0x171717);
+const LIGHT = hex(0xfafafa);
+/** Recording colour per taskbar: the danger tokens of the light and dark palettes. */
+const DANGER_ON_LIGHT = hex(0xb23c22);
+const DANGER_ON_DARK = hex(0xf0795c);
 
-const SIZES = [16, 24, 32, 48, 64, 128, 256];
+const ICON_SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256];
+const TRAY_SIZES = [16, 20, 24, 32];
+const SAMPLES = 8; // sub-samples per axis for anti-aliasing
+
+/** Round bar: [x, y, width, height], fully round ends (radius = width / 2). */
+const MARK_24 = {
+  bars: [[1, 9, 3, 6], [6, 7, 3, 10], [11, 5, 3, 14]],
+  caret: [[16, 2], [23, 2], [23, 5], [21, 5], [21, 19], [23, 19], [23, 22], [16, 22], [16, 19], [18, 19], [18, 5], [16, 5]],
+  size: 24,
+  stem: [19.5, 12],
+  gap: [4.5, 12],
+};
+const MARK_16 = {
+  bars: [[1, 6, 2, 4], [4, 5, 2, 6], [7, 3, 2, 10]],
+  caret: [[11, 1], [15, 1], [15, 3], [14, 3], [14, 13], [15, 13], [15, 15], [11, 15], [11, 13], [12, 13], [12, 3], [11, 3]],
+  size: 16,
+  stem: [12.5, 8],
+  gap: [3.5, 8],
+};
+
+/** Inside test for a mark point given in mark units. */
+function inMark(mark, x, y) {
+  for (const [bx, by, bw, bh] of mark.bars) {
+    const r = bw / 2;
+    const cx = Math.min(Math.max(x, bx + r), bx + bw - r);
+    const cy = Math.min(Math.max(y, by + r), by + bh - r);
+    if (Math.hypot(x - cx, y - cy) <= r) return true;
+  }
+  return pointInPolygon(mark.caret, x, y);
+}
+
+function pointInPolygon(points, x, y) {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+    const [xi, yi] = points[i];
+    const [xj, yj] = points[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** Signed inside test for a rounded rectangle in pixel space. */
+function inRoundedRect(x, y, left, top, right, bottom, r) {
+  const cx = Math.min(Math.max(x, left + r), right - r);
+  const cy = Math.min(Math.max(y, top + r), bottom - r);
+  return x >= left && x <= right && y >= top && y <= bottom && Math.hypot(x - cx, y - cy) <= r;
+}
 
 /**
- * Render one size as RGBA.
- *
- * Geometry is expressed as fractions of the canvas so every size is a true
- * re-render. Each bar is a vertical capsule at its own x position — an earlier
- * version centred every bar on the canvas, so only the middle one was ever drawn.
+ * Render a canvas of `size` px.
+ *   tile:  null for the bare mark, or { body, edge } colours for a rounded tile.
+ *   place: { mark, scale, offset } puts the mark at `offset` px with `scale` px per unit.
  */
-function render(size) {
+function render(size, { tile, place, ink }) {
   const pixels = Buffer.alloc(size * size * 4);
-  const radius = size * 0.22;
-  // x is the bar's centre; half is its half-height. Both are canvas fractions.
-  const bars = [
-    { x: 0.30, half: 0.13 },
-    { x: 0.50, half: 0.24 },
-    { x: 0.70, half: 0.17 },
-  ];
-  const halfWidth = size * 0.105 / 2;
-
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      const alphaBg = roundedRectCoverage(x, y, size, size, radius);
-      if (alphaBg <= 0) continue;
-
-      let colour = SURFACE;
-      for (const bar of bars) {
-        const barCentreX = size * bar.x;
-        const halfHeight = size * bar.half;
-        // Distance to a vertical capsule: horizontal offset from the bar's own
-        // axis, plus the vertical overshoot past the capsule's straight section.
-        const dx = Math.abs(x + 0.5 - barCentreX);
-        const dy = Math.max(0, Math.abs(y + 0.5 - size / 2) - (halfHeight - halfWidth));
-        if (Math.hypot(dx, dy) - halfWidth <= 0.5) {
-          colour = INK;
-          break;
+  const radius = Math.round(size * 0.18);
+  const edge = size >= 32 && tile ? 1 : 0;
+  const total = SAMPLES * SAMPLES;
+  for (let py = 0; py < size; py += 1) {
+    for (let px = 0; px < size; px += 1) {
+      let r = 0, g = 0, b = 0, a = 0;
+      for (let sy = 0; sy < SAMPLES; sy += 1) {
+        for (let sx = 0; sx < SAMPLES; sx += 1) {
+          const x = px + (sx + 0.5) / SAMPLES;
+          const y = py + (sy + 0.5) / SAMPLES;
+          let colour = null;
+          if (tile && inRoundedRect(x, y, 0, 0, size, size, radius)) {
+            const inner = edge === 0 || inRoundedRect(x, y, edge, edge, size - edge, size - edge, Math.max(0, radius - edge));
+            colour = inner ? tile.body : tile.edge;
+          }
+          const mx = (x - place.offset) / place.scale;
+          const my = (y - place.offset) / place.scale;
+          if (inMark(place.mark, mx, my)) colour = ink;
+          if (colour) {
+            r += colour[0]; g += colour[1]; b += colour[2]; a += 1;
+          }
         }
       }
-
-      const offset = (y * size + x) * 4;
-      pixels[offset] = colour[0];
-      pixels[offset + 1] = colour[1];
-      pixels[offset + 2] = colour[2];
-      pixels[offset + 3] = Math.round(alphaBg * 255);
+      const at = (py * size + px) * 4;
+      if (a > 0) {
+        pixels[at] = Math.round(r / a);
+        pixels[at + 1] = Math.round(g / a);
+        pixels[at + 2] = Math.round(b / a);
+        pixels[at + 3] = Math.round((a / total) * 255);
+      }
     }
   }
   return pixels;
 }
 
-/** Fractional coverage of a rounded rectangle at pixel (x, y). */
-function roundedRectCoverage(x, y, width, height, radius) {
-  const inset = Math.max(0.5, width * 0.045);
-  const left = inset;
-  const top = inset;
-  const right = width - inset;
-  const bottom = height - inset;
-  const r = Math.min(radius, (right - left) / 2, (bottom - top) / 2);
+const LIGHT_TILE = { body: LIGHT, edge: [0xc9, 0xc9, 0xc9] };
 
-  // Signed distance to the rounded rectangle.
-  const cx = Math.min(Math.max(x + 0.5, left + r), right - r);
-  const cy = Math.min(Math.max(y + 0.5, top + r), bottom - r);
-  const dx = x + 0.5 - cx;
-  const dy = y + 0.5 - cy;
-  const distance = Math.hypot(dx, dy) - r;
-  // One-pixel smooth edge.
-  return Math.max(0, Math.min(1, 0.5 - distance));
+/** How the mark sits on the app icon tile at each size. */
+function iconPlacement(size) {
+  if (size <= 32) return { mark: MARK_16, scale: 1, offset: (size - 16) / 2 };
+  if (size <= 48) return { mark: MARK_24, scale: 1, offset: (size - 24) / 2 };
+  if (size === 64) return { mark: MARK_16, scale: 2, offset: 16 };
+  const scale = (size * 440) / 1024 / 24;
+  return { mark: MARK_24, scale, offset: size / 2 - 12 * scale };
+}
+
+/** How the bare mark sits in a tray icon: whole pixels at 16, 24 (24 unit cut) and 32. */
+function trayPlacement(size) {
+  if (size === 24) return { mark: MARK_24, scale: 1, offset: 0 };
+  return { mark: MARK_16, scale: size / 16, offset: 0 };
 }
 
 /** Encode RGBA pixels as a PNG. */
@@ -212,65 +255,38 @@ function encodeDib(size, rgba) {
 }
 
 /**
- * Verify the rendered mark before writing it.
+ * Check the rendered tile before writing it.
  *
  * A wrong icon is invisible in code review and only shows up as a blurry blob on a
- * user's taskbar, so the generator checks its own output: three bars, each present
- * at its own x position, on a transparent-cornered white square.
+ * user's taskbar, so the generator checks its own output: transparent corners, ink
+ * in the caret stem, and surface in the gap between the first two bars.
  */
-function verify(size, rgba) {
+function verify(size, rgba, place) {
   const at = (x, y) => {
-    const offset = (y * size + x) * 4;
+    const offset = (Math.floor(y) * size + Math.floor(x)) * 4;
     return { r: rgba[offset], a: rgba[offset + 3] };
   };
   const problems = [];
-
-  // Corners transparent, centre of the tile white or ink but opaque.
   for (const [x, y] of [[0, 0], [size - 1, 0], [0, size - 1], [size - 1, size - 1]]) {
     if (at(x, y).a > 8) problems.push(`corner (${x},${y}) is not transparent`);
   }
-  const middle = at(Math.floor(size / 2), Math.floor(size / 2));
-  if (middle.a < 250) problems.push('centre is not opaque');
-
-  // Each bar must actually be drawn at its own position; a bar drawn with ink
-  // pixels above and below the vertical centre is required for the i'th x.
-  const bars = [
-    { x: 0.30, half: 0.13 },
-    { x: 0.50, half: 0.24 },
-    { x: 0.70, half: 0.17 },
-  ];
-  bars.forEach((bar, index) => {
-    const x = Math.round(bar.x * size);
-    let ink = 0;
-    for (let y = 0; y < size; y += 1) {
-      if (at(Math.min(x, size - 1), y).r < 60) ink += 1;
-    }
-    const expected = Math.round(bar.half * 2 * size);
-    if (ink < expected * 0.7) {
-      problems.push(`bar ${index} at x=${x} has only ${ink} ink pixels (expected about ${expected})`);
-    }
-  });
-
-  // The bars must be separated by surface, or the mark reads as a solid block.
-  const gapX = Math.round(((bars[0].x + bars[1].x) / 2) * size);
-  if (at(gapX, Math.floor(size / 2)).r < 200) {
-    problems.push(`expected surface between bars at x=${gapX}`);
-  }
-
+  const toPx = ([ux, uy]) => [place.offset + ux * place.scale, place.offset + uy * place.scale];
+  const stem = at(...toPx(place.mark.stem));
+  if (stem.r > 60) problems.push('caret stem is not ink');
+  const gap = at(...toPx(place.mark.gap));
+  if (gap.r < 200) problems.push('no surface between the first two bars');
   return problems;
 }
 
 async function main() {
-  await fs.mkdir(outDir, { recursive: true });
+  await fs.mkdir(trayDir, { recursive: true });
 
-  const entries = SIZES.map((size) => {
-    const rgba = render(size);
-    // The 16 px tile is too small for a meaningful pixel-count check.
-    if (size >= 32) {
-      const problems = verify(size, rgba);
-      if (problems.length > 0) {
-        throw new Error(`icon is wrong at ${size}px: ${problems.join('; ')}`);
-      }
+  const entries = ICON_SIZES.map((size) => {
+    const place = iconPlacement(size);
+    const rgba = render(size, { tile: LIGHT_TILE, place, ink: INK });
+    const problems = verify(size, rgba, place);
+    if (problems.length > 0) {
+      throw new Error(`icon is wrong at ${size}px: ${problems.join('; ')}`);
     }
     return { size, png: encodePng(size, rgba), dib: encodeDib(size, rgba) };
   });
@@ -278,9 +294,29 @@ async function main() {
   const ico = buildIco(entries);
   await fs.writeFile(path.join(outDir, 'icon.ico'), ico);
   // A 512 px PNG for the stores and for the app itself.
-  await fs.writeFile(path.join(outDir, 'icon.png'), encodePng(512, render(512)));
+  await fs.writeFile(
+    path.join(outDir, 'icon.png'),
+    encodePng(512, render(512, { tile: LIGHT_TILE, place: iconPlacement(512), ink: INK })),
+  );
 
-  console.log(`icon.ico written (${SIZES.join(', ')} px; ${(ico.length / 1024).toFixed(1)} kB)`);
+  // Tray icons: the bare mark, ink on a light taskbar and light on a dark one. While
+  // recording the mark takes the danger colour of that palette.
+  const tray = [
+    ['light', 'idle', INK],
+    ['light', 'recording', DANGER_ON_LIGHT],
+    ['dark', 'idle', LIGHT],
+    ['dark', 'recording', DANGER_ON_DARK],
+  ];
+  for (const [taskbar, state, ink] of tray) {
+    for (const size of TRAY_SIZES) {
+      const rgba = render(size, { tile: null, place: trayPlacement(size), ink });
+      await fs.writeFile(path.join(trayDir, `tray-${taskbar}-${state}-${size}.png`), encodePng(size, rgba));
+    }
+  }
+
+  console.log(
+    `icon.ico written (${ICON_SIZES.join(', ')} px; ${(ico.length / 1024).toFixed(1)} kB), icon.png, ${tray.length * TRAY_SIZES.length} tray PNGs`,
+  );
 }
 
 main().catch((error) => {

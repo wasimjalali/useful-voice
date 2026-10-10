@@ -83,7 +83,7 @@ struct RootView: View {
         }
         .environmentObject(toasts)
         .tint(Theme.ink)
-        .preferredColorScheme(.light)
+        .toggleStyle(BrandSwitchToggleStyle())
     }
 
     // MARK: - Sidebar
@@ -107,8 +107,8 @@ struct RootView: View {
         HStack(spacing: 12) {
             AppIconMark()
             Text("Useful Voice")
-                .font(.system(size: 17, weight: .bold))
-                .tracking(-0.5)
+                .font(.system(size: 15, weight: .bold))
+                .tracking(-0.4)
                 .foregroundStyle(Theme.ink)
         }
         .padding(.horizontal, 8)
@@ -176,10 +176,10 @@ struct RootView: View {
     private var footer: some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(viewModel.hotkeyActive ? Theme.success : Theme.inkFaint)
+                .fill(viewModel.hotkeyActive ? Theme.success : Theme.inkMuted)
                 .frame(width: 7, height: 7)
             Text(viewModel.hotkeyActive ? "Hotkeys active" : "Needs access")
-                .font(.system(size: 12, weight: .medium))
+                .font(.uv(.meta, .medium))
                 .foregroundStyle(Theme.ink)
                 .lineLimit(1)
             Spacer(minLength: 0)
@@ -202,9 +202,9 @@ struct RootView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.xxl, style: .continuous))
         .overlay { PremiumToastHost() }
-        .shadow(color: Theme.ink.opacity(0.06), radius: 18, y: 8)
+        .themeShadow(.card)
         .padding(.top, 6)
         .padding(.trailing, 10)
         .padding(.bottom, 10)
@@ -229,36 +229,9 @@ struct RootView: View {
     }
 }
 
-/// The same dark waveform tile as the macOS app icon.
+/// The app icon tile: the Landing mark on the dark tile.
 private struct AppIconMark: View {
     var body: some View {
-        Group {
-            if let image = Self.image {
-                Image(nsImage: image)
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFit()
-            } else {
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(Theme.ink)
-            }
-        }
-        .frame(width: 44, height: 44)
-        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        LandingTile(size: 44, radius: 11)
     }
-
-    private static let image: NSImage? = {
-        if let url = Bundle.main.url(forResource: "SadaaLogo", withExtension: "png"),
-           let image = NSImage(contentsOf: url) {
-            return image
-        }
-        if let url = Bundle.main.url(forResource: "Sadaa", withExtension: "icns"),
-           let image = NSImage(contentsOf: url) {
-            return image
-        }
-        if let appIcon = NSApplication.shared.applicationIconImage, appIcon.isValid {
-            return appIcon
-        }
-        return nil
-    }()
 }

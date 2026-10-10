@@ -39,45 +39,369 @@ extension View {
         modifier(ClickableCursorModifier(enabled: enabled))
     }
 
-    func premiumInputChrome() -> some View {
-        textFieldStyle(.plain)
-            .font(.system(size: 13))
-            .foregroundStyle(Theme.ink)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 9)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 9))
-            .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.line, lineWidth: 1))
+    /// The board's field: 32 pt, 10 pt radius, a `controlEdge` border that turns ink on
+    /// focus (with a soft 3 pt ring) and danger on error.
+    func premiumInputChrome(error: Bool = false) -> some View {
+        modifier(PremiumInputChrome(error: error))
+    }
+
+    /// The board's lift card: bubble surface, faint edge, 14 pt radius, lift shadow.
+    func liftCard() -> some View {
+        self
+            .background(Theme.bubble, in: RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
+                .strokeBorder(Theme.edge, lineWidth: 1))
+            .themeShadow(.lift)
+    }
+
+    /// The soft ring around a focused field: ink at low strength, outside the border.
+    fileprivate func fieldFocusRing(_ focused: Bool, error: Bool) -> some View {
+        overlay {
+            RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                .strokeBorder(error ? Theme.danger.opacity(0.14) : Theme.ink.opacity(0.12), lineWidth: 3)
+                .padding(-3)
+                .opacity(focused || error ? 1 : 0)
+                .allowsHitTesting(false)
+        }
     }
 }
 
+private struct PremiumInputChrome: ViewModifier {
+    let error: Bool
+    @FocusState private var focused: Bool
+    @Environment(\.isEnabled) private var isEnabled
+
+    func body(content: Content) -> some View {
+        content
+            .textFieldStyle(.plain)
+            .font(.uv(.ui))
+            .foregroundStyle(Theme.ink)
+            .focused($focused)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 32)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                .strokeBorder(error ? Theme.danger : focused ? Theme.ink : Theme.controlEdge, lineWidth: 1))
+            .fieldFocusRing(focused, error: error)
+            .opacity(isEnabled ? 1 : 0.55)
+            .brandAnimation(BrandMotion.control, value: focused)
+    }
+}
+
+// MARK: - Buttons
+
+/// Primary, secondary, ghost and tone buttons from the board. 30 pt tall (38 with
+/// `.controlSize(.large)`, 26 with `.small`), 10 pt radius, hover, pressed, a ring
+/// when keyboard-focused, and a 55 % disabled state.
+struct BrandButtonStyle: ButtonStyle {
+    enum Kind {
+        case primary
+        case secondary
+        case ghost
+        /// A tinted button such as danger: `foreground` text on a `background` wash.
+        case tone(foreground: Color, background: Color)
+    }
+
+    let kind: Kind
+
+    func makeBody(configuration: Configuration) -> some View {
+        BrandButtonBody(configuration: configuration, kind: kind)
+    }
+}
+
+extension ButtonStyle where Self == BrandButtonStyle {
+    static var brandPrimary: BrandButtonStyle { BrandButtonStyle(kind: .primary) }
+    static var brandSecondary: BrandButtonStyle { BrandButtonStyle(kind: .secondary) }
+    static var brandGhost: BrandButtonStyle { BrandButtonStyle(kind: .ghost) }
+    static var brandDanger: BrandButtonStyle {
+        BrandButtonStyle(kind: .tone(foreground: Theme.danger, background: Theme.dangerSoft))
+    }
+}
+
+private struct BrandButtonBody: View {
+    let configuration: ButtonStyle.Configuration
+    let kind: BrandButtonStyle.Kind
+
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.isFocused) private var isFocused
+    @Environment(\.controlSize) private var controlSize
+    @State private var hovering = false
+
+    private var height: CGFloat {
+        switch controlSize {
+        case .large, .extraLarge: return 38
+        case .small, .mini: return 26
+        default: return 30
+        }
+    }
+
+    private var font: Font {
+        switch controlSize {
+        case .large, .extraLarge: return .uv(.body, .medium)
+        case .small, .mini: return .uv(.meta, .medium)
+        default: return .uv(.ui, .medium)
+        }
+    }
+
+    private var horizontalPadding: CGFloat {
+        switch controlSize {
+        case .large, .extraLarge: return 16
+        case .small, .mini: return 10
+        default: return 12
+        }
+    }
+
+    private var active: Bool { hovering || configuration.isPressed }
+
+    private var foreground: Color {
+        switch kind {
+        case .primary: return Theme.accentInk
+        case .secondary: return Theme.ink
+        case .ghost: return active ? Theme.ink : Theme.inkMuted
+        case .tone(let foreground, _): return foreground
+        }
+    }
+
+    private var fill: Color {
+        switch kind {
+        case .primary: return active ? Theme.accentStrong : Theme.accent
+        case .secondary: return active ? Theme.line : Theme.sunken
+        case .ghost: return active ? Theme.sunken : Color.clear
+        case .tone(_, let background): return background
+        }
+    }
+
+    private var edge: Color {
+        switch kind {
+        case .secondary: return Theme.edge
+        default: return Color.clear
+        }
+    }
+
+    var body: some View {
+        configuration.label
+            .font(font)
+            .foregroundStyle(foreground)
+            .lineLimit(1)
+            .padding(.horizontal, horizontalPadding)
+            .frame(height: height)
+            .background(fill, in: RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
+            .overlay {
+                if case .tone(let foreground, _) = kind, active {
+                    RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                        .fill(foreground.opacity(0.1))
+                }
+            }
+            .overlay(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                .strokeBorder(edge, lineWidth: 1))
+            .overlay {
+                RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                    .strokeBorder(Theme.ink, lineWidth: 2)
+                    .padding(-3)
+                    .opacity(isFocused ? 1 : 0)
+            }
+            .modifier(PrimaryShadow(enabled: { if case .primary = kind { return true } else { return false } }()))
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .opacity(isEnabled ? 1 : 0.55)
+            .contentShape(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
+            .onHover { hovering = $0 }
+            .focusEffectDisabled()
+            .clickableCursor()
+            .brandAnimation(BrandMotion.control, value: hovering)
+            .brandAnimation(BrandMotion.control, value: configuration.isPressed)
+    }
+}
+
+private struct PrimaryShadow: ViewModifier {
+    let enabled: Bool
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.themeShadow(.small)
+        } else {
+            content
+        }
+    }
+}
+
+// MARK: - Switch
+
+/// The board's switch: 34 by 20. Off is a hollow track with a 3:1 edge and a muted
+/// knob, on is a solid ink track with a light knob, so state reads without color.
+struct BrandSwitchToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        BrandSwitchBody(configuration: configuration)
+    }
+}
+
+private struct BrandSwitchBody: View {
+    let configuration: ToggleStyleConfiguration
+
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.isFocused) private var isFocused
+
+    var body: some View {
+        Button {
+            configuration.isOn.toggle()
+        } label: {
+            HStack(spacing: 8) {
+                configuration.label
+                track
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .overlay(alignment: .trailing) {
+            if isFocused {
+                RoundedRectangle(cornerRadius: 12.5, style: .continuous)
+                    .strokeBorder(Theme.ink, lineWidth: 2)
+                    .frame(width: 40, height: 26)
+                    .allowsHitTesting(false)
+            }
+        }
+        .opacity(isEnabled ? 1 : 0.55)
+        .clickableCursor()
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityValue(configuration.isOn ? "On" : "Off")
+    }
+
+    /// A pill drawn as a circular-style rounded rectangle a little under half its height.
+    /// A stroked `Capsule` (or a continuous corner at half height) renders flat stubs at
+    /// both ends in CoreGraphics.
+    private var track: some View {
+        let on = configuration.isOn
+        let shape = RoundedRectangle(cornerRadius: 9, style: .circular)
+        return shape
+            .fill(on ? Theme.accent : Theme.surface)
+            .overlay(shape.strokeBorder(on ? Color.clear : Theme.controlEdge, lineWidth: 1.5))
+            .overlay(alignment: .leading) {
+                Circle()
+                    .fill(on ? Theme.accentInk : Theme.inkMuted)
+                    .frame(width: 12, height: 12)
+                    .offset(x: on ? 18 : 4)
+            }
+            .frame(width: 34, height: 20)
+            .brandAnimation(BrandMotion.control, value: on)
+    }
+}
+
+// MARK: - Chip, key cap and status pill
+
+/// A filter or tag chip: 26 pt, pill, quiet by default, solid ink when selected.
+/// Display-only when `action` is nil.
+struct BrandChip: View {
+    let title: String
+    var selected = false
+    var action: (() -> Void)?
+
+    @State private var hovering = false
+
+    var body: some View {
+        if let action {
+            Button(action: action) { chip }
+                .buttonStyle(.plain)
+                .onHover { hovering = $0 }
+                .clickableCursor()
+                .accessibilityAddTraits(selected ? [.isSelected] : [])
+        } else {
+            chip
+        }
+    }
+
+    private var chip: some View {
+        Text(title)
+            .font(.uv(.meta))
+            .lineLimit(1)
+            .foregroundStyle(selected ? Theme.accentInk : Theme.inkMuted)
+            .padding(.horizontal, 10)
+            .frame(height: 26)
+            .background(selected ? Theme.accent : (hovering ? Theme.line : Theme.sunken), in: Capsule())
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .circular)
+                .strokeBorder(selected ? Color.clear : Theme.edge, lineWidth: 1))
+            .brandAnimation(BrandMotion.control, value: hovering)
+    }
+}
+
+/// A key cap such as "Right Command": 20 pt, 6 pt radius, a 1 pt bottom edge.
+struct BrandKbd: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.uv(.label, .semibold))
+            .lineLimit(1)
+            .foregroundStyle(Theme.inkMuted)
+            .padding(.horizontal, 6)
+            .frame(height: 20)
+            .background(
+                RoundedRectangle(cornerRadius: Radius.xs, style: .continuous)
+                    .fill(Theme.surface)
+                    .shadow(color: Theme.lineStrong, radius: 0, x: 0, y: 1))
+            .overlay(RoundedRectangle(cornerRadius: Radius.xs, style: .continuous)
+                .strokeBorder(Theme.lineStrong, lineWidth: 1))
+            .fixedSize()
+    }
+}
+
+/// The status pill: 22 pt, pill radius, a soft wash of the status color.
 struct PremiumStatusBadge: View {
+    enum Kind {
+        case ok
+        case warn
+        case bad
+        case neutral
+    }
+
     let icon: String?
     let text: String
-    let tint: Color
+    private let foreground: Color
+    private let background: Color
 
+    /// Any tint; the wash is the tint at low strength.
     init(icon: String? = nil, text: String, tint: Color) {
         self.icon = icon
         self.text = text
-        self.tint = tint
+        self.foreground = tint
+        self.background = tint.opacity(0.12)
+    }
+
+    /// The four status roles with their exact soft backgrounds.
+    init(kind: Kind, icon: String? = nil, text: String) {
+        self.icon = icon
+        self.text = text
+        switch kind {
+        case .ok: (foreground, background) = (Theme.success, Theme.successSoft)
+        case .warn: (foreground, background) = (Theme.warning, Theme.warningSoft)
+        case .bad: (foreground, background) = (Theme.danger, Theme.dangerSoft)
+        case .neutral: (foreground, background) = (Theme.inkMuted, Theme.sunken)
+        }
     }
 
     var body: some View {
         HStack(spacing: 6) {
             if let icon {
                 Image(systemName: icon)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.uv(.label, .semibold))
             }
             Text(text)
-                .font(.system(size: 11, weight: .medium))
+                .font(.uv(.label, .semibold))
                 .lineLimit(1)
         }
-        .foregroundStyle(tint)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 5)
-        .background(RoundedRectangle(cornerRadius: 6).fill(tint.opacity(0.08)))
+        .foregroundStyle(foreground)
+        .padding(.horizontal, 8)
+        .frame(height: 22)
+        .background(background, in: Capsule())
     }
 }
 
+// MARK: - Icon button, search field, menus
+
+/// The board's icon button: 30 pt, 10 pt radius, muted ink, a soft wash on hover.
 struct PremiumIconButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         PremiumIconButtonBody(configuration: configuration)
@@ -86,26 +410,33 @@ struct PremiumIconButtonStyle: ButtonStyle {
 
 private struct PremiumIconButtonBody: View {
     let configuration: ButtonStyle.Configuration
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.isFocused) private var isFocused
     @State private var hovering = false
 
     var body: some View {
         configuration.label
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(Theme.ink)
-            .frame(width: 28, height: 28)
+            .font(.uv(.meta, .semibold))
+            .foregroundStyle(hovering || configuration.isPressed ? Theme.ink : Theme.inkMuted)
+            .frame(width: 30, height: 30)
             .background(
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(Theme.ink.opacity(hovering ? 0.08 : 0.04))
+                RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                    .fill(hovering || configuration.isPressed ? Theme.accentSoft : Color.clear)
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 7)
-                    .strokeBorder(Theme.lineStrong, lineWidth: 1)
-            )
+            .overlay {
+                RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                    .strokeBorder(Theme.ink, lineWidth: 2)
+                    .padding(-2)
+                    .opacity(isFocused ? 1 : 0)
+            }
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .opacity(isEnabled ? 1 : 0.55)
+            .contentShape(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
             .onHover { hovering = $0 }
+            .focusEffectDisabled()
             .clickableCursor()
-            .animation(.easeOut(duration: 0.14), value: hovering)
-            .animation(.easeOut(duration: 0.14), value: configuration.isPressed)
+            .brandAnimation(BrandMotion.control, value: hovering)
+            .brandAnimation(BrandMotion.control, value: configuration.isPressed)
     }
 }
 
@@ -117,37 +448,40 @@ struct PremiumSearchField: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(focused ? Theme.ink : Theme.inkFaint)
+                .font(.uv(.ui, .semibold))
+                .foregroundStyle(focused ? Theme.ink : Theme.inkMuted)
             TextField(placeholder, text: $text)
                 .textFieldStyle(.plain)
+                .font(.uv(.ui))
                 .focused($focused)
             if !text.isEmpty {
                 Button {
                     text = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(Theme.inkFaint)
+                        .foregroundStyle(Theme.inkMuted)
                 }
                 .buttonStyle(.plain)
                 .clickableCursor()
+                .accessibilityLabel("Clear search")
             }
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 8)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 9))
+        .padding(.horizontal, 10)
+        .frame(minHeight: 32)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 9)
-                .strokeBorder(focused ? Theme.ink : Theme.lineStrong, lineWidth: 1)
+            RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                .strokeBorder(focused ? Theme.ink : Theme.controlEdge, lineWidth: 1)
         )
-        .animation(.easeOut(duration: 0.16), value: focused)
+        .fieldFocusRing(focused, error: false)
+        .brandAnimation(BrandMotion.control, value: focused)
     }
 }
 
 /// An on-brand selection dropdown.
 ///
 /// Previously this was a SwiftUI `Menu`, whose popup is drawn by AppKit and so
-/// ignored the design system entirely — the same reason the language control was
+/// ignored the design system entirely. That is the same reason the language control was
 /// moved to a popover. A popover lets the list keep the surface, hairline border,
 /// sunken hover and ink checkmark every other control uses.
 struct BrandedMenuPicker<Value: Hashable>: View {
@@ -178,10 +512,10 @@ struct BrandedMenuPicker<Value: Hashable>: View {
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.uv(.label, .semibold))
                     .foregroundStyle(Theme.inkMuted)
             }
-            .font(.system(size: 12, weight: .semibold))
+            .font(.uv(.ui, .medium))
             .foregroundStyle(Theme.ink)
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
@@ -190,17 +524,17 @@ struct BrandedMenuPicker<Value: Hashable>: View {
         .padding(.horizontal, 12)
         .frame(height: 34)
         .background(
-            RoundedRectangle(cornerRadius: 9)
+            RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
                 .fill(hovering || isPresented ? Theme.sunken : Theme.surface)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 9)
-                .strokeBorder(isPresented ? Theme.ink : Theme.lineStrong, lineWidth: 1)
+            RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                .strokeBorder(isPresented ? Theme.ink : Theme.controlEdge, lineWidth: 1)
         )
         .fixedSize(horizontal: false, vertical: true)
         .onHover { hovering = $0 }
-        .animation(BrandMotion.control, value: hovering)
-        .animation(BrandMotion.control, value: isPresented)
+        .brandAnimation(BrandMotion.control, value: hovering)
+        .brandAnimation(BrandMotion.control, value: isPresented)
         .popover(isPresented: $isPresented, arrowEdge: .bottom) { menuList }
         .help(title)
         .accessibilityLabel(title)
@@ -218,12 +552,12 @@ struct BrandedMenuPicker<Value: Hashable>: View {
                 } label: {
                     HStack(spacing: 9) {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.uv(.label, .bold))
                             .foregroundStyle(Theme.ink)
                             .opacity(isSelected ? 1 : 0)
                             .frame(width: 12, alignment: .leading)
                         Text(option.label)
-                            .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                            .font(.uv(.ui, isSelected ? .semibold : .regular))
                             .foregroundStyle(Theme.ink)
                             .lineLimit(1)
                         Spacer(minLength: 0)
@@ -232,7 +566,7 @@ struct BrandedMenuPicker<Value: Hashable>: View {
                     .padding(.vertical, 7)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: Radius.xs, style: .continuous)
                             .fill(highlightedIndex == index ? Theme.sunken : Color.clear)
                     )
                     .contentShape(Rectangle())
@@ -246,10 +580,10 @@ struct BrandedMenuPicker<Value: Hashable>: View {
         }
         .padding(6)
         .frame(minWidth: 170)
-        .background(Theme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(Theme.bubble)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
                 .strokeBorder(Theme.lineStrong, lineWidth: 1)
         )
         .focusable()
@@ -288,15 +622,15 @@ struct BrandedMenuButton<Content: View>: View {
     var body: some View {
         Menu(content: content) {
             Image(systemName: systemImage)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.uv(.meta, .semibold))
                 .foregroundStyle(Theme.ink)
                 .frame(width: 32, height: 32)
                 .background(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
                         .fill(hovering ? Theme.sunken : Theme.surface)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
                         .strokeBorder(Theme.lineStrong, lineWidth: 1)
                 )
                 .contentShape(Rectangle())
@@ -308,17 +642,18 @@ struct BrandedMenuButton<Content: View>: View {
         .accessibilityLabel(help)
         .onHover { hovering = $0 }
         .clickableCursor()
-        .animation(.easeOut(duration: 0.14), value: hovering)
+        .brandAnimation(BrandMotion.control, value: hovering)
     }
 }
 
-/// Compact brand-tinted segment control for page-local tabs.
+/// The board's segmented control: a `line` track with a 2 pt inset, 6 pt item radius,
+/// and a raised `segmentOn` item for the selection.
 struct BrandedSegmentedControl<Value: Hashable>: View {
     @Binding var selection: Value
     let options: [(label: String, value: Value)]
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 2) {
             ForEach(options.indices, id: \.self) { index in
                 let option = options[index]
                 let selected = option.value == selection
@@ -326,27 +661,27 @@ struct BrandedSegmentedControl<Value: Hashable>: View {
                     selection = option.value
                 } label: {
                     Text(option.label)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(selected ? Theme.accentInk : Theme.ink)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
+                        .font(.uv(.meta, selected ? .semibold : .regular))
+                        .foregroundStyle(selected ? Theme.ink : Theme.inkMuted)
+                        .lineLimit(1)
+                        .padding(.horizontal, 11)
+                        .frame(height: 26)
                         .frame(maxWidth: .infinity)
                         .background(
-                            RoundedRectangle(cornerRadius: 7)
-                                .fill(selected ? Theme.brand : Color.clear)
+                            RoundedRectangle(cornerRadius: Radius.xs, style: .continuous)
+                                .fill(selected ? Theme.segmentOn : Color.clear)
+                                .themeShadow(selected ? .segment : .none)
                         )
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .clickableCursor()
+                .accessibilityAddTraits(selected ? [.isSelected] : [])
             }
         }
-        .padding(3)
-        .background(Theme.surfaceSubtle, in: RoundedRectangle(cornerRadius: 10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Theme.line, lineWidth: 1)
-        )
-        .animation(BrandMotion.control, value: selection)
+        .padding(2)
+        .background(Theme.line, in: RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
+        .brandAnimation(BrandMotion.control, value: selection)
     }
 }
 
@@ -369,16 +704,16 @@ struct PremiumSection<Content: View>: View {
                         .foregroundStyle(Theme.inkMuted)
                 }
                 Text(title)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.uv(.title, .semibold))
                     .foregroundStyle(Theme.ink)
                 Spacer(minLength: 0)
             }
             content
         }
         .padding(14)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
                 .strokeBorder(Theme.line, lineWidth: 1)
         )
     }
@@ -683,7 +1018,7 @@ struct CommandPageHeader<Accessory: View>: View {
             minimumTitleWidth: 280
         ) {
             Text(title)
-                .font(.system(size: 28, weight: .bold))
+                .font(.uv(.statement, .bold))
                 .tracking(-0.4)
                 .foregroundStyle(Theme.ink)
             accessory
@@ -720,12 +1055,12 @@ struct CommandPanel<Content: View>: View {
                 HStack(spacing: 8) {
                     if let icon {
                         Image(systemName: icon)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.uv(.ui, .semibold))
                             .foregroundStyle(Theme.inkMuted)
                     }
                     if let title {
                         Text(title)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.uv(.title, .semibold))
                             .foregroundStyle(Theme.ink)
                     }
                     Spacer(minLength: 0)
@@ -734,9 +1069,9 @@ struct CommandPanel<Content: View>: View {
             content
         }
         .padding(18)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
                 .strokeBorder(Theme.line, lineWidth: 1)
         )
     }
@@ -751,17 +1086,17 @@ struct CommandMetric: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.uv(.title, .semibold))
                 .foregroundStyle(tint)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 1) {
                 Text(value)
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.uv(.figure, .bold))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
                 Text(label)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.uv(.label, .medium))
                     .foregroundStyle(Theme.muted)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -770,9 +1105,9 @@ struct CommandMetric: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(Theme.surfaceSubtle, in: RoundedRectangle(cornerRadius: 10))
+        .background(Theme.surfaceSubtle, in: RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
                 .strokeBorder(Theme.line, lineWidth: 1)
         )
     }
@@ -788,14 +1123,14 @@ struct CommandToolbarButton: View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
                 .labelStyle(.iconOnly)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.uv(.meta, .semibold))
                 .frame(width: 30, height: 30)
         }
         .buttonStyle(.plain)
         .foregroundStyle(tint)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 7))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 7)
+            RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
                 .strokeBorder(tint.opacity(0.24), lineWidth: 1)
         )
         .help(title)
@@ -811,13 +1146,13 @@ struct CommandEmptyState: View {
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 28, weight: .light))
-                .foregroundStyle(Theme.inkFaint)
+                .font(.uv(.statement, .light))
+                .foregroundStyle(Theme.inkMuted)
             Text(title)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.uv(.title, .semibold))
                 .foregroundStyle(Theme.ink)
             Text(detail)
-                .font(.system(size: 13))
+                .font(.uv(.ui))
                 .foregroundStyle(Theme.muted)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -829,7 +1164,7 @@ struct CommandEmptyState: View {
 
 /// A quiet inline note under a settings row.
 ///
-/// For facts the user needs but did not ask for — a provider charge, a limit —
+/// For facts the user needs but did not ask for (a provider charge, a limit)
 /// where an alert would be alarming and silence would be dishonest. Deliberately
 /// low-contrast and sunken so it reads as a footnote rather than a call to action,
 /// and uses no new hue: the design system has exactly three status colours and this
@@ -840,18 +1175,18 @@ struct InlineNote: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "info.circle")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.inkFaint)
+                .font(.uv(.label))
+                .foregroundStyle(Theme.inkMuted)
                 .padding(.top, 1)
             Text(text)
-                .font(.system(size: 11))
+                .font(.uv(.label))
                 .foregroundStyle(Theme.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
-        .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .background(Theme.sunken, in: RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
         .accessibilityElement(children: .combine)
     }
 }

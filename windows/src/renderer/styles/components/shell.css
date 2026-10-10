@@ -1,0 +1,162 @@
+/* ==========================================================================
+   Shell: title strip, rail and stage
+   ========================================================================== */
+
+/* The window has no native title bar. This canvas strip is the drag area, and Windows
+   draws the caption buttons over its right end (titleBarOverlay, same colour). */
+.titlebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--titlebar-h);
+  background: var(--canvas);
+  -webkit-app-region: drag;
+  app-region: drag;
+  z-index: 10;
+}
+
+.shell {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+  padding-top: var(--titlebar-h);
+  overflow: hidden;
+  background: var(--canvas);
+}
+
+.rail {
+  width: 248px;
+  flex-shrink: 0;
+  padding: 8px 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  background: var(--rail);
+  box-shadow: var(--shadow-rail);
+}
+
+.rail-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px 0;
+  min-height: 32px;
+}
+
+.rail-mark {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  color: var(--ink);
+}
+
+.rail-wordmark {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.rail-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: var(--fs-ui);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out);
+}
+
+.nav-item:hover { background: var(--sunken); color: var(--ink); }
+.nav-item[aria-current="page"] {
+  background: var(--sunken);
+  color: var(--ink);
+  font-weight: 550;
+  /* A shape cue besides the tint: a 2px ink bar on the leading edge. */
+  box-shadow: inset 2px 0 0 var(--ink);
+}
+.nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+.rail-operator {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stage-wrap {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  padding: 10px;
+  padding-left: 0;
+}
+
+.stage {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  border-radius: var(--r-2xl);
+  box-shadow: var(--shadow-card);
+}
+
+.stage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 28px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.stage-title {
+  font-size: var(--fs-figure);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.stage-subtitle {
+  margin: 3px 0 0;
+  font-size: var(--fs-ui);
+  color: var(--ink-muted);
+}
+
+.stage-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px 28px 32px;
+}
+
+.page { display: flex; flex-direction: column; gap: 18px; max-width: 920px; }
+.page-wide { max-width: none; }
+
+/* Applied only on a real page switch, so unrelated repaints do not replay it.
+   The shared brand curve is front-loaded, so the duration is at the top of the
+   brand range; anything shorter reads as a cut rather than a transition. */
+.page-enter { animation: page-in 300ms var(--ease-out); }
+
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}

@@ -14,6 +14,8 @@ let selectedId: string | null = null;
 let query = '';
 let draft: { id: string; title: string; body: string } | null = null;
 let saveTimer = 0;
+let saveError: string | null = null;
+let retryDelay = 1000;
 let focusRequest: { field: 'title' | 'body' | 'search'; start: number; end: number } | null = null;
 let undo: { note: { id: string; title: string; body: string; createdAt: string; updatedAt: string }; index: number; timer: number } | null = null;
 
@@ -220,6 +222,15 @@ function documentPane(note: NoteDTO, refreshList: () => void): HTMLElement {
         'Delete',
       ),
     ),
+    draft && saveError
+      ? el(
+          'div',
+          { class: 'notice notice-danger notes-saveerror', role: 'alert' },
+          el('span', {}, `This note is not saved: ${saveError}. Retrying.`),
+          el('button', { class: 'btn btn-secondary btn-sm', type: 'button', onclick: () => void flushSave() } as never, 'Retry now'),
+          el('button', { class: 'btn btn-secondary btn-sm', type: 'button', onclick: discardChanges } as never, 'Discard changes'),
+        )
+      : null,
     el('div', { class: 'notes-scroll' }, el('div', { class: 'notes-column' }, title, meta, body)),
   );
 }
@@ -251,7 +262,10 @@ function selectNote(id: string): void {
   });
 }
 
-/** Saves the pending edit. Resolves false (and tells the user) when the save fails, and the draft is kept. */
+/**
+ * Saves the pending edit. Resolves false (and tells the user) when the save fails; the draft is kept,
+ * a banner offers Discard, and the autosave retries with a doubling delay (1 s up to 30 s).
+ */
 async function flushSave(): Promise<boolean> {
   window.clearTimeout(saveTimer);
   const pending = draft;
@@ -263,11 +277,29 @@ async function flushSave(): Promise<boolean> {
     if (at >= 0) state.notes[at] = saved;
     else state.notes.unshift(saved);
     if (draft === pending) draft = null;
+    retryDelay = 1000;
+    if (saveError) {
+      saveError = null;
+      render();
+    }
     return true;
   } catch (error) {
-    failure('Could not save the note', error);
+    const first = saveError === null;
+    saveError = error instanceof Error ? error.message : String(error);
+    if (first) failure('Could not save the note', error);
+    saveTimer = window.setTimeout(() => void flushSave(), retryDelay);
+    retryDelay = Math.min(retryDelay * 2, 30000);
+    if (first) render();
     return false;
   }
+}
+
+function discardChanges(): void {
+  window.clearTimeout(saveTimer);
+  draft = null;
+  saveError = null;
+  retryDelay = 1000;
+  render();
 }
 
 // An edit still inside the autosave window must not be lost when the window closes or hides.
@@ -302,7 +334,13 @@ async function copyMarkdown(title: string, body: string): Promise<void> {
 }
 
 async function deleteSelected(id: string): Promise<void> {
-  if (!(await flushSave())) return;
+  if (draft?.id === id) {
+    // The edit belongs to the note being deleted, so it is moot: do not let a failing save block the delete.
+    window.clearTimeout(saveTimer);
+    draft = null;
+    saveError = null;
+    retryDelay = 1000;
+  } else if (!(await flushSave())) return;
   let removed;
   try {
     removed = await api.deleteNote(id);

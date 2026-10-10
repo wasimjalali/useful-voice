@@ -8,7 +8,7 @@ const MORE_ICON = 'M5 12h.01M12 12h.01M19 12h.01';
 
 type Filter = 'all' | 'words' | 'fixes' | 'snippets' | 'suggestions';
 type Rule =
-  | { kind: 'word'; id: string; phrase: string; soundsLike: string[]; aliases: string[]; language: string; uses: number }
+  | { kind: 'word'; id: string; phrase: string; soundsLike: string[]; aliases: string[]; priority: string; notes: string; language: string; uses: number }
   | { kind: 'fix'; id: string; match: string; replacement: string; enabled: boolean; language: string; uses: number }
   | { kind: 'snippet'; id: string; trigger: string; expansion: string; language: string; uses: number };
 
@@ -35,7 +35,7 @@ function fmt(value: number): string {
 
 function rulesOf(memory: MemorySnapshotDTO): Rule[] {
   return [
-    ...memory.terms.map((t): Rule => ({ kind: 'word', id: t.id, phrase: t.phrase, soundsLike: t.pronunciations, aliases: t.aliases, language: t.language, uses: t.usageCount })),
+    ...memory.terms.map((t): Rule => ({ kind: 'word', id: t.id, phrase: t.phrase, soundsLike: t.pronunciations, aliases: t.aliases, priority: t.priority, notes: t.notes, language: t.language, uses: t.usageCount })),
     ...memory.replacements.map((r): Rule => ({ kind: 'fix', id: r.id, match: r.match, replacement: r.replacement, enabled: r.isEnabled, language: r.language, uses: r.usageCount })),
     ...memory.snippets.map((s): Rule => ({ kind: 'snippet', id: s.id, trigger: s.trigger, expansion: s.expansion, language: s.language, uses: s.usageCount })),
   ];
@@ -413,39 +413,71 @@ async function removeRule(rule: Rule): Promise<void> {
     if (rule.kind === 'word') await api.removeTerm(rule.id);
     else if (rule.kind === 'fix') await api.removeReplacement(rule.id);
     else await api.removeSnippet(rule.id);
-    await refresh();
   } catch (error) {
     failure('Could not remove the rule', error);
     return;
   }
+  // The rule is gone from here on, so Undo is offered even if the list cannot be refreshed.
   if (undoToast) window.clearTimeout(undoToast.timer);
   const timer = window.setTimeout(() => {
     undoToast = null;
     document.querySelector('.vocab-toast')?.remove();
   }, UNDO_MS);
-  undoToast = { label: 'Rule removed.', restore: () => readd(rule), timer };
+  undoToast = { label: 'Rule removed.', restore: makeRestore(rule), timer };
+  try {
+    await refresh();
+  } catch (error) {
+    setNotice('warning', `The rule was removed, but the list could not be refreshed: ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
   render();
 }
 
-/** Puts a removed rule back. Ids and use counts are not restorable through the API, so the count restarts at 0. */
-async function readd(rule: Rule): Promise<void> {
-  if (rule.kind === 'word') {
-    await api.addTerm({ phrase: rule.phrase, soundAlike: rule.soundsLike[0], alias: rule.aliases[0], language: rule.language });
-    if (rule.soundsLike.length > 1 || rule.aliases.length > 1) {
-      await refresh();
-      const created = state.memory?.terms.find((t) => t.phrase === rule.phrase);
-      if (created) await api.updateTerm(created.id, { pronunciations: rule.soundsLike, aliases: rule.aliases });
+/**
+ * Builds the Undo for a removed rule. The API creates rules with a new id and a use count of 0,
+ * so the use count restarts at 0 after an Undo; every other field it can set is put back.
+ * The restore is resumable: once the rule is re-added a retry only repeats the field step, so a
+ * partial failure never creates a duplicate.
+ */
+function makeRestore(rule: Rule): () => Promise<void> {
+  let added = false;
+  const partial = (what: string, error: unknown): Error =>
+    new Error(`the rule is back, but ${what} was not restored (${error instanceof Error ? error.message : String(error)})`);
+  return async () => {
+    if (rule.kind === 'snippet') {
+      await api.addSnippet({ trigger: rule.trigger, expansion: rule.expansion, language: rule.language });
+      return;
     }
-  } else if (rule.kind === 'fix') {
-    await api.addReplacement({ match: rule.match, replacement: rule.replacement, language: rule.language });
-    if (!rule.enabled) {
-      await refresh();
-      const created = state.memory?.replacements.find((r) => r.match === rule.match && r.replacement === rule.replacement);
-      if (created) await api.setReplacementEnabled(created.id, false);
+    if (!added) {
+      if (rule.kind === 'word') {
+        await api.addTerm({ phrase: rule.phrase, soundAlike: rule.soundsLike[0], alias: rule.aliases[0], language: rule.language });
+      } else {
+        await api.addReplacement({ match: rule.match, replacement: rule.replacement, language: rule.language });
+      }
+      added = true;
     }
-  } else {
-    await api.addSnippet({ trigger: rule.trigger, expansion: rule.expansion, language: rule.language });
-  }
+    if (rule.kind === 'word') {
+      try {
+        await refresh();
+        const created = state.memory?.terms.filter((t) => t.phrase === rule.phrase && t.language === rule.language).at(-1);
+        if (!created) throw new Error('the new word was not found');
+        await api.updateTerm(created.id, { pronunciations: rule.soundsLike, aliases: rule.aliases, priority: rule.priority, notes: rule.notes });
+      } catch (error) {
+        throw partial('its sounds-like, priority and notes', error);
+      }
+    } else if (!rule.enabled) {
+      try {
+        await refresh();
+        const created = state.memory?.replacements
+          .filter((r) => r.match === rule.match && r.replacement === rule.replacement && r.language === rule.language)
+          .at(-1);
+        if (!created) throw new Error('the new fix was not found');
+        await api.setReplacementEnabled(created.id, false);
+      } catch (error) {
+        throw partial('its paused state', error);
+      }
+    }
+  };
 }
 
 async function undoRemove(): Promise<void> {
@@ -454,16 +486,22 @@ async function undoRemove(): Promise<void> {
   window.clearTimeout(pending.timer);
   try {
     await pending.restore();
-    await refresh();
   } catch (error) {
+    // Keep the toast so Undo can finish the job; the message says what was not restored.
     pending.timer = window.setTimeout(() => {
       undoToast = null;
       document.querySelector('.vocab-toast')?.remove();
     }, UNDO_MS);
-    failure('Could not restore the rule', error);
+    failure('Undo incomplete', error);
     return;
   }
   undoToast = null;
+  try {
+    await refresh();
+  } catch (error) {
+    failure('The rule is back, but the list could not be refreshed', error);
+    return;
+  }
   render();
 }
 

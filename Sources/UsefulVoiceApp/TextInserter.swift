@@ -7,6 +7,7 @@ enum DeliveryOutcome {
     case insertedViaAX   // typed into the focused element
     case pasted          // synthetic Cmd-V landed (or a Cmd-V app where we can't prove it)
     case clipboardOnly   // nothing landed; the user pastes manually
+    case secureFieldCopied // a password field has focus: left on the clipboard, never typed
     case failed          // the clipboard write itself failed: the text is nowhere but History
 }
 
@@ -124,7 +125,7 @@ struct TextInserter {
         // safe themselves. Nothing is snapshotted: a password manager's
         // clipboard entry must not be copied into our process. Spec section 5.
         if isSecureInput() {
-            completion(Clipboard.writeString(text, marker: true, to: pb) ? .clipboardOnly : .failed)
+            completion(Clipboard.writeString(text, marker: true, to: pb) ? .secureFieldCopied : .failed)
             return
         }
 
@@ -143,7 +144,12 @@ struct TextInserter {
         // paste, marked so a re-entrant snapshot skips our own item.
         guard Clipboard.writeString(text, marker: true, to: pb) else {
             // The clipboard could not be written at all. Nothing was posted, so
-            // the dictation survives only in History; report the failure.
+            // the dictation survives only in History; report the failure. The
+            // failed write may already have cleared the clipboard, so put the
+            // user's own contents back when they were copied safely.
+            if canRestoreSafely, !saved.isEmpty {
+                Clipboard.restore(saved, to: pb)
+            }
             completion(.failed)
             onDeliverySettled?()
             return

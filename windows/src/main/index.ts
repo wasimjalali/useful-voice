@@ -1,7 +1,7 @@
 import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, nativeTheme, shell, screen, Menu } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promises as fs, readFileSync, writeFileSync } from 'node:fs';
+import { promises as fs, appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 
@@ -72,14 +72,27 @@ const E2E = process.argv.includes('--e2e');
 if (E2E) {
   // CI runners have no GPU; software rendering keeps hidden windows painting.
   app.disableHardwareAcceleration();
-  // Window lifecycle on stdout, so a failed run says where it stopped.
+  // Window lifecycle in <userData>/e2e.log (a Windows GUI app's stdout is not
+  // reliably piped), so a failed run says where it stopped.
+  const e2eLog = (line: string): void => {
+    try {
+      appendFileSync(path.join(app.getPath('userData'), 'e2e.log'), `${new Date().toISOString()} ${line}\n`);
+    } catch {
+      // The log is a diagnostic aid only.
+    }
+  };
+  e2eLog(`main start ${process.platform} ${process.versions.electron}`);
+  app.on('ready', () => e2eLog('ready'));
   app.on('web-contents-created', (_event, contents) => {
-    const tag = (): string => `[e2e] ${contents.id} ${contents.getURL() || '(blank)'}`;
-    contents.on('did-finish-load', () => console.log(`${tag()} loaded`));
-    contents.on('did-fail-load', (_e, code, description) => console.log(`${tag()} failed ${code} ${description}`));
-    contents.on('render-process-gone', (_e, details) => console.log(`${tag()} renderer gone ${details.reason}`));
-    contents.on('console-message', (_e, level, message) => { if (level >= 2) console.log(`${tag()} console ${message}`); });
+    const tag = (): string => `${contents.id} ${contents.getURL() || '(blank)'}`;
+    e2eLog(`created ${contents.id}`);
+    contents.on('did-start-loading', () => e2eLog(`${tag()} start loading`));
+    contents.on('did-finish-load', () => e2eLog(`${tag()} loaded`));
+    contents.on('did-fail-load', (_e, code, description, url) => e2eLog(`${tag()} failed ${code} ${description} ${url}`));
+    contents.on('render-process-gone', (_e, details) => e2eLog(`${tag()} renderer gone ${details.reason}`));
   });
+  process.on('uncaughtException', (error) => e2eLog(`uncaught ${error.stack ?? error.message}`));
+  process.on('unhandledRejection', (reason) => e2eLog(`unhandled ${String(reason)}`));
 }
 
 const CLIPBOARD_RESTORE_DELAY_MS = 700;

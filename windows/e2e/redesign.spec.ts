@@ -41,12 +41,17 @@ async function mainWindow(electronApp: ElectronApplication): Promise<Page> {
   }
   const seen = await Promise.all(electronApp.windows().map(locationOf));
   const fromMain = await within(
-    electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map((w) => w.webContents.getURL())),
+    electronApp.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().map(
+        (w) => `${w.webContents.getURL() || '(blank)'} loading=${w.webContents.isLoading()} crashed=${w.webContents.isCrashed()}`,
+      ),
+    ),
     5_000,
     ['(main did not answer)'],
   );
+  const log = await fs.readFile(path.join(userData, 'e2e.log'), 'utf8').catch(() => '(no e2e.log)');
   throw new Error(
-    `the main window never opened\npages: ${seen.join(' | ') || 'none'}\nmain: ${fromMain.join(' | ')}\n${appOutput.join('')}`,
+    `the main window never opened\npages: ${seen.join(' | ') || 'none'}\nmain: ${fromMain.join(' | ')}\nlog:\n${log}\n${appOutput.join('')}`,
   );
 }
 

@@ -132,3 +132,8 @@
   .vocab-row .btn, .vocab-row .icon-btn { min-height: 40px; min-width: 40px; }
   .vocab-menu-item { height: 40px; }
 }
+
+.vocab { position: relative; }
+.vocab-toast { position: fixed; right: 40px; bottom: 32px; z-index: 30; }
+.vocab-toast .toast-action { margin-left: 4px; }
+.vocab-add .btn:disabled { opacity: 0.55; }

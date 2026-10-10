@@ -8,14 +8,16 @@ const MORE_ICON = 'M5 12h.01M12 12h.01M19 12h.01';
 
 type Filter = 'all' | 'words' | 'fixes' | 'snippets' | 'suggestions';
 type Rule =
-  | { kind: 'word'; id: string; phrase: string; soundsLike: string[]; uses: number }
-  | { kind: 'fix'; id: string; match: string; replacement: string; enabled: boolean; uses: number }
-  | { kind: 'snippet'; id: string; trigger: string; expansion: string; uses: number };
+  | { kind: 'word'; id: string; phrase: string; soundsLike: string[]; aliases: string[]; language: string; uses: number }
+  | { kind: 'fix'; id: string; match: string; replacement: string; enabled: boolean; language: string; uses: number }
+  | { kind: 'snippet'; id: string; trigger: string; expansion: string; language: string; uses: number };
 
 // Module state: the page is rebuilt on every shell repaint, so the filter, the search
 // and the half-typed Add row survive in these.
 let filter: Filter = 'all';
 let query = '';
+let undoToast: { label: string; restore: () => Promise<void>; timer: number } | null = null;
+const UNDO_MS = 5000;
 const addRow = { say: '', write: '' };
 
 const KIND_LABEL = { word: 'Word', fix: 'Fix', snippet: 'Snippet' } as const;
@@ -33,9 +35,9 @@ function fmt(value: number): string {
 
 function rulesOf(memory: MemorySnapshotDTO): Rule[] {
   return [
-    ...memory.terms.map((t): Rule => ({ kind: 'word', id: t.id, phrase: t.phrase, soundsLike: t.pronunciations, uses: t.usageCount })),
-    ...memory.replacements.map((r): Rule => ({ kind: 'fix', id: r.id, match: r.match, replacement: r.replacement, enabled: r.isEnabled, uses: r.usageCount })),
-    ...memory.snippets.map((s): Rule => ({ kind: 'snippet', id: s.id, trigger: s.trigger, expansion: s.expansion, uses: s.usageCount })),
+    ...memory.terms.map((t): Rule => ({ kind: 'word', id: t.id, phrase: t.phrase, soundsLike: t.pronunciations, aliases: t.aliases, language: t.language, uses: t.usageCount })),
+    ...memory.replacements.map((r): Rule => ({ kind: 'fix', id: r.id, match: r.match, replacement: r.replacement, enabled: r.isEnabled, language: r.language, uses: r.usageCount })),
+    ...memory.snippets.map((s): Rule => ({ kind: 'snippet', id: s.id, trigger: s.trigger, expansion: s.expansion, language: s.language, uses: s.usageCount })),
   ];
 }
 
@@ -86,7 +88,7 @@ export function renderVocabularyPage(): HTMLElement {
         'button',
         {
           type: 'button',
-          'aria-selected': filter === id ? 'true' : 'false',
+          'aria-pressed': filter === id ? 'true' : 'false',
           onclick: () => {
             filter = id;
             addRow.say = '';
@@ -122,13 +124,29 @@ export function renderVocabularyPage(): HTMLElement {
   );
   if (filter !== 'suggestions') page.append(addRowFor(filter));
   page.append(body);
+  if (undoToast) {
+    page.append(
+      el(
+        'div',
+        { class: 'toast vocab-toast', role: 'status' },
+        el('span', {}, undoToast.label),
+        el('button', { class: 'toast-action', type: 'button', onclick: () => void undoRemove() } as never, 'Undo'),
+      ),
+    );
+  }
   return page;
 }
 
 // ---- Add row ----------------------------------------------------------
 
+function failure(action: string, error: unknown): void {
+  setNotice('danger', `${action}: ${error instanceof Error ? error.message : String(error)}`);
+}
+
 function addRowFor(current: Filter): HTMLElement {
   const snippets = current === 'snippets';
+  const wordsOnly = current === 'words';
+  const needsBoth = current === 'fixes' || snippets;
   const say = el('input', {
     class: 'field-input',
     value: addRow.say,
@@ -141,48 +159,62 @@ function addRowFor(current: Filter): HTMLElement {
     placeholder: snippets ? 'Text' : 'What you want',
     'aria-label': snippets ? 'Text to write' : 'What you want',
   } as never);
-  say.addEventListener('input', () => (addRow.say = say.value));
-  write.addEventListener('input', () => (addRow.write = write.value));
-  const submit = (): void => void addRule(current, say.value.trim(), write.value.trim());
+  const add = el('button', { class: 'btn btn-primary', type: 'button' } as never, 'Add');
+  const sync = (): void => {
+    add.disabled = needsBoth ? !(say.value.trim() && write.value.trim()) : wordsOnly ? !write.value.trim() : false;
+  };
+  say.addEventListener('input', () => {
+    addRow.say = say.value;
+    sync();
+  });
+  write.addEventListener('input', () => {
+    addRow.write = write.value;
+    sync();
+  });
+  const submit = (): void => {
+    if (!add.disabled) void addRule(current, say.value.trim(), write.value.trim());
+  };
+  add.addEventListener('click', submit);
   for (const input of [say, write]) {
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') submit();
     });
   }
+  sync();
   return el(
     'div',
     { class: 'vocab-add' },
-    el('span', { class: 'vocab-add-word' }, 'When I say'),
-    say,
-    el('span', { class: 'vocab-add-word' }, snippets ? 'expand to' : 'write'),
+    wordsOnly ? el('span', { class: 'vocab-add-word' }, 'Always write') : el('span', { class: 'vocab-add-word' }, 'When I say'),
+    wordsOnly ? null : say,
+    wordsOnly ? null : el('span', { class: 'vocab-add-word' }, snippets ? 'expand to' : 'write'),
     write,
-    el('button', { class: 'btn btn-primary', type: 'button', onclick: submit } as never, 'Add'),
+    add,
   );
 }
 
 async function addRule(current: Filter, say: string, write: string): Promise<void> {
   const language = state.settings?.languagePin ?? 'auto';
-  if (current === 'snippets') {
-    if (!say || !write) {
-      setNotice('danger', 'Fill in the trigger and the text to write.');
+  try {
+    if (current === 'snippets') {
+      await api.addSnippet({ trigger: say, expansion: write, language });
+      setNotice('success', `Say “${say}” to write your text.`);
+    } else if (!write) {
+      setNotice('danger', say ? 'Add what to write.' : 'Add a word to write.');
       return;
+    } else if (current === 'words' || !say) {
+      await api.addTerm({ phrase: write, language });
+      setNotice('success', `Added “${write}”.`);
+    } else {
+      await api.addReplacement({ match: say, replacement: write, language });
+      setNotice('success', `“${say}” will be written as “${write}”.`);
     }
-    await api.addSnippet({ trigger: say, expansion: write, language });
-    setNotice('success', `Say “${say}” to write your text.`);
-  } else if (!write) {
-    setNotice('danger', say ? 'Add what to write.' : 'Add a word to write.');
-    return;
-  } else if (!say) {
-    await api.addTerm({ phrase: write, language });
-    setNotice('success', `Added “${write}”.`);
-  } else {
-    await api.addReplacement({ match: say, replacement: write, language });
-    setNotice('success', `“${say}” will be written as “${write}”.`);
+    addRow.say = '';
+    addRow.write = '';
+    await refresh();
+    render();
+  } catch (error) {
+    failure('Could not add the rule', error);
   }
-  addRow.say = '';
-  addRow.write = '';
-  await refresh();
-  render();
 }
 
 // ---- Rules ------------------------------------------------------------
@@ -367,29 +399,93 @@ function chipQuote(text: string): HTMLElement {
 // ---- Actions ----------------------------------------------------------
 
 async function setPaused(id: string, currentlyEnabled: boolean): Promise<void> {
-  await api.setReplacementEnabled(id, !currentlyEnabled);
-  await refresh();
-  render();
+  try {
+    await api.setReplacementEnabled(id, !currentlyEnabled);
+    await refresh();
+    render();
+  } catch (error) {
+    failure('Could not change the fix', error);
+  }
 }
 
 async function removeRule(rule: Rule): Promise<void> {
-  if (rule.kind === 'word') await api.removeTerm(rule.id);
-  else if (rule.kind === 'fix') await api.removeReplacement(rule.id);
-  else await api.removeSnippet(rule.id);
-  await refresh();
+  try {
+    if (rule.kind === 'word') await api.removeTerm(rule.id);
+    else if (rule.kind === 'fix') await api.removeReplacement(rule.id);
+    else await api.removeSnippet(rule.id);
+    await refresh();
+  } catch (error) {
+    failure('Could not remove the rule', error);
+    return;
+  }
+  if (undoToast) window.clearTimeout(undoToast.timer);
+  const timer = window.setTimeout(() => {
+    undoToast = null;
+    document.querySelector('.vocab-toast')?.remove();
+  }, UNDO_MS);
+  undoToast = { label: 'Rule removed.', restore: () => readd(rule), timer };
+  render();
+}
+
+/** Puts a removed rule back. Ids and use counts are not restorable through the API, so the count restarts at 0. */
+async function readd(rule: Rule): Promise<void> {
+  if (rule.kind === 'word') {
+    await api.addTerm({ phrase: rule.phrase, soundAlike: rule.soundsLike[0], alias: rule.aliases[0], language: rule.language });
+    if (rule.soundsLike.length > 1 || rule.aliases.length > 1) {
+      await refresh();
+      const created = state.memory?.terms.find((t) => t.phrase === rule.phrase);
+      if (created) await api.updateTerm(created.id, { pronunciations: rule.soundsLike, aliases: rule.aliases });
+    }
+  } else if (rule.kind === 'fix') {
+    await api.addReplacement({ match: rule.match, replacement: rule.replacement, language: rule.language });
+    if (!rule.enabled) {
+      await refresh();
+      const created = state.memory?.replacements.find((r) => r.match === rule.match && r.replacement === rule.replacement);
+      if (created) await api.setReplacementEnabled(created.id, false);
+    }
+  } else {
+    await api.addSnippet({ trigger: rule.trigger, expansion: rule.expansion, language: rule.language });
+  }
+}
+
+async function undoRemove(): Promise<void> {
+  const pending = undoToast;
+  if (!pending) return;
+  window.clearTimeout(pending.timer);
+  try {
+    await pending.restore();
+    await refresh();
+  } catch (error) {
+    pending.timer = window.setTimeout(() => {
+      undoToast = null;
+      document.querySelector('.vocab-toast')?.remove();
+    }, UNDO_MS);
+    failure('Could not restore the rule', error);
+    return;
+  }
+  undoToast = null;
   render();
 }
 
 async function acceptSuggestion(id: string): Promise<void> {
-  await api.acceptSuggestion(id);
-  await refresh();
+  try {
+    await api.acceptSuggestion(id);
+    await refresh();
+  } catch (error) {
+    failure('Could not add the fix', error);
+    return;
+  }
   setNotice('success', 'Fix added. It applies from your next dictation.');
 }
 
 async function dismissSuggestion(id: string): Promise<void> {
-  await api.dismissSuggestion(id);
-  await refresh();
-  render();
+  try {
+    await api.dismissSuggestion(id);
+    await refresh();
+    render();
+  } catch (error) {
+    failure('Could not dismiss the suggestion', error);
+  }
 }
 
 // ---- Header: More menu (backup and CSV) -------------------------------
@@ -429,10 +525,12 @@ export function headerActionsForVocabulary(): HTMLElement[] {
           role: 'menuitem',
           onclick: () => {
             close();
-            void run().then(async (result) => {
-              if (label === 'Import backup' && result.ok) await refresh();
-              setNotice(result.ok ? 'success' : 'danger', result.message);
-            });
+            void run()
+              .then(async (result) => {
+                if (label === 'Import backup' && result.ok) await refresh();
+                setNotice(result.ok ? 'success' : 'danger', result.message);
+              })
+              .catch((error) => failure(`${label} failed`, error));
           },
         } as never,
         label,

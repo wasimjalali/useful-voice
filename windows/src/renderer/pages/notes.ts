@@ -238,46 +238,84 @@ function appendToast(root: HTMLElement): void {
 
 // ---- Actions ----------------------------------------------------------
 
+function failure(action: string, error: unknown): void {
+  setNotice('danger', `${action}: ${error instanceof Error ? error.message : String(error)}`);
+}
+
 function selectNote(id: string): void {
   if (id === selectedId) return;
-  void flushSave().then(() => {
+  void flushSave().then((saved) => {
+    if (!saved) return;
     selectedId = id;
     render();
   });
 }
 
-async function flushSave(): Promise<void> {
+/** Saves the pending edit. Resolves false (and tells the user) when the save fails, and the draft is kept. */
+async function flushSave(): Promise<boolean> {
   window.clearTimeout(saveTimer);
   const pending = draft;
-  if (!pending) return;
-  const saved = await api.saveNote({ id: pending.id, title: pending.title.trim() ? pending.title : '', body: pending.body });
-  // Patch the one note in place: a full refresh would replace the list under the editor.
-  const at = state.notes.findIndex((note) => note.id === saved.id);
-  if (at >= 0) state.notes[at] = saved;
-  else state.notes.unshift(saved);
-  if (draft === pending) draft = null;
+  if (!pending) return true;
+  try {
+    const saved = await api.saveNote({ id: pending.id, title: pending.title.trim() ? pending.title : '', body: pending.body });
+    // Patch the one note in place: a full refresh would replace the list under the editor.
+    const at = state.notes.findIndex((note) => note.id === saved.id);
+    if (at >= 0) state.notes[at] = saved;
+    else state.notes.unshift(saved);
+    if (draft === pending) draft = null;
+    return true;
+  } catch (error) {
+    failure('Could not save the note', error);
+    return false;
+  }
 }
 
+// An edit still inside the autosave window must not be lost when the window closes or hides.
+window.addEventListener('pagehide', () => void flushSave());
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') void flushSave();
+});
+
 async function createNote(): Promise<void> {
-  await flushSave();
-  const created = await api.saveNote({ title: '', body: '' });
-  state.notes.unshift(created);
-  selectedId = created.id;
-  query = '';
-  focusRequest = { field: 'title', start: 0, end: 0 };
-  render();
+  if (!(await flushSave())) return;
+  try {
+    const created = await api.saveNote({ title: '', body: '' });
+    state.notes.unshift(created);
+    selectedId = created.id;
+    query = '';
+    focusRequest = { field: 'title', start: 0, end: 0 };
+    render();
+  } catch (error) {
+    failure('Could not create the note', error);
+  }
 }
 
 async function copyMarkdown(title: string, body: string): Promise<void> {
   const heading = title.trim();
-  await api.copyToClipboard(heading ? `# ${heading}\n\n${body}` : body);
+  try {
+    await api.copyToClipboard(heading ? `# ${heading}\n\n${body}` : body);
+  } catch (error) {
+    failure('Could not copy the note', error);
+    return;
+  }
   setNotice('success', 'Copied as Markdown.');
 }
 
 async function deleteSelected(id: string): Promise<void> {
-  await flushSave();
-  const removed = await api.deleteNote(id);
-  if (!removed) throw new Error(`Note ${id} was not found when deleting it.`);
+  if (!(await flushSave())) return;
+  let removed;
+  try {
+    removed = await api.deleteNote(id);
+  } catch (error) {
+    failure('Could not delete the note', error);
+    return;
+  }
+  if (!removed) {
+    // Already gone (deleted elsewhere): resync instead of pretending it worked.
+    state.notes = await api.getNotes();
+    setNotice('warning', 'That note was already deleted.');
+    return;
+  }
   const gone = state.notes.find((note) => note.id === id);
   state.notes = state.notes.filter((note) => note.id !== id);
   selectedId = state.notes[Math.min(removed.index, state.notes.length - 1)]?.id ?? null;
@@ -298,13 +336,23 @@ async function undoDelete(): Promise<void> {
   const pending = undo;
   if (!pending) return;
   window.clearTimeout(pending.timer);
+  try {
+    // Restore puts the note back where it was, so Undo does not also reorder the list.
+    await api.restoreNote(
+      { id: pending.note.id, title: pending.note.title, body: pending.note.body, createdAt: pending.note.createdAt || undefined, updatedAt: pending.note.updatedAt || undefined },
+      pending.index,
+    );
+    state.notes = await api.getNotes();
+  } catch (error) {
+    // Keep the toast so the user can try again; the note is not lost until it expires.
+    pending.timer = window.setTimeout(() => {
+      undo = null;
+      document.querySelector('.notes-toast')?.remove();
+    }, UNDO_MS);
+    failure('Could not restore the note', error);
+    return;
+  }
   undo = null;
-  // Restore puts the note back where it was, so Undo does not also reorder the list.
-  await api.restoreNote(
-    { id: pending.note.id, title: pending.note.title, body: pending.note.body, createdAt: pending.note.createdAt || undefined, updatedAt: pending.note.updatedAt || undefined },
-    pending.index,
-  );
-  state.notes = await api.getNotes();
   selectedId = pending.note.id;
   render();
 }

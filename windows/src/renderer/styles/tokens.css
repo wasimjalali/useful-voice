@@ -45,7 +45,6 @@
   --hud-surface: #171717;
   --mark-tile: #171717;
   --mark-ink: #fafafa;
-  --mark-ring: transparent;
   --hud-ink: #fafafa;
   --hud-mark: #d4d4d4;
   /* The record dot inside the HUD takes the dark-palette danger value (5.9:1 there).
@@ -111,7 +110,6 @@
   /* The light tile (app-icon-light.svg) on a dark canvas, so the logo stands out. */
   --mark-tile: #fafafa;
   --mark-ink: #171717;
-  --mark-ring: transparent;
   --hud-ink: #fafafa;
   --hud-mark: #d4d4d4;
   --hud-danger: #f0795c;

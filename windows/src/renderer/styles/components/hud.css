@@ -183,3 +183,8 @@ body.hud {
 /* The recording view is never visible; it exists only to host audio capture. */
 body.recorder { background: transparent; overflow: hidden; }
 .recorder-note { padding: 16px; font-size: var(--fs-meta); color: var(--ink-muted); }
+
+/* The capsule is the drag handle; its buttons keep the pointer cursor. */
+.hud-capsule { cursor: grab; touch-action: none; user-select: none; }
+.hud-capsule.is-dragging { cursor: grabbing; }
+.hud-btn, .hud-x { cursor: pointer; }

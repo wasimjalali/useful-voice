@@ -128,7 +128,7 @@ verified by execution and which still require a Windows machine to confirm.
   model runs on-device and no network call is made during dictation. With
   Deepgram, the audio clip itself is uploaded for transcription.
 - The Windows renderer runs with `contextIsolation` on, `nodeIntegration` off, and a
-  strict `file://` CSP; 65 named IPC channels are its entire surface.
+  strict `file://` CSP; 66 named IPC channels are its entire surface.
 - A store that cannot read its file **refuses to write** rather than starting empty,
   so a transient read error can never erase your dictionary, notes or history.
 - **Diagnostics never record what you said.** The log in Settings holds failure

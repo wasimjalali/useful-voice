@@ -21,6 +21,8 @@ export interface DictationStateEvent {
   /** Which app will receive the text, for the HUD. Only a hotkey dictation has one. */
   targetApp?: string;
   elapsedSeconds?: number;
+  /** Pasted into the app in front, or only saved and copied (a window or retry dictation). */
+  delivery?: 'paste' | 'copy';
   /** Set on an error state that has a kind; `message` repeats `error.message`. */
   error?: DictationError;
 }

@@ -24,6 +24,8 @@ export type HudView =
   | { kind: 'recording'; elapsedSeconds: number; stopsIn?: number }
   | { kind: 'transcribing' }
   | { kind: 'inserting' }
+  /** A window or retry dictation: nothing is pasted, the text is saved and copied. */
+  | { kind: 'saving' }
   /** `saved`: the text was saved and copied (window or retry dictation), not inserted. */
   | { kind: 'done'; words: number; saved: boolean }
   | { kind: 'copied' }
@@ -39,6 +41,8 @@ export interface HudStatusInput {
   message?: string;
   error?: DictationError;
   elapsedSeconds?: number;
+  /** How the text will reach the user: pasted into the app in front, or only copied. */
+  delivery?: 'paste' | 'copy';
 }
 
 export interface HudClock {
@@ -52,13 +56,18 @@ const REAL_CLOCK: HudClock = {
 };
 
 /** The kinds that mean a dictation is still in flight, so an idle status ends them. */
-const IN_FLIGHT = new Set<HudView['kind']>(['recording', 'transcribing', 'inserting', 'error']);
+const IN_FLIGHT = new Set<HudView['kind']>(['recording', 'transcribing', 'inserting', 'saving', 'error']);
+
+/** Views that wait for the user; a language confirmation must not destroy them. */
+const PERSISTENT = new Set<HudView['kind']>(['error', 'copied']);
 
 export class HudModel {
   private seq = 0;
   private current: HudFrame | null = null;
-  /** The in-flight view a language confirmation is covering for a second. */
-  private covered: HudFrame | null = null;
+  /** The view a language confirmation is covering for a second, and when it would have timed out. */
+  private covered: { frame: HudFrame; deadline: number | null } | null = null;
+  /** When the current view times out (persistent and timed views), or null. */
+  private deadline: number | null = null;
   private timer: unknown = null;
 
   constructor(
@@ -80,7 +89,7 @@ export class HudModel {
         this.show({ kind: 'transcribing' });
         return;
       case 'delivering':
-        this.show({ kind: 'inserting' });
+        this.show({ kind: status.delivery === 'copy' ? 'saving' : 'inserting' });
         return;
       case 'error':
         this.show(
@@ -111,7 +120,11 @@ export class HudModel {
 
   /** Live numbers while recording. Updates the same view, so it never re-enters. */
   telemetry(telemetry: DictationTelemetry): void {
-    const stopsIn = telemetry.silenceRemaining ?? telemetry.maxRemaining;
+    // Whichever auto-stop comes first.
+    const stopsIn =
+      telemetry.silenceRemaining !== undefined && telemetry.maxRemaining !== undefined
+        ? Math.min(telemetry.silenceRemaining, telemetry.maxRemaining)
+        : (telemetry.silenceRemaining ?? telemetry.maxRemaining);
     const patch = (frame: HudFrame): HudFrame | null => {
       if (frame.kind !== 'recording') return null;
       if (frame.elapsedSeconds === telemetry.elapsedSeconds && frame.stopsIn === stopsIn) return null;
@@ -122,7 +135,7 @@ export class HudModel {
     };
     if (this.covered) {
       // Behind the language confirmation: keep it current for when it is uncovered.
-      this.covered = patch(this.covered) ?? this.covered;
+      this.covered = { ...this.covered, frame: patch(this.covered.frame) ?? this.covered.frame };
       return;
     }
     if (!this.current) return;
@@ -134,8 +147,8 @@ export class HudModel {
 
   /** The language was switched. While a dictation is in flight the confirmation covers it for a second. */
   language(name: string): void {
-    const inFlight = this.current && IN_FLIGHT.has(this.current.kind) && this.current.kind !== 'error';
-    if (inFlight && !this.covered) this.covered = this.current;
+    const coverable = this.current && (IN_FLIGHT.has(this.current.kind) || PERSISTENT.has(this.current.kind));
+    if (coverable && this.current && !this.covered) this.covered = { frame: this.current, deadline: this.deadline };
     this.show({ kind: 'language', name }, HUD_LANGUAGE_MS, true);
   }
 
@@ -150,6 +163,7 @@ export class HudModel {
     this.seq += 1;
     const frame: HudFrame = { ...view, seq: this.seq };
     this.current = frame;
+    this.deadline = autoHideMs === undefined ? null : Date.now() + autoHideMs;
     this.emit(frame);
     if (autoHideMs !== undefined) {
       const seq = this.seq;
@@ -165,11 +179,26 @@ export class HudModel {
   /** The timed view ran out: uncover what it was covering, or hide. */
   private finish(): void {
     if (this.covered) {
-      const frame = this.covered;
+      const { frame, deadline } = this.covered;
       this.covered = null;
+      // A persistent view keeps what was left of its own time, so it still ends on schedule.
+      const remaining = deadline === null ? null : deadline - Date.now();
+      if (remaining !== null && remaining <= 0) {
+        this.hide();
+        return;
+      }
       this.seq += 1;
       this.current = { ...frame, seq: this.seq };
+      this.deadline = deadline;
       this.emit(this.current);
+      if (remaining !== null) {
+        const seq = this.seq;
+        this.timer = this.clock.setTimeout(() => {
+          if (this.current?.seq !== seq) return;
+          this.timer = null;
+          this.finish();
+        }, remaining);
+      }
       return;
     }
     this.hide();
@@ -178,6 +207,7 @@ export class HudModel {
   private hide(): void {
     this.clearTimer();
     this.covered = null;
+    this.deadline = null;
     if (!this.current) return;
     this.current = null;
     this.emit(null);
@@ -257,6 +287,8 @@ export function hudLabel(view: HudView): string {
       return 'Transcribing';
     case 'inserting':
       return 'Inserting';
+    case 'saving':
+      return 'Saving';
     case 'done':
       return `${view.saved ? 'Saved and copied' : 'Inserted'}, ${formatWords(view.words)}`;
     case 'copied':

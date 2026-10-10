@@ -14,6 +14,8 @@ struct StreamTextView: NSViewRepresentable {
     var maxWidth: CGFloat = 608
     var selectable = true
     var onSelectionEnd: ((NSRange, CGRect) -> Void)?
+    /// A selection that changed without the mouse (Shift+Arrow). A zero length means cleared.
+    var onSelectionChange: ((NSRange, CGRect) -> Void)?
     var onShiftClick: (() -> Void)?
     var onPlainClick: (() -> Void)?
     var onLineCount: ((Int) -> Void)?
@@ -24,6 +26,7 @@ struct StreamTextView: NSViewRepresentable {
 
     func updateNSView(_ view: StreamNSTextView, context: Context) {
         view.onSelectionEnd = onSelectionEnd
+        view.onSelectionChange = onSelectionChange
         view.onShiftClick = onShiftClick
         view.onPlainClick = onPlainClick
         view.onLineCount = onLineCount
@@ -41,8 +44,12 @@ struct StreamTextView: NSViewRepresentable {
     }
 }
 
-final class StreamNSTextView: NSTextView {
+final class StreamNSTextView: NSTextView, NSTextViewDelegate {
     var onSelectionEnd: ((NSRange, CGRect) -> Void)?
+    var onSelectionChange: ((NSRange, CGRect) -> Void)?
+    /// True while the mouse is selecting (reported once, on release) or while the text is
+    /// being replaced (not a selection the person made).
+    private var ignoresSelectionChanges = false
     var onShiftClick: (() -> Void)?
     var onPlainClick: (() -> Void)?
     var onLineCount: ((Int) -> Void)?
@@ -71,6 +78,7 @@ final class StreamNSTextView: NSTextView {
         focusRingType = .none
         allowsUndo = false
         isAutomaticLinkDetectionEnabled = false
+        delegate = self
         selectedTextAttributes = [.backgroundColor: NSColor(Theme.ink).withAlphaComponent(0.16)]
     }
 
@@ -111,7 +119,17 @@ final class StreamNSTextView: NSTextView {
                 text.addAttributes([.backgroundColor: ink.withAlphaComponent(0.16)], range: span.range)
             }
         }
+        ignoresSelectionChanges = true
         textStorage?.setAttributedString(text)
+        ignoresSelectionChanges = false
+    }
+
+    func textViewDidChangeSelection(_ notification: Notification) {
+        guard !ignoresSelectionChanges else { return }
+        let range = selectedRange()
+        let rect = range.length > 0 ? rect(for: range) : .zero
+        // Deferred: this can fire while SwiftUI is updating the view.
+        DispatchQueue.main.async { [weak self] in self?.onSelectionChange?(range, rect) }
     }
 
     /// The size the text needs at `width`: as wide as its longest line (the bubble hugs
@@ -146,8 +164,11 @@ final class StreamNSTextView: NSTextView {
             return
         }
         onPlainClick?()
-        // The base class tracks the drag and returns when the mouse is released.
+        // The base class tracks the drag and returns when the mouse is released. The
+        // release is reported below, so the changes during the drag are not.
+        ignoresSelectionChanges = true
         super.mouseDown(with: event)
+        ignoresSelectionChanges = false
         let range = selectedRange()
         if range.length > 0 {
             onSelectionEnd?(range, rect(for: range))

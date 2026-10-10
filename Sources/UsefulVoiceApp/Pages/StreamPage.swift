@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UsefulVoiceCore
 
@@ -49,6 +50,15 @@ struct StreamPage: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .bottomLeading) {
+                // The timeline draws the local partial itself. With no timeline (the first
+                // dictation, or filters with no results) it still has to show.
+                if store.storedCount == 0 || store.shownCount == 0 {
+                    StreamGhostBubble(viewModel: viewModel, telemetry: viewModel.telemetry, settings: settings)
+                        .padding(.horizontal, 28)
+                        .padding(.bottom, 24)
+                }
+            }
             Group {
                 if store.selection.isEmpty {
                     StreamDock(viewModel: viewModel, settings: settings)
@@ -72,9 +82,14 @@ struct StreamPage: View {
         .defaultFocus($landing, true)
         .onAppear {
             // The window hands the first key view (the search field) focus when it opens,
-            // after defaultFocus ran. Take it back until the person clicks the field.
+            // after defaultFocus ran. Take it back, but only until the person clicks or
+            // types: from then on the focus is theirs.
+            let guardian = FocusReclaim()
             for delay in [0.0, 0.05, 0.3] {
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { landing = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    if guardian.active { landing = true }
+                    if delay >= 0.3 { guardian.stop() }
+                }
             }
         }
         .overlay(alignment: .bottomLeading) {
@@ -99,6 +114,28 @@ struct StreamPage: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.surface)
     }
+}
+
+/// Watches the first moments of the page for a click or a key press. Once one happens,
+/// the page stops taking focus back from the search field.
+private final class FocusReclaim {
+    private(set) var active = true
+    private var monitor: Any?
+
+    init() {
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .keyDown]) { [weak self] event in
+            self?.stop()
+            return event
+        }
+    }
+
+    func stop() {
+        active = false
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+    }
+
+    deinit { if let monitor { NSEvent.removeMonitor(monitor) } }
 }
 
 /// Offscreen renders only (`UV_STREAM_PREVIEW=teach|note|menu|datejump`): a popover is a

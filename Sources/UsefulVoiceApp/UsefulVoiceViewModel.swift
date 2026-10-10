@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import UsefulVoiceCore
 
@@ -140,7 +141,15 @@ final class UsefulVoiceViewModel: ObservableObject {
     /// the HUD or a menu item.
     func perform(_ fix: DictationFix) {
         switch fix {
-        case .openMicrophoneSettings: Self.openPrivacyPane("Privacy_Microphone")
+        case .openMicrophoneSettings:
+            // Permission granted means the device itself failed: Sound > Input is
+            // where that is fixed; otherwise the privacy switch is.
+            if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
+               let url = URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension?input") {
+                NSWorkspace.shared.open(url)
+            } else {
+                Self.openPrivacyPane("Privacy_Microphone")
+            }
         case .openAccessibilitySettings: Self.openPrivacyPane("Privacy_Accessibility")
         case .openEngineSettings:
             // From the HUD or the menu the window may be closed: open it first.

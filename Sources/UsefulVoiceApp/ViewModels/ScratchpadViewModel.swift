@@ -134,6 +134,7 @@ final class ScratchpadViewModel: ObservableObject {
     /// Puts the just-deleted note back where it was and re-selects it.
     func undoDelete() {
         guard let deletion = undoableDeletion else { return }
+        commitDraft()   // the open note's last keystrokes before switching back
         pendingUndoDismissal?.cancel()
         store.restore(deletion.note, at: deletion.index)
         undoableDeletion = nil
@@ -151,6 +152,7 @@ final class ScratchpadViewModel: ObservableObject {
 
     func duplicateSelected() {
         guard let selectedID else { return }
+        commitDraft()   // duplicate what is on screen, not the last save
         let copy = store.duplicate(id: selectedID, now: Date())
         syncSaveState()
         refresh()

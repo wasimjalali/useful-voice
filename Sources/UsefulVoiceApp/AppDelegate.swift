@@ -94,7 +94,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // on and straight back off) and draw a second HUD pill. The duplicate is
         // reachable because `make run` leaves a live bundle in dist/ with the
         // same bundle identifier and signature as the /Applications copy.
-        if SingleInstance.yieldToExistingInstance() { return }
+        // An offscreen render (`UV_SNAPSHOT`) installs no event tap and adds no
+        // status item, so it may run beside the copy the user is dictating with.
+        let isSnapshot = ProcessInfo.processInfo.environment["UV_SNAPSHOT"] != nil
+        if !isSnapshot, SingleInstance.yieldToExistingInstance() { return }
         // Settles the English default for new installs while an existing one
         // stays on Auto-detect. Must run before anything reads the language.
         // A forced first-run preview saves nothing, so it skips this too.
@@ -114,7 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // differently signed copy of the app.
         if ProcessInfo.processInfo.environment["UV_SNAPSHOT"] == nil { primeKeyCache() }
         chimes.isEnabled = { [settings] in settings.soundEffectsEnabled }
-        setUpStatusItem()
+        if !isSnapshot { setUpStatusItem() }
         setUpController()
         setUpFirstRun()
         // `UV_SNAPSHOT=<png path>@<width>x<height>` renders the page named by

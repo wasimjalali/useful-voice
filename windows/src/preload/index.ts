@@ -44,25 +44,32 @@ const api = {
    * Audio API lives. The main process asks for it over these channels and the
    * renderer replies with encoded audio.
    */
-  onStartRecording: (handler: () => void): (() => void) => {
-    const listener = (): void => handler();
+  onStartRecording: (handler: (token: string) => void): (() => void) => {
+    const listener = (_event: unknown, payload: { token: string }): void => handler(payload.token);
     ipcRenderer.on('audio:start', listener);
     return () => ipcRenderer.removeListener('audio:start', listener);
   },
-  onStopRecording: (handler: () => void): (() => void) => {
-    const listener = (): void => handler();
+  /** `discard`: throw the audio away and send nothing (a cancelled recording). */
+  onStopRecording: (handler: (request: { token: string; discard: boolean }) => void): (() => void) => {
+    const listener = (_event: unknown, payload: { token: string; discard?: boolean }): void =>
+      handler({ token: payload.token, discard: payload.discard === true });
     ipcRenderer.on('audio:stop', listener);
     return () => ipcRenderer.removeListener('audio:stop', listener);
   },
+  /** The microphone is open for `token`. The main process waits for this before it says "recording". */
+  sendAudioStarted: (token: string): Promise<void> => ipcRenderer.invoke('audio:started', token),
   /**
    * Send captured audio to the main process.
    *
    * The payload is a plain ArrayBuffer so it survives structured cloning without
    * an extra copy through a Node Buffer.
    */
-  sendAudio: (wav: ArrayBuffer, meta: { durationSeconds: number; peak: number; hadSpeech: boolean }): Promise<void> =>
-    ipcRenderer.invoke('audio:captured', wav, meta),
-  sendAudioError: (message: string): Promise<void> => ipcRenderer.invoke('audio:error', message),
+  sendAudio: (
+    token: string,
+    wav: ArrayBuffer,
+    meta: { durationSeconds: number; peak: number; hadSpeech: boolean },
+  ): Promise<void> => ipcRenderer.invoke('audio:captured', token, wav, meta),
+  sendAudioError: (message: string, token?: string): Promise<void> => ipcRenderer.invoke('audio:error', message, token),
   sendLevel: (level: number): void => ipcRenderer.send('audio:level', level),
 
   // ---- state ----

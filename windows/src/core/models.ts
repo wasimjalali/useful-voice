@@ -170,7 +170,8 @@ export type DictationErrorKind =
   | 'outOfCredits'
   | 'offline'
   | 'timedOut'
-  | 'providerFailed';
+  | 'providerFailed'
+  | 'deliveryFailed';
 
 /** What the user can do about an error. Absent means there is nothing to offer. */
 export type DictationFix = 'openMicrophoneSettings' | 'openEngineSettings' | 'retry';

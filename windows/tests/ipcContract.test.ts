@@ -251,6 +251,23 @@ describe('dictation telemetry and outcome channels', () => {
   });
 });
 
+describe('recorder window protocol', () => {
+  it('tags every capture message with its token, so a late one cannot reach the next recording', () => {
+    expect(preloadSource).toContain("ipcRenderer.invoke('audio:started', token)");
+    expect(preloadSource).toMatch(/sendAudio: \(\s*token: string,/);
+    expect(preloadSource).toContain("ipcRenderer.invoke('audio:captured', token, wav, meta)");
+    expect(preloadSource).toContain("ipcRenderer.invoke('audio:error', message, token)");
+    expect(mainSource).toContain('this.recorder.handleStarted(token)');
+    expect(mainSource).toContain('this.recorder.handleCaptured(token,');
+    expect(mainSource).toContain('this.recorder.handleError(token, message)');
+  });
+
+  it('keeps the old fire-and-forget start and the untagged pending slot out of main', () => {
+    expect(mainSource).not.toContain('pendingCapture');
+    expect(mainSource).not.toContain("webContents.send('audio:start')");
+  });
+});
+
 describe('channel naming', () => {
   it('names every channel namespace:verb', () => {
     // The verb may be camelCase (`dictation:copyLast`); the rule is the namespace,

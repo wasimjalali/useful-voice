@@ -16,14 +16,20 @@ const shots = path.join(out, 'shots');
 let app: ElectronApplication;
 let win: Page;
 let userData: string;
+/** The app's own stdout and stderr, shown when the launch fails. */
+const appOutput: string[] = [];
 
 async function mainWindow(electronApp: ElectronApplication): Promise<Page> {
-  for (let i = 0; i < 100; i += 1) {
+  // A cold Windows runner can take a while: PowerShell helpers and first-run file
+  // creation happen before the window loads.
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
     const found = electronApp.windows().find((page) => page.url().includes('view=main'));
     if (found) return found;
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 200));
   }
-  throw new Error('the main window never opened');
+  const urls = electronApp.windows().map((page) => page.url()).join(', ') || 'none';
+  throw new Error(`the main window never opened (windows: ${urls})\n${appOutput.join('')}`);
 }
 
 async function go(section: 'Stream' | 'Notes' | 'Vocabulary' | 'Insights' | 'Settings'): Promise<void> {
@@ -49,6 +55,8 @@ test.beforeAll(async () => {
     // are switched on here.
     recordVideo: { dir: path.join(out, 'video'), size: { width: 1180, height: 740 } },
   });
+  app.process().stdout?.on('data', (chunk: Buffer) => appOutput.push(chunk.toString()));
+  app.process().stderr?.on('data', (chunk: Buffer) => appOutput.push(chunk.toString()));
   await app.context().tracing.start({ screenshots: true, snapshots: true });
   win = await mainWindow(app);
   await win.setViewportSize({ width: 1180, height: 740 });

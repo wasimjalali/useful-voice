@@ -7,7 +7,7 @@ const out = process.env.E2E_OUT ?? 'e2e-results';
 
 export default defineConfig({
   testDir: 'e2e',
-  timeout: 90_000,
+  timeout: 180_000,
   workers: 1,
   outputDir: `${out}/artifacts`,
   reporter: [['list'], ['html', { outputFolder: `${out}/report`, open: 'never' }]],

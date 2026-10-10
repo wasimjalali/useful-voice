@@ -122,8 +122,8 @@ describe('the background refetch', () => {
     // Home is the screen in front of the user while they dictate, so leaving it out
     // would leave the most visible half of the stale-list bug in place.
     const mountMain = declarationText('function mountMain(');
-    expect(mountMain).toContain("loadIfActive(['home', 'history']");
-    expect(mountMain).toContain("loadIfActive(['home', 'dictionary']");
+    expect(mountMain).toContain("loadIfActive('stream'");
+    expect(mountMain).toContain("loadIfActive(['stream', 'vocabulary']");
     expect(mountMain).toContain("loadIfActive('notes'");
   });
 });
@@ -134,7 +134,7 @@ describe('the mid-edit guard', () => {
   it('applies to the dictionary page, whose forms keep their text in the DOM', () => {
     // The words, corrections and shortcuts forms read their inputs when the button is
     // pressed and never mirror them into `state`, so a repaint drops a half-typed entry.
-    expect(guard).toContain("if (state.page !== 'dictionary') return false;");
+    expect(guard).toContain("if (state.page !== 'vocabulary') return false;");
     expect(guard).toContain('.stage-body .field-input');
   });
 
@@ -157,7 +157,7 @@ describe('page transitions', () => {
 
   it('defines the animation in CSS and applies it only to page switches', () => {
     const styles = stylesSource;
-    expect(styles).toMatch(/\.page-enter\s*{[^}]*page-in\s+300ms\s+var\(--ease-out\)/);
+    expect(styles).toMatch(/\.page-enter\s*{[^}]*page-in\s+var\(--dur-enter\)\s+var\(--ease-out\)/);
     expect(styles).toMatch(/@keyframes\s+page-in\s*{/);
     // The shared reduced-motion kill switch must still cover it.
     expect(styles).toContain('prefers-reduced-motion: reduce');
@@ -166,9 +166,9 @@ describe('page transitions', () => {
   it('does not rebuild the whole page for a dictation state tick', () => {
     // On any page but Home the dictation state is only the rail operator row, so the
     // body must not be torn down (that is what dropped focus mid-typing).
-    expect(mountMain).toContain('function renderOperator(');
-    expect(mountMain).toContain("if (state.page === 'home') render();");
-    expect(mountMain).toContain('else renderOperator();');
+    expect(mountMain).toContain('function renderChrome(');
+    expect(mountMain).toContain("if (state.page === 'stream') render();");
+    expect(mountMain).toContain('else renderChrome();');
   });
 });
 

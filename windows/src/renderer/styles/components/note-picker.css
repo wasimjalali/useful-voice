@@ -1,0 +1,92 @@
+/* ==========================================================================
+   Note picker: search, recent notes, New note
+   ========================================================================== */
+
+.np { width: 320px; padding-bottom: 6px; }
+
+.np-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  margin: 10px;
+  padding: 0 10px;
+  border: 1px solid var(--control-edge);
+  border-radius: var(--r-sm);
+  color: var(--ink-muted);
+}
+
+.np-field:focus-within {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+  color: var(--ink);
+}
+
+.np-field svg { flex: none; }
+
+.np-field .np-input,
+.np-field .np-input:focus {
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+}
+
+.np-list { padding: 0 6px; }
+
+.np-label {
+  padding: 4px 10px 6px;
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.np-empty {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: var(--fs-ui);
+  color: var(--ink-muted);
+}
+
+.np-sep { height: 1px; margin: 6px 6px; background: var(--line); }
+
+.np-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--fs-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.np-row svg { flex: none; color: var(--ink-muted); }
+
+.np-row.is-active {
+  background: var(--sunken);
+  box-shadow: inset 2px 0 0 var(--ink);
+}
+
+.np-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.np-time { flex: none; font-size: var(--fs-meta); color: var(--ink-muted); }
+
+@media (pointer: coarse) {
+  .np-row { height: 44px; }
+  .np-field { height: 40px; }
+}

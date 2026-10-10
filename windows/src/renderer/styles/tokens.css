@@ -43,6 +43,8 @@
 
   /* The HUD is dark in both themes. */
   --hud-surface: #171717;
+  --mark-tile: #171717;
+  --mark-ring: transparent;
   --hud-ink: #fafafa;
   --hud-mark: #d4d4d4;
   /* The record dot inside the HUD takes the dark-palette danger value (5.9:1 there).
@@ -105,6 +107,8 @@
   --danger-soft: #3a1b14;
 
   --hud-surface: #202020;
+  --mark-tile: #171717;
+  --mark-ring: rgb(255 255 255 / 0.14);
   --hud-ink: #fafafa;
   --hud-mark: #d4d4d4;
   --hud-danger: #f0795c;
@@ -173,6 +177,8 @@
 /* ---------- Base ---------- */
 
 * { box-sizing: border-box; }
+/* `hidden` always wins over a component's own display rule. */
+[hidden] { display: none !important; }
 
 html, body {
   margin: 0;

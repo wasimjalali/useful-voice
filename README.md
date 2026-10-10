@@ -99,7 +99,7 @@ Deepgram request shape, so a backup taken on one platform is readable by the oth
 ```bash
 cd windows
 npm install
-npm run verify      # typecheck + 258 tests + build + headless self-test
+npm run verify      # typecheck + 507 tests + build + headless self-test
 npm start
 npm run dist        # NSIS installer + portable exe -> windows/release/
 ```
@@ -128,7 +128,7 @@ verified by execution and which still require a Windows machine to confirm.
   model runs on-device and no network call is made during dictation. With
   Deepgram, the audio clip itself is uploaded for transcription.
 - The Windows renderer runs with `contextIsolation` on, `nodeIntegration` off, and a
-  strict `file://` CSP; 50 named IPC channels are its entire surface.
+  strict `file://` CSP; 66 named IPC channels are its entire surface.
 - A store that cannot read its file **refuses to write** rather than starting empty,
   so a transient read error can never erase your dictionary, notes or history.
 - **Diagnostics never record what you said.** The log in Settings holds failure

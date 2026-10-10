@@ -1,8 +1,17 @@
-import type { AppSettings, LanguageMemorySnapshot, MemoryLanguage } from '../core/models.js';
+import type {
+  AppSettings,
+  DictationDelivery,
+  DictationError,
+  DictationOutcomeEvent,
+  DictationSource,
+  DictationTelemetry,
+  LanguageMemorySnapshot,
+  MemoryLanguage,
+} from '../core/models.js';
 import { applyMemory } from '../core/memory/memoryPostProcessor.js';
 import { selectKeyterms } from '../core/memory/biasBuilder.js';
-import { RecordingClock } from '../core/audio/silenceWatchdog.js';
-import { MINIMUM_AUDIO_BYTES } from '../core/audio/wav.js';
+import { RecordingClock, SilenceWatchdog } from '../core/audio/silenceWatchdog.js';
+import { LEVEL_METER_GAIN, MINIMUM_AUDIO_BYTES } from '../core/audio/wav.js';
 import { ProviderError, type Transcript } from '../core/transcription/deepgramProvider.js';
 import { detectionStayedOnNova3, resolveDetectedLanguage } from '../core/transcription/languages.js';
 
@@ -13,6 +22,10 @@ export interface DictationStatus {
   message?: string;
   targetApp?: string;
   elapsedSeconds?: number;
+  /** Set on an error status that has a kind, never otherwise. `message` repeats `error.message`. */
+  error?: DictationError;
+  /** How the text reaches the user, while a dictation is in flight: pasted, or only saved and copied. */
+  delivery?: 'paste' | 'copy';
 }
 
 /** What the recorder must provide. Implemented by the renderer over IPC. */
@@ -47,8 +60,24 @@ export interface TranscriberPort {
 
 export interface DeliveryRequest {
   text: string;
-  /** Which app was focused when dictation started. */
+  /**
+   * `paste`: type it into `targetApp`, restoring the previous clipboard once the paste
+   * is proven. `copy`: only put it on the clipboard. Nothing is pasted, nothing is
+   * restored, so a later paste of the user's own cannot be disturbed.
+   */
+  mode: 'paste' | 'copy';
+  /** Which app was focused when a hotkey dictation started. Absent in copy mode. */
   targetApp?: string;
+  /**
+   * The window that was in front when it started. If another window is in front at
+   * delivery, the sink copies instead of pasting.
+   */
+  targetHandle?: number;
+  /**
+   * Aborted when the user cancels. The sink must check it right before it pastes and
+   * stop there; once the paste is sent it finishes and reports `delivered`.
+   */
+  signal?: AbortSignal;
 }
 
 export interface DeliveryResult {
@@ -56,6 +85,8 @@ export interface DeliveryResult {
   delivered: boolean;
   /** Whether the dictation is still on the clipboard as a fallback. */
   clipboardFallback: boolean;
+  /** The sink stopped before pasting because the signal aborted. Nothing was sent. */
+  cancelled?: boolean;
 }
 
 export interface TextSinkPort {
@@ -78,6 +109,13 @@ export interface DictationServiceDeps {
    */
   apiKey: () => Promise<string | null>;
   onStatus: (status: DictationStatus) => void;
+  /**
+   * Called once per dictation that was delivered or cancelled, BEFORE the idle
+   * status that ends it, so a window can show its done line before it resets.
+   */
+  onOutcome?: (outcome: DictationOutcomeEvent) => void;
+  /** Called at most ~30 times a second, and only while recording. */
+  onTelemetry?: (telemetry: DictationTelemetry) => void;
   onCompleted?: (result: DictationOutcome) => void;
   /**
    * Records a diagnostic worth keeping. Never pass transcript text or the API
@@ -90,6 +128,18 @@ export interface DictationServiceDeps {
   now?: () => number;
   /** Bounded wait for delivery, so a lost callback cannot wedge the app. */
   deliveryTimeoutMs?: number;
+  /** How often the silence and max-length limits are checked. */
+  tickMs?: number;
+}
+
+export interface StartOptions {
+  /** Where the dictation started. Fixed for the whole dictation. */
+  source: DictationSource;
+  rawMode?: boolean;
+  /** The app that was frontmost. Only a hotkey dictation uses it. */
+  targetApp?: string;
+  /** Its window handle, so delivery can tell the user has since moved elsewhere. */
+  targetHandle?: number;
 }
 
 export interface DictationOutcome {
@@ -115,6 +165,34 @@ export interface DictationOutcome {
 /** How long delivery may take before the state is released anyway. */
 export const DEFAULT_DELIVERY_TIMEOUT_MS = 5000;
 
+/** How often the silence and max-length limits are checked, independent of audio frames. */
+export const DEFAULT_TICK_MS = 250;
+
+/** Input level updates to the window and HUD are spaced at least this far apart (~30 Hz). */
+export const TELEMETRY_MIN_INTERVAL_MS = 33;
+
+/** A countdown is shown only for this many seconds before an auto-stop. */
+export const COUNTDOWN_SECONDS = 5;
+
+/**
+ * One dictation, from the moment recording starts until it is delivered, fails or is
+ * cancelled. Everything that can arrive late (a stop, an upload, a delivery) checks it
+ * is still the current session before it acts, which is what makes a cancel final.
+ */
+interface Session {
+  /** Where it started. Never changes. */
+  readonly source: DictationSource;
+  readonly targetApp?: string;
+  readonly targetHandle?: number;
+  readonly rawMode: boolean;
+  /** The text reached the clipboard or the target, so a later failure is not a failed dictation. */
+  delivered: boolean;
+  /** A stop is under way (or done), so no other stop may begin. */
+  stopping: boolean;
+  /** Its outcome has been sent, so none can be sent again. */
+  settled: boolean;
+}
+
 /**
  * The dictation state machine.
  *
@@ -131,13 +209,20 @@ export class DictationService {
   private clock: RecordingClock;
   private abortController: AbortController | null = null;
   private deliveryTimer: NodeJS.Timeout | null = null;
-  private lastFailed: { audio: CapturedAudio; language: MemoryLanguage; targetApp?: string } | null = null;
-  private lastOutcome: DictationOutcome | null = null;
-  /** Consumed exactly once per dictation, never left set for the next one. */
-  private pendingRawMode = false;
+  private lastFailed: { audio: CapturedAudio; language: MemoryLanguage } | null = null;
+  /** The dictation in flight. Null between dictations and after a cancel. */
+  private session: Session | null = null;
+  /** True while `recorder.start()` is pending, so a second press cannot start another. */
+  private starting = false;
+  /** The pipeline after recording stops, so a cancel during delivery can wait for its verdict. */
+  private processing: Promise<void> | null = null;
+  private watchdog: SilenceWatchdog | null = null;
+  private ticker: NodeJS.Timeout | null = null;
+  private lastLevel = 0;
+  private lastTelemetryAt: number | null = null;
 
   constructor(private readonly deps: DictationServiceDeps) {
-    this.clock = new RecordingClock(deps.settings().maxRecordingSeconds, deps.now ?? (() => Date.now()));
+    this.clock = new RecordingClock(deps.settings().maxRecordingSeconds, this.nowFn());
   }
 
   get currentState(): DictationState {
@@ -152,10 +237,6 @@ export class DictationService {
     return this.lastFailed !== null;
   }
 
-  get mostRecent(): DictationOutcome | null {
-    return this.lastOutcome;
-  }
-
   get elapsedSeconds(): number {
     return this.clock.elapsedSeconds();
   }
@@ -165,9 +246,10 @@ export class DictationService {
    *
    * Only `idle` and `recording` are actionable. A press during transcription or
    * delivery is ignored rather than queued, so a hotkey cannot start a second
-   * recording mid-paste.
+   * recording mid-paste. When it stops a recording the `source` is ignored: the
+   * dictation keeps the source it started with.
    */
-  async toggle(options: { rawMode?: boolean; targetApp?: string } = {}): Promise<void> {
+  async toggle(options: StartOptions): Promise<void> {
     if (this.state === 'idle' || this.state === 'error') {
       await this.startRecording(options);
       return;
@@ -177,58 +259,81 @@ export class DictationService {
     }
   }
 
-  async startRecording(options: { rawMode?: boolean; targetApp?: string } = {}): Promise<void> {
-    if (this.state === 'recording' || this.state === 'transcribing' || this.state === 'delivering') {
+  async startRecording(options: StartOptions): Promise<void> {
+    if (this.isBusy || this.session !== null || this.starting) {
       return;
     }
-    this.deps.settings(); // ensure settings are current before sizing the cap
-    this.clock = new RecordingClock(this.deps.settings().maxRecordingSeconds, this.deps.now ?? (() => Date.now()));
-    this.pendingRawMode = options.rawMode === true;
+    const settings = this.deps.settings();
+    this.clock = new RecordingClock(settings.maxRecordingSeconds, this.nowFn());
+    const session: Session = {
+      source: options.source,
+      // A window dictation never pastes, so it has no target to record.
+      targetApp: options.source === 'hotkey' ? options.targetApp : undefined,
+      targetHandle: options.source === 'hotkey' ? options.targetHandle : undefined,
+      rawMode: options.rawMode === true,
+      delivered: false,
+      stopping: false,
+      settled: false,
+    };
 
+    this.starting = true;
     try {
       await this.deps.recorder.start();
     } catch (error) {
       // A missing/blocked microphone must produce an actionable message, not a
       // bare "error 4" the way the unlocalized Swift enum did.
-      this.setState('error', describeRecordingFailure(error));
+      this.setState('error', classifyRecordingFailure(error));
       return;
+    } finally {
+      this.starting = false;
     }
 
+    this.session = session;
     this.clock.start();
-    this.setState('recording', undefined, options.targetApp);
+    this.startMonitoring(settings.silenceTimeoutSeconds);
+    this.setState('recording', undefined, session.targetApp);
   }
 
   async stopAndProcess(): Promise<void> {
-    if (this.state !== 'recording') return;
+    await this.stopRecording((error) => `Recording could not be saved: ${describe(error)}`, false);
+  }
+
+  /** Force-stop even if the recorder is wedged. Used by the max-duration guard. */
+  async forceStop(reason: string): Promise<void> {
+    await this.stopRecording(() => reason, true);
+  }
+
+  /**
+   * Stop the recorder and process what it captured.
+   *
+   * Entered from a manual stop, the silence guard and the max-length guard, so it is
+   * the one place that decides a stop is already under way: a second caller returns
+   * at once instead of stopping the recorder again and uploading twice.
+   */
+  private async stopRecording(failureMessage: (error: unknown) => string, cancelRecorderOnFailure: boolean): Promise<void> {
+    const session = this.session;
+    if (this.state !== 'recording' || !session || session.stopping) return;
+    session.stopping = true;
+    this.stopMonitoring();
 
     let captured: CapturedAudio;
     try {
       captured = await this.deps.recorder.stop();
     } catch (error) {
+      if (this.session !== session) return;
       this.clock.stop();
-      this.setState('error', `Recording could not be saved: ${describe(error)}`);
+      if (cancelRecorderOnFailure) {
+        await this.deps.recorder.cancel().catch(() => undefined);
+        if (this.session !== session) return;
+      }
+      this.fail(session, { kind: 'stopFailed', message: failureMessage(error) });
       return;
     }
+    // Cancelled while the recorder was still stopping: the audio is dropped.
+    if (this.session !== session) return;
     this.clock.stop();
 
-    await this.process(captured, {
-      language: this.deps.settings().languagePin,
-      targetApp: undefined,
-    });
-  }
-
-  /** Force-stop even if the recorder is wedged. Used by the max-duration guard. */
-  async forceStop(reason: string): Promise<void> {
-    if (this.state !== 'recording') return;
-    try {
-      const captured = await this.deps.recorder.stop();
-      this.clock.stop();
-      await this.process(captured, { language: this.deps.settings().languagePin });
-    } catch {
-      this.clock.stop();
-      await this.deps.recorder.cancel().catch(() => undefined);
-      this.setState('error', reason);
-    }
+    await this.run(session, () => this.process(session, captured, this.deps.settings().languagePin));
   }
 
   /**
@@ -240,60 +345,205 @@ export class DictationService {
    */
   async cancel(): Promise<void> {
     if (this.state === 'idle') return;
-    if (this.state === 'recording') {
-      this.clock.stop();
+    const session = this.session;
+    // No session outside the error state means a cancel is already in flight.
+    if (this.state !== 'error' && !session) return;
+
+    // During delivery the sink knows whether the paste has gone out. Stop it before the
+    // paste if it can; if the paste was already sent the dictation finishes as delivered,
+    // because a "Cancelled" for text that is in the document would be a lie.
+    if (this.state === 'delivering' && session && this.processing) {
       this.abortController?.abort();
-      await this.deps.recorder.cancel().catch(() => undefined);
-      this.setState('idle');
+      await this.processing.catch(() => undefined);
       return;
     }
-    // Transcribing or delivering: cancel the request and release the state
-    // immediately rather than waiting for a timeout.
+
+    const wasRecording = this.state === 'recording';
+    this.session = null;
+    this.stopMonitoring();
     this.abortController?.abort();
+    this.abortController = null;
     this.clearDeliveryTimer();
+    if (wasRecording) {
+      this.clock.stop();
+      await this.deps.recorder.cancel().catch(() => undefined);
+    }
+    if (session) this.emitOutcome(session, { kind: 'cancelled' });
     this.setState('idle');
   }
 
-  /** Retry the last failure, re-uploading the retained audio. */
+  /** Retry the last failure, re-uploading the retained audio. The result is copied, never pasted. */
   async retryLast(): Promise<void> {
     const failed = this.lastFailed;
     if (!failed) return;
-    if (this.state === 'recording' || this.state === 'transcribing' || this.state === 'delivering') return;
+    if (this.isBusy || this.session !== null || this.starting) return;
     this.lastFailed = null;
-    await this.process(failed.audio, {
-      language: failed.language,
-      targetApp: failed.targetApp,
-    });
+    // The window it came from may be long gone, so a retry always saves and copies.
+    const session: Session = { source: 'window', rawMode: false, delivered: false, stopping: true, settled: false };
+    this.session = session;
+    await this.run(session, () => this.process(session, failed.audio, failed.language));
   }
 
-  private async process(
-    captured: CapturedAudio,
-    context: { language: MemoryLanguage; targetApp?: string },
-  ): Promise<void> {
-    // Consume the raw-mode flag here, exactly once. The macOS version cleared it
-    // only on the success path, so every early return (too short, no provider,
-    // empty transcript) left it set and the NEXT dictation silently skipped
-    // formatting with no explanation.
-    const rawMode = this.pendingRawMode;
-    this.pendingRawMode = false;
+  /** Forget the audio kept for a retry, for instance when the history is cleared. */
+  discardRetained(): void {
+    this.lastFailed = null;
+  }
+
+  /**
+   * Feed one input level sample (the 0 to 1 meter level) while recording.
+   *
+   * Updates what the silence watchdog has heard and forwards the level to the window
+   * and HUD at no more than ~30 Hz. Ignored unless a recording is running.
+   */
+  reportLevel(level: number): void {
+    if (!this.isRecordingLive() || !this.watchdog || !Number.isFinite(level)) return;
+    this.lastLevel = Math.max(0, Math.min(1, level));
+    this.watchdog.observe(this.lastLevel / LEVEL_METER_GAIN, this.clock.elapsedSeconds());
+    this.emitTelemetry();
+  }
+
+  /**
+   * The recorder reported an error while a recording was live (the device was
+   * unplugged, access was revoked). Ends the dictation as a microphone problem.
+   * Ignored when no recording is live: a stop reports its own failure.
+   */
+  async recorderFailed(error: unknown): Promise<void> {
+    const session = this.session;
+    if (!this.isRecordingLive() || !session) return;
+    session.stopping = true;
+    this.stopMonitoring();
+    this.clock.stop();
+    await this.deps.recorder.cancel().catch(() => undefined);
+    this.fail(session, classifyRecordingFailure(error));
+  }
+
+  /**
+   * Run the pipeline so that nothing a callback throws can leave the session stuck in
+   * transcribing or delivering. Whatever escapes ends the dictation as an error.
+   */
+  private async run(session: Session, work: () => Promise<void>): Promise<void> {
+    const task = (async () => {
+      try {
+        await work();
+      } catch (error) {
+        this.deps.onDiagnostic?.('dictation', `unexpected failure: ${describe(error)}`);
+        try {
+          this.fail(
+            session,
+            session.delivered
+              ? // The text is already where it was going. Only the bookkeeping failed.
+                { kind: 'saveFailed', message: 'Delivered, but it could not be saved to your history.' }
+              : { kind: 'providerFailed', message: `The dictation failed unexpectedly: ${describe(error)}` },
+          );
+        } catch (listenerError) {
+          // The status listener threw as well. The state is already released.
+          this.deps.onDiagnostic?.('dictation', `status listener failed: ${describe(listenerError)}`);
+        }
+      }
+    })();
+    this.processing = task;
+    try {
+      await task;
+    } finally {
+      if (this.processing === task) this.processing = null;
+    }
+  }
+
+  private isRecordingLive(): boolean {
+    return this.state === 'recording' && this.session !== null && !this.session.stopping;
+  }
+
+  private startMonitoring(silenceTimeoutSeconds: number): void {
+    this.stopMonitoring();
+    this.watchdog = new SilenceWatchdog({ timeoutSeconds: silenceTimeoutSeconds });
+    this.lastLevel = 0;
+    this.lastTelemetryAt = null;
+    this.ticker = setInterval(() => this.tick(), this.deps.tickMs ?? DEFAULT_TICK_MS);
+    this.ticker.unref?.();
+  }
+
+  private stopMonitoring(): void {
+    if (this.ticker) clearInterval(this.ticker);
+    this.ticker = null;
+    this.watchdog = null;
+  }
+
+  /**
+   * Enforce the two limits from the clock, not from audio frames: a device that stops
+   * delivering buffers must still hit the silence limit and the hard cap.
+   */
+  private tick(): void {
+    if (!this.isRecordingLive() || !this.watchdog) return;
+    if (this.clock.isOverLimit()) {
+      void this.forceStop('The recording limit was reached and the recording could not be saved.').catch((error) =>
+        this.deps.onDiagnostic?.('dictation', `max-length stop failed: ${describe(error)}`),
+      );
+      return;
+    }
+    if (this.watchdog.isExpired(this.clock.elapsedSeconds())) {
+      void this.stopAndProcess().catch((error) =>
+        this.deps.onDiagnostic?.('dictation', `silence stop failed: ${describe(error)}`),
+      );
+      return;
+    }
+    this.emitTelemetry();
+  }
+
+  private emitTelemetry(): void {
+    if (!this.deps.onTelemetry || !this.watchdog) return;
+    const now = this.nowFn()();
+    if (this.lastTelemetryAt !== null && now - this.lastTelemetryAt < TELEMETRY_MIN_INTERVAL_MS) return;
+    this.lastTelemetryAt = now;
+
+    const elapsed = this.clock.elapsedSeconds();
+    const telemetry: DictationTelemetry = { level: this.lastLevel, elapsedSeconds: elapsed };
+
+    // Silence counts down only once it has actually started, so a short limit does
+    // not show a countdown to someone who is speaking.
+    const untilSilenceStop = this.watchdog.secondsUntilStop(elapsed);
+    if (
+      untilSilenceStop !== null &&
+      untilSilenceStop <= COUNTDOWN_SECONDS &&
+      this.watchdog.silenceSeconds(elapsed) >= 1
+    ) {
+      telemetry.silenceRemaining = untilSilenceStop;
+    }
+    const untilMaxStop = Math.ceil(this.clock.remainingSeconds());
+    if (untilMaxStop <= COUNTDOWN_SECONDS) telemetry.maxRemaining = untilMaxStop;
+
+    this.deps.onTelemetry(telemetry);
+  }
+
+  private async process(session: Session, captured: CapturedAudio, language: MemoryLanguage): Promise<void> {
+    // The raw-mode flag belongs to the session, so it cannot outlive its dictation.
+    // The macOS version cleared a shared flag only on the success path, so every
+    // early return (too short, no provider, empty transcript) left it set and the
+    // NEXT dictation silently skipped formatting with no explanation.
+    const rawMode = session.rawMode;
+    const current = (): boolean => this.session === session;
 
     const settings = this.deps.settings();
 
     if (captured.wav.byteLength < MINIMUM_AUDIO_BYTES) {
-      this.setState('error', 'Recording was too short. Hold the hotkey a moment longer.');
+      this.fail(session, { kind: 'tooShort', message: 'Recording was too short. Hold the hotkey a moment longer.' });
       return;
     }
     // A silent clip can make a speech model echo its prompt bias back as a fake
     // transcript, so it is rejected before any upload.
     if (!captured.hadSpeech) {
-      this.setState('error', 'No speech detected. Check your microphone level and try again.');
+      this.fail(session, { kind: 'noSpeech', message: 'No speech detected. Check your microphone level and try again.' });
       return;
     }
 
     const apiKey = await this.deps.apiKey();
+    if (!current()) return;
     if (!apiKey) {
-      this.retain(captured, context);
-      this.setState('error', 'No Deepgram API key is set. Add one in Settings to start dictating.');
+      this.retain(captured, language);
+      this.fail(session, {
+        kind: 'noProvider',
+        message: 'No Deepgram API key is set. Add one in Settings to start dictating.',
+        fix: 'openEngineSettings',
+      });
       return;
     }
 
@@ -302,19 +552,19 @@ export class DictationService {
       terms: snapshot.terms,
       replacements: snapshot.replacements,
       snippets: snapshot.snippets,
-      language: context.language,
+      language,
       budget: settings.dictionaryBiasBudget,
     });
 
     this.abortController = new AbortController();
-    this.setState('transcribing', undefined, context.targetApp);
+    this.setState('transcribing', undefined, session.targetApp);
 
     let transcript: Transcript;
     try {
       transcript = await this.deps.transcriber.transcribe(
         {
           audio: captured.wav,
-          language: context.language,
+          language,
           keyterms: selection.terms,
           smartFormat: settings.formattingEnabled,
           spokenPunctuation: settings.spokenPunctuationEnabled,
@@ -322,15 +572,18 @@ export class DictationService {
         this.abortController.signal,
       );
     } catch (error) {
+      // A cancelled upload ends here without a word: the cancel already reported it.
+      if (!current()) return;
       // Keep the audio so Retry does not make the user dictate again.
-      this.retain(captured, context);
-      this.setState('error', describeTranscriptionFailure(error));
+      this.retain(captured, language);
+      this.fail(session, classifyTranscriptionFailure(error));
       return;
     }
+    if (!current()) return;
 
     const rawText = transcript.text.trim();
     if (rawText.length === 0) {
-      this.setState('error', 'No speech was recognised in that recording.');
+      this.fail(session, { kind: 'noSpeech', message: 'No speech was recognised in that recording.' });
       return;
     }
 
@@ -346,8 +599,8 @@ export class DictationService {
         ?.trim()
         .replace(/[^A-Za-z-]/g, '')
         .slice(0, 35) || null;
-    const effectiveLanguage = rawDetected ? resolveDetectedLanguage(rawDetected) : context.language;
-    const storedLanguage = rawDetected ?? context.language;
+    const effectiveLanguage = rawDetected ? resolveDetectedLanguage(rawDetected) : language;
+    const storedLanguage = rawDetected ?? language;
 
     // A detected code Nova-3 does not speak natively means the provider fell
     // back down the model chain, which silently drops `keyterm` — and the
@@ -380,15 +633,30 @@ export class DictationService {
         // unformatted text, which is already correct.
         mode = 'raw';
       }
+      if (!current()) return;
     }
 
     if (finalText.trim().length === 0) {
-      this.setState('error', 'The transcript came back empty.');
+      this.fail(session, { kind: 'noSpeech', message: 'The transcript came back empty.' });
       return;
     }
 
-    this.setState('delivering', undefined, context.targetApp);
-    const delivered = await this.deliver(finalText, context.targetApp);
+    // A hotkey dictation is pasted into the app it started in. Everything else (a
+    // window dictation, any retry) is saved and copied only.
+    const deliveryMode = session.source === 'hotkey' ? 'paste' : 'copy';
+    this.setState('delivering', undefined, session.targetApp);
+    const delivered = await this.deliver(finalText, deliveryMode, session);
+    if (!current()) return;
+    session.delivered = !delivered.cancelled && (delivered.delivered || delivered.clipboardFallback);
+    if (delivered.cancelled) {
+      // Esc arrived and the sink stopped before it pasted: nothing went out, so this
+      // dictation is abandoned and not recorded.
+      this.abortController = null;
+      this.emitOutcome(session, { kind: 'cancelled' });
+      this.session = null;
+      this.setState('idle');
+      return;
+    }
 
     const outcome: DictationOutcome = {
       id: (this.deps.idFactory ?? defaultId)(),
@@ -396,24 +664,78 @@ export class DictationService {
       rawText,
       intermediateText: memoryResult.text,
       language: storedLanguage,
-      appName: context.targetApp ?? 'Unknown',
+      appName: deliveryMode === 'paste' ? (session.targetApp ?? 'Unknown') : '',
       durationSeconds: transcript.durationSeconds ?? captured.durationSeconds,
       mode,
-      createdAt: new Date(this.deps.now ? this.deps.now() : Date.now()).toISOString(),
+      createdAt: new Date(this.nowFn()()).toISOString(),
       replacementRuleIds: memoryResult.appliedRuleIds,
       memoryHitIds: memoryResult.memoryHitIds,
       snippetIds: memoryResult.appliedSnippetIds,
     };
-    this.lastOutcome = outcome;
     this.lastFailed = null;
     this.abortController = null;
     this.deps.onCompleted?.(outcome);
 
-    if (!delivered.delivered && delivered.clipboardFallback) {
-      this.setState('idle', 'Copied to your clipboard. Press Ctrl+V to paste it.');
+    if (deliveryMode === 'copy') {
+      if (!delivered.delivered) {
+        // The text is safe in history, but it did not reach the clipboard, and saying
+        // "Saved and copied" would be a lie.
+        this.fail(session, {
+          kind: 'deliveryFailed',
+          message: 'Your dictation is saved in your history, but copying it to the clipboard failed.',
+        });
+        return;
+      }
+      this.finish(session, finalText, 'copied');
       return;
     }
-    this.setState('idle');
+    if (delivered.delivered) {
+      this.finish(session, finalText, 'pasted', session.targetApp);
+      return;
+    }
+    if (delivered.clipboardFallback) {
+      this.finish(session, finalText, 'copiedNotPasted', session.targetApp, 'Copied to your clipboard. Press Ctrl+V to paste it.');
+      return;
+    }
+    // Neither pasted nor on the clipboard: only a broken sink reports this.
+    this.fail(session, {
+      kind: 'deliveryFailed',
+      message: 'Your dictation is saved in your history, but it could not be delivered.',
+    });
+  }
+
+  /** End a dictation that was delivered: outcome first, then idle. */
+  private finish(
+    session: Session,
+    text: string,
+    result: DictationDelivery,
+    appName?: string,
+    idleMessage?: string,
+  ): void {
+    const event: DictationOutcomeEvent = { kind: 'delivered', words: countWords(text), result };
+    if (appName !== undefined) event.appName = appName;
+    this.emitOutcome(session, event);
+    this.session = null;
+    this.setState('idle', idleMessage);
+  }
+
+  /**
+   * End a dictation with an error. A typed error also reaches the UI as `status.error`;
+   * a bare message (a broken sink, which only a bug can cause) has no kind to offer.
+   * Callers have already checked the session is still current.
+   */
+  private fail(session: Session, error: DictationError | string): void {
+    if (this.session !== session) return;
+    this.stopMonitoring();
+    this.abortController = null;
+    this.session = null;
+    this.setState('error', error);
+  }
+
+  private emitOutcome(session: Session, event: DictationOutcomeEvent): void {
+    if (session.settled) return;
+    session.settled = true;
+    this.deps.onOutcome?.(event);
   }
 
   /**
@@ -425,12 +747,22 @@ export class DictationService {
    * state is always released, and the dictation is left on the clipboard either
    * way.
    */
-  private async deliver(text: string, targetApp?: string): Promise<DeliveryResult> {
+  private async deliver(text: string, mode: 'paste' | 'copy', session: Session): Promise<DeliveryResult> {
     const timeoutMs = this.deps.deliveryTimeoutMs ?? DEFAULT_DELIVERY_TIMEOUT_MS;
     let timer: NodeJS.Timeout | null = null;
     try {
+      const request: DeliveryRequest =
+        mode === 'paste'
+          ? {
+              text,
+              mode,
+              targetApp: session.targetApp,
+              targetHandle: session.targetHandle,
+              signal: this.abortController?.signal,
+            }
+          : { text, mode, signal: this.abortController?.signal };
       const result = await Promise.race([
-        this.deps.sink.deliver({ text, targetApp }),
+        this.deps.sink.deliver(request),
         new Promise<DeliveryResult>((resolve) => {
           timer = setTimeout(
             () => resolve({ delivered: false, clipboardFallback: true }),
@@ -449,15 +781,21 @@ export class DictationService {
     }
   }
 
-  private retain(captured: CapturedAudio, context: { language: MemoryLanguage; targetApp?: string }): void {
-    this.lastFailed = { audio: captured, ...context };
+  private retain(captured: CapturedAudio, language: MemoryLanguage): void {
+    this.lastFailed = { audio: captured, language };
   }
 
-  private setState(state: DictationState, message?: string, targetApp?: string): void {
+  private setState(state: DictationState, error?: DictationError | string, targetApp?: string): void {
     this.state = state;
     const status: DictationStatus = { state };
-    if (message !== undefined) status.message = message;
+    if (typeof error === 'string') {
+      status.message = error;
+    } else if (error !== undefined) {
+      status.message = error.message;
+      status.error = error;
+    }
     if (targetApp !== undefined) status.targetApp = targetApp;
+    if (this.session) status.delivery = this.session.source === 'hotkey' ? 'paste' : 'copy';
     if (state === 'recording') status.elapsedSeconds = this.clock.elapsedSeconds();
     this.deps.onStatus(status);
   }
@@ -468,6 +806,15 @@ export class DictationService {
       this.deliveryTimer = null;
     }
   }
+
+  private nowFn(): () => number {
+    return this.deps.now ?? (() => Date.now());
+  }
+}
+
+/** Whitespace-separated tokens, which is what "24 words" means in the done line. */
+export function countWords(text: string): number {
+  return text.split(/\s+/).filter((token) => token.length > 0).length;
 }
 
 function defaultId(): string {
@@ -482,6 +829,11 @@ function defaultId(): string {
  * AudioRecorderError error 4.)" — a message that names neither the cause nor the
  * remedy.
  */
+export function classifyRecordingFailure(error: unknown): DictationError {
+  // Every way the microphone can fail to start is fixed in the same place.
+  return { kind: 'micUnavailable', message: describeRecordingFailure(error), fix: 'openMicrophoneSettings' };
+}
+
 export function describeRecordingFailure(error: unknown): string {
   const raw = describe(error).toLowerCase();
   if (raw.includes('permission') || raw.includes('denied') || raw.includes('notallowed')) {
@@ -496,8 +848,38 @@ export function describeRecordingFailure(error: unknown): string {
   return `Recording could not start: ${describe(error)}`;
 }
 
+/** Turn a transcription failure into a typed error with the fix the UI should offer. */
+export function classifyTranscriptionFailure(error: unknown): DictationError {
+  const message = transcriptionFailureMessage(error);
+  if (error instanceof ProviderError) {
+    switch (error.kind) {
+      case 'unauthorized':
+        return { kind: 'keyRejected', message, fix: 'openEngineSettings' };
+      case 'outOfCredits':
+        return { kind: 'outOfCredits', message, fix: 'openEngineSettings' };
+      case 'transport':
+        return { kind: 'offline', message, fix: 'retry' };
+      case 'timedOut':
+        return { kind: 'timedOut', message, fix: 'retry' };
+      // A request the provider rejected fails identically forever, so it gets no retry.
+      case 'badRequest':
+        return { kind: 'providerFailed', message };
+      case 'rateLimited':
+      case 'serverError':
+      case 'malformedResponse':
+      case 'cancelled':
+        return { kind: 'providerFailed', message, fix: 'retry' };
+    }
+  }
+  return { kind: 'providerFailed', message, fix: 'retry' };
+}
+
 /** Turn a transcription failure into something the user can act on. */
 export function describeTranscriptionFailure(error: unknown): string {
+  return transcriptionFailureMessage(error);
+}
+
+function transcriptionFailureMessage(error: unknown): string {
   if (error instanceof ProviderError) {
     switch (error.kind) {
       case 'unauthorized':
@@ -511,6 +893,8 @@ export function describeTranscriptionFailure(error: unknown): string {
       case 'badRequest':
         // The provider's message is already bounded and has the key redacted.
         return error.message;
+      case 'outOfCredits':
+        return 'Your Deepgram credit is used up. Add credit in your Deepgram account, then try again.';
       case 'serverError':
         return 'Deepgram is having trouble right now. Try again shortly.';
       case 'malformedResponse':

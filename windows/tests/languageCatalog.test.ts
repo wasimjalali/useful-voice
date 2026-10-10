@@ -240,7 +240,7 @@ describe('language picker options', () => {
     // The regression that mattered: `multi` must not be called auto-detection.
     const auto = options.find((o) => o.value === 'auto');
     const multi = options.find((o) => o.value === 'multi');
-    expect(auto?.label).toBe('Detect automatically');
+    expect(auto?.label).toBe('Auto-detect');
     expect(multi?.label).not.toContain('Detect');
     expect(multi?.label).toContain('Multiple languages');
   });

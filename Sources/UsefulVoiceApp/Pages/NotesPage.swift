@@ -36,6 +36,7 @@ struct NotesPage: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.surface)
+        .keepsFirstFieldUnfocused()
         .overlay(alignment: .bottomTrailing) {
             if let deletion = scratchpad.undoableDeletion {
                 NotesUndoToast(message: Self.deletedMessage(deletion.note)) {

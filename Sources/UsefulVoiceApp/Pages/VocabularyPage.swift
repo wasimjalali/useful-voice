@@ -68,6 +68,7 @@ struct VocabularyPage: View {
         .pageColumn(maxWidth: 1200)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.surface)
+        .keepsFirstFieldUnfocused()
         .overlay(alignment: .bottomTrailing) {
             if let removed {
                 NotesUndoToast(message: removed.message) {

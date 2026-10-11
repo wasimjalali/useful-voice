@@ -49,6 +49,8 @@ struct HUDView: View {
     var presentation: HUDPresentation = .shown
     var onFix: (DictationFix) -> Void = { _ in }
     var onClose: () -> Void = {}
+    /// Snapshot only: a ready-made waveform history for the recording state.
+    var waveformFixture: [Double]? = nil
 
     static let windowSize = CGSize(width: 400, height: 160)
     /// Transparent margin around the capsule, so its shadow is not clipped.
@@ -130,7 +132,7 @@ struct HUDView: View {
         case .recording(let seconds, let level, let stopsIn):
             row(trailing: 16) {
                 RecordingDot(reduceMotion: reduceMotion)
-                LandingMark(level: level, size: 22, fill: Theme.hudMark)
+                WaveformView(level: level, fill: Theme.hudMark, fixture: waveformFixture)
                 Text(Self.timecode(seconds)).monospacedDigit()
                 if let stopsIn { Text("Stops in \(stopsIn) s") }
                 KeyCap(label: "esc")

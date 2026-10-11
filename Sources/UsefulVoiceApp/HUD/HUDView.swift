@@ -15,6 +15,8 @@ enum HUDPresentation {
 final class HUDModel: ObservableObject {
     @Published var display: HUDDisplay = .delivering
     @Published var presentation: HUDPresentation = .entering
+    /// Bumped each time the HUD comes up, so the waveform starts empty for every recording.
+    @Published var recordingID = 0
     /// The capsule's current size, reported by the view. The panel uses it to take
     /// clicks over the capsule only.
     var capsuleSize: CGSize = .zero
@@ -32,7 +34,7 @@ struct HUDRoot: View {
     let onClose: () -> Void
 
     var body: some View {
-        HUDView(display: model.display, presentation: model.presentation,
+        HUDView(display: model.display, presentation: model.presentation, recordingID: model.recordingID,
                 onFix: onFix, onClose: onClose)
             .onPreferenceChange(CapsuleSizeKey.self) { model.capsuleSize = $0 }
     }
@@ -47,8 +49,11 @@ struct HUDRoot: View {
 struct HUDView: View {
     let display: HUDDisplay
     var presentation: HUDPresentation = .shown
+    var recordingID = 0
     var onFix: (DictationFix) -> Void = { _ in }
     var onClose: () -> Void = {}
+    /// Snapshot only: a ready-made waveform history for the recording state.
+    var waveformFixture: [Double]? = nil
 
     static let windowSize = CGSize(width: 400, height: 160)
     /// Transparent margin around the capsule, so its shadow is not clipped.
@@ -130,7 +135,8 @@ struct HUDView: View {
         case .recording(let seconds, let level, let stopsIn):
             row(trailing: 16) {
                 RecordingDot(reduceMotion: reduceMotion)
-                LandingMark(level: level, size: 22, fill: Theme.hudMark)
+                WaveformView(level: level, fill: Theme.hudMark, fixture: waveformFixture)
+                    .id(recordingID)
                 Text(Self.timecode(seconds)).monospacedDigit()
                 if let stopsIn { Text("Stops in \(stopsIn) s") }
                 KeyCap(label: "esc")

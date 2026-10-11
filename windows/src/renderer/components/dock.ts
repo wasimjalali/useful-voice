@@ -9,7 +9,8 @@ import { api } from '../api.js';
 import type { DictationError, DictationOutcomeEvent, DictationTelemetry, SettingsDTO } from '../../preload/types.js';
 import { el, icon } from './dom.js';
 import { STREAM_ICONS } from './dockIcons.js';
-import { createLandingMark, setLandingMarkLevels, type LandingMarkOptions } from './landingMark.js';
+import { createLandingMark, setLandingMarkLevels, swellScales, type LandingMarkOptions } from './landingMark.js';
+import { createLevelSmoother } from './waveform.js';
 import { languagePicker, type LanguagePickerHandle } from './languagePicker.js';
 import { formatAccelerator, formatClock, pluralize } from './bubbleFormat.js';
 
@@ -49,10 +50,6 @@ const COPIED_NOT_PASTED_MS = 8000;
 /** The dock's state change, in ms. Matches --dur-state. */
 const DOCK_SWAP_MS = 200;
 
-/** Bar scale range the landing mark takes (see landingMark.ts). */
-const BAR_MIN = 0.3;
-const BAR_SPAN = 1.05;
-
 export function createDock(options: DockOptions): DockHandle {
   let mode: Mode = 'idle';
   let done: Done | null = null;
@@ -64,7 +61,8 @@ export function createDock(options: DockOptions): DockHandle {
   let doneTimer = 0;
   let ticker = 0;
   let selection: SelectionBar | null = null;
-  let levels: [number, number, number] = [0, 0, 0];
+  const smoother = createLevelSmoother();
+  let markFrame = 0;
 
   let language: LanguagePickerHandle | null = null;
   let languagePin = '';
@@ -185,7 +183,8 @@ export function createDock(options: DockOptions): DockHandle {
   function recordingRow(): Array<Node | null> {
     const mark = createLandingMark({ size: 28, state: 'live' } satisfies LandingMarkOptions);
     live.mark = mark;
-    setLandingMarkLevels(mark, barScales());
+    setLandingMarkLevels(mark, swellScales(0, 0));
+    startMarkLoop(mark);
     const time = el('span', { class: 'dock-time tnum' }, formatClock(elapsed));
     live.time = time;
     const stops = el('span', { class: 'dock-stops' });
@@ -223,11 +222,22 @@ export function createDock(options: DockOptions): DockHandle {
     }
   }
 
-  function barScales(): [number, number, number] {
-    // While the room is quiet and a stop is near, the bars sit low and say so.
-    if (silenceRemaining !== undefined) return [BAR_MIN, BAR_MIN, BAR_MIN];
-    const scale = (value: number): number => BAR_MIN + BAR_SPAN * Math.min(1, value);
-    return [scale(levels[1]), scale(levels[0]), scale(levels[2])];
+  /** Drives the live mark once per animation frame from the smoothed, dB-mapped level. */
+  function startMarkLoop(mark: SVGSVGElement): void {
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let last = performance.now();
+    const tick = (now: number): void => {
+      // The page was switched away from Stream: stop; the next telemetry tick restarts it.
+      if (!mark.isConnected) {
+        markFrame = 0;
+        return;
+      }
+      const level = smoother.step(Math.min(100, now - last));
+      last = now;
+      setLandingMarkLevels(mark, swellScales(level, now / 1000, calm));
+      markFrame = requestAnimationFrame(tick);
+    };
+    markFrame = requestAnimationFrame(tick);
   }
 
   function busyRow(): Node[] {
@@ -380,6 +390,8 @@ export function createDock(options: DockOptions): DockHandle {
 
   let lastShape = '';
   function paint(): void {
+    cancelAnimationFrame(markFrame);
+    markFrame = 0;
     live.time = live.stops = live.mark = live.since = live.mic = undefined;
     const shape = `${selection ? 'sel' : mode}`;
     let nodes: Array<Node | null>;
@@ -442,7 +454,7 @@ export function createDock(options: DockOptions): DockHandle {
         elapsed = event.elapsedSeconds ?? 0;
         silenceRemaining = undefined;
         maxRemaining = undefined;
-        levels = [0, 0, 0];
+        smoother.reset();
         settle('recording');
         break;
       case 'transcribing':
@@ -472,7 +484,9 @@ export function createDock(options: DockOptions): DockHandle {
 
   api.onTelemetry((telemetry: DictationTelemetry) => {
     if (mode !== 'recording') return;
-    levels = [telemetry.level, levels[0], levels[1]];
+    // While the room is quiet and a stop is near, the bars sit low and say so.
+    smoother.push(telemetry.silenceRemaining !== undefined ? 0 : telemetry.level);
+    if (markFrame === 0 && live.mark?.isConnected) startMarkLoop(live.mark);
     const wholeSecond = Math.floor(telemetry.elapsedSeconds);
     const stopsChanged = telemetry.silenceRemaining !== silenceRemaining || telemetry.maxRemaining !== maxRemaining;
     silenceRemaining = telemetry.silenceRemaining;
@@ -483,7 +497,6 @@ export function createDock(options: DockOptions): DockHandle {
     }
     elapsed = telemetry.elapsedSeconds;
     if (stopsChanged) paintStops();
-    if (live.mark) setLandingMarkLevels(live.mark, barScales());
   });
 
   paint();

@@ -1006,7 +1006,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.button?.contentTintColor = nil
     }
 
-    /// The Landing mark as an 18 pt menu bar image (StatusItem.png and @2x in
+    /// The Swell mark as an 18 pt menu bar image (StatusItem.png and @2x in
     /// Resources). With no tint it is a template, so the menu bar colours it for
     /// light, dark and the highlighted state. With a tint (recording, transcribing)
     /// it is drawn in that colour and is not a template.

@@ -81,6 +81,7 @@ final class HUDPanel: NSObject {
         } else if panel.isVisible && model.presentation == .exiting {
             // Mid-exit: come back from where it is instead of restarting.
             isShowing = true
+            model.recordingID &+= 1
             model.presentation = .shown
             startPointerTracking(panel)
         } else {
@@ -144,6 +145,7 @@ final class HUDPanel: NSObject {
 
     private func enter(_ panel: NSPanel) {
         isShowing = true
+        model.recordingID &+= 1
         model.presentation = .entering
         position(panel)
         panel.alphaValue = 1

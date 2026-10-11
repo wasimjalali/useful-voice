@@ -2,8 +2,8 @@
 /**
  * Generate the Windows application icon and the tray icons.
  *
- * Everything is drawn in code from the Landing mark (three round sound bars landing
- * on a square-cut I-beam caret), so the output stays in step with the SVG masters in
+ * Everything is drawn in code from the Swell mark (five round bars, tall in the
+ * middle), so the output stays in step with the SVG masters in
  * assets/branding/ and can be regenerated on any machine. Two cuts exist: the 24 unit
  * master and a 16 unit cut hand-hinted to whole pixels. Sizes where one unit lands on
  * a whole number of pixels use those cuts 1:1 (or doubled), so every edge is crisp.
@@ -34,17 +34,17 @@ const SAMPLES = 8; // sub-samples per axis for anti-aliasing
 
 /** Round bar: [x, y, width, height], fully round ends (radius = width / 2). */
 const MARK_24 = {
-  bars: [[1, 9, 3, 6], [6, 7, 3, 10], [11, 5, 3, 14]],
-  caret: [[16, 2], [23, 2], [23, 5], [21, 5], [21, 19], [23, 19], [23, 22], [16, 22], [16, 19], [18, 19], [18, 5], [16, 5]],
+  // Swell: five bars, centres at 3, 7.5, 12, 16.5 and 21, heights 7, 13, 19, 13 and 7.
+  bars: [[1.6, 8.5, 2.8, 7], [6.1, 5.5, 2.8, 13], [10.6, 2.5, 2.8, 19], [15.1, 5.5, 2.8, 13], [19.6, 8.5, 2.8, 7]],
   size: 24,
-  stem: [19.5, 12],
-  gap: [4.5, 12],
+  /** Probe points for verify(): inside the tall middle bar, and between the first two bars. */
+  core: [12, 12],
+  gap: [5.25, 12],
 };
 const MARK_16 = {
-  bars: [[1, 6, 2, 4], [4, 5, 2, 6], [7, 3, 2, 10]],
-  caret: [[11, 1], [15, 1], [15, 3], [14, 3], [14, 13], [15, 13], [15, 15], [11, 15], [11, 13], [12, 13], [12, 3], [11, 3]],
+  bars: [[1, 6, 2, 4], [4, 4, 2, 8], [7, 2, 2, 12], [10, 4, 2, 8], [13, 6, 2, 4]],
   size: 16,
-  stem: [12.5, 8],
+  core: [8, 8],
   gap: [3.5, 8],
 };
 
@@ -56,17 +56,7 @@ function inMark(mark, x, y) {
     const cy = Math.min(Math.max(y, by + r), by + bh - r);
     if (Math.hypot(x - cx, y - cy) <= r) return true;
   }
-  return pointInPolygon(mark.caret, x, y);
-}
-
-function pointInPolygon(points, x, y) {
-  let inside = false;
-  for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
-    const [xi, yi] = points[i];
-    const [xj, yj] = points[j];
-    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
+  return false;
 }
 
 /** Signed inside test for a rounded rectangle in pixel space. */
@@ -259,7 +249,7 @@ function encodeDib(size, rgba) {
  *
  * A wrong icon is invisible in code review and only shows up as a blurry blob on a
  * user's taskbar, so the generator checks its own output: transparent corners, ink
- * in the caret stem, and surface in the gap between the first two bars.
+ * in the middle bar, and surface in the gap between the first two bars.
  */
 function verify(size, rgba, place) {
   const at = (x, y) => {
@@ -271,8 +261,8 @@ function verify(size, rgba, place) {
     if (at(x, y).a > 8) problems.push(`corner (${x},${y}) is not transparent`);
   }
   const toPx = ([ux, uy]) => [place.offset + ux * place.scale, place.offset + uy * place.scale];
-  const stem = at(...toPx(place.mark.stem));
-  if (stem.r > 60) problems.push('caret stem is not ink');
+  const core = at(...toPx(place.mark.core));
+  if (core.r > 60) problems.push('middle bar is not ink');
   const gap = at(...toPx(place.mark.gap));
   if (gap.r < 200) problems.push('no surface between the first two bars');
   return problems;

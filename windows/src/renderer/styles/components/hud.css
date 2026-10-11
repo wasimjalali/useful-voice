@@ -92,7 +92,7 @@ body.hud {
   to { opacity: 0.8; }
 }
 
-.hud-inner .landing-mark { color: var(--hud-mark); }
+.hud-inner .waveform { color: var(--hud-mark); }
 
 .hud-time { font-variant-numeric: tabular-nums; }
 .hud-stops { font-weight: 500; }

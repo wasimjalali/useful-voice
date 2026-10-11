@@ -4,7 +4,8 @@ import Foundation
 /// quiet speech still moves the meter: -52 dB (and below) is 0, -16 dB is 1.
 enum MicLevel {
     static func normalized(_ rms: Float) -> Double {
-        let db = 20 * log10(Double(max(rms, 1e-6)))
+        let safe = rms.isFinite ? rms : 0
+        let db = 20 * log10(Double(max(safe, 1e-6)))
         return min(max((db + 52) / 36, 0), 1)
     }
 

@@ -27,15 +27,19 @@ struct WaveformView: View {
         func advance(rms: Float, at t: Double) {
             let v = smoother.step(rms: rms, at: t)
             guard let last = lastPush else { lastPush = t; return }
-            var pushes = 0
+            // A gap (the timeline was paused): start over instead of replaying it.
+            if t - last > 0.5 {
+                history = [Double](repeating: 0, count: WaveformView.barCount)
+                lastPush = t
+                return
+            }
             var next = last
-            while t - next >= 0.05, pushes < WaveformView.barCount {
+            while t - next >= 0.05 {
                 next += 0.05
                 history.removeFirst()
                 history.append(v)
-                pushes += 1
             }
-            lastPush = pushes == WaveformView.barCount ? t : next
+            lastPush = next
         }
     }
 

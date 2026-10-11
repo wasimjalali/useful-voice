@@ -105,7 +105,7 @@ export class TrayController {
   };
 
   /**
-   * The Landing mark for the current taskbar theme: ink on a light taskbar, light on
+   * The Swell mark for the current taskbar theme: ink on a light taskbar, light on
    * a dark one, in the danger colour while recording.
    */
   private icon(recording: boolean): NativeImage {

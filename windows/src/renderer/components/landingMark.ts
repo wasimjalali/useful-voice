@@ -1,9 +1,10 @@
 /**
- * The Useful Voice mark: three round sound bars landing on a square-cut I-beam caret,
- * on the 24u grid from the logo board. Sizes under 20px use the hand-hinted 16u cut.
+ * The Useful Voice mark, Swell: five round bars, tall in the middle, on the 24u grid from
+ * the logo board. Sizes under 20px use the hand-hinted 16u cut.
  * Styling and motion live in styles/components/landing-mark.css.
  */
 
+/** `still` and `idle` both draw the static mark; `live` lets the bars follow the levels. */
 export type LandingMarkState = 'still' | 'idle' | 'live';
 
 export interface LandingMarkOptions {
@@ -20,27 +21,30 @@ const HINTED_BELOW = 20;
 interface Cut {
   grid: number;
   bars: ReadonlyArray<readonly [x: number, y: number, w: number, h: number]>;
-  caret: string;
 }
 
+/** Centres at x = 3, 7.5, 12, 16.5, 21; heights 7, 13, 19, 13, 7; width 2.8; centred at y = 12. */
 const CUT_24: Cut = {
   grid: 24,
   bars: [
-    [1, 9, 3, 6],
-    [6, 7, 3, 10],
-    [11, 5, 3, 14],
+    [1.6, 8.5, 2.8, 7],
+    [6.1, 5.5, 2.8, 13],
+    [10.6, 2.5, 2.8, 19],
+    [15.1, 5.5, 2.8, 13],
+    [19.6, 8.5, 2.8, 7],
   ],
-  caret: 'M16 2h7v3h-2v14h2v3h-7v-3h2V5h-2z',
 };
 
+/** Width 2 at x = 1, 4, 7, 10, 13; heights 4, 8, 12, 8, 4; centred at y = 8. */
 const CUT_16: Cut = {
   grid: 16,
   bars: [
     [1, 6, 2, 4],
-    [4, 5, 2, 6],
-    [7, 3, 2, 10],
+    [4, 4, 2, 8],
+    [7, 2, 2, 12],
+    [10, 4, 2, 8],
+    [13, 6, 2, 4],
   ],
-  caret: 'M11 1h4v2h-1v10h1v2h-4v-2h1V3h-1z',
 };
 
 /** Returns the mark as an SVG element filled with `currentColor`. */
@@ -67,25 +71,33 @@ export function createLandingMark(options: LandingMarkOptions): SVGSVGElement {
     rect.setAttribute('rx', String(w / 2));
     svg.append(rect);
   });
-
-  const caret = document.createElementNS(SVG_NS, 'path');
-  caret.classList.add('landing-mark-caret');
-  caret.setAttribute('d', cut.caret);
-  svg.append(caret);
   return svg;
 }
 
-/** Sets the three bar channels (scale around each bar's centre, about 0.3 to 1.35). */
-export function setLandingMarkLevels(
-  el: SVGSVGElement,
-  levels: readonly [number, number, number],
-): void {
-  el.style.setProperty('--lm-a', levels[0].toFixed(3));
-  el.style.setProperty('--lm-b', levels[1].toFixed(3));
-  el.style.setProperty('--lm-c', levels[2].toFixed(3));
+export type LandingMarkLevels = readonly [number, number, number, number, number];
+
+const MIN_SCALE = 0.28;
+const MAX_SCALE = 1.2;
+
+/**
+ * Per-bar scale for mapped level `a` (0..1) at time `t` seconds: a base that follows the
+ * level plus a travelling sine that is bigger when louder. `calm` drops the sine
+ * (prefers-reduced-motion).
+ */
+export function swellScales(a: number, t: number, calm = false): LandingMarkLevels {
+  const scale = (i: number): number => {
+    const wobble = calm ? 0 : Math.sin(t * (5 + 4 * a) * (1 + 0.13 * i) + 1.3 * i) * (0.05 + 0.2 * a);
+    return Math.max(MIN_SCALE, Math.min(MAX_SCALE, 0.32 + 0.95 * a + wobble));
+  };
+  return [scale(0), scale(1), scale(2), scale(3), scale(4)];
 }
 
-/** Switches between still, idle (caret blinks) and live (bars follow the levels). */
+/** Sets the five bar channels (scale around each bar's centre, 0.28 to 1.2). */
+export function setLandingMarkLevels(el: SVGSVGElement, levels: LandingMarkLevels): void {
+  levels.forEach((level, index) => el.style.setProperty(`--lm-${index}`, level.toFixed(3)));
+}
+
+/** Switches between the static mark (still, idle) and live (bars follow the levels). */
 export function setLandingMarkState(el: SVGSVGElement, state: LandingMarkState): void {
   el.dataset.state = state;
 }

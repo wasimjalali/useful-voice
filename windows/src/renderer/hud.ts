@@ -1,8 +1,8 @@
 import { api } from './api.js';
 import { mountAnnouncer } from './components/announcer.js';
 import { el, icon, ICONS } from './components/dom.js';
-import { createLandingMark, setLandingMarkLevels } from './components/landingMark.js';
 import { createLanguagePanel, LANGUAGE_PATHS } from './components/languagePicker.js';
+import { createWaveform } from './components/waveform.js';
 import {
   errorTitle,
   fixLabel,
@@ -58,24 +58,13 @@ function mountHudCapsule(): void {
   let frame: HudFrame | null = null;
   let leaveTimer = 0;
   let dragging = false;
-  /** The mark and the timer of the recording view, patched in place while it lives. */
-  let live: { mark: SVGSVGElement; time: HTMLElement; stops: HTMLElement | null } | null = null;
-  /** The last three input levels: the three bars show a short trail, so a loud word travels. */
-  const trail: [number, number, number] = [0, 0, 0];
+  /** The timer of the recording view, patched in place while it lives. */
+  let live: { time: HTMLElement; stops: HTMLElement | null } | null = null;
+  /** The scrolling waveform of the recording view; it runs only while that view is on screen. */
+  const wave = createWaveform();
 
   api.onHudView((next) => render(next));
-  api.onLevel((level) => {
-    trail[0] = trail[1];
-    trail[1] = trail[2];
-    trail[2] = Math.max(0, Math.min(1, level));
-    if (live) paintLevels(live.mark);
-  });
-
-  function paintLevels(mark: SVGSVGElement): void {
-    // 0.3 is a bar held low in a quiet room, 1.35 the loudest it goes.
-    const scale = (level: number): number => 0.3 + 1.05 * level;
-    setLandingMarkLevels(mark, [scale(trail[0]), scale(trail[1]), scale(trail[2])]);
-  }
+  api.onLevel((level) => wave.push(level));
 
   /** The one render path: whatever the main process sent last is what is drawn. */
   function render(next: HudFrame | null): void {
@@ -98,6 +87,7 @@ function mountHudCapsule(): void {
 
     frame = next;
     live = null;
+    wave.stop();
     const content = buildContent(next);
     content.classList.add('hud-inner');
     capsule.setAttribute('aria-label', hudLabel(next));
@@ -166,6 +156,7 @@ function mountHudCapsule(): void {
     if (frame === null) return;
     frame = null;
     live = null;
+    wave.stop();
     capsule.classList.remove('is-entering');
     capsule.classList.add('is-leaving');
     leaveTimer = window.setTimeout(() => {
@@ -230,12 +221,11 @@ function mountHudCapsule(): void {
   function buildContent(view: HudFrame): HTMLElement {
     switch (view.kind) {
       case 'recording': {
-        const mark = createLandingMark({ size: 20, state: 'live' });
-        paintLevels(mark);
+        wave.start();
         const time = el('span', { class: 'hud-time', 'aria-hidden': 'true' }, formatClock(view.elapsedSeconds));
         const stops = view.stopsIn !== undefined ? el('span', { class: 'hud-stops' }, `Stops in ${view.stopsIn} s`) : null;
-        live = { mark, time, stops };
-        return el('div', {}, el('span', { class: 'hud-dot' }), mark, time, stops, el('kbd', { class: 'hud-kbd' }, 'Esc'));
+        live = { time, stops };
+        return el('div', {}, el('span', { class: 'hud-dot' }), wave.element, time, stops, el('kbd', { class: 'hud-kbd' }, 'Esc'));
       }
       case 'transcribing':
         return el('div', {}, el('span', { class: 'hud-spin' }), 'Transcribing');

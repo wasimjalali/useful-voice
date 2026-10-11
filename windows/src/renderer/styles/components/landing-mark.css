@@ -1,4 +1,4 @@
-/* The Landing mark. Bars follow --lm-a/b/c in the live state; the caret blinks when idle. */
+/* The Swell mark. Bars follow --lm-0 to --lm-4 in the live state. */
 .landing-mark {
   display: block;
   flex: none;
@@ -9,40 +9,8 @@
   transform-origin: center;
 }
 
-.landing-mark[data-state='live'] .landing-mark-bar {
-  transform: scaleY(var(--lm-a, 1));
-  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.landing-mark[data-state='live'] .landing-mark-bar[data-k='1'] {
-  transform: scaleY(var(--lm-b, 1));
-}
-
-.landing-mark[data-state='live'] .landing-mark-bar[data-k='2'] {
-  transform: scaleY(var(--lm-c, 1));
-}
-
-.landing-mark[data-state='idle'] .landing-mark-caret {
-  animation: landing-mark-blink 1.06s steps(1, end) infinite;
-}
-
-@keyframes landing-mark-blink {
-  0%,
-  55% {
-    opacity: 1;
-  }
-  56%,
-  100% {
-    opacity: 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .landing-mark[data-state='idle'] .landing-mark-caret {
-    animation: none;
-  }
-
-  .landing-mark[data-state='live'] .landing-mark-bar {
-    transition: none;
-  }
-}
+.landing-mark[data-state='live'] .landing-mark-bar[data-k='0'] { transform: scaleY(var(--lm-0, 1)); }
+.landing-mark[data-state='live'] .landing-mark-bar[data-k='1'] { transform: scaleY(var(--lm-1, 1)); }
+.landing-mark[data-state='live'] .landing-mark-bar[data-k='2'] { transform: scaleY(var(--lm-2, 1)); }
+.landing-mark[data-state='live'] .landing-mark-bar[data-k='3'] { transform: scaleY(var(--lm-3, 1)); }
+.landing-mark[data-state='live'] .landing-mark-bar[data-k='4'] { transform: scaleY(var(--lm-4, 1)); }

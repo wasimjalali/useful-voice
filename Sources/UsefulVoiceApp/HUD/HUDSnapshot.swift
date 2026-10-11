@@ -80,6 +80,17 @@ enum HUDSnapshot {
         }
     }
 
+    /// A speech-like waveform history (mapped 0...1, oldest first) for the recording states.
+    private static func waveformFixture(named name: String) -> [Double]? {
+        let speech: [Double] = [0, 0, 0.04, 0.12, 0.3, 0.5, 0.62, 0.45, 0.2, 0.08, 0, 0.1, 0.38, 0.66, 0.78,
+                                0.58, 0.72, 0.4, 0.15, 0.05, 0, 0.18, 0.44, 0.6, 0.52, 0.7, 0.55, 0.34, 0.5, 0.42]
+        switch name {
+        case "recording": return speech
+        case "recordingLoud": return speech.map { min($0 * 1.35 + ($0 > 0 ? 0.12 : 0), 1) }
+        default: return nil
+        }
+    }
+
     static func render(_ name: String, size: CGSize, appearance: NSAppearance?, to url: URL,
                        completion: @escaping (Bool) -> Void) {
         let scene: AnyView
@@ -104,7 +115,7 @@ enum HUDSnapshot {
                     .foregroundStyle(Theme.ink)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .padding(20)
-                    HUDView(display: display)
+                    HUDView(display: display, waveformFixture: waveformFixture(named: name))
                 })
         } else {
             fputs("UV_HUD_STATE must be one of: \(names.joined(separator: ", "))\n", stderr)

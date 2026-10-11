@@ -22,14 +22,21 @@ test.beforeAll(async () => {
   app = await electron.launch({
     args: [path.join(root, 'dist', 'main', 'index.js'), `--uv-data-dir=${userData}`, '--e2e'],
     env,
+    // `_electron.launch` bypasses the config's `use` options, so video and trace are switched on here.
+    recordVideo: { dir: path.join(out, 'video-hud'), size: { width: 520, height: 96 } },
   });
+  await app.context().tracing.start({ screenshots: true, snapshots: true });
 });
 
 test.afterAll(async () => {
   try {
-    await app?.close();
+    await app?.context().tracing.stop({ path: path.join(out, 'trace-hud.zip') });
   } finally {
-    if (userData) await fs.rm(userData, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    try {
+      await app?.close();
+    } finally {
+      if (userData) await fs.rm(userData, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    }
   }
 });
 

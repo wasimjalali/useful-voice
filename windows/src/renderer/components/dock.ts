@@ -227,6 +227,11 @@ export function createDock(options: DockOptions): DockHandle {
     const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let last = performance.now();
     const tick = (now: number): void => {
+      // The page was switched away from Stream: stop; the next telemetry tick restarts it.
+      if (!mark.isConnected) {
+        markFrame = 0;
+        return;
+      }
       const level = smoother.step(Math.min(100, now - last));
       last = now;
       setLandingMarkLevels(mark, swellScales(level, now / 1000, calm));
@@ -386,6 +391,7 @@ export function createDock(options: DockOptions): DockHandle {
   let lastShape = '';
   function paint(): void {
     cancelAnimationFrame(markFrame);
+    markFrame = 0;
     live.time = live.stops = live.mark = live.since = live.mic = undefined;
     const shape = `${selection ? 'sel' : mode}`;
     let nodes: Array<Node | null>;
@@ -480,6 +486,7 @@ export function createDock(options: DockOptions): DockHandle {
     if (mode !== 'recording') return;
     // While the room is quiet and a stop is near, the bars sit low and say so.
     smoother.push(telemetry.silenceRemaining !== undefined ? 0 : telemetry.level);
+    if (markFrame === 0 && live.mark?.isConnected) startMarkLoop(live.mark);
     const wholeSecond = Math.floor(telemetry.elapsedSeconds);
     const stopsChanged = telemetry.silenceRemaining !== silenceRemaining || telemetry.maxRemaining !== maxRemaining;
     silenceRemaining = telemetry.silenceRemaining;

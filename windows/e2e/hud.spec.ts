@@ -39,8 +39,12 @@ async function hudPage(): Promise<Page> {
       width: 520,
       height: 96,
       show: true,
-      transparent: false,
-      backgroundColor: '#e8e8e8',
+      frame: false,
+      useContentSize: true,
+      resizable: false,
+      focusable: false,
+      transparent: true,
+      hasShadow: false,
       webPreferences: { preload: `${appPath}/preload/index.js`, contextIsolation: true, nodeIntegration: false },
     });
     await win.loadFile(`${appPath}/renderer/index.html`, { query: { view: 'hud', theme: 'light' } });
@@ -96,6 +100,10 @@ test('the recording pill draws a moving waveform that fits the window', async ()
   // The pill, with the record dot, timer and Esc, sits inside the 520 px window.
   const capsule = await hud.locator('.hud-capsule').boundingBox();
   expect(capsule).not.toBeNull();
+  const viewport = await hud.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+  expect(viewport).toEqual({ w: 520, h: 96 });
+  expect(capsule!.y).toBeGreaterThanOrEqual(0);
+  expect(capsule!.y + capsule!.height).toBeLessThanOrEqual(96);
   expect(capsule!.x).toBeGreaterThan(0);
   expect(capsule!.x + capsule!.width).toBeLessThan(520);
   const overflow = await hud.locator('.hud-capsule').evaluate((node) => node.scrollWidth - node.clientWidth);

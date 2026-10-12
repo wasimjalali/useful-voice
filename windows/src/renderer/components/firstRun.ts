@@ -81,10 +81,18 @@ export async function startFirstRunIfPending(): Promise<void> {
 }
 
 /** Settings "Run setup again": always starts at Welcome and saves normally. */
+let opening = false;
+
 export async function runSetupAgain(): Promise<void> {
-  if (flow) return;
-  const state = await api.firstRunState();
-  open({ ...state, step: null }, true);
+  // Two quick presses must not mount two overlays: the state read is async.
+  if (flow || opening) return;
+  opening = true;
+  try {
+    const state = await api.firstRunState();
+    if (!flow) open({ ...state, step: null }, true);
+  } finally {
+    opening = false;
+  }
 }
 
 function open(state: FirstRunStateDTO, fromSettings: boolean): void {
@@ -161,7 +169,10 @@ function show(page: Page): void {
   if (!stage || !flow) return;
   teardown?.();
   teardown = null;
+  // Leaving the engine page drops a running key check: its answer is ignored, so the
+  // page must not come back stuck on "Checking the key".
   checkToken += 1;
+  if (flow.keyCheck === 'checking') flow.keyCheck = 'idle';
   const build: Record<Page, () => { node: HTMLElement; focus: () => void; announce: string; cleanup?: () => void }> = {
     welcome: welcomePage,
     engine: enginePage,
@@ -480,7 +491,13 @@ function enginePage(): { node: HTMLElement; focus: () => void; announce: string;
       announce(f.keyMessage);
       return;
     }
-    const saved = await api.firstRunSaveKey(key);
+    let saved: { ok: boolean; error?: string };
+    try {
+      saved = await api.firstRunSaveKey(key);
+    } catch {
+      // A rejected call is a failed save, shown and retryable, never a stuck button.
+      saved = { ok: false };
+    }
     if (token !== checkToken || !flow) return;
     if (!saved.ok) {
       f.keyCheck = 'saveFailed';
@@ -588,6 +605,9 @@ function microphonePage(): { node: HTMLElement; focus: () => void; announce: str
   let timer = 0;
   let retry = 0;
   let disposed = false;
+  /** Bumped to invalidate a microphone request still in flight (hidden, left, restarted). */
+  let generation = 0;
+  const hidden = (): boolean => document.visibilityState === 'hidden';
   const levels: number[] = new Array(METER_BARS).fill(0);
 
   const paintMeter = (): void => {
@@ -609,19 +629,21 @@ function microphonePage(): { node: HTMLElement; focus: () => void; announce: str
   };
 
   const startMeter = async (): Promise<void> => {
-    if (disposed || stream) return;
+    if (disposed || stream || hidden()) return;
+    const mine = ++generation;
     let opened: MediaStream;
     try {
       opened = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     } catch (error) {
-      if (disposed) return;
+      if (disposed || mine !== generation) return;
       const name = (error as DOMException)?.name ?? '';
       status = name === 'NotFoundError' || name === 'OverconstrainedError' ? 'missing' : 'denied';
       draw();
       scheduleRetry();
       return;
     }
-    if (disposed) {
+    // Answered late: the page was left or hidden meanwhile, so the stream is closed at once.
+    if (disposed || mine !== generation) {
       for (const track of opened.getTracks()) track.stop();
       return;
     }
@@ -651,7 +673,8 @@ function microphonePage(): { node: HTMLElement; focus: () => void; announce: str
 
   const scheduleRetry = (): void => {
     window.clearTimeout(retry);
-    if (disposed || f.frozen) return;
+    // Not while hidden: the visibility handler restarts it when the window shows again.
+    if (disposed || f.frozen || hidden()) return;
     retry = window.setTimeout(() => void startMeter(), 1000);
   };
 
@@ -707,8 +730,14 @@ function microphonePage(): { node: HTMLElement; focus: () => void; announce: str
 
   // A hidden window has no reason to hold the microphone.
   const onVisibility = (): void => {
-    if (document.hidden) stopMeter();
-    else if (!stream && status === 'authorized') void startMeter();
+    if (f.frozen) return;
+    if (hidden()) {
+      generation += 1;
+      window.clearTimeout(retry);
+      stopMeter();
+    } else if (!stream) {
+      void startMeter();
+    }
   };
   document.addEventListener('visibilitychange', onVisibility);
 
@@ -719,6 +748,7 @@ function microphonePage(): { node: HTMLElement; focus: () => void; announce: str
     announce: 'Step 2 of 3. Let it hear you',
     cleanup: () => {
       disposed = true;
+      generation += 1;
       window.clearTimeout(retry);
       document.removeEventListener('visibilitychange', onVisibility);
       stopMeter();
@@ -750,16 +780,28 @@ function tryItPage(): { node: HTMLElement; focus: () => void; announce: string; 
       'aria-label': 'Dictation hotkey',
       spellcheck: false,
     } as never);
-    const commit = (): void => {
-      const value = input.value.split('+').map((part) => part.trim()).filter(Boolean).join('+');
-      if (!/(^|\+)(control|ctrl|alt|option)(\+|$)/i.test(value)) {
-        keyError.textContent = 'Add Ctrl or Alt, like Ctrl+Alt+Space.';
+    let committing = false;
+    const commit = async (): Promise<void> => {
+      if (committing) return;
+      const value = input.value.split('+').map((part) => part.trim()).filter(Boolean).join('+').replace(/\bctrl\b/gi, 'Control');
+      committing = true;
+      let result: { ok: boolean; error?: string };
+      try {
+        result = await api.firstRunSetHotkey(value);
+      } catch {
+        result = { ok: false, error: "Couldn't change the hotkey. Try again." };
+      } finally {
+        committing = false;
+      }
+      if (!flow) return;
+      if (!result.ok) {
+        // The shown hotkey changes only when it was accepted.
+        keyError.textContent = result.error ?? "Couldn't change the hotkey. Try again.";
         input.classList.add('err');
         return;
       }
       keyError.textContent = '';
-      f.hotkey = value.replace(/\bctrl\b/gi, 'Control');
-      void api.firstRunSetHotkey(f.hotkey);
+      f.hotkey = value;
       editingKey = false;
       drawKey();
       updatePlaceholder();
@@ -767,10 +809,10 @@ function tryItPage(): { node: HTMLElement; focus: () => void; announce: string; 
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
-        commit();
+        void commit();
       }
     });
-    keyValue.replaceChildren(input, el('button', { class: 'fr-secondary', type: 'button', onclick: commit } as never, 'Save'));
+    keyValue.replaceChildren(input, el('button', { class: 'fr-secondary', type: 'button', onclick: () => void commit() } as never, 'Save'));
     input.focus();
   };
 
@@ -861,6 +903,10 @@ function tryItPage(): { node: HTMLElement; focus: () => void; announce: string; 
     cleanup: () => {
       offState();
       offPractice();
+      // Leaving mid-recording (Back, Skip, Finish, close): nothing here could stop it.
+      if (dictation.state === 'recording' || dictation.state === 'transcribing' || dictation.state === 'delivering') {
+        void api.cancelDictation();
+      }
     },
   };
 }

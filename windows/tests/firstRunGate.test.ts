@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decideFirstRun, firstRunLaunch, FIRST_RUN_STEPS } from '../src/core/firstRun/gate.js';
+import { decideFirstRun, firstRunLaunch, shouldOpenAtLaunch, FIRST_RUN_STEPS } from '../src/core/firstRun/gate.js';
 
 // Failure modes, written before the code:
 //  1. A completed install must never see the flow again, key or no key.
@@ -53,5 +53,25 @@ describe('firstRunLaunch', () => {
     expect(FIRST_RUN_STEPS).toEqual([
       'welcome', 'engine', 'errKey', 'deepgramKey', 'microphone', 'errMic', 'tryIt', 'tryItDone', 'done',
     ]);
+  });
+});
+
+// Failure modes for the launch rule: the app is tray-only, so a fresh install that never
+// opens its window would never show the flow at all (the bug this rule fixes).
+//  1. pending flow, launched by the person: the window must open.
+//  2. pending flow, launched by the login entry: nobody clicked, so no window is pulled in
+//     front of them; the flow stays pending and shows when they first open the window.
+//  3. nothing pending: a normal tray-only launch, never a window.
+
+describe('shouldOpenAtLaunch', () => {
+  it('opens the window for a pending flow the person launched', () => {
+    expect(shouldOpenAtLaunch({ pending: true, autoStarted: false })).toBe(true);
+  });
+  it('stays tray-only when the login entry launched it', () => {
+    expect(shouldOpenAtLaunch({ pending: true, autoStarted: true })).toBe(false);
+  });
+  it('stays tray-only when nothing is pending', () => {
+    expect(shouldOpenAtLaunch({ pending: false, autoStarted: false })).toBe(false);
+    expect(shouldOpenAtLaunch({ pending: false, autoStarted: true })).toBe(false);
   });
 });

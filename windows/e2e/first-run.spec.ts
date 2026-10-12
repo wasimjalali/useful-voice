@@ -19,6 +19,12 @@ import { seedUserData } from './fixtures.js';
 //  5. microphone refused, then allowed while the step is open
 //  6. reduced motion: no step animation
 //  7. every step in light and dark at the smallest window size (screenshots)
+//  8. the launch rule: a pending flow opens the window by itself, a login launch does not
+//  9. the flow's lifetime in main: closing the window mid-flow ends it, hotkey dictations
+//     paste again, a running practice recording stops
+// 10. a malformed or refused hotkey, a slow key check left and re-entered, a save that
+//     fails, a key that cannot be sent
+// 11. the microphone: closed on leaving the step, a late answer closed, retries paused hidden
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const out = process.env.E2E_OUT ?? path.join(root, 'e2e-results');
@@ -309,11 +315,12 @@ test('--force-first-run on a completed install shows the flow and saves nothing'
     await fr(win).getByRole('option', { name: /Deutsch/ }).first().click();
     await expect(fr(win).locator('.lang-trigger-label')).toHaveText('Deutsch');
     await fr(win).getByRole('button', { name: 'Change' }).click();
-    await fr(win).getByLabel('Dictation hotkey').fill('Ctrl+Shift');
+    await fr(win).getByLabel('Dictation hotkey').fill('Ctrl+Shift+K');
     await fr(win).getByLabel('Dictation hotkey').press('Enter');
     await expect(fr(win).getByText('Add Ctrl or Alt')).toHaveCount(0);
-    await expect(win.locator('.fr-cap', { hasText: 'Shift' })).toBeVisible();
-    await expect(fr(win).getByLabel('Practice area')).toHaveAttribute('placeholder', /Ctrl\+Shift/);
+    // Display-only in a forced run: main checks and accepts it, and saves nothing.
+    await expect(fr(win).locator('.fr-cap', { hasText: 'Shift' })).toBeVisible();
+    await expect(fr(win).getByLabel('Practice area')).toHaveAttribute('placeholder', /Ctrl\+Shift\+K/);
 
     await fr(win).getByRole('button', { name: 'Start recording' }).click();
     await win.waitForTimeout(2200);
@@ -495,5 +502,333 @@ test('every step in light and dark at the smallest window size', async () => {
       await run.stop();
       await remove(userData);
     }
+  }
+});
+
+/** What the e2e hooks in main report. */
+const hooks = (app: ElectronApplication) => ({
+  open: () => app.evaluate(() => (globalThis as unknown as { __uv: { firstRunOpen(): boolean } }).__uv.firstRunOpen()),
+  state: () => app.evaluate(() => (globalThis as unknown as { __uv: { serviceState(): string } }).__uv.serviceState()),
+  source: () => app.evaluate(() => (globalThis as unknown as { __uv: { lastSource(): string | undefined } }).__uv.lastSource()),
+  windows: () => app.evaluate(() => (globalThis as unknown as { __uv: { mainWindows(): number } }).__uv.mainWindows()),
+  pressHotkey: () => app.evaluate(() => (globalThis as unknown as { __uv: { pressHotkey(): Promise<void> } }).__uv.pressHotkey()),
+  cancel: () => app.evaluate(() => (globalThis as unknown as { __uv: { cancel(): Promise<void> } }).__uv.cancel()),
+});
+
+async function until(check: () => Promise<boolean>, what: string, ms = 10_000): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (await check()) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`timed out waiting for ${what}`);
+}
+
+/** Welcome to Try it on a fresh folder, with a key the stub accepts. */
+async function walkToTryIt(win: Page): Promise<void> {
+  await walkToMicrophone(win);
+  await expect(fr(win).locator('.fr-ok', { hasText: 'Allowed' })).toBeVisible();
+  await fr(win).getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page(win, 'tryIt')).toBeVisible();
+}
+
+test('launch rule: a pending flow opens the window itself, a login launch does not', async () => {
+  // Tray-only (no e2e auto-open): only the launch rule can open the window.
+  const fresh = await freshDir();
+  let run = await launch('launch-fresh', fresh, ['--e2e-tray-only']);
+  try {
+    await expect(run.win.locator('.fr')).toBeVisible();
+    expect(await hooks(run.app).windows()).toBe(1);
+  } finally {
+    await run.stop();
+  }
+
+  // Launched by the login entry: no window jumps in front of the person.
+  const env = { ...process.env } as Record<string, string>;
+  delete env.ELECTRON_RUN_AS_NODE;
+  const app = await electron.launch({
+    args: [path.join(root, 'dist', 'main', 'index.js'), `--uv-data-dir=${fresh}`, '--e2e', '--e2e-tray-only', '--autostart'],
+    env,
+  });
+  try {
+    await until(async () => (await app.evaluate(() => typeof (globalThis as { __uv?: unknown }).__uv)) === 'object', 'main to start');
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    expect(await hooks(app).windows()).toBe(0);
+  } finally {
+    await app.close();
+  }
+
+  // A completed install stays tray-only too.
+  const done = await seedUserData();
+  const quiet = await electron.launch({
+    args: [path.join(root, 'dist', 'main', 'index.js'), `--uv-data-dir=${done}`, '--e2e', '--e2e-tray-only'],
+    env,
+  });
+  try {
+    await until(async () => (await quiet.evaluate(() => typeof (globalThis as { __uv?: unknown }).__uv)) === 'object', 'main to start');
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    expect(await hooks(quiet).windows()).toBe(0);
+  } finally {
+    await quiet.close();
+    await remove(fresh);
+    await remove(done);
+  }
+});
+
+test('closing the window mid-flow ends it: hotkey dictations paste again and a recording stops', async () => {
+  const userData = await freshDir();
+  const run = await launch('flow-lifetime', userData);
+  try {
+    const { win, app } = run;
+    const main = hooks(app);
+    await walkToTryIt(win);
+    expect(await main.open()).toBe(true);
+
+    // While the flow is open the hotkey dictates into the flow: copy only, nothing pasted.
+    await main.pressHotkey();
+    expect(await main.source()).toBe('window');
+    await until(async () => (await main.state()) === 'recording', 'the practice recording');
+
+    // The window is closed mid-recording: the flow is over and the recording stops.
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('view=main'))?.close();
+    });
+    await until(async () => (await main.state()) === 'idle', 'the recording to stop');
+    expect(await main.open()).toBe(false);
+
+    // Now the hotkey is a hotkey again: it pastes into the app in front.
+    await main.pressHotkey();
+    expect(await main.source()).toBe('hotkey');
+    await main.cancel();
+  } finally {
+    await run.stop();
+    await remove(userData);
+  }
+});
+
+test('leaving Try it while a practice recording runs stops it', async () => {
+  const userData = await freshDir();
+  const run = await launch('leave-recording', userData);
+  try {
+    const { win, app } = run;
+    const main = hooks(app);
+    await walkToTryIt(win);
+
+    // Back.
+    await fr(win).getByRole('button', { name: 'Start recording' }).click();
+    await until(async () => (await main.state()) === 'recording', 'recording');
+    await fr(win).getByRole('button', { name: 'Back' }).click();
+    await until(async () => (await main.state()) === 'idle', 'recording to stop after Back');
+
+    // Skip setup (close).
+    await fr(win).getByRole('button', { name: 'Continue', exact: true }).click();
+    await fr(win).getByRole('button', { name: 'Start recording' }).click();
+    await until(async () => (await main.state()) === 'recording', 'recording again');
+    await fr(win).getByRole('button', { name: 'Skip setup' }).click();
+    await until(async () => (await main.state()) === 'idle', 'recording to stop after Skip');
+    await expect(win.locator('.fr')).toHaveCount(0);
+  } finally {
+    await run.stop();
+    await remove(userData);
+  }
+});
+
+test('a malformed hotkey is refused in the flow and never saved', async () => {
+  const userData = await freshDir();
+  const run = await launch('hotkey', userData);
+  try {
+    const { win } = run;
+    await walkToTryIt(win);
+    const caps = () => fr(win).locator('.fr-caps .fr-cap').allTextContents();
+    const before = await caps();
+    await fr(win).getByRole('button', { name: 'Change' }).click();
+    const input = fr(win).getByLabel('Dictation hotkey');
+    for (const bad of ['Ctrl', 'Ctrl+Alt', 'Ctrl+DefinitelyNotAKey', 'Space']) {
+      await input.fill(bad);
+      await input.press('Enter');
+      await expect(fr(win).locator('.fr-inline-err')).not.toHaveText('');
+      // The field stays open, and neither the file nor the shown hotkey changed.
+      await expect(input).toBeVisible();
+      expect(JSON.stringify(await readJson(path.join(userData, 'settings.json')))).not.toContain(`"${bad}"`);
+    }
+    await input.fill('Ctrl+Alt+Space');
+    await input.press('Enter');
+    await expect(fr(win).getByRole('button', { name: 'Change' })).toBeVisible();
+    expect(await caps()).toEqual(before);
+    // The language hotkey's own combination says why.
+    await fr(win).getByRole('button', { name: 'Change' }).click();
+    await fr(win).getByLabel('Dictation hotkey').fill('Ctrl+Alt+L');
+    await fr(win).getByLabel('Dictation hotkey').press('Enter');
+    await expect(fr(win).locator('.fr-inline-err')).toContainText("can't share");
+
+    // A good one is saved.
+    await fr(win).getByLabel('Dictation hotkey').fill('Ctrl+Alt+K');
+    await fr(win).getByLabel('Dictation hotkey').press('Enter');
+    await expect(fr(win).locator('.fr-cap', { hasText: 'K' })).toBeVisible();
+    const saved = await settingsWhere(userData, (s) => (s?.settings as { hotkey?: { accelerator?: string } } | undefined)?.hotkey?.accelerator === 'Control+Alt+K');
+    expect((saved?.settings as { hotkey: { accelerator: string } }).hotkey.accelerator).toBe('Control+Alt+K');
+  } finally {
+    await run.stop();
+    await remove(userData);
+  }
+});
+
+test('a slow key check left and re-entered does not leave Connect stuck', async () => {
+  const userData = await freshDir();
+  const run = await launch('slow-check', userData);
+  try {
+    const { win } = run;
+    await fr(win).getByRole('button', { name: 'Get started' }).click();
+    const key = fr(win).getByLabel('Deepgram API key');
+    await key.fill('slow-key-123');
+    await key.press('Enter');
+    await expect(fr(win).getByRole('button', { name: 'Checking the key…' })).toBeVisible();
+    await fr(win).getByRole('button', { name: 'Back' }).click();
+    await fr(win).getByRole('button', { name: 'Get started' }).click();
+    const connect = fr(win).getByRole('button', { name: 'Connect', exact: true });
+    await expect(connect).toBeEnabled();
+    // The old check finishes while we are here: its answer is ignored, nothing is saved.
+    await win.waitForTimeout(2200);
+    await expect(page(win, 'engine')).toBeVisible();
+    expect((await readJson(path.join(userData, 'settings.json')))?.apiKeyEncrypted).toBeUndefined();
+    // And the page works again.
+    await connect.click();
+    await expect(page(win, 'deepgramKey')).toBeVisible({ timeout: 10_000 });
+  } finally {
+    await run.stop();
+    await remove(userData);
+  }
+});
+
+test('a failed key save and an unsendable key are handled without a request or a stuck button', async () => {
+  const userData = await freshDir();
+  const run = await launch('key-errors', userData);
+  try {
+    const { win, app } = run;
+    await fr(win).getByRole('button', { name: 'Get started' }).click();
+    const key = fr(win).getByLabel('Deepgram API key');
+    const requests = async (): Promise<number> =>
+      (await fs.readFile(path.join(userData, 'e2e.log'), 'utf8')).split('\n').filter((line) => line.includes(' deepgram ')).length;
+
+    // A key with a space cannot be a header value: refused, and no request goes out.
+    const before = await requests();
+    await key.fill('not a valid key');
+    await key.press('Enter');
+    await expect(fr(win).locator('.fr-alert', { hasText: "Deepgram didn't accept this key" })).toBeVisible();
+    expect(await requests()).toBe(before);
+
+    // The save call rejects: the page says so and Connect works again.
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('firstrun:save-key');
+      ipcMain.handle('firstrun:save-key', () => {
+        throw new Error('boom');
+      });
+    });
+    await key.fill('valid-save-fails');
+    await key.press('Enter');
+    await expect(fr(win).locator('.fr-alert', { hasText: "Couldn't save the key" })).toBeVisible();
+    await expect(fr(win).getByRole('button', { name: 'Connect', exact: true })).toBeEnabled();
+    await expect(page(win, 'engine')).toBeVisible();
+  } finally {
+    await run.stop();
+    await remove(userData);
+  }
+});
+
+/** Replaces getUserMedia in the page with a recorder of what it hands out. */
+async function watchMicrophone(win: Page, mode: 'live' | 'slow' | 'denied'): Promise<void> {
+  await win.evaluate((how) => {
+    const w = window as unknown as { __streams: MediaStream[]; __calls: number; __vis: string };
+    w.__streams = [];
+    w.__calls = 0;
+    w.__vis = 'visible';
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => w.__vis });
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => w.__vis === 'hidden' });
+    const devices = navigator.mediaDevices;
+    const real = devices.getUserMedia.bind(devices);
+    devices.getUserMedia = async (constraints) => {
+      w.__calls += 1;
+      if (how === 'denied') throw new DOMException('Permission denied', 'NotAllowedError');
+      if (how === 'slow') await new Promise((resolve) => setTimeout(resolve, 900));
+      const stream = await real(constraints);
+      w.__streams.push(stream);
+      return stream;
+    };
+  }, mode);
+}
+const setVisibility = (win: Page, value: 'visible' | 'hidden') =>
+  win.evaluate((v) => {
+    (window as unknown as { __vis: string }).__vis = v;
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, value);
+const liveTracks = (win: Page) =>
+  win.evaluate(() =>
+    (window as unknown as { __streams: MediaStream[] }).__streams.flatMap((s) => s.getTracks()).filter((t) => t.readyState === 'live').length,
+  );
+
+test('the microphone is closed on leaving the step, and a late answer or a hidden retry never holds it', async () => {
+  const userData = await freshDir();
+  const run = await launch('mic-lifetime', userData);
+  try {
+    const { win } = run;
+    // Leaving the step closes every track.
+    await watchMicrophone(win, 'live');
+    await walkToMicrophone(win);
+    await expect(fr(win).locator('.fr-ok', { hasText: 'Allowed' })).toBeVisible();
+    expect(await liveTracks(win)).toBeGreaterThan(0);
+    await fr(win).getByRole('button', { name: 'Continue', exact: true }).click();
+    await expect(page(win, 'tryIt')).toBeVisible();
+    expect(await liveTracks(win)).toBe(0);
+
+    // A request still pending when the window hides: its stream is closed when it lands.
+    await watchMicrophone(win, 'slow');
+    await fr(win).getByRole('button', { name: 'Back' }).click();
+    await expect(page(win, 'microphone')).toBeVisible();
+    await setVisibility(win, 'hidden');
+    await win.waitForTimeout(1600);
+    expect(await liveTracks(win)).toBe(0);
+    // Shown again: it starts again.
+    await setVisibility(win, 'visible');
+    await expect(fr(win).locator('.fr-ok', { hasText: 'Allowed' })).toBeVisible({ timeout: 5_000 });
+    expect(await liveTracks(win)).toBeGreaterThan(0);
+  } finally {
+    await run.stop();
+    await remove(userData);
+  }
+
+  // Denied retries stop while hidden and resume when shown.
+  const second = await freshDir();
+  const again = await launch('mic-denied-hidden', second);
+  try {
+    const { win } = again;
+    await watchMicrophone(win, 'denied');
+    await walkToMicrophone(win);
+    await expect(fr(win).getByText('Microphone access is off for Useful Voice.')).toBeVisible();
+    await setVisibility(win, 'hidden');
+    await win.waitForTimeout(300);
+    const calls = () => win.evaluate(() => (window as unknown as { __calls: number }).__calls);
+    const atHide = await calls();
+    await win.waitForTimeout(2600);
+    expect(await calls()).toBe(atHide);
+    await setVisibility(win, 'visible');
+    await until(async () => (await calls()) > atHide, 'retries to resume when shown');
+  } finally {
+    await again.stop();
+    await remove(second);
+  }
+});
+
+test('Run setup again pressed twice opens one flow', async () => {
+  const userData = await freshDir();
+  const run = await launch('double-open', userData);
+  try {
+    const { win } = run;
+    await fr(win).getByRole('button', { name: 'Skip setup' }).click();
+    await win.locator('.rail-item', { hasText: 'Settings' }).click();
+    await win.getByRole('button', { name: 'Run setup again' }).dblclick();
+    await expect(win.locator('.fr')).toHaveCount(1);
+  } finally {
+    await run.stop();
+    await remove(userData);
   }
 });

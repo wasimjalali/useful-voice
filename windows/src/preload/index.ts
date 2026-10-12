@@ -195,7 +195,9 @@ const api = {
   firstRunCheckKey: (key: string): Promise<FirstRunKeyCheck> => ipcRenderer.invoke('firstrun:check-key', key),
   firstRunSaveKey: (key: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('firstrun:save-key', key),
   firstRunSetLanguage: (code: string): Promise<void> => ipcRenderer.invoke('firstrun:set-language', code),
-  firstRunSetHotkey: (accelerator: string): Promise<void> => ipcRenderer.invoke('firstrun:set-hotkey', accelerator),
+  /** Validated and trial-registered in main; `error` says why a hotkey was refused. */
+  firstRunSetHotkey: (accelerator: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('firstrun:set-hotkey', accelerator),
   /** `completed`: finished or skipped, so the flow does not open again. */
   firstRunFinish: (completed: boolean): Promise<void> => ipcRenderer.invoke('firstrun:finish', completed),
   /** The practice dictation's text, while the flow is open. */

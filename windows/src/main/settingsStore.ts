@@ -44,6 +44,8 @@ export class SettingsStore {
   private lastSaveError: Error | null = null;
   private completedFirstRun = false;
   private keyOnDisk = false;
+  /** The stored key blob as read, kept when it could not be decrypted so a save writes it back untouched. */
+  private undecryptedBlob: string | null = null;
   private frozen = false;
   private readonly statusListeners = new Set<(status: SaveStatus) => void>();
 
@@ -73,8 +75,9 @@ export class SettingsStore {
       this.completedFirstRun = incoming.firstRunCompleted === true;
       this.keyOnDisk = typeof incoming.apiKeyEncrypted === 'string' && incoming.apiKeyEncrypted.length > 0;
       if (typeof incoming.apiKeyEncrypted === 'string' && incoming.apiKeyEncrypted.length > 0) {
-        this.apiKey = this.decrypt(incoming.apiKeyEncrypted);
+        this.apiKey = this.decrypt(incoming.apiKeyEncrypted, incoming.apiKeyPlaintextWarning === true);
         if (this.apiKey === null) {
+          this.undecryptedBlob = incoming.apiKeyEncrypted;
           // Decryption failed: the file was copied from another user or machine,
           // or the OS profile changed. Report it rather than silently behaving as
           // if no key were configured (which is what the macOS build did with a
@@ -169,6 +172,7 @@ export class SettingsStore {
     const trimmed = key.trim();
     if (trimmed.length === 0) return { ok: false, error: 'The API key is empty.' };
     this.apiKey = trimmed;
+    this.undecryptedBlob = null;
     this.keyOnDisk = true;
     this.plaintextKeyWarning = false;
     void this.save();
@@ -177,6 +181,7 @@ export class SettingsStore {
 
   clearApiKey(): void {
     this.apiKey = null;
+    this.undecryptedBlob = null;
     this.keyOnDisk = false;
     this.plaintextKeyWarning = false;
     void this.save();
@@ -192,13 +197,19 @@ export class SettingsStore {
     return { data: Buffer.from(value, 'utf8').toString('base64'), plaintextFallback: true };
   }
 
-  private decrypt(stored: string): string | null {
+  /**
+   * `storedAsPlaintext`: the file says the key was saved without encryption. Only then, or
+   * when encryption is unavailable now, is the blob read as text; while DPAPI works, a
+   * blob it cannot decrypt is not a key, and reading it as UTF-8 would invent a garbage one.
+   */
+  private decrypt(stored: string, storedAsPlaintext: boolean): string | null {
     const buffer = Buffer.from(stored, 'base64');
-    if (safeStorage.isEncryptionAvailable()) {
+    const available = safeStorage.isEncryptionAvailable();
+    if (available && !storedAsPlaintext) {
       try {
         return safeStorage.decryptString(buffer);
       } catch {
-        // Fall through: it may have been stored while encryption was unavailable.
+        return null;
       }
     }
     try {
@@ -236,6 +247,9 @@ export class SettingsStore {
       payload.apiKeyEncrypted = encrypted.data;
       this.plaintextKeyWarning = encrypted.plaintextFallback;
       payload.apiKeyPlaintextWarning = encrypted.plaintextFallback;
+    } else if (this.undecryptedBlob !== null) {
+      // Could not be read on this account: keep it as it was, for the account that can.
+      payload.apiKeyEncrypted = this.undecryptedBlob;
     }
 
     try {

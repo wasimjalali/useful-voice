@@ -56,3 +56,13 @@ export function firstRunLaunch(argv: readonly string[]): FirstRunLaunch {
   const step = (FIRST_RUN_STEPS as readonly string[]).includes(raw) ? (raw as FirstRunStep) : null;
   return { forced, step };
 }
+
+/**
+ * Whether the main window opens at launch. The app is tray-only, so without this a fresh
+ * install would never show the flow. A launch from the login entry opens nothing (nobody
+ * clicked, and a window should not jump in front of their work); the flow stays pending
+ * and shows the first time they open the window.
+ */
+export function shouldOpenAtLaunch({ pending, autoStarted }: { pending: boolean; autoStarted: boolean }): boolean {
+  return pending && !autoStarted;
+}

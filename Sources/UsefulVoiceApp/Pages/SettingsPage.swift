@@ -98,11 +98,8 @@ struct SettingsPage: View {
     /// The Deepgram listen endpoint, shown (redacted) in the connection test.
     private let deepgramEndpoint = "https://api.deepgram.com/v1/listen"
 
-    /// Where the app keeps its data. The folder keeps the app's earlier name.
-    private var supportFolder: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Sadaa")
-    }
+    /// Where the app keeps its data.
+    private var supportFolder: URL { DataFolder.current() }
 
     // MARK: - Body
 
@@ -740,6 +737,12 @@ struct SettingsPage: View {
             SettingsRow(title: "Setup") {
                 Button("Run setup again") { firstRun.restart() }
                     .buttonStyle(.brandSecondary)
+            }
+            ForEach(ReleaseLinks.links(), id: \.title) { link in
+                SettingsRow(title: link.title) {
+                    Button("Open") { NSWorkspace.shared.open(link.url) }
+                        .buttonStyle(.brandSecondary)
+                }
             }
         }
     }

@@ -16,8 +16,8 @@ import { applySnippets } from './snippetExpansionEngine.js';
  *
  * The second pass MUST NOT re-apply rules that already fired. Rule application is
  * not idempotent when a rule's replacement still contains its own match, which is
- * the normal case for this product ("Karko" -> "Karko AI", "Useful" ->
- * "Useful Voice"). Re-applying produced "Karko AI AI" and
+ * the normal case for this product ("Acme" -> "Acme Inc", "Useful" ->
+ * "Useful Voice"). Re-applying produced "Acme Inc Inc" and
  * "Useful Voice Voice" in the delivered text. Since a rule matches a fixed
  * literal phrase, re-applying it to text it already produced can only duplicate.
  */

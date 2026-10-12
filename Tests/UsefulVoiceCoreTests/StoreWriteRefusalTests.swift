@@ -22,7 +22,7 @@ struct StoreWriteRefusalTests {
     /// These tests deliberately provoke failed reads and writes, and the stores used
     /// to log those through `Diagnostics.shared` — so running the suite appended 186
     /// lines of test fixtures to the developer's real
-    /// `~/Library/Application Support/Sadaa/diagnostics.log`, making that log
+    /// `~/Library/Application Support/UsefulVoice/diagnostics.log`, making that log
     /// actively misleading to debug against. Passing a nil-directory instance keeps
     /// the assertions (which read the in-memory buffer) working while writing nothing.
     private let silent = Diagnostics(directory: nil)

@@ -632,7 +632,7 @@ final class CapturingProvider: TranscriptionProvider {
             context: {
                 contextCalls += 1
                 return FormattingContext(
-                    appBundleID: contextCalls == 1 ? "com.target.app" : "ai.karko.sadaa",
+                    appBundleID: contextCalls == 1 ? "com.target.app" : "ai.useful.voice",
                     dictionaryWords: [], language: .auto)
             })
         controller.toggle()
@@ -1568,7 +1568,7 @@ final class CapturingProvider: TranscriptionProvider {
     @Test func testHotkeyDictationDeliveredWhileUsefulVoiceIsFrontCopies() async throws {
         let controller = makeController(providers: [okProvider()])
         controller.toggle()
-        frontmostApp = FrontmostApp(id: "ai.karko.usefulvoice", name: "Useful Voice")
+        frontmostApp = FrontmostApp(id: "ai.useful.voice", name: "Useful Voice")
         controller.toggle()                          // e.g. stopped from the dock
         await controller.awaitProcessing()
         #expect(deliveredModes == [.copy])
@@ -1576,7 +1576,7 @@ final class CapturingProvider: TranscriptionProvider {
     }
 
     @Test func testHotkeyDictationStartedAndDeliveredInUsefulVoicePastesThere() async throws {
-        frontmostApp = FrontmostApp(id: "ai.karko.usefulvoice", name: "Useful Voice")
+        frontmostApp = FrontmostApp(id: "ai.useful.voice", name: "Useful Voice")
         let controller = makeController(providers: [okProvider()])
         controller.toggle()                          // hotkey while typing in a note
         controller.toggle()

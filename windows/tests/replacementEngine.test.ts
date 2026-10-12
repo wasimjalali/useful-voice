@@ -133,9 +133,9 @@ describe('applyReplacements', () => {
   });
 
   it('excludes rules by id, for the post-processor second pass', () => {
-    const a = rule({ id: 'fired', match: 'Karko', replacement: 'Karko AI' });
-    const result = applyReplacements([a], 'Karko', 'en', new Set(['fired']));
-    expect(result.text).toBe('Karko');
+    const a = rule({ id: 'fired', match: 'Acme', replacement: 'Acme AI' });
+    const result = applyReplacements([a], 'Acme', 'en', new Set(['fired']));
+    expect(result.text).toBe('Acme');
   });
 });
 

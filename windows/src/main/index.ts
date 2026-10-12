@@ -1991,7 +1991,7 @@ function parseCsvLine(line: string): string[] {
  * app than the one actually running. `tests/appIdentity.test.ts` reads both and
  * fails if they drift.
  */
-export const APP_USER_MODEL_ID = 'ai.karko.usefulvoice';
+export const APP_USER_MODEL_ID = 'ai.useful.voice';
 
 /**
  * A headless startup check.

@@ -39,7 +39,7 @@ import Foundation
     }
 
     @Test func testAudioReprocessCreatesRecordFromFreshTranscript() async {
-        let audioURL = URL(fileURLWithPath: "/tmp/sadaa-test.wav")
+        let audioURL = URL(fileURLWithPath: "/tmp/useful-voice-test.wav")
         let memoryID = UUID()
         let snippetID = UUID()
         let record = DictationRecord(
@@ -83,7 +83,7 @@ import Foundation
     /// reprocess path stores the sanitized code (letters and hyphen only), so
     /// an injected newline cannot smuggle a fake record line into history.
     @Test func testAudioReprocessStoresSanitizedDetectedLanguage() async {
-        let audioURL = URL(fileURLWithPath: "/tmp/sadaa-test.wav")
+        let audioURL = URL(fileURLWithPath: "/tmp/useful-voice-test.wav")
         let record = DictationRecord(
             text: "old text",
             createdAt: Date(timeIntervalSince1970: 1),

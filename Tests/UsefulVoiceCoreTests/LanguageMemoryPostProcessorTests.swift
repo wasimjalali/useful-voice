@@ -169,24 +169,24 @@ import Foundation
     }
 
     @Test func testSnippetIntroducesMatchButFiredRuleIsNotReapplied() {
-        // Strengthens the Karko regression: the alias rule fires in pass one,
-        // then a snippet introduces a fresh "Karko". Pass two runs (the text
-        // changed twice) but must not re-run the fired rule — "Karko AI AI"
+        // Strengthens the Acme regression: the alias rule fires in pass one,
+        // then a snippet introduces a fresh "Acme". Pass two runs (the text
+        // changed twice) but must not re-run the fired rule — "Acme AI AI"
         // is the corruption the fired-rule filter exists to prevent.
-        let term = MemoryTerm(phrase: "Karko AI", aliases: ["Karko"], priority: .always)
-        let snippet = MemorySnippet(trigger: "signoff", expansion: "Karko")
+        let term = MemoryTerm(phrase: "Acme AI", aliases: ["Acme"], priority: .always)
+        let snippet = MemorySnippet(trigger: "signoff", expansion: "Acme")
         let snapshot = LanguageMemorySnapshot(
             terms: [term],
             snippets: [snippet]
         )
 
         let result = LanguageMemoryPostProcessor.applyDeterministic(
-            to: "Karko signoff",
+            to: "Acme signoff",
             snapshot: snapshot,
             language: .en
         )
 
-        #expect(result.text == "Karko AI Karko")
+        #expect(result.text == "Acme AI Acme")
         #expect(result.replacementRuleIDs.count == 1)
         #expect(result.snippetIDs == [snippet.id])
     }

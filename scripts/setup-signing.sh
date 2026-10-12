@@ -1,59 +1,45 @@
 #!/bin/bash
-# One-time setup: create a stable self-signed code-signing identity so Useful Voice
-# keeps its Accessibility (hotkey) and Microphone grants across reinstalls.
+# Check that the stable "Useful Voice Release" code-signing identity is installed.
 #
-# Why: `make install` re-signs the app. With ad-hoc signing (codesign --sign -)
-# every build has a different code hash, so macOS treats each build as a NEW app
-# and silently drops the Accessibility grant. A stable identity fixes that: the
-# signature's designated requirement stays constant across rebuilds.
+# Why this exists: `make bundle` re-signs the app. With ad-hoc signing
+# (codesign --sign -) every build has a different code hash, so macOS treats each
+# build as a NEW app and silently drops the Accessibility and Microphone grants.
+# A stable identity keeps the signature's designated requirement constant.
 #
-# Run once:  ./scripts/setup-signing.sh
-# The first `make install` afterwards shows a one-time "codesign wants to sign
-# using key in your keychain" prompt - click "Always Allow".
+# This script NEVER creates a certificate. A freshly generated certificate is a
+# different identity, so every user's Accessibility and Microphone grants would
+# be dropped again. The one identity lives in the password manager as a .p12;
+# import that file instead.
+#
+# Usage:  ./scripts/setup-signing.sh
+# Exit 0 when the identity is installed, 1 when it is missing.
 
 set -euo pipefail
 
-IDENTITY="Sadaa Local Signing"
+IDENTITY="Useful Voice Release"
 KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
 
-if security find-identity -p codesigning 2>/dev/null | grep -q "$IDENTITY"; then
-    echo "Signing identity '$IDENTITY' already exists. Nothing to do."
+if security find-identity -p codesigning 2>/dev/null | grep -q "\"$IDENTITY\""; then
+    echo "Signing identity '$IDENTITY' is installed. Nothing to do."
     exit 0
 fi
 
-echo "Creating self-signed code-signing certificate '$IDENTITY'..."
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+cat >&2 <<MSG
+Signing identity '$IDENTITY' is not in the login keychain.
 
-# Use the system LibreSSL, not a Homebrew OpenSSL 3.x. OpenSSL 3 writes a PKCS12
-# MAC that macOS `security import` cannot verify ("MAC verification failed").
-OPENSSL=/usr/bin/openssl
+Do not generate a new certificate: a new identity drops every user's
+Accessibility and Microphone grants. Import the existing one instead:
 
-cat > "$TMP/cert.cnf" <<'EOF'
-[req]
-distinguished_name = dn
-x509_extensions = ext
-prompt = no
-[dn]
-CN = Sadaa Local Signing
-[ext]
-basicConstraints = critical,CA:FALSE
-keyUsage = critical,digitalSignature
-extendedKeyUsage = critical,codeSigning
-EOF
+  1. Get the '$IDENTITY' .p12 from the password manager and save it somewhere
+     temporary (delete it after the import).
+  2. Import it into the login keychain and let codesign use the key:
 
-"$OPENSSL" req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
-    -keyout "$TMP/key.pem" -out "$TMP/cert.pem" -config "$TMP/cert.cnf" 2>/dev/null
+       security import <file.p12> -k "$KEYCHAIN" \\
+           -T /usr/bin/codesign -T /usr/bin/security
 
-"$OPENSSL" pkcs12 -export -out "$TMP/cert.p12" \
-    -inkey "$TMP/key.pem" -in "$TMP/cert.pem" -passout pass:sadaa 2>/dev/null
+  3. Re-run ./scripts/setup-signing.sh to confirm.
 
-# Import into the login keychain and allow codesign to use the key.
-security import "$TMP/cert.p12" -k "$KEYCHAIN" -P sadaa \
-    -T /usr/bin/codesign -T /usr/bin/security
-
-echo ""
-echo "Done. '$IDENTITY' is installed."
-echo "Next: run 'make install'. On the first sign you'll get one macOS prompt"
-echo "to use the key - click 'Always Allow'. After that, grant Useful Voice"
-echo "Accessibility once and the hotkey will keep working across future updates."
+The first 'make bundle' afterwards shows a one-time "codesign wants to sign
+using key" prompt: click 'Always Allow'.
+MSG
+exit 1

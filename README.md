@@ -6,172 +6,67 @@
 [![Swift](https://img.shields.io/badge/Swift-F05138?logo=swift&logoColor=white)](https://swift.org)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20%7C%20Windows%2010%2B-lightgrey)
 
-A fast, personal voice-dictation app for macOS and Windows. Tap a hotkey anywhere, speak in English or German (or 97 other languages), and the transcript lands at your cursor. Choose your engine: Deepgram Nova-3 in the cloud, or open-weight Whisper models running fully on your Mac.
+Useful Voice is a fast, personal dictation app for macOS and Windows. Tap a hotkey in any app, speak, and the text lands at your cursor. Pick your engine: Deepgram Nova-3 in the cloud, or a Whisper model that runs entirely on your Mac.
 
-Useful Voice records, transcribes, applies your personal dictionary and inserts the result at your cursor with a clipboard backup. On macOS the main window has six areas: Dictate, Dictionary, Insights, Notes, Library and Settings. The Windows app keeps its earlier layout.
+<!-- Hero screenshot goes here once the owner approves captures made with synthetic data. -->
 
-![Useful Voice Dictate page with the microphone ready.](docs/images/dictate.png)
+## What you get
 
-![Useful Voice Notes with a note open in the editor.](docs/images/notes.png)
+**Dictate anywhere.** Tap your key (Right Command by default), speak, tap again. The text is inserted at your cursor and also copied to the clipboard, so a missed insert is one paste away. Esc cancels. Recording stops by itself after 60 seconds of silence.
 
-![Useful Voice Dictionary with taught words and a fix-a-mistake form.](docs/images/dictionary.png)
+**Teach it your words.** Add names and specialist spellings to your dictionary. They help recognition and fix casing on your Mac. Add a "sounds like" form and misheard variants are rewritten after transcription. Fix a recurring mistake once and it stays fixed.
 
-![Useful Voice Settings with language, hotkeys and Deepgram ready.](docs/images/settings.png)
+**Keep what you said.** Notes are local and searchable, with pins, tags and Markdown copy. Your dictation history keeps every transcript, and Insights shows words, time saved and your streak.
 
-## Build and run
+**Your engine, your call.** Use Deepgram Nova-3 for fast cloud transcription. Or run Whisper large-v3-turbo (recommended) or large-v3 on your Mac, with no API key and no audio leaving your device. Both handle 99 languages with auto-detect.
 
-```bash
-make bundle      # builds dist/UsefulVoice.app (ad-hoc signed)
+## Before you install
+
+| | |
+|---|---|
+| Works on | macOS 14 or later on Apple silicon. Windows 10 or later (see [windows/README.md](windows/README.md) for what's verified there) |
+| Engines | Deepgram Nova-3 (cloud). On macOS also local Whisper large-v3-turbo and large-v3. The Windows app uses Deepgram |
+| Stays on your device | Your dictionary, notes, history, settings and, on macOS, the last 10 recordings. Your Deepgram key sits in the macOS Keychain (Windows: encrypted with DPAPI). With a local Whisper model, your audio never leaves your Mac |
+| Leaves your device | With Deepgram, each recording's audio goes to Deepgram, plus up to 400 tokens of your dictionary words, fix results and snippet triggers as keyterms. "Sounds like" forms stay on your Mac. Picking a local model downloads its weights from Hugging Face |
+| Tracking | None. No analytics, no crash reports, no ads |
+| Updates | Manual for now. The app doesn't check for updates yet |
+
+## Install
+
+Build it from source today. Clone this repository and run these in its folder. You need macOS 14 or later, Apple silicon and the Command Line Tools (full Xcode isn't needed).
+
+```sh
+make bundle                  # builds dist/UsefulVoice.app (ad-hoc signed on your Mac)
 open dist/UsefulVoice.app
 ```
 
-A waveform icon appears in the menu bar. No Dock icon.
+One-line installers and a downloadable app arrive with v1.0.0.
 
-Requirements: macOS 14+, Apple Silicon, Command Line Tools (no full Xcode needed).
+On first launch a short setup walks you through your engine, the microphone and Accessibility. Deepgram gives new accounts $200 in free credit, and setup links to the signup. You can run the setup again from Settings.
 
-## First run
+Windows builds from source too. See [windows/README.md](windows/README.md).
 
-The first launch opens a short setup that walks you through four steps:
+## Development
 
-1. **Choose how it listens.** Deepgram Nova-3 in the cloud, or a Whisper model that runs on your Mac. New Deepgram accounts get $200 in free credit with no card needed: **Claim your $200** opens Deepgram's signup, then paste the API key it gives you.
-2. **Microphone.** Allow it when macOS asks.
-3. **Accessibility.** Turn on Useful Voice in System Settings > Privacy & Security > Accessibility. This powers the hotkey and typing at your cursor. The setup moves on by itself once it's on.
-4. **Try it once.** Tap your dictation key (Right Command by default) and speak into the practice box. New installs transcribe English; pick Auto-detect or another language from the menu.
+Everything below is for working on Useful Voice itself.
 
-You can run it again from Settings > Setup. With Deepgram, **Auto-format transcript** in Settings adds punctuation, capitalization and formatted numbers.
+| Platform | Check |
+|---|---|
+| macOS | `make test` (Swift Testing suite) and `swift build` |
+| Windows | `cd windows && npm run verify` (typecheck, vitest, build, Electron self-test) |
+| Windows packaging | `cd windows && npx electron-builder --win --dir` |
+| Windows E2E | `cd windows && env -u ELECTRON_RUN_AS_NODE npm run e2e` |
 
-Your Deepgram API key is stored in the macOS Keychain, never in a file.
+Use `make test`, not bare `swift test`. The Makefile adds the framework paths Swift Testing needs under the Command Line Tools.
 
-Until an engine is configured, every dictation ends with the HUD saying "No transcription provider configured." Use **Test connection** in Settings to run a tiny transcription probe before you rely on it.
+The code is split in three:
 
-## Using it
+- `Sources/UsefulVoiceCore` is the testable core: settings, providers, audio, the dictionary, language memory, history and the dictation pipeline.
+- `Sources/UsefulVoiceApp` is the macOS app: menu bar, HUD, hotkey, text insertion and the pages.
+- `windows/` is the Electron and TypeScript app. Its `src/core` mirrors the Swift core.
 
-- **Tap your dictation key** to start recording (Right Command by default; an ink pill appears at the bottom of the screen). Tap again to stop, transcribe and insert.
-- **Esc** while recording cancels.
-- Recording auto-stops after 60s of silence or 10 minutes total.
-- Pick **Auto-detect / English / German** in the menu bar.
-- The final text is always copied to the clipboard as a backup, so if insertion misses you can paste it.
-- Teach Useful Voice exact names and specialist spellings in **Dictionary**. Words bias Deepgram recognition *and* fix casing locally. Add a "sounds like" form so misheard variants are rewritten after STT.
-- **Learn once, fix forever**: use **Fix a recurring mistake** on the Dictionary page, or **Teach the dictionary** in Library. Useful Voice stores a deterministic auto-correction and a high-priority dictionary term, so the same error is corrected on the next dictation.
-- Learning uses an OpenWhispr-style correction learner (word-level LCS + edit distance) so multi-word edits can teach several pairs at once.
-- Use **Notes** for local dictated notes with search, pins, auto-save, tags, Markdown copy, JSON backup/restore and append-latest-dictation.
-- In **Library**, search, copy, send a dictation to Notes, reprocess retained audio or teach a correction into the dictionary.
-- **Insights** shows words dictated, time dictating, words per minute, time saved versus typing, your streak and when you dictate, for 7 days, 30 days or all time. The totals live in their own small file (`usage-stats.json`), so clearing Library does not reset them.
-
-## Transcription engines
-
-Settings › Transcription lists Deepgram and each local Whisper model as one choice, all behind the same provider pipeline — everything after transcription (formatting, dictionary corrections, language memory, history, insertion) works identically for both.
-
-### Deepgram (cloud)
-
-Useful Voice uses Deepgram's **Nova-3** model. Auto-format (Deepgram's `smart_format`) adds punctuation, capitalization and formatted numbers and dates; turn it off in Settings for raw text. Your personal dictionary terms (correct spellings only) are sent as Deepgram keyterms to bias recognition. Misheard forms, aliases and auto-corrections always run locally after transcription so learning actually sticks.
-
-### Whisper (local, on-device)
-
-Runs [whisper.cpp](https://github.com/ggml-org/whisper.cpp) with Metal GPU acceleration — no API key, and **audio never leaves your Mac**. Each model is a row in Settings › Transcription. Tap one that isn't downloaded to start its download, and tap it again once it's ready to switch to it (progress, pause and resume, checksum verification and delete are built in):
-
-| Model | Size | License | Notes |
-|---|---|---|---|
-| `whisper-large-v3-turbo` | ~1.6 GB | MIT | **Recommended.** Near state-of-the-art accuracy at much higher speed. The right pick for most Macs, including 8 GB machines. |
-| `whisper-large-v3` | ~3.1 GB | Apache-2.0 | The most accurate option, but roughly 2× the memory and noticeably slower. Better suited to 16 GB+ Macs; on 8 GB machines prefer turbo. |
-
-Both models support **99 languages** with auto-detection, plus the language override in the menu bar. Persian is included.
-
-Model weights are the `ggml-*.bin` builds published by the whisper.cpp project on Hugging Face ([ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp)), converted from OpenAI's releases: [openai/whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo) (MIT) and [openai/whisper-large-v3](https://huggingface.co/openai/whisper-large-v3) (Apache-2.0). Weights land in `~/Library/Application Support/UsefulVoice/models/` and are verified against their SHA-256 before activation.
-
-Local app data stays under the app's Application Support directory; Useful Voice does not read, scan, index, or default-save into your Documents folder.
-
-## Develop
-
-```bash
-make test        # Swift Testing suite
-swift build      # debug build
-```
-
-Tests run under Command Line Tools; the Makefile injects the framework paths Swift Testing needs. Use `make test`, not bare `swift test`.
-
-## Windows
-
-The Windows app lives in [`windows/`](windows/README.md) — Electron + TypeScript,
-sharing this design system, the dictionary and language-memory model, and the
-Deepgram request shape, so a backup taken on one platform is readable by the other.
-
-```bash
-cd windows
-npm install
-npm run verify      # typecheck + 507 tests + build + headless self-test
-npm start
-npm run dist        # NSIS installer + portable exe -> windows/release/
-```
-
-Its platform-free core is deliberately separated from the Electron shell, so the
-whole logic suite runs on any OS. Read
-[`windows/README.md`](windows/README.md) first: it states plainly which parts are
-verified by execution and which still require a Windows machine to confirm.
-
-## Security and data handling
-
-- The Deepgram API key is stored in the macOS Keychain, and on Windows encrypted
-  with DPAPI. It is never written to a plain file, and the renderer can only ask
-  *whether* a key is configured, never read it.
-- A keychain that cannot be read is reported as exactly that. "Your keychain is
-  locked" and "you have not set a key" are different problems with different fixes,
-  so the app never tells you to re-enter a key that is already stored and fine.
-- **Your data is owner-only.** The data directory, the recordings, and the
-  transcript files are `0700`/`0600` — not the `0755`/`0644` the process umask
-  would otherwise produce, which would make your dictionary and recorded speech
-  readable by every other account on the machine. This is re-applied at launch, so
-  files written by an earlier build, or restored from a backup, are corrected too.
-- Audio is held in memory only while transcribing and is never written to disk
-  except as retained recordings, which are deleted as newer ones replace them.
-  With the Whisper engine selected, audio never leaves the Mac at all — the
-  model runs on-device and no network call is made during dictation. With
-  Deepgram, the audio clip itself is uploaded for transcription.
-- The Windows renderer runs with `contextIsolation` on, `nodeIntegration` off, and a
-  strict `file://` CSP; 66 named IPC channels are its entire surface.
-- A store that cannot read its file **refuses to write** rather than starting empty,
-  so a transient read error can never erase your dictionary, notes or history.
-- **Diagnostics never record what you said.** The log in Settings holds failure
-  descriptions only — no transcript text, no API key. Its API accepts only
-  category/message pairs, so there is no method through which a transcript could be
-  recorded by accident.
-
-## Robustness
-
-- The keyterm list sent to Deepgram is capped at 400 tokens (Nova-3 hard-fails above
-  500 across all keyterms, which would break every dictation at once).
-- A silent recording is rejected rather than transcribed, because a speech model can
-  echo its own prompt bias — your dictionary — back as a fake transcript.
-- Delivery is raced against a timeout, so a lost callback can never wedge the app in
-  a state where the hotkey does nothing.
-- After a dictation the text is either pasted or left on the clipboard, never
-  neither; the previous clipboard is restored only once the paste has been shown to
-  have landed.
-- Failures are recorded to a bounded log and shown in **Settings › Diagnostics**,
-  with a Copy report button. Before this, every error lived for a few seconds in a
-  floating pill and was gone, which made an intermittent fault impossible to
-  diagnose.
-- The one-time import of a legacy `dictionary.json` verifies that its result reached
-  disk. If it did not, the original files are left untouched and the failure is
-  recorded, rather than the app proceeding with an empty dictionary.
-
-## Audits
-
-Five detailed reports in [`docs/audit/`](docs/audit) cover the recording pipeline,
-hotkey and lifecycle, the dictionary and language memory, the UI, and a language
-and performance audit. Start with
-[`00-findings-and-fixes.md`](docs/audit/00-findings-and-fixes.md), which summarises
-every finding, what changed, how each change is verified, and what was deliberately
-left alone.
-
-## Layout
-
-- `Sources/UsefulVoiceCore` - testable core: settings, keychain, providers, audio writer/recorder, recording store, hotkey recognizer, Language Memory, Scratchpad, history, and the `DictationController` pipeline.
-- `Sources/UsefulVoiceApp` - macOS glue: AppDelegate, menu bar, HUD, hotkey tap, text insertion, premium pages, and settings window.
-- `windows/` - the Windows port: `src/core` (platform-free TypeScript), `src/main` (Electron main), `src/preload`, `src/renderer`, and its vitest suites.
-- `docs/superpowers/specs` - the design spec. `docs/superpowers/plans` - the implementation plan.
-- `assets/branding` - the app icon: `useful-voice-mark-dark.svg` and the generated `.icns`.
+The design notes and audit reports are in [docs/audit](docs/audit), starting with [00-findings-and-fixes.md](docs/audit/00-findings-and-fixes.md). Release and source publishing are covered in [docs/distribution.md](docs/distribution.md).
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+[MIT](LICENSE). Contributions are welcome as pull requests, and there's no CLA to sign.

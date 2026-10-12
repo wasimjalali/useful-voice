@@ -90,3 +90,124 @@ jobs:
 
       - name: Package
         run: npx electron-builder --win --publish never
+
+  # An install made under the old Karko appId must be replaced, not duplicated, by
+  # the current installer. electron-builder derives the NSIS uninstall key from
+  # `build.nsis.guid` (pinned to the old appId's GUID), so this builds the legacy
+  # identity as 0.9.0, installs it, then installs the current build over it.
+  windows-upgrade:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: windows
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: windows/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Generate icon and build
+        run: |
+          npm run build:icon
+          npm run build
+
+      # The legacy config is the current build config minus the pinned nsis.guid, so
+      # electron-builder derives the GUID from the old appId exactly as it did for real
+      # old installs. The "same uninstall key" assertion below then proves the pin.
+      - name: Build legacy-identity installer (0.9.0)
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cfg = (Get-Content package.json -Raw | ConvertFrom-Json).build
+          $cfg.appId = 'ai.karko.usefulvoice'
+          $cfg.nsis.PSObject.Properties.Remove('guid')
+          if ($cfg.nsis.PSObject.Properties['guid']) { throw 'guid still present in legacy config' }
+          $cfg.extraMetadata | Add-Member -NotePropertyName version -NotePropertyValue '0.9.0' -Force
+          $cfg.directories.output = 'release-old'
+          $cfg | ConvertTo-Json -Depth 20 | Set-Content legacy-builder.json -Encoding utf8
+          npx electron-builder --win nsis --publish never --config legacy-builder.json
+          if ($LASTEXITCODE -ne 0) { throw "electron-builder failed: $LASTEXITCODE" }
+
+      - name: Build current installer
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cfg = (Get-Content package.json -Raw | ConvertFrom-Json).build
+          $cfg.directories.output = 'release-new'
+          $cfg | ConvertTo-Json -Depth 20 | Set-Content current-builder.json -Encoding utf8
+          npx electron-builder --win nsis --publish never --config current-builder.json
+          if ($LASTEXITCODE -ne 0) { throw "electron-builder failed: $LASTEXITCODE" }
+
+      - name: Install old, install new over it, assert one entry
+        timeout-minutes: 10
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Tests the default per-user install (oneClick false, perMachine false). The entry
+          # count spans HKCU and both HKLM views so a stray all-users entry fails the job.
+          $roots = @(
+            @{ Hive = 'HKCU'; Path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' },
+            @{ Hive = 'HKLM'; Path = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall' },
+            @{ Hive = 'HKLM32'; Path = 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall' }
+          )
+          $dump = Join-Path $env:RUNNER_TEMP 'uninstall-entries.txt'
+          function Get-UvEntries {
+            foreach ($r in $roots) {
+              Get-ChildItem $r.Path -ErrorAction SilentlyContinue | ForEach-Object {
+                $p = Get-ItemProperty $_.PSPath
+                if ($p.DisplayName -like 'Useful Voice*') {
+                  [pscustomobject]@{ Hive = $r.Hive; Key = $_.PSChildName; DisplayName = $p.DisplayName; DisplayVersion = $p.DisplayVersion; InstallLocation = $p.InstallLocation }
+                }
+              }
+            }
+          }
+          function Show-Entries($label, $entries) {
+            "== $label ==" | Tee-Object -FilePath $dump -Append
+            ($entries | Format-List | Out-String) | Tee-Object -FilePath $dump -Append
+          }
+          function Install-Silent($dir) {
+            $exe = Get-ChildItem $dir -Filter '*.exe' | Where-Object { $_.Name -like 'Useful Voice-*' } | Select-Object -First 1
+            if (-not $exe) { throw "No installer found in $dir" }
+            $proc = Start-Process -FilePath $exe.FullName -ArgumentList '/S' -PassThru
+            if (-not $proc.WaitForExit(180000)) {
+              $diag = (Get-Process | Where-Object { $_.Id -eq $proc.Id -or $_.ProcessName -like '*Useful Voice*' } | Format-Table Id, ProcessName, StartTime | Out-String)
+              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+              throw "Installer $($exe.Name) (PID $($proc.Id)) did not exit within 180s. Related processes:`n$diag"
+            }
+            if ($proc.ExitCode -ne 0) { throw "Installer $($exe.Name) exited with $($proc.ExitCode)" }
+          }
+
+          $newVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
+
+          Install-Silent 'release-old'
+          $old = @(Get-UvEntries)
+          Show-Entries 'after old install' $old
+          if ($old.Count -ne 1 -or $old[0].Hive -ne 'HKCU') { throw "Expected 1 HKCU Useful Voice entry after the old install, found $($old.Count): $(($old | ForEach-Object { $_.Hive + ':' + $_.Key }) -join ', ')" }
+          if ($old[0].DisplayVersion -ne '0.9.0') { throw "Expected DisplayVersion 0.9.0, found $($old[0].DisplayVersion)" }
+
+          Install-Silent 'release-new'
+          $new = @(Get-UvEntries)
+          Show-Entries 'after upgrade' $new
+          if ($new.Count -ne 1) { throw "Expected exactly 1 Useful Voice entry after the upgrade, found $($new.Count): $(($new | ForEach-Object { $_.Hive + ':' + $_.Key }) -join ', ')" }
+          if ($new[0].DisplayVersion -ne $newVersion) { throw "Expected DisplayVersion $newVersion, found $($new[0].DisplayVersion)" }
+          if ($new[0].Key -ne $old[0].Key) { throw "Upgrade used a different uninstall key: $($old[0].Key) -> $($new[0].Key)" }
+
+          $installed = Join-Path $env:LOCALAPPDATA 'Programs\Useful Voice\Useful Voice.exe'
+          if (-not (Test-Path $installed)) {
+            $loc = $new[0].InstallLocation
+            if ($loc) { $installed = Join-Path $loc 'Useful Voice.exe' }
+          }
+          if (-not (Test-Path $installed)) { throw "Installed Useful Voice.exe not found at $installed" }
+          "OK: one entry $($new[0].Key), version $($new[0].DisplayVersion), exe $installed" | Tee-Object -FilePath $dump -Append
+
+      - name: Upload registry dump
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-upgrade-registry
+          path: ${{ runner.temp }}/uninstall-entries.txt
+          if-no-files-found: ignore

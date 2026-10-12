@@ -5,9 +5,10 @@
 //
 //   node scripts/publish-source.mjs --clone <path to a clone of the public repo> --version X.Y.Z [--push]
 //
-// It commits to a `source-vX.Y.Z` branch cut from the public main. Without
-// --push it stops there, so the result can be read first; with it, the branch
-// is pushed and a PR opened, to merge like any other change.
+// It builds the snapshot in a temporary worktree of the clone and commits it to a
+// new `source-vX.Y.Z` branch cut from the public main; the clone is untouched if a
+// step fails. Without --push it stops there, so the result can be read first; with
+// it, the branch is pushed and a PR opened, to merge like any other change.
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,6 +24,9 @@ const AUTHOR = "Wasim Jalali <245747147+wasimjalali@users.noreply.github.com>";
 const EXCLUDE = [
   // Sadaa-era UI audits, walkthrough and screenshots of the owner's real windows.
   /^docs\/release\//,
+  // Screenshots of real data: notes.png shows an internal note, dictionary.png real vocabulary with counts.
+  // Captures with synthetic data go here once the owner approves them.
+  /^docs\/images\//,
   // Sadaa-era internal specs and plans, with the owner's working paths and old product names.
   /^docs\/superpowers\//,
   // The June 2026 Sadaa bug audit: internal, written against the old app name.
@@ -51,13 +55,22 @@ if (!values.clone || !values.version || !/^\d+\.\d+\.\d+$/.test(values.version))
   process.exit(2);
 }
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+// Untrimmed: for NUL-delimited output, where trimming would eat a leading space in a file name.
+const gitRaw = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+// Every effective URL of the clone's origin (fetch and push) must be the public repo.
+const REMOTE_RE = new RegExp(`^(https://github\\.com/|git@github\\.com:)${PUBLIC_REPO}(\\.git)?$`);
 if (git(ROOT, "status", "--porcelain", "--untracked-files=no") !== "") throw new Error("commit first: the tree has uncommitted changes");
 const clone = path.resolve(values.clone);
 if (!existsSync(path.join(clone, ".git"))) throw new Error(`${clone} is not a git clone`);
-// The raw config value, not `remote get-url`, which expands url.<base>.insteadOf
-// rewrites; a test can then route fetches to a local bare repo without fooling this check.
-const remote = git(clone, "config", "--get", "remote.origin.url");
-if (!new RegExp(`^(https://github\\.com/|git@github\\.com:)${PUBLIC_REPO}(\\.git)?$`).test(remote)) throw new Error(`${clone} is a clone of ${remote}, not ${PUBLIC_REPO}`);
+// `remote get-url` applies url.<base>.insteadOf and pushInsteadOf, and `--push` applies
+// remote.origin.pushurl, so these are the URLs git would really talk to. Checked before any fetch.
+for (const flags of [[], ["--push"]]) {
+  const urls = git(clone, "remote", "get-url", ...flags, "--all", "origin").split("\n").filter(Boolean);
+  const bad = urls.filter((u) => !REMOTE_RE.test(u));
+  if (urls.length === 0 || bad.length) throw new Error(`${clone}: origin ${flags.join("")} URL is ${bad.join(", ") || "missing"}, not ${PUBLIC_REPO}`);
+}
+// The clone must hold nothing of its own: no modified, staged, untracked or ignored files.
+if (git(clone, "status", "--porcelain", "--ignored") !== "") throw new Error(`${clone} is not clean (modified, staged, untracked or ignored files); use a fresh clone`);
 
 const branch = `source-v${values.version}`;
 git(clone, "fetch", "-q", "origin");
@@ -66,39 +79,51 @@ try {
 } catch {
   throw new Error(`${PUBLIC_REPO} has no main branch to start from`);
 }
-git(clone, "checkout", "-q", "-B", branch, "origin/main");
+const branchExistsLocally = () => { try { git(clone, "rev-parse", "--verify", "-q", `refs/heads/${branch}`); return true; } catch { return false; } };
+if (branchExistsLocally()) throw new Error(`${branch} already exists in ${clone}; push it with "git push origin ${branch}" or delete it to rebuild`);
+if (git(clone, "ls-remote", "--heads", "origin", branch) !== "") throw new Error(`${branch} already exists on origin; delete it there to republish this version`);
 
-const files = git(ROOT, "ls-files", "-z").split("\0").filter(Boolean).filter((f) => !EXCLUDE.some((re) => re.test(f)));
+const files = gitRaw(ROOT, "ls-files", "-z").split("\0").filter(Boolean).filter((f) => !EXCLUDE.some((re) => re.test(f)));
 // The same names build-runtime refuses to ship; a tracked one stops the publish.
 const SECRET = /^(\.env(\..*)?|.*\.env|\.envrc|\.netrc|\.pgpass|\.htpasswd|\.npmrc|\.git-credentials|id_(rsa|dsa|ecdsa|ed25519)(\..*)?|.*\.(pem|key|p12|pfx|p8|jks|keystore|token|gpg|asc|kubeconfig|tfvars|tfstate)|kubeconfig|terraform\.tfstate.*|secrets?(\..*)?|credentials?(\..*)?|client_secret.*|service-account.*\.json)$/i;
 const BACKUP_SUFFIX = /(\.(bak|backup|orig|old|save|swp|tmp)\d*|\.\d+|\.\d{4}-\d{2}-\d{2}|~)+$/i;
 const secrets = files.filter((f) => [path.basename(f), path.basename(f).replace(BACKUP_SUFFIX, "")].some((n) => SECRET.test(n)));
 if (secrets.length) throw new Error(`refusing to publish files that look like secrets: ${secrets.join(", ")}`);
-const stage = mkdtempSync(path.join(tmpdir(), "uv-source-"));
+
+// Everything happens in a temporary worktree of the clone, detached at origin/main, so the
+// supplied clone is untouched if any step fails. The branch is created only once the commit exists.
+const work = mkdtempSync(path.join(tmpdir(), "uv-source-"));
+const tree = path.join(work, "tree");
+let commit = null;
+const sha = git(ROOT, "rev-parse", "--short", "HEAD");
 try {
+  git(clone, "worktree", "add", "-q", "--detach", tree, "origin/main");
+  const stage = path.join(work, "stage");
   for (const file of files) cpSync(path.join(ROOT, file), path.join(stage, file), { verbatimSymlinks: true });
-  // The public tree is exactly the stage: everything else in the clone goes.
-  for (const entry of readdirSync(clone)) if (entry !== ".git") rmSync(path.join(clone, entry), { recursive: true, force: true });
-  cpSync(stage, clone, { recursive: true, verbatimSymlinks: true });
+  // The public tree is exactly the stage: everything else in the worktree goes.
+  for (const entry of readdirSync(tree)) if (entry !== ".git") rmSync(path.join(tree, entry), { recursive: true, force: true });
+  cpSync(stage, tree, { recursive: true, verbatimSymlinks: true });
+  // -f: the copied .gitignore must not drop a file that is tracked here.
+  git(tree, "add", "-A", "-f");
+  if (git(tree, "status", "--porcelain") === "") {
+    process.stdout.write(`nothing changed since the last publish (${sha})\n`);
+  } else {
+    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-q", "--author", AUTHOR, "-m", `Useful Voice ${values.version} source`], {
+      cwd: tree,
+      env: { ...process.env, GIT_COMMITTER_NAME: "Wasim Jalali", GIT_COMMITTER_EMAIL: AUTHOR.match(/<(.+)>/)[1] },
+    });
+    commit = git(tree, "rev-parse", "HEAD");
+    git(clone, "branch", branch, commit);
+    process.stdout.write(`${JSON.stringify({ files: files.length, from: sha, branch, commit: commit.slice(0, 7) })}\n`);
+  }
 } finally {
-  rmSync(stage, { recursive: true, force: true });
+  try { git(clone, "worktree", "remove", "--force", tree); } catch { /* already gone */ }
+  rmSync(work, { recursive: true, force: true });
+  try { git(clone, "worktree", "prune"); } catch { /* nothing to prune */ }
 }
 
-const sha = git(ROOT, "rev-parse", "--short", "HEAD");
-// -f: the copied .gitignore must not drop a file that is tracked here.
-git(clone, "add", "-A", "-f");
-const changed = git(clone, "status", "--porcelain") !== "";
-if (!changed) {
-  process.stdout.write(`nothing changed since the last publish (${sha})\n`);
-} else {
-  execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-q", "--author", AUTHOR, "-m", `Useful Voice ${values.version} source`], {
-    cwd: clone,
-    env: { ...process.env, GIT_COMMITTER_NAME: "Wasim Jalali", GIT_COMMITTER_EMAIL: AUTHOR.match(/<(.+)>/)[1] },
-  });
-  process.stdout.write(`${JSON.stringify({ files: files.length, from: sha, commit: git(clone, "rev-parse", "--short", "HEAD") })}\n`);
-}
-if (values.push && changed) {
-  // A rerun for the same version with changed content needs its earlier remote branch deleted first.
+if (values.push && commit) {
+  // The commit is already on the local branch, so a failed push can be retried by hand.
   git(clone, "push", "-q", "-u", "origin", branch);
   const pr = execFileSync("gh", ["pr", "create", "--repo", PUBLIC_REPO, "--head", branch, "--base", "main",
     "--title", `Useful Voice ${values.version} source`, "--body", `Source snapshot of Useful Voice ${values.version}.`], { cwd: clone, encoding: "utf8" }).trim();

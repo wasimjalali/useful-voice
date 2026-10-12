@@ -15,7 +15,7 @@ windows, so the public source repo gets snapshots, never history.
 
 1. **Hygiene.** Check that nothing new in the tree shows real data, and add its path to `EXCLUDE`
    in `scripts/publish-source.mjs` if it does.
-2. **Create `usefulvoice`** and publish the first snapshot with the script below.
+2. **Create `usefulvoice`** with an initial commit, so it has a `main` (for example `gh repo create wasimjalali/usefulvoice --public --add-readme`; the script refuses a repo with no `main`). Then publish the first snapshot with the script below.
 3. **Point the landing page** at `usefulvoice` (and at `useful-voice-releases` for downloads).
 4. **Only then make `useful-voice` private.** Making it private first breaks every link to it.
 
@@ -34,8 +34,8 @@ node scripts/publish-source.mjs --clone /tmp/uv-source --version X.Y.Z   # read 
 node scripts/publish-source.mjs --clone /tmp/uv-source --version X.Y.Z --push
 ```
 
-The script refuses a dirty tree and a clone of any other remote. It copies `git ls-files` only,
-minus the paths in `EXCLUDE` (old Sadaa audits, plans and screenshots, and any media that could show
+The script refuses a dirty tree, a clone that isn't clean (no modified, staged, untracked or ignored files, so use a fresh clone), a clone whose fetch or push URL (after `insteadOf` and `pushurl` rewrites) isn't the public repo, and a version whose `source-vX.Y.Z` branch already exists locally or on origin. It builds the snapshot in a temporary worktree, so the clone is untouched if a step fails, and a finished commit stays on the local branch if the push fails. It copies `git ls-files` only,
+minus the paths in `EXCLUDE` (old Sadaa audits and plans, `docs/images/` until screenshots with synthetic data are approved, and any media that could show
 real windows), and stops if a tracked file is named like a secret. It commits to `source-vX.Y.Z`,
 cut from the public `main`. `--push` pushes that branch and opens a PR on the public repo; merge it
 there.

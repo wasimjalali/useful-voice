@@ -17,6 +17,11 @@ Cross-platform dictation app. macOS: Swift (`Sources/UsefulVoiceCore`,
   (default `windows/e2e-results/`). CI runs it on `windows-latest` and uploads the report.
   The video needs Playwright's ffmpeg (`npx playwright install ffmpeg`); without it Playwright never
   resumes the windows and they hang blank, with no error.
+- Windows first run (`components/firstRun.ts`, gate in `core/firstRun/gate.ts`): `--force-first-run` shows it and
+  saves nothing (settings.json and data.json frozen for the whole process); `--first-run-step=<welcome|engine|errKey|deepgramKey|microphone|errMic|tryIt|tryItDone|done>`
+  jumps to a step with sample data. Under `--e2e` only, `main/e2eStub.ts` fakes Deepgram (a key starting `valid` works,
+  `offline` fails like a dead network, anything else is a 401) and Chromium's fake microphone is on. E2E fixtures seed
+  `firstRunCompleted: true` unless a spec asks otherwise (`e2e/first-run.spec.ts`).
 
 ## Windows renderer layout
 

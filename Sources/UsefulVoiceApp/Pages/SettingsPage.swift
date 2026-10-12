@@ -738,6 +738,12 @@ struct SettingsPage: View {
                 Button("Run setup again") { firstRun.restart() }
                     .buttonStyle(.brandSecondary)
             }
+            ForEach(ReleaseLinks.links(), id: \.title) { link in
+                SettingsRow(title: link.title) {
+                    Button("Open") { NSWorkspace.shared.open(link.url) }
+                        .buttonStyle(.brandSecondary)
+                }
+            }
         }
     }
 

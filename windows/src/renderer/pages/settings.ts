@@ -3,6 +3,7 @@ import { el, icon, ICONS } from '../components/dom.js';
 import { dropdown } from '../components/dropdown.js';
 import { previewFeatures } from '../components/flags.js';
 import { languagePicker } from '../components/languagePicker.js';
+import { releaseLinks } from '../../core/releaseLinks.js';
 import { state, refresh, renderChrome, activeLanguagePicker } from '../shell.js';
 import type { SettingsDTO } from '../../preload/types.js';
 
@@ -936,7 +937,10 @@ function aboutGroup(info: ReturnType<typeof api.getDiagnostics>): HTMLElement {
   }, () => {
     version.textContent = 'Unknown';
   });
-  return surface(row('Version', version));
+  const links = releaseLinks().map((link) =>
+    row(link.title, el('button', { class: 'btn btn-secondary', type: 'button', onclick: () => void api.openExternal(link.url) } as never, 'Open')),
+  );
+  return surface(row('Version', version), ...links);
 }
 
 // ---- Controls ----------------------------------------------------------------

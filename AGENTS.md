@@ -120,5 +120,8 @@ Windows keeps `%APPDATA%\Useful Voice`; `build.nsis.guid` is pinned to the old a
 
 - Squash-merge PRs (`gh pr merge <n> --squash --delete-branch`); never commit to `main` directly.
 - Audit reports live in `docs/audit/`; `00-findings-and-fixes.md` is the index.
+- Public source goes out as one snapshot per release: `node scripts/publish-source.mjs --clone <usefulvoice clone> --version X.Y.Z [--push]`
+  (see `docs/distribution.md`). A file that must never be public goes in its `EXCLUDE` list. In-app release
+  links stay hidden until `releasesRepoLive` (macOS `ReleaseLinks.swift`, Windows `core/releaseLinks.ts`) is on.
 - `windows/package-lock.json` is marked `-diff` in `.gitattributes`; inspect it
   with `python3 -c "import json; ..."` rather than `git diff`.

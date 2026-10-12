@@ -47,7 +47,7 @@ Any page can be rendered offscreen, at any window size, with no window and no fo
 
 ```sh
 UV_START_SECTION=insights UV_SNAPSHOT="$PWD/verify/<branch>/ui-insights.png@1280x860" \
-  dist/UsefulVoice.app/Contents/MacOS/Sadaa
+  dist/UsefulVoice.app/Contents/MacOS/UsefulVoice
 ```
 
 `UV_START_SECTION` is a rail section's raw value (`stream`, `notes`, `vocabulary`, `insights`,
@@ -57,7 +57,7 @@ for the render and saves nothing. A snapshot run skips the single-instance guard
 screenshots out of commits: put them in `verify/<branch>/` (gitignored). Build the bundle first (`make bundle`). A snapshot run also creates
 `usage-stats.json` in the real data folder if it does not exist yet, the same as a normal launch.
 To render fixture data instead of yours, point both `HOME` and `CFFIXED_USER_HOME` at a scratch
-folder that holds `Library/Application Support/Sadaa/` (setting `HOME` alone still reads the real folder).
+folder that holds `Library/Application Support/UsefulVoice/` (setting `HOME` alone still reads the real folder).
 
 Snapshot-only state hooks (they act only when `UV_SNAPSHOT` is set):
 
@@ -86,10 +86,23 @@ jumps to a step with sample data and freezes polling, and combines with `UV_SNAP
 
 ```sh
 UV_FIRST_RUN=force UV_FIRST_RUN_STEP=engine UV_SNAPSHOT="$PWD/fr-engine.png@1040x680" \
-  dist/UsefulVoice.app/Contents/MacOS/Sadaa
+  dist/UsefulVoice.app/Contents/MacOS/UsefulVoice
 ```
 
 A snapshot run skips the Keychain read at launch (it only needs to know a key exists).
+
+## Identity and the one-time migration
+
+The app is `ai.useful.voice` (executable `UsefulVoice`, data in `~/Library/Application Support/UsefulVoice/`,
+Keychain service `ai.useful.voice`), signed by `make bundle` with the self-signed "Useful Voice Release"
+certificate. Never create a new one: a new certificate resets every user's Accessibility and Microphone grants.
+On another Mac, import the `.p12` from the password manager (`scripts/setup-signing.sh` prints how).
+Builds before the rename were `ai.karko.sadaa` with data in `Sadaa/`; `Sources/UsefulVoiceCore/Migration/IdentityMigration.swift`
+moves the files, preferences and Keychain item once at launch (snapshot and `UV_FIRST_RUN=force` runs never migrate; they read
+`Sadaa/` while it still holds data). `UV_MIGRATE_ONLY=1` runs only the migration, prints a JSON summary and exits;
+with `UV_MIGRATION_TEST_PREFIX=<p>` it uses prefixed Keychain and defaults names so a check never touches the real ones.
+Windows keeps `%APPDATA%\Useful Voice`; `build.nsis.guid` is pinned to the old appId's GUID so installers upgrade in place
+(the `windows-upgrade` CI job proves it).
 
 ## Repo conventions
 

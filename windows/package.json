@@ -1,7 +1,7 @@
 {
   "name": "useful-voice-windows",
   "productName": "Useful Voice",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Voice-to-text dictation for Windows, powered by Deepgram Nova-3.",
   "private": true,
   "type": "module",

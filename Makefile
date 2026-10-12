@@ -36,7 +36,7 @@ CLT_INTEROP = /Library/Developer/CommandLineTools/Library/Developer/usr/lib/lib_
 DEBUG_DIR = $(shell swift build --show-bin-path --build-tests 2>/dev/null)
 SWIFT_TEST_FLAGS = -Xswiftc -F -Xswiftc $(CLT_FRAMEWORKS)
 
-MARKETING_VERSION ?= 1.0.0
+MARKETING_VERSION ?= 0.1.0
 BUILD_NUMBER ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 
 # App icon. Xcode's actool compiles the Icon Composer bundle (assets/branding/UsefulVoice.icon,

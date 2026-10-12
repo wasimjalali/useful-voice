@@ -40,7 +40,7 @@ make bundle                  # builds dist/UsefulVoice.app (ad-hoc signed on you
 open dist/UsefulVoice.app
 ```
 
-One-line installers and a downloadable app arrive with v1.0.0.
+One-line installers and a downloadable app arrive with v0.1.0, the first release.
 
 On first launch a short setup walks you through your engine, the microphone and Accessibility. Deepgram gives new accounts $200 in free credit, and setup links to the signup. You can run the setup again from Settings.
 

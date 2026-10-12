@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateAccelerator } from '../src/core/settings/accelerator.js';
+import { sameAccelerator, validateAccelerator } from '../src/core/settings/accelerator.js';
 
 // Failure modes, written before the code. A bad accelerator makes Electron's
 // globalShortcut.register THROW, and a saved bad one used to stop the next launch before
@@ -16,7 +16,8 @@ import { validateAccelerator } from '../src/core/settings/accelerator.js';
 describe('validateAccelerator', () => {
   it.each([
     '', '   ', 'Ctrl', 'Ctrl+Alt', 'Ctrl+DefinitelyNotAKey', 'Space', 'Shift+A', 'Ctrl+A+B',
-    'Ctrl++A', 'Ctrl+Ctrl+A', 'Ctrl+Escape', 'Ctrl+Esc', 'Ctrl+é', 'Ctrl+', '+A',
+    'Ctrl++A', 'Ctrl+A+', 'Ctrl+Ctrl+A', 'Ctrl+Escape', 'Ctrl+Esc', 'Ctrl+é', 'Ctrl+', '+A',
+    'Ctrl+F25', 'Ctrl+F0', 'Ctrl+num10', 'Ctrl+Alt+Super', "Ctrl+Alt+'",
   ])('refuses %j', (value) => {
     expect(validateAccelerator(value)).not.toBeNull();
   });
@@ -24,6 +25,14 @@ describe('validateAccelerator', () => {
   it.each([
     'Control+Alt+Space', 'Ctrl+Shift+K', 'Alt+F9', 'Ctrl+Alt+Left', 'CommandOrControl+Plus',
     'Ctrl+Alt+7', 'Alt+;', 'Ctrl+Alt+PageUp', 'ctrl+alt+space',
+    // The rest of Electron's documented key codes.
+    'Ctrl+Alt+PrintScreen', 'Ctrl+Alt+num0', 'Ctrl+Alt+num9', 'Ctrl+Alt+numadd', 'Ctrl+Alt+numsub',
+    'Ctrl+Alt+numdec', 'Ctrl+Alt+nummult', 'Ctrl+Alt+numdiv', 'Ctrl+Alt+Capslock', 'Ctrl+Alt+Numlock',
+    'Ctrl+Alt+Scrolllock', 'Ctrl+Alt+VolumeUp', 'Ctrl+Alt+VolumeDown', 'Ctrl+Alt+VolumeMute',
+    'Ctrl+Alt+MediaNextTrack', 'Ctrl+Alt+MediaPreviousTrack', 'Ctrl+Alt+MediaStop', 'Ctrl+Alt+MediaPlayPause',
+    'Ctrl+Alt+F24', 'Ctrl+Alt+Insert', 'Ctrl+Alt+Delete', 'Ctrl+Alt+Home', 'Ctrl+Alt+End', 'Ctrl+Alt+Tab',
+    'Ctrl+Alt+Backspace', 'Ctrl+Alt+Enter', 'Ctrl+Alt+Return', 'Ctrl+Alt+Down', 'Ctrl+Alt+Right',
+    'Ctrl+Alt+\\', 'Ctrl+Alt+`', 'Ctrl+Alt+[', 'Ctrl+Alt+]', 'AltGr+K', 'Ctrl+Meta+K', 'Alt+Option+K'.replace('Alt+Option', 'Option'),
   ])('accepts %j', (value) => {
     expect(validateAccelerator(value)).toBeNull();
   });
@@ -33,5 +42,14 @@ describe('validateAccelerator', () => {
     expect(validateAccelerator('Alt+Ctrl+l', 'Control+Alt+L')).toMatch(/share/);
     expect(validateAccelerator('Ctrl+Alt+K', 'Control+Alt+L')).toBeNull();
     expect(validateAccelerator('Ctrl+Alt+K', '')).toBeNull();
+  });
+});
+
+describe('sameAccelerator', () => {
+  it('compares combinations, not spellings', () => {
+    expect(sameAccelerator('control+alt+space', 'Control+Alt+Space')).toBe(true);
+    expect(sameAccelerator('Alt+Ctrl+Space', 'Control+Alt+Space')).toBe(true);
+    expect(sameAccelerator('Ctrl+Alt+K', 'Control+Alt+Space')).toBe(false);
+    expect(sameAccelerator('Ctrl', 'Control+Alt+Space')).toBe(false);
   });
 });

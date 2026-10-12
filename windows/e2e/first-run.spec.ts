@@ -513,6 +513,12 @@ const hooks = (app: ElectronApplication) => ({
   windows: () => app.evaluate(() => (globalThis as unknown as { __uv: { mainWindows(): number } }).__uv.mainWindows()),
   pressHotkey: () => app.evaluate(() => (globalThis as unknown as { __uv: { pressHotkey(): Promise<void> } }).__uv.pressHotkey()),
   cancel: () => app.evaluate(() => (globalThis as unknown as { __uv: { cancel(): Promise<void> } }).__uv.cancel()),
+  call: (name: string, arg?: unknown) =>
+    app.evaluate(
+      (_electron, args) => (globalThis as unknown as { __uv: Record<string, (value?: unknown) => unknown> }).__uv[args.name]?.(args.arg),
+      { name, arg },
+    ),
+  requests: () => app.evaluate(() => (globalThis as unknown as { __uv: { stateRequests(): number } }).__uv.stateRequests()),
 });
 
 async function until(check: () => Promise<boolean>, what: string, ms = 10_000): Promise<void> {
@@ -643,7 +649,7 @@ test('a malformed hotkey is refused in the flow and never saved', async () => {
     const before = await caps();
     await fr(win).getByRole('button', { name: 'Change' }).click();
     const input = fr(win).getByLabel('Dictation hotkey');
-    for (const bad of ['Ctrl', 'Ctrl+Alt', 'Ctrl+DefinitelyNotAKey', 'Space']) {
+    for (const bad of ['Ctrl', 'Ctrl+Alt', 'Ctrl+DefinitelyNotAKey', 'Space', 'Ctrl++A', 'Ctrl+A+', 'Ctrl+Alt+F25']) {
       await input.fill(bad);
       await input.press('Enter');
       await expect(fr(win).locator('.fr-inline-err')).not.toHaveText('');
@@ -655,8 +661,25 @@ test('a malformed hotkey is refused in the flow and never saved', async () => {
     await input.press('Enter');
     await expect(fr(win).getByRole('button', { name: 'Change' })).toBeVisible();
     expect(await caps()).toEqual(before);
-    // The language hotkey's own combination says why.
+    // Another app owns it (Windows refuses the trial registration): the flow says so and
+    // keeps the old hotkey, saved and shown.
     await fr(win).getByRole('button', { name: 'Change' }).click();
+    await hooks(run.app).call('refuseAccelerator', 'Ctrl+Alt+J');
+    await input.fill('ctrl+alt+j');
+    await input.press('Enter');
+    await expect(fr(win).locator('.fr-inline-err')).toContainText('Another app is using');
+    await expect(input).toBeVisible();
+    expect(JSON.stringify(await readJson(path.join(userData, 'settings.json')))).not.toMatch(/ctrl\+alt\+j/i);
+    // The current hotkey in another spelling is no conflict and needs no trial, even if the
+    // OS would refuse it (it is already registered by this app).
+    await hooks(run.app).call('refuseAccelerator', 'Control+Alt+Space');
+    await input.fill('control+alt+space');
+    await input.press('Enter');
+    await expect(fr(win).getByRole('button', { name: 'Change' })).toBeVisible();
+    await hooks(run.app).call('refuseAccelerator', null);
+    await fr(win).getByRole('button', { name: 'Change' }).click();
+
+    // The language hotkey's own combination says why.
     await fr(win).getByLabel('Dictation hotkey').fill('Ctrl+Alt+L');
     await fr(win).getByLabel('Dictation hotkey').press('Enter');
     await expect(fr(win).locator('.fr-inline-err')).toContainText("can't share");
@@ -818,15 +841,67 @@ test('the microphone is closed on leaving the step, and a late answer or a hidde
   }
 });
 
-test('Run setup again pressed twice opens one flow', async () => {
+test('Run setup again pressed twice opens one flow and reads the state once', async () => {
   const userData = await freshDir();
   const run = await launch('double-open', userData);
   try {
-    const { win } = run;
+    const { win, app } = run;
     await fr(win).getByRole('button', { name: 'Skip setup' }).click();
     await win.locator('.rail-item', { hasText: 'Settings' }).click();
-    await win.getByRole('button', { name: 'Run setup again' }).dblclick();
+    // Hold the state read so both presses land while the first is still pending.
+    const before = await hooks(app).requests();
+    await hooks(app).call('holdStateRequests');
+    const button = win.getByRole('button', { name: 'Run setup again' });
+    await button.click();
+    await button.click();
+    await win.waitForTimeout(400);
+    await hooks(app).call('releaseStateRequests');
     await expect(win.locator('.fr')).toHaveCount(1);
+    expect((await hooks(app).requests()) - before).toBe(1);
+  } finally {
+    await run.stop();
+    await remove(userData);
+  }
+});
+
+test('leaving Try it while the recorder is still starting never starts a recording', async () => {
+  const userData = await freshDir();
+  const run = await launch('start-pending', userData);
+  try {
+    const { win, app } = run;
+    const main = hooks(app);
+    // Count the live tracks the recorder window opens.
+    const recorder = app.windows().find((w) => w.url().includes('view=recorder'));
+    expect(recorder, 'the recorder page').toBeTruthy();
+    await (recorder as Page).evaluate(() => {
+      const w = window as unknown as { __streams: MediaStream[] };
+      w.__streams = [];
+      const devices = navigator.mediaDevices;
+      const real = devices.getUserMedia.bind(devices);
+      devices.getUserMedia = async (constraints) => {
+        const stream = await real(constraints);
+        w.__streams.push(stream);
+        return stream;
+      };
+    });
+    const live = () =>
+      (recorder as Page).evaluate(() =>
+        (window as unknown as { __streams: MediaStream[] }).__streams.flatMap((s) => s.getTracks()).filter((t) => t.readyState === 'live').length,
+      );
+
+    await walkToTryIt(win);
+    await main.call('holdRecorderStart');
+    await fr(win).getByRole('button', { name: 'Start recording' }).click();
+    // The recorder has not answered: the service and the page both still read idle.
+    await win.waitForTimeout(300);
+    expect(await main.state()).toBe('idle');
+    await fr(win).getByRole('button', { name: 'Back' }).click();
+    await win.waitForTimeout(300);
+    await main.call('releaseRecorderStart');
+    await win.waitForTimeout(2000);
+    expect(await main.state()).toBe('idle');
+    expect(await live()).toBe(0);
+    await expect(fr(win).getByRole('button', { name: 'Continue', exact: true })).toBeVisible();
   } finally {
     await run.stop();
     await remove(userData);

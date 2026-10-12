@@ -191,6 +191,8 @@ const api = {
   firstRunState: (): Promise<FirstRunStateDTO> => ipcRenderer.invoke('firstrun:get'),
   /** The flow is on screen: a hotkey dictation then goes into the flow's field. */
   firstRunSetOpen: (open: boolean): Promise<void> => ipcRenderer.invoke('firstrun:set-open', open),
+  /** Leaving a step: abandons the practice dictation, and only that one. */
+  firstRunEndPractice: (): Promise<void> => ipcRenderer.invoke('firstrun:end-practice'),
   /** Checks a pasted key against Deepgram without saving it. */
   firstRunCheckKey: (key: string): Promise<FirstRunKeyCheck> => ipcRenderer.invoke('firstrun:check-key', key),
   firstRunSaveKey: (key: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('firstrun:save-key', key),

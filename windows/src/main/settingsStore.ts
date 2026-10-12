@@ -204,17 +204,14 @@ export class SettingsStore {
    */
   private decrypt(stored: string, storedAsPlaintext: boolean): string | null {
     const buffer = Buffer.from(stored, 'base64');
-    const available = safeStorage.isEncryptionAvailable();
-    if (available && !storedAsPlaintext) {
-      try {
-        return safeStorage.decryptString(buffer);
-      } catch {
-        return null;
-      }
-    }
-    try {
+    if (storedAsPlaintext) {
+      // Saved without encryption (the file says so): it is text, and is read as text.
       const text = buffer.toString('utf8');
       return text.length > 0 ? text : null;
+    }
+    if (!safeStorage.isEncryptionAvailable()) return null;
+    try {
+      return safeStorage.decryptString(buffer);
     } catch {
       return null;
     }

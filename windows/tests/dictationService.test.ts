@@ -1323,6 +1323,50 @@ describe('outcomes', () => {
   });
 });
 
+describe('cancel while the recorder is still starting', () => {
+  // Round 2 (PR #39): until recorder.start() resolves the service reports idle, so a cancel
+  // used to do nothing and the recording began after the person had already left.
+  it('a cancel during start leaves nothing recording, and the recorder is told to drop it', async () => {
+    const ctx = setup();
+    const starting = gate();
+    ctx.recorder.startGate = starting.promise;
+    const press = ctx.service.toggle({ source: 'window' });
+    await ctx.service.cancel();
+    starting.open();
+    await press;
+    expect(ctx.service.currentState).toBe('idle');
+    expect(ctx.recorder.cancelCalls).toBe(1);
+    expect(ctx.statuses.some((status) => status.state === 'recording')).toBe(false);
+    expect(ctx.statuses.some((status) => status.state === 'error')).toBe(false);
+  });
+
+  it('a cancelled start that then fails reports no error', async () => {
+    const ctx = setup();
+    const starting = gate();
+    ctx.recorder.startGate = starting.promise;
+    ctx.recorder.startError = new Error('device gone');
+    const press = ctx.service.toggle({ source: 'window' });
+    await ctx.service.cancel();
+    starting.open();
+    await press;
+    expect(ctx.statuses.some((status) => status.state === 'error')).toBe(false);
+    expect(ctx.service.currentState).toBe('idle');
+  });
+
+  it('the next dictation after a cancelled start works normally', async () => {
+    const ctx = setup();
+    const starting = gate();
+    ctx.recorder.startGate = starting.promise;
+    const press = ctx.service.toggle({ source: 'window' });
+    await ctx.service.cancel();
+    starting.open();
+    await press;
+    ctx.recorder.startGate = null;
+    await ctx.service.toggle({ source: 'window' });
+    expect(ctx.service.currentState).toBe('recording');
+  });
+});
+
 describe('races between entry points', () => {
   it('starts the recorder once when a second press arrives while it is starting', async () => {
     const ctx = setup();

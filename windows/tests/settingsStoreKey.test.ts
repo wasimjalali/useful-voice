@@ -11,7 +11,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 //  2. the UTF-8 fallback applies only when encryption is unavailable (or the blob was
 //     stored as plaintext), never as a "success" while safeStorage works
 //  3. a new key replaces the kept blob, and clearing the key drops it
-//  4. a decryptable key round-trips and still counts as stored
+//  4. encryption unavailable AND the file not marked plaintext: the blob is an encrypted
+//     one this run cannot read, so it is kept verbatim, never read as text and rewritten
+//  5. a decryptable key round-trips and still counts as stored
 
 let available = true;
 vi.mock('electron', () => ({
@@ -69,6 +71,20 @@ describe('stored API key', () => {
     const store = new SettingsStore(dir);
     await store.load();
     expect(store.revealApiKey()).toBe('plain-key');
+  });
+
+  it('keeps an encrypted blob verbatim when encryption is unavailable and it is not marked plaintext', async () => {
+    available = false;
+    const original = blob('enc:from-an-earlier-run');
+    const dir = await folderWith({ version: 1, settings: {}, apiKeyEncrypted: original });
+    const store = new SettingsStore(dir);
+    await store.load();
+    expect(store.revealApiKey()).toBeNull();
+    store.markFirstRunCompleted();
+    await store.save();
+    const saved = await read(dir);
+    expect(saved.apiKeyEncrypted).toBe(original);
+    expect(saved.apiKeyPlaintextWarning).toBeUndefined();
   });
 
   it('a new key replaces the kept blob and clearing drops it', async () => {

@@ -214,6 +214,8 @@ export class DictationService {
   private session: Session | null = null;
   /** True while `recorder.start()` is pending, so a second press cannot start another. */
   private starting = false;
+  /** Bumped by a cancel during start, so the start that is still pending knows it was abandoned. */
+  private startToken = 0;
   /** The pipeline after recording stops, so a cancel during delivery can wait for its verdict. */
   private processing: Promise<void> | null = null;
   private watchdog: SilenceWatchdog | null = null;
@@ -277,9 +279,12 @@ export class DictationService {
     };
 
     this.starting = true;
+    const token = this.startToken;
     try {
       await this.deps.recorder.start();
     } catch (error) {
+      // Cancelled while starting: nobody is waiting for this recording, or its failure.
+      if (token !== this.startToken) return;
       // A missing/blocked microphone must produce an actionable message, not a
       // bare "error 4" the way the unlocalized Swift enum did.
       this.setState('error', classifyRecordingFailure(error));
@@ -288,6 +293,11 @@ export class DictationService {
       this.starting = false;
     }
 
+    // Cancelled while the recorder was starting: it has begun now, so tell it to drop it.
+    if (token !== this.startToken) {
+      await this.deps.recorder.cancel().catch(() => undefined);
+      return;
+    }
     this.session = session;
     this.clock.start();
     this.startMonitoring(settings.silenceTimeoutSeconds);
@@ -344,6 +354,11 @@ export class DictationService {
    * the user had no way to abort a hung upload at all.
    */
   async cancel(): Promise<void> {
+    // The recorder is still starting: nothing is recording yet to stop, so abandon the start.
+    if (this.starting) {
+      this.startToken += 1;
+      return;
+    }
     if (this.state === 'idle') return;
     const session = this.session;
     // No session outside the error state means a cancel is already in flight.

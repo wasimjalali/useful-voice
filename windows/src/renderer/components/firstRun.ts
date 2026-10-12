@@ -783,7 +783,8 @@ function tryItPage(): { node: HTMLElement; focus: () => void; announce: string; 
     let committing = false;
     const commit = async (): Promise<void> => {
       if (committing) return;
-      const value = input.value.split('+').map((part) => part.trim()).filter(Boolean).join('+').replace(/\bctrl\b/gi, 'Control');
+      // Sent as typed: main validates it, so an empty part (Ctrl++A) is refused, not tidied away.
+      const value = input.value.trim().replace(/\bctrl\b/gi, 'Control');
       committing = true;
       let result: { ok: boolean; error?: string };
       try {
@@ -903,10 +904,9 @@ function tryItPage(): { node: HTMLElement; focus: () => void; announce: string; 
     cleanup: () => {
       offState();
       offPractice();
-      // Leaving mid-recording (Back, Skip, Finish, close): nothing here could stop it.
-      if (dictation.state === 'recording' || dictation.state === 'transcribing' || dictation.state === 'delivering') {
-        void api.cancelDictation();
-      }
+      // Leaving the step (Back, Skip, Finish, close): the practice dictation is abandoned,
+      // including one whose recorder is still starting. Main cancels only that dictation.
+      void api.firstRunEndPractice();
     },
   };
 }

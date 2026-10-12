@@ -36,7 +36,7 @@ Useful Voice is a fast, personal dictation app for macOS and Windows. Tap a hotk
 Build it from source today. Clone this repository and run these in its folder. You need macOS 14 or later, Apple silicon and the Command Line Tools (full Xcode isn't needed).
 
 ```sh
-make bundle                  # builds dist/UsefulVoice.app, ad-hoc signed
+make bundle                  # builds dist/UsefulVoice.app (ad-hoc signed on your Mac)
 open dist/UsefulVoice.app
 ```
 

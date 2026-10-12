@@ -87,7 +87,7 @@ try {
 const AUTHOR_EMAIL = AUTHOR.match(/<(.+)>/)[1];
 
 // The same names build-runtime refuses to ship; a tracked one stops the publish.
-const SECRET = /^(\.env(\..*)?|.*\.env|\.envrc|\.netrc|\.pgpass|\.htpasswd|\.npmrc|\.git-credentials|id_(rsa|dsa|ecdsa|ed25519)(\..*)?|.*\.(pem|key|p12|pfx|p8|jks|keystore|token|gpg|asc|kubeconfig|tfvars|tfstate)|kubeconfig|terraform\.tfstate.*|secrets?(\..*)?|credentials?(\..*)?|client_secret.*|service-account.*\.json)$/i;
+const SECRET = /^(\.env(\..*)?|.*\.env|\.envrc|\.netrc|\.pgpass|\.htpasswd|\.dev\.vars(\..*)?|.*\.keychain(-db)?|.*\.mobileprovision|\.npmrc|\.git-credentials|id_(rsa|dsa|ecdsa|ed25519)(\..*)?|.*\.(pem|key|p12|pfx|p8|jks|keystore|token|gpg|asc|kubeconfig|tfvars|tfstate)|kubeconfig|terraform\.tfstate.*|secrets?(\..*)?|credentials?(\..*)?|client_secret.*|service-account.*\.json)$/i;
 const BACKUP_SUFFIX = /(\.(bak|backup|orig|old|save|swp|tmp)\d*|\.\d+|\.\d{4}-\d{2}-\d{2}|~)+$/i;
 // A name with a newline, a Unicode line or paragraph separator or another control or format
 // character slips past line-based patterns (`.` does not match them), so it is refused outright.
@@ -104,27 +104,39 @@ const guard = (paths) => {
   if (excluded.length) throw new Error(`refusing to publish excluded paths: ${excluded.join(", ")}`);
   const secrets = paths.filter((f) => [path.basename(f), path.basename(f).replace(BACKUP_SUFFIX, "")].some((n) => SECRET.test(n)));
   if (secrets.length) throw new Error(`refusing to publish files that look like secrets: ${secrets.join(", ")}`);
+  const inSecretsDir = paths.filter((f) => f.split("/").slice(0, -1).some((seg) => /^secrets?$/i.test(seg)));
+  if (inSecretsDir.length) throw new Error(`refusing to publish files under a secrets/ folder: ${inSecretsDir.join(", ")}`);
 };
 const tracked = gitRaw(ROOT, "ls-files", "-z").split("\0").filter(Boolean);
 refuseOddNames(tracked); // before EXCLUDE: an odd name must not be able to dodge it
 const files = tracked.filter((f) => !EXCLUDE.some((re) => re.test(f)));
 guard(files);
-// A commit is publishable only if its tree is exactly the filtered source tree and passes the guards.
+// A commit is publishable only if it passes the guards and its tree is identical, path by path and
+// mode and blob id by mode and blob id, to the filtered index of the source tree. That catches an
+// amended snapshot, a source that changed after the snapshot was built, and an edit made between
+// the clean check and the copy (the commit holds the working-tree content; the index is what is committed).
+const modeAndId = (out, sep) => new Map(out.split("\0").filter(Boolean).map((rec) => {
+  const tab = rec.indexOf("\t");
+  const [mode, ...rest] = rec.slice(0, tab).split(" ");
+  return [rec.slice(tab + 1), `${mode} ${sep === "ls-files" ? rest[0] : rest[1]}`];
+}));
+const sourceEntries = modeAndId(gitRaw(ROOT, "ls-files", "-s", "-z"), "ls-files");
 const verifyCommit = (ref) => {
-  const inCommit = gitRaw(clone, "ls-tree", "-r", "-z", "--name-only", ref).split("\0").filter(Boolean);
-  guard(inCommit);
+  const inCommit = modeAndId(gitRaw(clone, "ls-tree", "-r", "-z", ref), "ls-tree");
+  guard([...inCommit.keys()]);
   const want = new Set(files);
-  const extra = inCommit.filter((f) => !want.has(f));
-  const have = new Set(inCommit);
-  const missing = files.filter((f) => !have.has(f));
+  const extra = [...inCommit.keys()].filter((f) => !want.has(f));
+  const missing = files.filter((f) => !inCommit.has(f));
   if (extra.length || missing.length) throw new Error(`${ref} does not match the source tree (extra: ${extra.slice(0, 5).join(", ") || "none"}; missing: ${missing.slice(0, 5).join(", ") || "none"})`);
+  const differs = files.filter((f) => inCommit.get(f) !== sourceEntries.get(f));
+  if (differs.length) throw new Error(`${ref} content differs from the source tree: ${differs.slice(0, 5).join(", ")}${differs.length > 5 ? ` and ${differs.length - 5} more` : ""}; delete the branch and rebuild`);
 };
 
 // Pushes exactly this branch to the same-named branch, whatever remote.origin.push, push.default or
 // push.followTags say, then opens the PR (or reports the one that exists).
 const gh = (...args) => execFileSync("gh", args, { cwd: clone, encoding: "utf8" }).trim();
 const openPr = () => {
-  const existing = gh("pr", "list", "--repo", PUBLIC_REPO, "--head", branch, "--state", "open", "--json", "url", "--jq", ".[0].url");
+  const existing = gh("pr", "list", "--repo", PUBLIC_REPO, "--head", branch, "--state", "open", "--json", "url,isCrossRepository", "--jq", "[.[] | select(.isCrossRepository == false)][0].url // empty");
   const pr = existing || gh("pr", "create", "--repo", PUBLIC_REPO, "--head", branch, "--base", "main",
     "--title", `Useful Voice ${values.version} source`, "--body", `Source snapshot of Useful Voice ${values.version}.`);
   process.stdout.write(`${pr}\n`);
@@ -152,7 +164,7 @@ if (values["push-existing"]) {
   else throw new Error(`${branch} on origin is a different commit (${remote.slice(0, 7)}); delete it there to republish this version`);
   process.exit(0);
 }
-if (branchExistsLocally()) throw new Error(`${branch} already exists in ${clone}; run with --push-existing to push it, or delete it to rebuild`);
+if (branchExistsLocally()) throw new Error(`${branch} already exists in ${clone}; run with --push-existing only if the source is unchanged since it was built, otherwise delete the branch to rebuild`);
 if (remoteBranchSha() !== "") throw new Error(`${branch} already exists on origin; delete it there to republish this version`);
 
 // Everything happens in a temporary worktree of the clone, detached at origin/main, so the

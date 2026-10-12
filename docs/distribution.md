@@ -39,7 +39,7 @@ Use a fresh clone for each version. `--push` does both steps in one run.
 The first run builds the snapshot in a temporary worktree, so the clone is untouched if a step fails,
 and commits it to a new `source-vX.Y.Z` branch cut from the public `main`. `--push-existing` then
 re-checks the branch (exactly one commit on `origin/main`, authored and committed by the noreply
-address, and a tree that is exactly the filtered source tree and passes the same guards), pushes
+address, and a tree with identical contents to the filtered source tree, path by path, that passes the same guards), pushes
 `refs/heads/source-vX.Y.Z` to the same name on origin without tags whatever the clone's push config
 says, and opens a PR on the public repo. Merge it there. A failed push leaves the commit on the
 local branch, so `--push-existing` is also the retry. If the push worked but the PR step failed, it

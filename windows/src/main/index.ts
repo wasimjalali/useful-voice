@@ -18,6 +18,10 @@ import {
 import { selectKeyterms } from '../core/memory/biasBuilder.js';
 import { HUD_EXIT_MS, HudModel, languageLabel, type HudFrame } from '../core/hudModel.js';
 import { normaliseLanguageCode } from '../core/transcription/languages.js';
+import { decideFirstRun, firstRunLaunch, shouldOpenAtLaunch, type FirstRunStep } from '../core/firstRun/gate.js';
+import { installDeepgramStub } from './e2eStub.js';
+import { sameAccelerator, validateAccelerator } from '../core/settings/accelerator.js';
+import { isSendableKey, keyCheckFailure } from '../core/firstRun/keyCheck.js';
 import {
   transcribe as transcribeRequest,
   type DeepgramConfig,
@@ -68,7 +72,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * global hotkey is registered, so a test run never takes the screen, the menu bar
  * or a key combination from the person at the machine.
  */
-const E2E = process.argv.includes('--e2e');
+// Never in a packaged build, whatever the command line says.
+const E2E = process.argv.includes('--e2e') && !app.isPackaged;
 
 // `--uv-data-dir=<path>` points every store at a scratch folder, so the E2E suite
 // runs on fixture data and never touches (or reads) the real install's history.
@@ -77,6 +82,12 @@ if (userDataArg) app.setPath('userData', path.resolve(userDataArg.slice('--uv-da
 if (E2E) {
   // CI runners have no GPU; software rendering keeps hidden windows painting.
   app.disableHardwareAcceleration();
+  // A fake microphone that plays a tone, and no permission prompt, so the first-run
+  // level meter and a practice dictation can run on a machine with no audio input.
+  app.commandLine.appendSwitch('use-fake-device-for-media-stream');
+  app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
+  // Deepgram is answered locally (see e2eStub.ts): no network, no real key.
+  installDeepgramStub(app.getPath('userData'));
   // Window lifecycle in <userData>/e2e.log (a Windows GUI app's stdout is not
   // reliably piped), so a failed run says where it stopped.
   const e2eLog = (line: string): void => {
@@ -163,6 +174,109 @@ class UsefulVoiceApp {
   private service!: DictationService;
   private diagnostics!: Diagnostics;
 
+  /**
+   * First-run setup. `pending`: the flow shows when the main window opens. `forced`
+   * (`--force-first-run`): nothing is saved for the whole session, so `sandbox` freezes
+   * the settings and data files and skips the HUD position and the login entry. The flow
+   * ending does not lift it: a forced launch is a preview, not a setup.
+   */
+  private firstRun: {
+    pending: boolean;
+    forced: boolean;
+    step: FirstRunStep | null;
+    sandbox: boolean;
+    /** The flow is on screen: a hotkey dictation becomes a window one, so nothing is pasted elsewhere. */
+    open: boolean;
+    /** The language picked in a forced run, used instead of the saved one. */
+    language: string | null;
+    /** The key checked in a forced run, held in memory only so the practice dictation can use it. */
+    key: string | null;
+  } = { pending: false, forced: false, step: null, sandbox: false, open: false, language: null, key: null };
+
+  /**
+   * The setup flow is gone (closed, crashed, reloaded or left): later hotkey dictations
+   * paste again, and a practice recording still running is cancelled, since nothing is
+   * left on screen to stop it.
+   */
+  private endFirstRunPractice(): void {
+    if (!this.firstRun.open) return;
+    this.firstRun.open = false;
+    this.endPractice();
+  }
+
+  /** Whether the dictation in flight was started from the flow (a practice dictation). */
+  private practiceActive = false;
+
+  /**
+   * Abandon the practice dictation, and only that one: a hotkey or tray dictation that
+   * started before the flow, an error waiting for Retry, anything else is left alone.
+   * The service also abandons a recorder that is still starting.
+   */
+  private endPractice(): void {
+    if (!this.practiceActive) return;
+    this.practiceActive = false;
+    // An error waiting for Retry is left alone, unless a new start began from it.
+    if (this.service.currentState === 'error' && !this.service.isStarting) return;
+    void this.service.cancel().catch((error: Error) => this.diagnostics.log('dictation', `could not cancel the practice dictation: ${error.message}`));
+  }
+
+  /** What the e2e suite can read and trigger in main. Installed only under `--e2e`. */
+  private installE2eHooks(): void {
+    // Every recorder start goes through here under e2e, so a spec can fail it once or hold it.
+    const recorder = this.recorder as unknown as { start: () => Promise<void> };
+    const realStart = recorder.start.bind(recorder);
+    recorder.start = async () => {
+      if (this.e2eFailStart) {
+        this.e2eFailStart = false;
+        throw new Error('Permission denied: microphone access is blocked.');
+      }
+      await this.e2eHold;
+      return realStart();
+    };
+    (globalThis as Record<string, unknown>).__uv = {
+      firstRunOpen: () => this.firstRun.open,
+      serviceState: () => this.service.currentState,
+      lastSource: () => this.lastToggleSource,
+      pressHotkey: () => this.toggleDictation('hotkey'),
+      cancel: () => this.service.cancel(),
+      refuseAccelerator: (accelerator: string | null) => {
+        this.e2eRefused = accelerator;
+      },
+      holdRecorderStart: () => {
+        this.e2eHold = new Promise<void>((resolve) => {
+          this.e2eRelease = resolve;
+        });
+      },
+      failNextRecorderStart: () => {
+        this.e2eFailStart = true;
+      },
+      releaseRecorderStart: () => this.e2eRelease?.(),
+      holdStateRequests: () => {
+        this.e2eStateHold = new Promise<void>((resolve) => {
+          this.e2eStateRelease = resolve;
+        });
+      },
+      releaseStateRequests: () => this.e2eStateRelease?.(),
+      stateRequests: () => this.e2eStateRequests,
+      mainWindows: () => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().includes('view=main')).length,
+    };
+  }
+
+  private lastToggleSource: DictationSource | undefined;
+  /** E2E only: an accelerator Windows is pretending another app owns, and a held recorder start. */
+  private e2eRefused: string | null = null;
+  private e2eHold: Promise<void> | null = null;
+  private e2eFailStart = false;
+  private e2eRelease: (() => void) | null = null;
+  private e2eStateHold: Promise<void> | null = null;
+  private e2eStateRelease: (() => void) | null = null;
+  private e2eStateRequests = 0;
+
+  /** The key dictation uses: the one checked in a forced run, else the saved one. */
+  private dictationKey(): string | null {
+    return this.firstRun.sandbox && this.firstRun.key ? this.firstRun.key : this.settings.revealApiKey();
+  }
+
   /** Talks to the hidden recorder window: start acks, tokens, discard on cancel. */
   private recorder!: RecorderBridge;
 
@@ -185,6 +299,11 @@ class UsefulVoiceApp {
       // instance — or when the app is opened by hand while the login launch is still
       // coming up.
       if (wasAutoStarted(commandLine)) return;
+      // `--force-first-run` only applies to the launch that is already running; say so
+      // rather than ignore it silently.
+      if (firstRunLaunch(commandLine).forced) {
+        this.diagnostics?.log('app', 'ignored --force-first-run from a second launch: it only applies when the app starts');
+      }
       void this.openWindow('home');
     });
 
@@ -213,6 +332,23 @@ class UsefulVoiceApp {
 
     this.data = new DataStore(path.join(app.getPath('userData'), 'data.json'));
     await this.data.load();
+
+    // Decided here, before any window exists. An existing user (a key already saved)
+    // is marked completed and never sees the flow; a forced run shows it and freezes
+    // both stores so it cannot change the install.
+    const launch = firstRunLaunch(process.argv);
+    const decision = decideFirstRun({
+      completed: this.settings.firstRunCompleted,
+      keyStored: this.settings.hasStoredKey,
+      forced: launch.forced,
+    });
+    if (decision === 'skipAndMarkCompleted') this.settings.markFirstRunCompleted();
+    this.firstRun.forced = launch.forced;
+    this.firstRun.pending = decision === 'show';
+    this.firstRun.step = decision === 'show' ? launch.step : null;
+    this.firstRun.sandbox = launch.forced && decision === 'show';
+    this.settings.setFrozen(this.firstRun.sandbox);
+    this.data.setFrozen(this.firstRun.sandbox);
     this.diagnostics.log('data', `load outcome: ${this.data.outcome.status}`);
     this.data.onSaveFailure((error) => {
       this.diagnostics.log('data', `save failed: ${error.message}`);
@@ -242,8 +378,9 @@ class UsefulVoiceApp {
     if (!E2E) this.tray.create();
     this.syncTray();
 
-    this.registerHotkey();
+    // IPC first: a hotkey problem must never stop the window from having handlers.
     this.registerIpc();
+    this.registerHotkey();
     this.buildApplicationMenu();
 
     const settings = this.settings.all;
@@ -251,8 +388,15 @@ class UsefulVoiceApp {
     // rewrite the entry, and Windows' own Startup Apps page can disable it behind
     // the app's back, so the stored preference is the thing to trust.
     this.applyLoginItem(settings.launchAtLogin, 'startup');
-    // The suite drives the main window, which a normal launch leaves to the tray.
-    if (E2E) void this.openWindow('stream');
+    if (E2E) this.installE2eHooks();
+    // The suite drives the main window, which a normal launch leaves to the tray
+    // (`--e2e-tray-only` keeps that, so a spec can test the launch rule itself).
+    const trayOnly = process.argv.includes('--e2e-tray-only');
+    if (E2E && !trayOnly) void this.openWindow('stream');
+    else if (shouldOpenAtLaunch({ pending: this.firstRun.pending, autoStarted: wasAutoStarted(process.argv) })) {
+      // A fresh install must show the flow: the app is tray-only and nothing else opens it.
+      void this.openWindow('stream');
+    }
   }
 
   /**
@@ -265,6 +409,8 @@ class UsefulVoiceApp {
    * do to the developer's machine.
    */
   private applyLoginItem(enabled: boolean, context: string): void {
+    // A forced first-run session saves nothing, the Run key included.
+    if (this.firstRun.sandbox) return;
     const plan = planLoginItem({
       enabled,
       platform: process.platform,
@@ -365,6 +511,13 @@ class UsefulVoiceApp {
       this.mainWindow.setMenuBarVisibility(false);
       this.mainWindow.on('closed', () => {
         this.mainWindow = null;
+        this.endFirstRunPractice();
+      });
+      // The flow lives in this page. If the page goes away (a crash) or is replaced (a
+      // reload), nothing is left to say it closed, so main derives it from the window.
+      this.mainWindow.webContents.on('render-process-gone', () => this.endFirstRunPractice());
+      this.mainWindow.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
+        if (isMainFrame && !isInPlace) this.endFirstRunPractice();
       });
       // The hidden menu still owns the accelerators on Windows, but Ctrl+N is the one
       // app-specific shortcut, so it is also handled here and cannot be lost with the
@@ -484,6 +637,8 @@ class UsefulVoiceApp {
       dx: origin.x - Math.round(area.x + (area.width - HUD_WIDTH) / 2),
       dy: origin.y - (area.y + area.height - HUD_BOTTOM_GAP - HUD_CAPSULE_HEIGHT - HUD_SHADOW_ROOM),
     };
+    // A forced first-run session saves nothing.
+    if (this.firstRun.sandbox) return;
     try {
       writeFileSync(this.hudPositionFile(), JSON.stringify(this.hudOffsets), 'utf8');
     } catch (error) {
@@ -529,8 +684,9 @@ class UsefulVoiceApp {
       this.hudHideTimer = null;
     }
     if (frame) {
-      const window = this.ensureHudWindow();
-      if (!window.isVisible()) {
+      // The suite never puts a window on the screen.
+      const window = E2E ? null : this.ensureHudWindow();
+      if (window && !window.isVisible()) {
         this.placeHud(window);
         // Back to click-through: a button from the last view may have left it switched off.
         window.setIgnoreMouseEvents(true, { forward: true });
@@ -778,8 +934,9 @@ class UsefulVoiceApp {
 
   // ---- hotkey ------------------------------------------------------------
 
-  private registerHotkey(): void {
-    if (E2E) return;
+  /** Whether the dictation hotkey ended up registered (or none is set). Never throws. */
+  private registerHotkey(): boolean {
+    if (E2E) return true;
     globalShortcut.unregisterAll();
     // `unregisterAll` also drops Esc, so put it back if a recording is running.
     this.escapeRegistered = false;
@@ -790,11 +947,17 @@ class UsefulVoiceApp {
     this.syncTray();
     if (accelerator.trim().length === 0) {
       this.diagnostics.log('hotkey', 'no hotkey configured');
-      return;
+      return true;
     }
     // A failed registration is a real, user-visible problem: another app already
-    // owns the combination, so dictation would silently never start.
-    const ok = globalShortcut.register(accelerator, () => void this.toggleDictation('hotkey'));
+    // owns the combination, so dictation would silently never start. A value Electron
+    // cannot parse throws; that is a refusal too, never a crash.
+    let ok = false;
+    try {
+      ok = globalShortcut.register(accelerator, () => void this.toggleDictation('hotkey'));
+    } catch (error) {
+      this.diagnostics.log('hotkey', `could not register ${accelerator}: ${(error as Error).message}`);
+    }
     if (!ok) {
       this.diagnostics.log('hotkey', `could not register ${accelerator}`);
       this.broadcast('app:save-status', {
@@ -805,7 +968,27 @@ class UsefulVoiceApp {
       this.diagnostics.log('hotkey', `registered ${accelerator}`);
     }
 
-    this.registerLanguageHotkey();
+    try {
+      this.registerLanguageHotkey();
+    } catch (error) {
+      this.diagnostics.log('hotkey', `could not register the language hotkey: ${(error as Error).message}`);
+    }
+    return ok;
+  }
+
+  /**
+   * Whether Windows would accept `accelerator` right now, without keeping it. Checked
+   * before a hotkey is saved, so a refused one never reaches the settings file.
+   */
+  private canRegister(accelerator: string): boolean {
+    if (E2E) return !(this.e2eRefused && sameAccelerator(accelerator, this.e2eRefused));
+    try {
+      const ok = globalShortcut.register(accelerator, () => undefined);
+      if (ok) globalShortcut.unregister(accelerator);
+      return ok;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -864,7 +1047,7 @@ class UsefulVoiceApp {
         // Adapt the pure request builder to the port the state machine expects.
         transcribe: (request, signal) => {
           const config: DeepgramConfig = {
-            apiKey: this.settings.revealApiKey() ?? '',
+            apiKey: this.dictationKey() ?? '',
             smartFormat: request.smartFormat,
             spokenPunctuation: request.spokenPunctuation,
           };
@@ -882,9 +1065,12 @@ class UsefulVoiceApp {
         },
       },
       sink: { deliver: (request) => this.deliver(request) },
-      settings: () => this.settings.all,
+      settings: () =>
+        this.firstRun.sandbox && this.firstRun.language
+          ? { ...this.settings.all, languagePin: this.firstRun.language }
+          : this.settings.all,
       memory: () => this.data.memorySnapshot(),
-      apiKey: async () => this.settings.revealApiKey(),
+      apiKey: async () => this.dictationKey(),
       onStatus: (status) => this.handleStatus(status),
       // Before the idle status, so a window can show its done line before it resets.
       onOutcome: (outcome) => {
@@ -897,6 +1083,12 @@ class UsefulVoiceApp {
       },
       onDiagnostic: (category, message) => this.diagnostics.log(category, message),
       onCompleted: (outcome) => {
+        // The practice dictation in the setup flow: its text goes to the flow's field.
+        if (this.firstRun.open && this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.webContents.send('firstrun:practice', { text: outcome.text });
+        }
+        // A forced run saves nothing: no history, no usage counts.
+        if (this.firstRun.sandbox) return;
         this.data.appendHistory({
           id: outcome.id,
           text: outcome.text,
@@ -924,6 +1116,7 @@ class UsefulVoiceApp {
   }
 
   private handleStatus(status: DictationStatus): void {
+    if (status.state === 'idle' || status.state === 'error') this.practiceActive = false;
     this.broadcast('dictation:state', status);
     this.recordingTarget = status.state === 'recording' ? status.targetApp : undefined;
     this.syncTray();
@@ -948,7 +1141,15 @@ class UsefulVoiceApp {
    * Only a hotkey start needs the foreground window: that is the app its text is
    * pasted into. A window start pastes nothing, so it records no target at all.
    */
-  private async toggleDictation(source: DictationSource): Promise<void> {
+  private async toggleDictation(requested: DictationSource): Promise<void> {
+    // While the setup flow is open the hotkey dictates into the flow's own field, never
+    // into the app in front.
+    const source: DictationSource = requested === 'hotkey' && this.firstRun.open ? 'window' : requested;
+    this.lastToggleSource = source;
+    // A dictation that starts while the flow is open is the flow's practice dictation.
+    if (this.firstRun.open && (this.service.currentState === 'idle' || this.service.currentState === 'error')) {
+      this.practiceActive = true;
+    }
     let targetApp: string | undefined;
     let targetHandle: number | undefined;
     if (this.service.currentState === 'idle' || this.service.currentState === 'error') this.recordingHandle = undefined;
@@ -1224,6 +1425,15 @@ class UsefulVoiceApp {
       hasApiKey: this.settings.hasApiKey,
     }));
     ipcMain.handle('settings:save', (_event, patch: Partial<AppSettings>) => {
+      // A value Electron cannot parse must never be saved: it would make every launch fail.
+      const dictation = patch.hotkey?.accelerator;
+      const language = patch.languageSwitchHotkey?.accelerator;
+      const otherLanguage = language ?? this.settings.all.languageSwitchHotkey?.accelerator ?? '';
+      const otherDictation = dictation ?? this.settings.all.hotkey.accelerator;
+      const refusal =
+        (dictation !== undefined ? validateAccelerator(dictation, otherLanguage) : null) ??
+        (language !== undefined && language.trim().length > 0 ? validateAccelerator(language, otherDictation) : null);
+      if (refusal) throw new Error(refusal);
       const next = this.settings.update(patch);
       applyAppearance(next.appearance);
       // nativeTheme emits 'updated' on a themeSource change; sync anyway so the
@@ -1244,6 +1454,71 @@ class UsefulVoiceApp {
       this.settings.clearApiKey();
       await this.settings.save();
       return { ok: true, message: 'The stored key was removed. Add a new one.' };
+    });
+
+    // ---- first-run setup ----
+    ipcMain.handle('firstrun:get', async () => {
+      if (E2E) {
+        this.e2eStateRequests += 1;
+        await this.e2eStateHold;
+      }
+      return {
+      pending: this.firstRun.pending,
+      forced: this.firstRun.forced,
+      step: this.firstRun.step,
+      // A forced run pretends to be a new install: whatever key is saved does not count.
+      keySaved: !this.firstRun.forced && this.settings.hasApiKey,
+      hotkey: this.settings.all.hotkey.accelerator,
+      language: this.firstRun.language ?? this.settings.all.languagePin,
+    };
+    });
+    ipcMain.handle('firstrun:set-open', (_event, open: unknown) => {
+      if (open === true) this.firstRun.open = true;
+      else this.endFirstRunPractice();
+    });
+    ipcMain.handle('firstrun:end-practice', () => this.endPractice());
+    ipcMain.handle('firstrun:check-key', (_event, key: unknown) => this.checkCandidateKey(key));
+    ipcMain.handle('firstrun:save-key', async (_event, key: unknown) => {
+      if (typeof key !== 'string' || key.trim().length === 0) return { ok: false, error: 'The API key is empty.' };
+      if (!isSendableKey(key.trim())) return { ok: false, error: "That isn't a Deepgram API key." };
+      // A forced run saves nothing; the check already passed.
+      if (this.firstRun.sandbox) {
+        this.firstRun.key = key.trim();
+        return { ok: true };
+      }
+      const result = this.settings.setApiKey(key);
+      if (!result.ok) return result;
+      const saved = await this.settings.save();
+      if (!saved.ok) return { ok: false, error: saved.message ?? "Couldn't save the key. Try again." };
+      this.broadcast('settings:changed');
+      return { ok: true };
+    });
+    ipcMain.handle('firstrun:set-language', (_event, code: unknown) => {
+      if (typeof code !== 'string') return;
+      if (this.firstRun.sandbox) {
+        this.firstRun.language = normaliseLanguageCode(code);
+        return;
+      }
+      this.setLanguage(code);
+    });
+    ipcMain.handle('firstrun:set-hotkey', (_event, accelerator: unknown): { ok: boolean; error?: string } => {
+      if (typeof accelerator !== 'string') return { ok: false, error: 'A hotkey is required.' };
+      const refusal = validateAccelerator(accelerator, this.settings.all.languageSwitchHotkey?.accelerator ?? '');
+      if (refusal) return { ok: false, error: refusal };
+      // A forced run only previews: the value is checked, shown and not saved.
+      if (this.firstRun.sandbox) return { ok: true };
+      if (!sameAccelerator(accelerator, this.settings.all.hotkey.accelerator) && !this.canRegister(accelerator.trim())) {
+        return { ok: false, error: `Another app is using ${accelerator.trim()}. Try a different one.` };
+      }
+      this.settings.update({ hotkey: { ...this.settings.all.hotkey, accelerator: accelerator.trim() } });
+      this.registerHotkey();
+      this.broadcast('settings:changed');
+      return { ok: true };
+    });
+    ipcMain.handle('firstrun:finish', (_event, completed: unknown) => {
+      this.firstRun.pending = false;
+      this.firstRun.open = false;
+      if (completed === true && !this.firstRun.sandbox) this.settings.markFirstRunCompleted();
     });
 
     ipcMain.handle('memory:get', () => this.memoryDto());
@@ -1572,6 +1847,32 @@ class UsefulVoiceApp {
     }
   }
 
+  /**
+   * Check a key the person just pasted, without saving it. A refused key and a dead
+   * network are different answers, so the flow can say which.
+   */
+  private async checkCandidateKey(key: unknown): Promise<{ ok: boolean; kind?: 'rejected' | 'network' | 'failed'; message: string }> {
+    if (typeof key !== 'string' || key.trim().length === 0) {
+      return { ok: false, kind: 'failed', message: 'The API key is empty.' };
+    }
+    const trimmed = key.trim();
+    // Not a header-safe value, so it cannot be a Deepgram key: refuse it without a request.
+    if (!isSendableKey(trimmed)) return { ok: false, kind: 'rejected', message: 'Deepgram rejected the key.' };
+    try {
+      const { encodeWav } = await import('../core/audio/wav.js');
+      await transcribeRequest({
+        audio: encodeWav(new Float32Array(16_000)),
+        hint: { language: 'en', keyterms: [] },
+        config: { apiKey: trimmed, smartFormat: false },
+        maxAttempts: 1,
+      });
+      return { ok: true, message: 'The key works.' };
+    } catch (error) {
+      // Fixed text by kind: an error's own message can quote the request, key included.
+      return { ok: false, ...keyCheckFailure(error) };
+    }
+  }
+
   private buildApplicationMenu(): void {
     // The main window has no native frame, so this menu bar is never shown (see
     // `openWindow`). It is kept because it still owns the standard edit shortcuts and
@@ -1734,6 +2035,7 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     'app:save-status': { ok: true },
     'app:get-theme': 'light',
     'app:flags': { previewFeatures: false },
+    'firstrun:get': { pending: false, forced: false, step: null, keySaved: true, hotkey: 'Control+Alt+Space', language: 'auto' },
   };
   for (const [channel, value] of Object.entries(stubs)) {
     ipcMain.handle(channel, () => value);
@@ -1844,11 +2146,13 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     // The count is checked against the documented boundary rather than a vague lower
     // bound: `tests/ipcContract.test.ts` pins this same number to the README, so a
     // channel added or lost anywhere fails one of the two.
-    // 66: the theme (`getTheme`, `onThemeChanged`), `showDiagnosticsLog`, `onOutcome` +
+    // 75: the first-run setup (`firstRunState`, `firstRunEndPractice`, `firstRunSetOpen`, `firstRunCheckKey`,
+    // `firstRunSaveKey`, `firstRunSetLanguage`, `firstRunSetHotkey`, `firstRunFinish`,
+    // `onPracticeResult`), the theme (`getTheme`, `onThemeChanged`), `showDiagnosticsLog`, `onOutcome` +
     // `onTelemetry`, `getFlags`, and the floating windows (`onHudView`, `hudPointer`,
     // `hudAction`, `hudDrag`, `onAnnounce`, `pickerChoose`, `pickerClose`, `onSettingsChanged`), and `sendAudioStarted`.
     // Kept in step with the README by the comment below.
-    const EXPECTED_API_METHODS = 66;
+    const EXPECTED_API_METHODS = 75;
     record(
       'preload exposes API',
       preloadProbe.hasApi

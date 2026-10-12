@@ -1323,6 +1323,87 @@ describe('outcomes', () => {
   });
 });
 
+describe('cancel while the recorder is still starting', () => {
+  // Round 2 (PR #39): until recorder.start() resolves the service reports idle, so a cancel
+  // used to do nothing and the recording began after the person had already left.
+  it('a cancel during start leaves nothing recording, and the recorder is told to drop it', async () => {
+    const ctx = setup();
+    const starting = gate();
+    ctx.recorder.startGate = starting.promise;
+    const press = ctx.service.toggle({ source: 'window' });
+    await ctx.service.cancel();
+    starting.open();
+    await press;
+    expect(ctx.service.currentState).toBe('idle');
+    // Told to drop it at the cancel, and again when the start lands (the fallback).
+    expect(ctx.recorder.cancelCalls).toBe(2);
+    expect(ctx.statuses.some((status) => status.state === 'recording')).toBe(false);
+    expect(ctx.statuses.some((status) => status.state === 'error')).toBe(false);
+  });
+
+  it('a cancelled start that then fails reports no error', async () => {
+    const ctx = setup();
+    const starting = gate();
+    ctx.recorder.startGate = starting.promise;
+    ctx.recorder.startError = new Error('device gone');
+    const press = ctx.service.toggle({ source: 'window' });
+    await ctx.service.cancel();
+    starting.open();
+    await press;
+    expect(ctx.statuses.some((status) => status.state === 'error')).toBe(false);
+    expect(ctx.service.currentState).toBe('idle');
+  });
+
+  it('a cancel during a hung start lets the next start proceed at once, and the old one never clobbers it', async () => {
+    const ctx = setup();
+    const hung = gate();
+    ctx.recorder.startGate = hung.promise;
+    const first = ctx.service.toggle({ source: 'window' });
+    await ctx.service.cancel();
+    // The old start is still hung, but the recorder was told to drop it already.
+    expect(ctx.recorder.cancelCalls).toBe(1);
+    ctx.recorder.startGate = null;
+    await ctx.service.toggle({ source: 'window' });
+    expect(ctx.service.currentState).toBe('recording');
+    // The hung start finally answers: it must not cancel or replace the live recording.
+    hung.open();
+    await first;
+    expect(ctx.service.currentState).toBe('recording');
+    expect(ctx.recorder.cancelCalls).toBe(1);
+  });
+
+  it('reports a start in progress, also from the error state', async () => {
+    const ctx = setup();
+    ctx.recorder.startError = new Error('Permission denied');
+    await ctx.service.toggle({ source: 'window' });
+    expect(ctx.service.currentState).toBe('error');
+    const hung = gate();
+    ctx.recorder.startError = null;
+    ctx.recorder.startGate = hung.promise;
+    const again = ctx.service.toggle({ source: 'window' });
+    expect(ctx.service.isStarting).toBe(true);
+    await ctx.service.cancel();
+    expect(ctx.service.isStarting).toBe(false);
+    expect(ctx.service.currentState).toBe('idle');
+    hung.open();
+    await again;
+    expect(ctx.service.currentState).toBe('idle');
+  });
+
+  it('the next dictation after a cancelled start works normally', async () => {
+    const ctx = setup();
+    const starting = gate();
+    ctx.recorder.startGate = starting.promise;
+    const press = ctx.service.toggle({ source: 'window' });
+    await ctx.service.cancel();
+    starting.open();
+    await press;
+    ctx.recorder.startGate = null;
+    await ctx.service.toggle({ source: 'window' });
+    expect(ctx.service.currentState).toBe('recording');
+  });
+});
+
 describe('races between entry points', () => {
   it('starts the recorder once when a second press arrives while it is starting', async () => {
     const ctx = setup();

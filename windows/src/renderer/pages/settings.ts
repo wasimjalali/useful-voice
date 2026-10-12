@@ -2,6 +2,7 @@ import { api } from '../api.js';
 import { el, icon, ICONS } from '../components/dom.js';
 import { dropdown } from '../components/dropdown.js';
 import { previewFeatures } from '../components/flags.js';
+import { runSetupAgain } from '../components/firstRun.js';
 import { languagePicker } from '../components/languagePicker.js';
 import { releaseLinks } from '../../core/releaseLinks.js';
 import { state, refresh, renderChrome, activeLanguagePicker } from '../shell.js';
@@ -356,6 +357,10 @@ function engineGroup(): HTMLElement {
     previewFeatures()
       ? row('Whisper (local)', el('span', { class: 'status-pill' }, 'Coming later'))
       : null,
+    row(
+      'Setup',
+      el('button', { class: 'btn btn-secondary', type: 'button', onclick: () => void runSetupAgain() } as never, 'Run setup again'),
+    ),
   );
 }
 

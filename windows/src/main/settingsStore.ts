@@ -25,6 +25,8 @@ interface SettingsFile {
    * (if limited) exposure.
    */
   apiKeyPlaintextWarning?: boolean;
+  /** Set once the first-run setup has been finished or skipped, or was never needed. */
+  firstRunCompleted?: boolean;
 }
 
 const CURRENT_SETTINGS_VERSION = 1;
@@ -40,6 +42,11 @@ export class SettingsStore {
   private plaintextKeyWarning = false;
   private loaded = false;
   private lastSaveError: Error | null = null;
+  private completedFirstRun = false;
+  private keyOnDisk = false;
+  /** The stored key blob as read, kept when it could not be decrypted so a save writes it back untouched. */
+  private undecryptedBlob: string | null = null;
+  private frozen = false;
   private readonly statusListeners = new Set<(status: SaveStatus) => void>();
 
   private readonly filePath: string;
@@ -65,9 +72,12 @@ export class SettingsStore {
       // launch rather than honoured until the user next opens Settings.
       this.settings = normaliseSettings(this.settings);
       this.plaintextKeyWarning = incoming.apiKeyPlaintextWarning === true;
+      this.completedFirstRun = incoming.firstRunCompleted === true;
+      this.keyOnDisk = typeof incoming.apiKeyEncrypted === 'string' && incoming.apiKeyEncrypted.length > 0;
       if (typeof incoming.apiKeyEncrypted === 'string' && incoming.apiKeyEncrypted.length > 0) {
-        this.apiKey = this.decrypt(incoming.apiKeyEncrypted);
+        this.apiKey = this.decrypt(incoming.apiKeyEncrypted, incoming.apiKeyPlaintextWarning === true);
         if (this.apiKey === null) {
+          this.undecryptedBlob = incoming.apiKeyEncrypted;
           // Decryption failed: the file was copied from another user or machine,
           // or the OS profile changed. Report it rather than silently behaving as
           // if no key were configured (which is what the macOS build did with a
@@ -91,6 +101,33 @@ export class SettingsStore {
 
   get saveError(): Error | null {
     return this.lastSaveError;
+  }
+
+  /** The first-run setup was finished or skipped. */
+  get firstRunCompleted(): boolean {
+    return this.completedFirstRun;
+  }
+
+  /**
+   * A key was stored, whether or not it can be read now. Presence only, so a key that
+   * fails to decrypt still counts as configured for the first-run gate.
+   */
+  get hasStoredKey(): boolean {
+    return this.keyOnDisk || this.hasApiKey;
+  }
+
+  markFirstRunCompleted(): void {
+    if (this.completedFirstRun) return;
+    this.completedFirstRun = true;
+    void this.save();
+  }
+
+  /**
+   * While frozen, `save` writes nothing. A `--force-first-run` session uses it so the
+   * flow can never change the install, whatever else asks for a save (quit included).
+   */
+  setFrozen(frozen: boolean): void {
+    this.frozen = frozen;
   }
 
   get isApiKeyEncrypted(): boolean {
@@ -135,6 +172,8 @@ export class SettingsStore {
     const trimmed = key.trim();
     if (trimmed.length === 0) return { ok: false, error: 'The API key is empty.' };
     this.apiKey = trimmed;
+    this.undecryptedBlob = null;
+    this.keyOnDisk = true;
     this.plaintextKeyWarning = false;
     void this.save();
     return { ok: true };
@@ -142,6 +181,8 @@ export class SettingsStore {
 
   clearApiKey(): void {
     this.apiKey = null;
+    this.undecryptedBlob = null;
+    this.keyOnDisk = false;
     this.plaintextKeyWarning = false;
     void this.save();
   }
@@ -156,34 +197,56 @@ export class SettingsStore {
     return { data: Buffer.from(value, 'utf8').toString('base64'), plaintextFallback: true };
   }
 
-  private decrypt(stored: string): string | null {
+  /**
+   * `storedAsPlaintext`: the file says the key was saved without encryption. Only then, or
+   * when encryption is unavailable now, is the blob read as text; while DPAPI works, a
+   * blob it cannot decrypt is not a key, and reading it as UTF-8 would invent a garbage one.
+   */
+  private decrypt(stored: string, storedAsPlaintext: boolean): string | null {
     const buffer = Buffer.from(stored, 'base64');
-    if (safeStorage.isEncryptionAvailable()) {
-      try {
-        return safeStorage.decryptString(buffer);
-      } catch {
-        // Fall through: it may have been stored while encryption was unavailable.
-      }
-    }
-    try {
+    if (storedAsPlaintext) {
+      // Saved without encryption (the file says so): it is text, and is read as text.
       const text = buffer.toString('utf8');
       return text.length > 0 ? text : null;
+    }
+    if (!safeStorage.isEncryptionAvailable()) return null;
+    try {
+      return safeStorage.decryptString(buffer);
     } catch {
       return null;
     }
   }
 
-  /** Persist settings and the key. Reports failure instead of swallowing it. */
-  async save(): Promise<SaveStatus> {
+  private saveChain: Promise<unknown> = Promise.resolve();
+
+  /**
+   * Persist settings and the key. Reports failure instead of swallowing it.
+   *
+   * Saves run one after another: two overlapping writes of the same file (a key save
+   * the settings page kicks off while another caller awaits its own) fight over the
+   * temp file and one of them fails.
+   */
+  save(): Promise<SaveStatus> {
+    const run = this.saveChain.then(() => this.write());
+    this.saveChain = run.catch(() => undefined);
+    return run;
+  }
+
+  private async write(): Promise<SaveStatus> {
+    if (this.frozen) return { ok: true };
     const payload: SettingsFile = {
       version: CURRENT_SETTINGS_VERSION,
       settings: this.settings,
+      ...(this.completedFirstRun ? { firstRunCompleted: true } : {}),
     };
     if (this.apiKey !== null && this.apiKey.length > 0) {
       const encrypted = this.encrypt(this.apiKey);
       payload.apiKeyEncrypted = encrypted.data;
       this.plaintextKeyWarning = encrypted.plaintextFallback;
       payload.apiKeyPlaintextWarning = encrypted.plaintextFallback;
+    } else if (this.undecryptedBlob !== null) {
+      // Could not be read on this account: keep it as it was, for the account that can.
+      payload.apiKeyEncrypted = this.undecryptedBlob;
     }
 
     try {

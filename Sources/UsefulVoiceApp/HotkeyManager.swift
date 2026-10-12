@@ -151,7 +151,7 @@ final class HotkeyManager: @unchecked Sendable {
         let thread = Thread { [weak self] in
             self?.runTapThread()
         }
-        thread.name = "ai.karko.usefulvoice.hotkey-tap"
+        thread.name = "ai.useful.voice.hotkey-tap"
         // Above default, so keystroke delivery is never starved by background work.
         thread.qualityOfService = .userInteractive
         tapThread = thread

@@ -7,9 +7,9 @@ import Foundation
     private let settings: AppSettings
 
     init() {
-        defaults = UserDefaults(suiteName: "ai.karko.sadaa.tests")!
+        defaults = UserDefaults(suiteName: "ai.useful.voice.tests")!
         // Clear persisted state before constructing settings so tests start clean.
-        defaults.removePersistentDomain(forName: "ai.karko.sadaa.tests")
+        defaults.removePersistentDomain(forName: "ai.useful.voice.tests")
         settings = AppSettings(defaults: defaults)
     }
 

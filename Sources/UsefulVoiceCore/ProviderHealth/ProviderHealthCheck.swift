@@ -143,7 +143,7 @@ public enum ProviderHealthCheck {
 
     static func makeProbeWAV() throws -> URL {
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("sadaa-provider-health-\(UUID().uuidString)")
+            .appendingPathComponent("useful-voice-provider-health-\(UUID().uuidString)")
             .appendingPathExtension("wav")
         let writer = try WavWriter(url: url)
         let sampleRate = 16_000

@@ -40,8 +40,8 @@ public enum LanguageMemoryPostProcessor {
         // already missed before "teh -> the" produces "the cat", only a second
         // pass resolves it. Rules that already fired are skipped: re-running
         // them is not idempotent when a rule's replacement still contains its
-        // own match, and the result was visible corruption — alias "Karko" ->
-        // phrase "Karko AI" turned "Karko" into "Karko AI AI", and "Useful" ->
+        // own match, and the result was visible corruption — alias "Acme" ->
+        // phrase "Acme AI" turned "Acme" into "Acme AI AI", and "Useful" ->
         // "Useful Voice" became "Useful Voice Voice".
         //
         // Pass two is skipped only when it is a guaranteed deterministic

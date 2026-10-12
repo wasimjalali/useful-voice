@@ -82,7 +82,7 @@ The build works without a certificate; Windows SmartScreen will warn about an
 unsigned installer. To sign, set `CSC_LINK` and `CSC_KEY_PASSWORD` (or
 `WIN_CSC_LINK`/`WIN_CSC_KEY_PASSWORD`) and electron-builder will sign
 automatically. `build.win.signtoolOptions.publisherName` is already set to
-`Karko AI`.
+`Useful Build`.
 
 ---
 

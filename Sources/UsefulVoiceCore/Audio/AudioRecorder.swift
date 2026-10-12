@@ -114,7 +114,7 @@ public final class AudioRecorder: AudioRecording, @unchecked Sendable {
     /// Serial queue that exclusively owns the WavWriter and all session state.
     /// All create/append/finish calls happen here so the real-time tap thread
     /// never blocks on file I/O.
-    private let writerQueue = DispatchQueue(label: "ai.karko.usefulvoice.audiorecorder.writer")
+    private let writerQueue = DispatchQueue(label: "ai.useful.voice.audiorecorder.writer")
 
     /// Guard for the few fields that must be visible from both the app thread
     /// and the writer queue.

@@ -73,7 +73,7 @@ public enum StoreFileReader {
     /// - Parameter diagnostics: where failures are recorded. **Injectable on
     ///   purpose.** Every store routes through this function, so hardcoding
     ///   `Diagnostics.shared` here meant any test that exercised a failing read
-    ///   wrote into the developer's real `~/Library/Application Support/Sadaa/
+    ///   wrote into the developer's real `~/Library/Application Support/UsefulVoice/
     ///   diagnostics.log` — 186 entries of test fixtures landed in a live install's
     ///   log, which would have made that log actively misleading to debug against.
     ///   Tests pass their own instance; production takes the shared one.

@@ -6,6 +6,10 @@ import UsefulVoiceCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// What the one-time identity migration did at this launch (no report in a
+    /// render or forced first run, which never migrate, or when an older copy of
+    /// the app would not quit).
+    private let launch: LaunchMigration.Outcome
     private var statusItem: NSStatusItem?
     /// The menu bar menu and its header row (see MenuBarMenu).
     private var menuBar: MenuBarMenu?
@@ -39,6 +43,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Previous dictation state, so the stop chime only plays when a recording
     /// actually ended (retryLast jumps straight to .transcribing).
     private var lastDictationState: DictationState = .idle
+
+    init(launch: LaunchMigration.Outcome) {
+        self.launch = launch
+        super.init()
+    }
+
+    /// Whether this process may migrate and write preferences: a real launch with
+    /// no older copy of the app still running.
+    private var migrationAllowed: Bool {
+        LaunchMode.migrationAllowed(environment: ProcessInfo.processInfo.environment)
+    }
 
     /// A dictation is mid-flight (recording or processing).
     private var isDictationBusy: Bool {
@@ -91,10 +106,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !isSnapshot, SingleInstance.yieldToExistingInstance() { return }
         // Settles the English default for new installs while an existing one
         // stays on Auto-detect. Must run before anything reads the language.
-        // A forced first-run preview saves nothing, so it skips this too.
-        if !FirstRunGate.isForced(environment: ProcessInfo.processInfo.environment) {
+        // A render or forced first-run preview saves nothing, so it skips this too.
+        if migrationAllowed {
             settings.resolveLanguageDefault(hasPriorData: hasPriorData())
         }
+
+        recordLegacyCopyDiagnostic()
+        restoreLaunchAtLoginIfNeeded()
 
         // Recorded before the key cache is primed, because priming can block
         // indefinitely on a keychain authorization dialog. It previously ran only
@@ -164,15 +182,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// An older copy of the app (the previous bundle id) keeps its own hotkey tap
+    /// and its own data folder, so it is worth a line in the log, which the
+    /// Diagnostics section of Settings shows: the user can then delete that copy.
+    private func recordLegacyCopyDiagnostic() {
+        guard !launch.legacyFound.isEmpty else { return }
+        Diagnostics.shared.warning(
+            "identity-migration",
+            "an older copy of the app (\(IdentityMigration.Legacy.bundleID)) was running and was asked to quit; delete that copy so it cannot start again")
+    }
+
+    /// Launch at login is registered per bundle id, so a user who had it on under
+    /// the old identity would silently lose it. The old build's last launch line
+    /// in `diagnostics.log` said whether it was on (`IdentityMigration` read it
+    /// before the file moved and left a pending flag); this turns it on again and
+    /// clears the flag only once it is confirmed on. No signal, no change.
+    private func restoreLaunchAtLoginIfNeeded() {
+        guard migrationAllowed else { return }
+        IdentityMigration.live().restoreLoginItemIfPending(
+            isEnabled: { LoginItem.isEnabled },
+            enable: { try LoginItem.setEnabled(true) })
+    }
+
     /// Whether this Mac has used the app before: history, usage stats or a
     /// stored Deepgram key. The key check is presence only, so it never prompts.
     private func hasPriorData() -> Bool {
-        let folder = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Sadaa")
+        let folder = DataFolder.current()
         let files = ["history.json", "usage-stats.json"]
         return files.contains { FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path) }
-            || Keychain.exists(account: DeepgramKeyStore.account)
+            || DeepgramKeyStore.keyIsStored()
     }
 
     /// Builds the first-run flow and wires it to the hotkey tap and the window.
@@ -214,12 +252,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Facts known immediately at launch. Deliberately says nothing about the key,
     /// which is not known yet - see `recordKeyStateDiagnostic`.
     private func recordLaunchDiagnostic() {
+        // A render or forced first run adds no launch line: it would land in the old
+        // folder's log before the migration and say "manual start" there.
+        guard migrationAllowed else { return }
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
-        let loginItem = LoginItem.isEnabled ? "starts at login" : "manual start"
         Diagnostics.shared.info(
             "launch",
-            "Useful Voice \(version) (\(build)) on macOS \(ProcessInfo.processInfo.operatingSystemVersionString); \(loginItem)",
+            IdentityMigration.LaunchLine.message(
+                version: version, build: build,
+                os: ProcessInfo.processInfo.operatingSystemVersionString,
+                loginEnabled: LoginItem.isEnabled),
         )
     }
 
@@ -253,6 +296,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// background thread, keeps both app launch and the event tap responsive.
     private func primeKeyCache() {
         DispatchQueue.global(qos: .userInitiated).async {
+            // The one-time move of the key from the old Keychain service, on the
+            // key store's own queue and ahead of its first read. A render or a
+            // forced first run never migrates.
+            if LaunchMode.migrationAllowed(environment: ProcessInfo.processInfo.environment) {
+                DeepgramKeyStore.shared.migrateLegacyKey(with: IdentityMigration.live())
+            }
             DeepgramKeyStore.shared.load()
             DispatchQueue.main.async { [weak self] in
                 self?.viewModel?.refreshConfig()
@@ -374,10 +423,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         recorder.onLevel = { [weak self] level in
             DispatchQueue.main.async { self?.currentLevel = level }
         }
-        let sadaaDir = FileManager.default.urls(
-            for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Sadaa")
-        let appSupport = sadaaDir.appendingPathComponent("Recordings")
+        let dataDir = DataFolder.current()
+        let appSupport = dataDir.appendingPathComponent("Recordings")
         // Never trap here. A failed app-support directory (full disk, managed
         // Mac, permission change) must not turn launch-at-login into an
         // invisible crash loop; RecordingStore.make falls back to a temporary
@@ -385,19 +432,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let store = RecordingStore.make(directory: appSupport)
 
         try? FileManager.default.createDirectory(
-            at: sadaaDir, withIntermediateDirectories: true)
+            at: dataDir, withIntermediateDirectories: true)
         // Owner-only. The directory is created with the process umask (022 on a
         // default macOS install), which would make the dictionary, the full
         // dictation history and the retained recordings readable by every other
         // account on the machine. This also corrects files written by an earlier
         // build, and directories restored from a backup (modes are not preserved).
-        FileProtection.restrictRecursively(sadaaDir)
+        FileProtection.restrictRecursively(dataDir)
         let history = DictationHistory(
-            fileURL: sadaaDir.appendingPathComponent("history.json"))
+            fileURL: dataDir.appendingPathComponent("history.json"))
         self.history = history
 
         let usageStats = UsageStatsStore(
-            fileURL: sadaaDir.appendingPathComponent("usage-stats.json"))
+            fileURL: dataDir.appendingPathComponent("usage-stats.json"))
         // Seed once from existing history, but only when history was read cleanly.
         if history.loadOutcome.allowsWriting {
             usageStats.seedIfFresh(from: history.all())
@@ -405,14 +452,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.usageStats = usageStats
 
         let languageMemory = LanguageMemoryMigrator.migrateIfNeeded(
-            memoryURL: sadaaDir.appendingPathComponent("language-memory.json"),
-            dictionaryURL: sadaaDir.appendingPathComponent("dictionary.json"),
-            snippetsURL: sadaaDir.appendingPathComponent("snippets.json"))
+            memoryURL: dataDir.appendingPathComponent("language-memory.json"),
+            dictionaryURL: dataDir.appendingPathComponent("dictionary.json"),
+            snippetsURL: dataDir.appendingPathComponent("snippets.json"))
         self.languageMemory = languageMemory
 
         let scratchpad = ScratchpadMigrator.migrateIfNeeded(
-            scratchpadURL: sadaaDir.appendingPathComponent("scratchpad.json"),
-            notesURL: sadaaDir.appendingPathComponent("notes.json"))
+            scratchpadURL: dataDir.appendingPathComponent("scratchpad.json"),
+            notesURL: dataDir.appendingPathComponent("notes.json"))
         self.scratchpad = scratchpad
 
         // Model directory is created and hardened once up front so the
@@ -576,15 +623,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func reprocessHistory(_ record: DictationRecord) {
+        // The stored path is absolute and predates the data folder rename, so it is
+        // resolved against today's Recordings folder when it no longer exists.
         guard let audioPath = record.audioPath,
-              FileManager.default.fileExists(atPath: audioPath),
+              let audioURL = RecordingLocator.resolve(
+                  storedPath: audioPath,
+                  recordingsDirectory: DataFolder.current().appendingPathComponent("Recordings"),
+                  legacyRecordingsDirectory: DataFolder.legacyRecordingsDirectory),
               let languageMemory
         else {
             viewModel?.reprocessHistoryTextOnly(record)
             return
         }
 
-        let audioURL = URL(fileURLWithPath: audioPath)
         // Reprocess in the language the dictation ran in, not whatever is
         // pinned now - a German record re-runs its German rules even if the
         // user has since switched to English. `resolvedPin` validates the

@@ -174,7 +174,7 @@ final class FirstRunModel: ObservableObject {
             completed: defaults.bool(forKey: FirstRunGate.completedKey),
             engineConfigured: FirstRunGate.engineConfigured(
                 engine: settings.transcriptionEngine,
-                keyStored: Keychain.exists(account: DeepgramKeyStore.account),
+                keyStored: DeepgramKeyStore.keyIsStored(),
                 activeModelUsable: viewModel.models.availability(
                     of: viewModel.models.activeModel) == .usable),
             microphoneAuthorized: AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
@@ -202,7 +202,7 @@ final class FirstRunModel: ObservableObject {
 
         // A forced run pretends to be a new Mac: whatever key is really saved
         // does not count, so the claim card shows as designed.
-        keyConnected = forced ? false : Keychain.exists(account: DeepgramKeyStore.account)
+        keyConnected = forced ? false : DeepgramKeyStore.keyIsStored()
         applyPreview()
         if active { enter(start) }
 
@@ -290,7 +290,7 @@ final class FirstRunModel: ObservableObject {
         practiceText = ""
         practiceWorked = false
         accessibilityGranted = false
-        keyConnected = Keychain.exists(account: DeepgramKeyStore.account)
+        keyConnected = DeepgramKeyStore.keyIsStored()
         snapshot = FirstRunGate.EngineSelection(
             engine: settings.transcriptionEngine, modelID: settings.localModelID)
         pendingLocal = nil
@@ -632,7 +632,7 @@ final class FirstRunModel: ObservableObject {
     private func isUsable(_ selection: FirstRunGate.EngineSelection) -> Bool {
         switch selection.engine {
         case .deepgram:
-            return Keychain.exists(account: DeepgramKeyStore.account)
+            return DeepgramKeyStore.keyIsStored()
         case .whisperLocal:
             return WhisperModelCatalog.model(forID: selection.modelID)
                 .map { models.availability(of: $0) == .usable } ?? false

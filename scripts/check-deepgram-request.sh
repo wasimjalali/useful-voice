@@ -17,6 +17,10 @@ set -uo pipefail
 
 KEY="${DEEPGRAM_API_KEY:-}"
 if [ -z "$KEY" ]; then
+  KEY=$(security find-generic-password -s ai.useful.voice -a deepgram-key -w 2>/dev/null || true)
+fi
+if [ -z "$KEY" ]; then
+  # Before the rename to Useful Voice the key lived under the old service.
   KEY=$(security find-generic-password -s ai.karko.sadaa -a deepgram-key -w 2>/dev/null || true)
 fi
 if [ -z "$KEY" ]; then

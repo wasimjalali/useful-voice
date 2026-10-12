@@ -182,11 +182,11 @@ describe('applyMemory', () => {
   /**
    * Rule application is not idempotent when a replacement contains its own
    * match — the normal case for this product. The second pass used to produce
-   * "Karko AI AI" and "Useful Voice Voice" in delivered text.
+   * "Acme AI AI" and "Useful Voice Voice" in delivered text.
    */
   it('does not double-apply a self-containing rule', () => {
-    const snap = snapshot({ terms: [term({ phrase: 'Karko AI', aliases: ['Karko'], priority: 'always' })] });
-    expect(applyMemory('Karko', snap, 'en').text).toBe('Karko AI');
+    const snap = snapshot({ terms: [term({ phrase: 'Acme AI', aliases: ['Acme'], priority: 'always' })] });
+    expect(applyMemory('Acme', snap, 'en').text).toBe('Acme AI');
   });
 
   it('does not double-apply a pronunciation that contains the phrase', () => {

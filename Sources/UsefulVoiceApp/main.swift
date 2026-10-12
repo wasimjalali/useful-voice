@@ -46,11 +46,64 @@ private func runMaintenanceFlagIfPresent() -> Bool {
     return false
 }
 
+/// Copies of the previous app identity that are running: a stale bundle, another
+/// path, or a login item that still starts it. Quitting is a polite terminate.
+@MainActor
+private func runningLegacyCopies() -> LegacyInstances {
+    func copies() -> [NSRunningApplication] {
+        NSRunningApplication.runningApplications(withBundleIdentifier: IdentityMigration.Legacy.bundleID)
+            .filter { !$0.isTerminated }
+    }
+    return LegacyInstances(
+        runningPIDs: { copies().map { $0.processIdentifier } },
+        requestQuit: { copies().forEach { _ = $0.terminate() } })
+}
+
 MainActor.assumeIsolated {
     _ = runMaintenanceFlagIfPresent()
-    UserDefaults.standard.set("WhenScrolling", forKey: "AppleShowScrollBars")
+
+    // The one-time move from the previous app identity (data folder, preferences,
+    // Keychain key). It runs here, before the delegate exists and before anything
+    // reads the data folder, the preferences or the key store. A render or a forced
+    // first run never migrates.
+    let environment = ProcessInfo.processInfo.environment
+    if let refusal = LaunchMode.migrateOnlyRefusal(environment: environment) {
+        FileHandle.standardError.write(Data((refusal + "\n").utf8))
+        exit(2)
+    }
+    if LaunchMode.current(environment: environment) == .migrateOnly {
+        // Test hook: migrate, print one JSON line and exit, with no UI, status
+        // item, hotkey tap or single-instance guard.
+        FileHandle.standardOutput.write(Data((LaunchMigration.migrateOnlySummary() + "\n").utf8))
+        exit(0)
+    }
+    let launch = LaunchMigration.runAtLaunch(legacyInstances: runningLegacyCopies())
+    if launch.mustQuitForLegacyCopy {
+        // An older copy would not quit and still owns its data folder. Running beside
+        // it would give two hotkey taps and two writers on the same files, so say so
+        // and leave before any store, tap or write. The next launch migrates.
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        app.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "An older copy of Useful Voice is still running."
+        alert.informativeText = "Quit it, then open Useful Voice again. If it won't quit, force quit it in Activity Monitor."
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+        exit(0)
+    }
+
+    // A render writes no preferences, so the scrollbar style is applied in memory
+    // for it, merged into the argument domain rather than replacing it.
+    if LaunchMode.migrationAllowed(environment: ProcessInfo.processInfo.environment) {
+        UserDefaults.standard.set("WhenScrolling", forKey: "AppleShowScrollBars")
+    } else {
+        var arguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+        arguments["AppleShowScrollBars"] = "WhenScrolling"
+        UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+    }
     let app = NSApplication.shared
-    let delegate = AppDelegate()
+    let delegate = AppDelegate(launch: launch)
     app.delegate = delegate
     app.setActivationPolicy(.accessory)
     app.run()

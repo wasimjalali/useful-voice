@@ -7,7 +7,11 @@
 # silent failure at every login and cannot be cleared from inside the app.
 set -uo pipefail
 
-SUPPORT_DIR="$HOME/Library/Application Support/Sadaa"
+# The app was renamed from Sadaa (ai.karko.sadaa) to Useful Voice. Uninstalling
+# covers both identities, since a Mac may still hold the old one.
+SUPPORT_DIRS=("$HOME/Library/Application Support/UsefulVoice" "$HOME/Library/Application Support/Sadaa")
+KEYCHAIN_SERVICES=(ai.useful.voice ai.karko.sadaa)
+DEFAULTS_DOMAINS=(ai.useful.voice ai.karko.sadaa)
 KEEP_DATA=0
 
 for arg in "$@"; do
@@ -18,8 +22,10 @@ for arg in "$@"; do
 usage: uninstall.sh [--purge]
 
   (default)  Remove the app and its login item. Dictionary, history, notes and
-             recordings are left in ~/Library/Application Support/Sadaa.
-  --purge    Also delete that folder and the stored Deepgram API key.
+             recordings are left in ~/Library/Application Support/UsefulVoice
+             (and ~/Library/Application Support/Sadaa from before the rename).
+  --purge    Also delete those folders, the stored Deepgram API key and the
+             preferences, under both the current and the old app identity.
 EOF
       exit 0 ;;
   esac
@@ -62,10 +68,18 @@ fi
 
 if [ "$KEEP_DATA" -eq 1 ]; then
   echo "==> purging user data"
-  rm -rf "$SUPPORT_DIR" && echo "    removed $SUPPORT_DIR"
-  security delete-generic-password -s "ai.karko.sadaa" -a "deepgram-key" >/dev/null 2>&1 \
-    || true
-  defaults delete ai.karko.sadaa >/dev/null 2>&1 || true
+  for dir in "${SUPPORT_DIRS[@]}"; do
+    if [ -e "$dir" ]; then
+      rm -rf "$dir" && echo "    removed $dir"
+    fi
+  done
+  for service in "${KEYCHAIN_SERVICES[@]}"; do
+    security delete-generic-password -s "$service" -a "deepgram-key" >/dev/null 2>&1 \
+      || true
+  done
+  for domain in "${DEFAULTS_DOMAINS[@]}"; do
+    defaults delete "$domain" >/dev/null 2>&1 || true
+  done
   echo "    removed stored API key and preferences"
   echo
   echo "Done. Accessibility/Microphone grants for the app may still be listed in"
@@ -73,7 +87,9 @@ if [ "$KEEP_DATA" -eq 1 ]; then
 else
   echo
   echo "Done. Your dictionary, history, notes and recordings are still in:"
-  echo "  $SUPPORT_DIR"
+  for dir in "${SUPPORT_DIRS[@]}"; do
+    if [ -e "$dir" ]; then echo "  $dir"; fi
+  done
   echo "Re-run with --purge to delete them, or remove the app's entries from"
   echo "System Settings > Privacy & Security > Accessibility / Microphone."
 fi

@@ -13,7 +13,7 @@ public enum LocalModelAvailability: Equatable, Sendable {
 /// Owns the on-disk model weights directory.
 ///
 /// Weights live at `~/Library/Application Support/UsefulVoice/models/` — a
-/// directory of their own rather than inside the `Sadaa` data directory,
+/// directory of their own rather than among the app's data files,
 /// because they are large, public, re-downloadable artifacts: they are not
 /// user data, should not be swept up in a data export, and should not inflate
 /// a backup. Owner-only permissions are applied anyway, matching the rest of

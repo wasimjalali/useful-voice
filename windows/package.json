@@ -7,8 +7,7 @@
   "type": "module",
   "main": "dist/main/index.js",
   "author": {
-    "name": "Karko AI",
-    "email": "hello@karko.ai"
+    "name": "Useful Build"
   },
   "license": "SEE LICENSE IN ../LICENSE",
   "engines": {
@@ -39,9 +38,9 @@
     "vitest": "^2.1.8"
   },
   "build": {
-    "appId": "ai.karko.usefulvoice",
+    "appId": "ai.useful.voice",
     "productName": "Useful Voice",
-    "copyright": "Copyright © Karko AI",
+    "copyright": "Copyright © Useful Build",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -78,11 +77,12 @@
       "artifactName": "${productName}-${version}-${arch}.${ext}",
       "icon": "build/icon.ico",
       "signtoolOptions": {
-        "publisherName": "Karko AI"
+        "publisherName": "Useful Build"
       },
       "legalTrademarks": "Useful Voice"
     },
     "nsis": {
+      "guid": "cfa29547-fa82-5f74-b344-dfe1c5823243",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,

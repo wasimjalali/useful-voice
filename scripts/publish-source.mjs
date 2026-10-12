@@ -67,7 +67,7 @@ if (!existsSync(path.join(clone, ".git"))) throw new Error(`${clone} is not a gi
 for (const flags of [[], ["--push"]]) {
   const urls = git(clone, "remote", "get-url", ...flags, "--all", "origin").split("\n").filter(Boolean);
   const bad = urls.filter((u) => !REMOTE_RE.test(u));
-  if (urls.length === 0 || bad.length) throw new Error(`${clone}: origin ${flags.join("")} URL is ${bad.join(", ") || "missing"}, not ${PUBLIC_REPO}`);
+  if (urls.length === 0 || bad.length) throw new Error(`${clone}: origin ${flags.length ? "push" : "fetch"} URL is ${bad.join(", ") || "missing"}, not ${PUBLIC_REPO}`);
 }
 // The clone must hold nothing of its own: no modified, staged, untracked or ignored files.
 if (git(clone, "status", "--porcelain", "--ignored") !== "") throw new Error(`${clone} is not clean (modified, staged, untracked or ignored files); use a fresh clone`);

@@ -30,14 +30,31 @@ After a release merges to `main`:
 
 ```sh
 gh repo clone wasimjalali/usefulvoice /tmp/uv-source   # once
-node scripts/publish-source.mjs --clone /tmp/uv-source --version X.Y.Z   # read the commit, then:
-node scripts/publish-source.mjs --clone /tmp/uv-source --version X.Y.Z --push
+node scripts/publish-source.mjs --clone /tmp/uv-source --version X.Y.Z   # builds the commit; read it, then:
+node scripts/publish-source.mjs --clone /tmp/uv-source --version X.Y.Z --push-existing
 ```
 
-The script refuses a dirty tree, a clone that isn't clean (no modified, staged, untracked or ignored files, so use a fresh clone), a clone whose fetch or push URL (after `insteadOf` and `pushurl` rewrites) isn't the public repo, and a version whose `source-vX.Y.Z` branch already exists locally or on origin. It builds the snapshot in a temporary worktree, so the clone is untouched if a step fails, and a finished commit stays on the local branch if the push fails. It copies `git ls-files` only,
-minus the paths in `EXCLUDE` (old Sadaa audits and plans, `docs/images/` until screenshots with synthetic data are approved, and any media that could show
-real windows), and stops if a tracked file is named like a secret. It commits to `source-vX.Y.Z`,
-cut from the public `main`. `--push` pushes that branch and opens a PR on the public repo; merge it
-there.
+Use a fresh clone for each version. `--push` does both steps in one run.
+
+The first run builds the snapshot in a temporary worktree, so the clone is untouched if a step fails,
+and commits it to a new `source-vX.Y.Z` branch cut from the public `main`. `--push-existing` then
+re-checks the branch (exactly one commit on `origin/main`, authored and committed by the noreply
+address), pushes `refs/heads/source-vX.Y.Z` to the same name on origin whatever the clone's push
+config says, and opens a PR on the public repo. Merge it there. A failed push leaves the commit on the
+local branch, so `--push-existing` is also the retry.
+
+The script refuses:
+
+- a private tree with uncommitted changes
+- a tracked path with a newline or other control character
+- a file named like a secret
+- a clone that isn't clean (modified, staged, untracked or ignored files)
+- a clone whose fetch or push URL, after `insteadOf`, `pushInsteadOf` and `pushurl` rewrites, isn't the
+  public repo
+- a version whose `source-vX.Y.Z` branch already exists on origin, or locally (except with
+  `--push-existing`)
+
+It copies `git ls-files` only, minus the paths in `EXCLUDE` (old Sadaa audits and plans, `docs/images/`
+until screenshots with synthetic data are approved, and any media that could show real windows).
 
 A new file that shows real data or the owner's account belongs on `EXCLUDE` before it is committed.

@@ -48,10 +48,15 @@ const { values } = parseArgs({
     clone: { type: "string" },
     version: { type: "string" },
     push: { type: "boolean", default: false },
+    "push-existing": { type: "boolean", default: false },
   },
 });
 if (!values.clone || !values.version || !/^\d+\.\d+\.\d+$/.test(values.version)) {
-  process.stderr.write("usage: publish-source.mjs --clone <path> --version X.Y.Z [--push]\n");
+  process.stderr.write("usage: publish-source.mjs --clone <path> --version X.Y.Z [--push | --push-existing]\n");
+  process.exit(2);
+}
+if (values.push && values["push-existing"]) {
+  process.stderr.write("use --push or --push-existing, not both\n");
   process.exit(2);
 }
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
@@ -70,7 +75,7 @@ for (const flags of [[], ["--push"]]) {
   if (urls.length === 0 || bad.length) throw new Error(`${clone}: origin ${flags.length ? "push" : "fetch"} URL is ${bad.join(", ") || "missing"}, not ${PUBLIC_REPO}`);
 }
 // The clone must hold nothing of its own: no modified, staged, untracked or ignored files.
-if (git(clone, "status", "--porcelain", "--ignored") !== "") throw new Error(`${clone} is not clean (modified, staged, untracked or ignored files); use a fresh clone`);
+if (git(clone, "status", "--porcelain", "--ignored", "--untracked-files=all") !== "") throw new Error(`${clone} is not clean (modified, staged, untracked or ignored files); use a fresh clone`);
 
 const branch = `source-v${values.version}`;
 git(clone, "fetch", "-q", "origin");
@@ -79,11 +84,38 @@ try {
 } catch {
   throw new Error(`${PUBLIC_REPO} has no main branch to start from`);
 }
+const AUTHOR_EMAIL = AUTHOR.match(/<(.+)>/)[1];
+// Pushes exactly this branch to the same-named branch, whatever remote.origin.push or push.default say,
+// then opens the PR.
+const pushAndOpenPr = () => {
+  git(clone, "push", "-q", "-u", "origin", `refs/heads/${branch}:refs/heads/${branch}`);
+  const pr = execFileSync("gh", ["pr", "create", "--repo", PUBLIC_REPO, "--head", branch, "--base", "main",
+    "--title", `Useful Voice ${values.version} source`, "--body", `Source snapshot of Useful Voice ${values.version}.`], { cwd: clone, encoding: "utf8" }).trim();
+  process.stdout.write(`${pr}\n`);
+};
 const branchExistsLocally = () => { try { git(clone, "rev-parse", "--verify", "-q", `refs/heads/${branch}`); return true; } catch { return false; } };
-if (branchExistsLocally()) throw new Error(`${branch} already exists in ${clone}; push it with "git push origin ${branch}" or delete it to rebuild`);
+if (values["push-existing"]) {
+  // Second step of preview-then-push: push the branch a previous run built, after checking it is
+  // still exactly one commit on origin/main with the noreply author and committer.
+  if (!branchExistsLocally()) throw new Error(`${branch} does not exist in ${clone}; run without --push-existing first`);
+  if (git(clone, "ls-remote", "--heads", "origin", branch) !== "") throw new Error(`${branch} already exists on origin; delete it there to republish this version`);
+  const commits = git(clone, "rev-list", `origin/main..refs/heads/${branch}`).split("\n").filter(Boolean);
+  if (commits.length !== 1) throw new Error(`${branch} must be exactly one commit on origin/main, found ${commits.length}`);
+  if (git(clone, "rev-parse", `refs/heads/${branch}^`) !== git(clone, "rev-parse", "origin/main")) throw new Error(`${branch} is not cut from the current origin/main`);
+  const who = git(clone, "log", "-1", "--format=%ae%n%ce", `refs/heads/${branch}`).split("\n");
+  if (who.length !== 2 || who.some((e) => e !== AUTHOR_EMAIL)) throw new Error(`${branch} is not authored and committed by ${AUTHOR_EMAIL}`);
+  pushAndOpenPr();
+  process.exit(0);
+}
+if (branchExistsLocally()) throw new Error(`${branch} already exists in ${clone}; run with --push-existing to push it, or delete it to rebuild`);
 if (git(clone, "ls-remote", "--heads", "origin", branch) !== "") throw new Error(`${branch} already exists on origin; delete it there to republish this version`);
 
-const files = gitRaw(ROOT, "ls-files", "-z").split("\0").filter(Boolean).filter((f) => !EXCLUDE.some((re) => re.test(f)));
+const tracked = gitRaw(ROOT, "ls-files", "-z").split("\0").filter(Boolean);
+// A name with a newline or other control character slips past line-based patterns (`.` does not
+// match a newline), so such a path is refused outright, before EXCLUDE or the secret guard.
+const odd = tracked.filter((f) => /[\x00-\x1f\x7f]/.test(f));
+if (odd.length) throw new Error(`refusing to publish: tracked paths with control characters: ${odd.map((f) => JSON.stringify(f)).join(", ")}`);
+const files = tracked.filter((f) => !EXCLUDE.some((re) => re.test(f)));
 // The same names build-runtime refuses to ship; a tracked one stops the publish.
 const SECRET = /^(\.env(\..*)?|.*\.env|\.envrc|\.netrc|\.pgpass|\.htpasswd|\.npmrc|\.git-credentials|id_(rsa|dsa|ecdsa|ed25519)(\..*)?|.*\.(pem|key|p12|pfx|p8|jks|keystore|token|gpg|asc|kubeconfig|tfvars|tfstate)|kubeconfig|terraform\.tfstate.*|secrets?(\..*)?|credentials?(\..*)?|client_secret.*|service-account.*\.json)$/i;
 const BACKUP_SUFFIX = /(\.(bak|backup|orig|old|save|swp|tmp)\d*|\.\d+|\.\d{4}-\d{2}-\d{2}|~)+$/i;
@@ -110,7 +142,7 @@ try {
   } else {
     execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-q", "--author", AUTHOR, "-m", `Useful Voice ${values.version} source`], {
       cwd: tree,
-      env: { ...process.env, GIT_COMMITTER_NAME: "Wasim Jalali", GIT_COMMITTER_EMAIL: AUTHOR.match(/<(.+)>/)[1] },
+      env: { ...process.env, GIT_COMMITTER_NAME: "Wasim Jalali", GIT_COMMITTER_EMAIL: AUTHOR_EMAIL },
     });
     commit = git(tree, "rev-parse", "HEAD");
     git(clone, "branch", branch, commit);
@@ -122,10 +154,4 @@ try {
   try { git(clone, "worktree", "prune"); } catch { /* nothing to prune */ }
 }
 
-if (values.push && commit) {
-  // The commit is already on the local branch, so a failed push can be retried by hand.
-  git(clone, "push", "-q", "-u", "origin", branch);
-  const pr = execFileSync("gh", ["pr", "create", "--repo", PUBLIC_REPO, "--head", branch, "--base", "main",
-    "--title", `Useful Voice ${values.version} source`, "--body", `Source snapshot of Useful Voice ${values.version}.`], { cwd: clone, encoding: "utf8" }).trim();
-  process.stdout.write(`${pr}\n`);
-}
+if (values.push && commit) pushAndOpenPr(); // the commit is already on the local branch, so a failed push can be retried with --push-existing

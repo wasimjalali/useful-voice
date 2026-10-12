@@ -323,7 +323,12 @@ public struct IdentityMigration {
             // on it): the link then stays, and the app keeps using it
             // (`DataFolder.resolve`).
             if present(new) {
-                report.failed.append("\(names.legacyFolderName): is a symbolic link and \(names.newFolderName) already exists, left alone")
+                // Permanent end state: the link stays and the app keeps using it (see
+                // `DataFolder.resolve`). Dangling (an unmounted volume) is called out.
+                let reachable = (try? fileManager.contentsOfDirectory(atPath: legacy.path)) != nil
+                report.failed.append(
+                    "\(names.legacyFolderName): is a symbolic link and \(names.newFolderName) already exists, so the app keeps using the \(names.legacyFolderName) link"
+                    + (reachable ? "" : " (its target cannot be reached right now)"))
             } else {
                 do {
                     try fileManager.moveItem(at: legacy, to: new)
@@ -544,6 +549,12 @@ public struct IdentityMigration {
             return true
         }
         return keychain.exists(service: names.newKeychainService, account: account)
+    }
+
+    /// Marks the old item as to be ignored: it no longer counts as a key and is never
+    /// migrated. Touches only a preference, so it is safe to call at any moment.
+    public func forgetLegacyKey() {
+        defaults.set(true, forKey: Self.keychainAttemptedFlag)
     }
 
     /// Deletes the old Keychain item. Tolerates refusal (it trusts the old app, so

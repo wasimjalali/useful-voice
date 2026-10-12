@@ -1384,6 +1384,27 @@ struct IdentityMigrationReviewTests {
                 == h.names.legacyFolderName)
     }
 
+    /// An unmounted volume leaves a dangling link. New data must not start piling up in
+    /// the new folder while the link is down, so the app stays on the link.
+    @Test func aDanglingLinkStillKeepsTheAppOnTheLink() throws {
+        let h = Harness(); defer { h.cleanUp() }
+        h.new("models/m.bin", "weights")
+        try FileManager.default.createSymbolicLink(
+            at: h.legacyFolder, withDestinationURL: h.root.appendingPathComponent("not-mounted"))
+        let sink = h.silentDiagnostics()
+
+        let first = h.migration().run(diagnostics: sink)
+        let second = h.migration().run(diagnostics: sink)
+
+        #expect(DataFolder.resolve(appSupport: h.appSupport, preview: false, names: h.names).lastPathComponent
+                == h.names.legacyFolderName)
+        #expect(first.failed.count == 1 && first.failed[0].contains("cannot be reached"))
+        #expect(second.failed.count == 1)
+        let logged = sink.entries(level: .error).filter { $0.message.contains("cannot be reached") }
+        #expect(logged.count == 1)                              // once
+        #expect(logged[0].message.contains("keeps using"))      // and it says what the app does
+    }
+
     @Test func aNormalLegacyFolderNeverKeepsTheAppOnTheOldPath() {
         let h = Harness(); defer { h.cleanUp() }
         h.legacy("history.json", "[1]")
@@ -1779,6 +1800,45 @@ struct IdentityMigrationRound2Tests {
         // Outside but with a same-named file in the recordings folder: that file.
         try Data("mine".utf8).write(to: recordings.appendingPathComponent("x.wav"))
         #expect(resolve(outside.appendingPathComponent("x.wav").path) == recordings.appendingPathComponent("x.wav").path)
+    }
+
+    @Test func forgettingTheLegacyKeyStopsItCountingOrMigratingBack() {
+        let h = Harness(); defer { h.cleanUp() }
+        h.keychain.seed("old-key", service: h.names.legacyKeychainService)
+
+        h.migration().forgetLegacyKey()
+
+        #expect(h.defaults.bool(forKey: IdentityMigration.keychainAttemptedFlag))
+        #expect(!h.migration().keyIsStored())
+        #expect(h.migration().migrateKeychain(diagnostics: h.silentDiagnostics()) == .skippedAfterAttempt)
+        #expect(h.keychain.lookups.isEmpty)
+    }
+
+    private final class OrderRecordingBackend: DeepgramKeyBackend, @unchecked Sendable {
+        let gate = DispatchSemaphore(value: 0)
+        private let lock = NSLock()
+        private var _events: [String] = []
+        var events: [String] { lock.lock(); defer { lock.unlock() }; return _events }
+        private func note(_ e: String) { lock.lock(); _events.append(e); lock.unlock() }
+        func lookup() -> Keychain.Lookup { .absent }
+        func write(_ value: String) throws {}
+        func delete() throws { note("delete") }
+        func exists() -> Bool { false }
+        func forgetLegacyKey() { note("forget") }
+        func deleteLegacyBestEffort() { gate.wait(); note("legacyDelete") }
+    }
+
+    /// If the app quits before the queued legacy delete runs, the flag is already set.
+    @Test func removeMarksTheLegacyKeyForgottenBeforeTheQueuedDelete() async throws {
+        let backend = OrderRecordingBackend()
+        let store = DeepgramKeyStore(backend: backend)
+
+        try await store.remove()
+
+        #expect(backend.events == ["delete", "forget"])         // legacyDelete is still blocked
+        backend.gate.signal()
+        _ = store.peek()
+        #expect(backend.events == ["delete", "forget", "legacyDelete"])
     }
 
     // MARK: Pasteboard markers

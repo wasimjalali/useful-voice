@@ -45,6 +45,7 @@ case "$OUT/" in "$SRC/"*) die "the out dir is the source folder or inside it" ;;
 mkdir -p "$OUT" || die "cannot create the out dir"
 RESULT="$OUT/result.txt"
 [ -L "$RESULT" ] && die "result.txt is a symbolic link"
+{ [ ! -e "$RESULT" ] || [ -f "$RESULT" ]; } || die "result.txt exists and is not a regular file"
 
 # Nothing in the source may be a link or a special file.
 [ -z "$(find "$SRC" ! -type f ! -type d -print -quit)" ] \
@@ -65,12 +66,24 @@ AS="$H/Library/Application Support"
 PLISTS="$HOME/Library/Preferences"
 
 CHILD=""
+WATCHDOG=""
 CLEANED=0
 CLEAN_FAILS=0
 
+# Stops the watchdog, then the app: TERM, a short grace, then KILL. Reaps both.
 stop_child() {
+  if [ -n "$WATCHDOG" ]; then
+    kill "$WATCHDOG" 2>/dev/null
+    wait "$WATCHDOG" 2>/dev/null
+    WATCHDOG=""
+  fi
   if [ -n "$CHILD" ]; then
-    kill "$CHILD" 2>/dev/null
+    kill -TERM "$CHILD" 2>/dev/null
+    for _ in $(seq 1 30); do
+      kill -0 "$CHILD" 2>/dev/null || break
+      sleep 0.1
+    done
+    kill -KILL "$CHILD" 2>/dev/null
     wait "$CHILD" 2>/dev/null
     CHILD=""
   fi
@@ -139,20 +152,33 @@ defaults export "$LEGACY_DOMAIN" "$H/legacy.before.plist" || { echo "error: expo
 
 DUMMY="e2e-dummy-$(openssl rand -hex 8)" || { cleanup; exit 64; }
 
-# Runs the app in the background, bounded, and reaps it. $1 = stdout file.
+# Runs the app in the background, bounded, and reaps it. $1 = stdout file, the rest are
+# `env` arguments. Every launch goes through here, the refusal checks included: after
+# 60 s the app gets TERM, then KILL 3 s later. The watchdog is tracked, so cleanup
+# can stop both.
 run_app() {
   local out="$1"; shift
   env "$@" "$BIN" >"$out" 2>/dev/null &
   CHILD=$!
-  ( sleep 60; kill "$CHILD" 2>/dev/null ) &
-  local watchdog=$!
+  (
+    for _ in $(seq 1 600); do
+      kill -0 "$CHILD" 2>/dev/null || exit 0
+      sleep 0.1
+    done
+    kill -TERM "$CHILD" 2>/dev/null
+    sleep 3
+    kill -KILL "$CHILD" 2>/dev/null
+  ) &
+  WATCHDOG=$!
   wait "$CHILD"
   APP_STATUS=$?
   CHILD=""
-  kill "$watchdog" 2>/dev/null
-  wait "$watchdog" 2>/dev/null
+  kill "$WATCHDOG" 2>/dev/null
+  wait "$WATCHDOG" 2>/dev/null
+  WATCHDOG=""
 }
-hook_env() { echo "HOME=$H" "CFFIXED_USER_HOME=$H" "UV_MIGRATE_ONLY=1" "UV_MIGRATION_TEST_PREFIX=$P"; }
+# The hook's environment, as an array so a TMPDIR with spaces stays intact.
+HOOK_ENV=(HOME="$H" CFFIXED_USER_HOME="$H" UV_MIGRATE_ONLY=1 UV_MIGRATION_TEST_PREFIX="$P")
 
 FAILS=0
 REPORT=()
@@ -168,17 +194,17 @@ print(len(v) if sys.argv[3] == "len" and v is not None else v)' "$1" "$2" "${3:-
 
 # 0. The guards. Each uses `env -u CFFIXED_USER_HOME` where the variable must be absent,
 #    so an inherited value cannot let the hook migrate.
-env -u CFFIXED_USER_HOME HOME="$H" UV_MIGRATE_ONLY=1 UV_MIGRATION_TEST_PREFIX="$P" "$BIN" >/dev/null 2>&1
-check "refuses without CFFIXED_USER_HOME (exit 2)" "$([ $? -eq 2 ] && echo yes || echo no)"
-env HOME="$H" CFFIXED_USER_HOME="$H" UV_MIGRATE_ONLY=1 UV_MIGRATION_TEST_PREFIX= "$BIN" >/dev/null 2>&1
-check "refuses without a test prefix (exit 2)" "$([ $? -eq 2 ] && echo yes || echo no)"
-env -u UV_MIGRATION_TEST_PREFIX HOME="$H" CFFIXED_USER_HOME="$H" UV_MIGRATE_ONLY=1 "$BIN" >/dev/null 2>&1
-check "refuses with no prefix variable at all (exit 2)" "$([ $? -eq 2 ] && echo yes || echo no)"
+run_app /dev/null -u CFFIXED_USER_HOME HOME="$H" UV_MIGRATE_ONLY=1 UV_MIGRATION_TEST_PREFIX="$P"
+check "refuses without CFFIXED_USER_HOME (exit 2)" "$([ "$APP_STATUS" -eq 2 ] && echo yes || echo no)"
+run_app /dev/null HOME="$H" CFFIXED_USER_HOME="$H" UV_MIGRATE_ONLY=1 UV_MIGRATION_TEST_PREFIX=
+check "refuses without a test prefix (exit 2)" "$([ "$APP_STATUS" -eq 2 ] && echo yes || echo no)"
+run_app /dev/null -u UV_MIGRATION_TEST_PREFIX HOME="$H" CFFIXED_USER_HOME="$H" UV_MIGRATE_ONLY=1
+check "refuses with no prefix variable at all (exit 2)" "$([ "$APP_STATUS" -eq 2 ] && echo yes || echo no)"
 check "the refusals moved nothing" "$([ -d "$AS/Sadaa" ] && [ "$(ls -A "$AS/UsefulVoice" | wc -l | tr -d ' ')" = 1 ] && echo yes || echo no)"
 
 # 1. First run moves everything, second run changes nothing.
-run_app "$H/run1.json" $(hook_env) "UV_MIGRATION_TEST_SEED_KEY=$DUMMY"; S1=$APP_STATUS
-run_app "$H/run2.json" $(hook_env) "UV_MIGRATION_TEST_EXPECT_KEY=$DUMMY"; S2=$APP_STATUS
+run_app "$H/run1.json" "${HOOK_ENV[@]}" "UV_MIGRATION_TEST_SEED_KEY=$DUMMY"; S1=$APP_STATUS
+run_app "$H/run2.json" "${HOOK_ENV[@]}" "UV_MIGRATION_TEST_EXPECT_KEY=$DUMMY"; S2=$APP_STATUS
 R1="$(cat "$H/run1.json" 2>/dev/null)"
 R2="$(cat "$H/run2.json" 2>/dev/null)"
 check "run 1 exits 0" "$([ "$S1" -eq 0 ] && echo yes || echo no)"
@@ -209,7 +235,18 @@ PREF_RESULT="$(python3 -I - "$H/legacy.before.plist" "$H/new.plist" <<'PY'
 import plistlib, sys
 legacy = plistlib.load(open(sys.argv[1], "rb"))
 new = plistlib.load(open(sys.argv[2], "rb"))
-bad = [k for k, v in legacy.items() if k not in new or type(new[k]) is not type(v) or new[k] != v]
+
+def same(a, b):
+    """Equal values of the same type at every level (True is not 1, 1 is not 1.0)."""
+    if type(a) is not type(b):
+        return False
+    if isinstance(a, dict):
+        return a.keys() == b.keys() and all(same(a[k], b[k]) for k in a)
+    if isinstance(a, list):
+        return len(a) == len(b) and all(same(x, y) for x, y in zip(a, b))
+    return a == b
+
+bad = [k for k, v in legacy.items() if k not in new or not same(v, new[k])]
 print("ok" if not bad and new.get("uv.identityMigrated") is True else "bad %d" % len(bad))
 PY
 )"

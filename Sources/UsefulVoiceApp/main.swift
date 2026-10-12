@@ -87,7 +87,7 @@ MainActor.assumeIsolated {
         app.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = "An older copy of Useful Voice is still running."
-        alert.informativeText = "Quit it, then open Useful Voice again."
+        alert.informativeText = "Quit it, then open Useful Voice again. If it won't quit, force quit it in Activity Monitor."
         alert.addButton(withTitle: "OK")
         alert.runModal()
         exit(0)

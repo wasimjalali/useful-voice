@@ -110,8 +110,9 @@ public enum DataFolder {
     ///    data the new one lacks: a render before the first real launch must show
     ///    the user's data exactly as the old build did;
     ///  * when the old folder is a symbolic link the migration could not rename
-    ///    (the new folder was already taken): the app keeps using the link, so the
-    ///    user never sees an empty app.
+    ///    (the new folder was already taken), even a dangling one: the app keeps
+    ///    using the link, so the user never sees an empty app and no data is
+    ///    stranded in the new folder.
     /// Reads only; creates and changes nothing.
     public static func resolve(
         appSupport: URL,
@@ -121,15 +122,15 @@ public enum DataFolder {
     ) -> URL {
         let new = appSupport.appendingPathComponent(names.newFolderName, isDirectory: true)
         let legacy = appSupport.appendingPathComponent(names.legacyFolderName, isDirectory: true)
-        guard preview else { return isLinkToFolder(legacy, fileManager: fileManager) ? legacy : new }
+        guard preview else { return isSymbolicLink(legacy, fileManager: fileManager) ? legacy : new }
         return holdsUnmigratedData(legacy: legacy, new: new, fileManager: fileManager) ? legacy : new
     }
 
-    static func isLinkToFolder(_ url: URL, fileManager: FileManager) -> Bool {
-        guard (try? fileManager.attributesOfItem(atPath: url.path))?[.type] as? FileAttributeType
-                == .typeSymbolicLink else { return false }
-        var isDirectory: ObjCBool = false   // follows the link
-        return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+    /// Any symbolic link at `url`, dangling or not (lstat, never following it): an
+    /// unmounted target must not send new data to the new folder.
+    static func isSymbolicLink(_ url: URL, fileManager: FileManager) -> Bool {
+        (try? fileManager.attributesOfItem(atPath: url.path))?[.type] as? FileAttributeType
+            == .typeSymbolicLink
     }
 
     /// True while the old folder has at least one entry the new folder does not.

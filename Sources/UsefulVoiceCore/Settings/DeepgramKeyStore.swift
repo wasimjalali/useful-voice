@@ -173,6 +173,10 @@ public final class DeepgramKeyStore: @unchecked Sendable {
         try await perform {
             try self.backend.delete()
             self.publish(nil, problem: nil)
+            // Marked at once, before anything can be interrupted: whatever happens to
+            // the queued delete below, a leftover old item never counts as a key and
+            // never migrates back.
+            self.backend.forgetLegacyKey()
             // A key left under the previous app identity would stay readable (and
             // be migrated back) after the user removed theirs. Best effort, and
             // queued AFTER the caller is released: the old item trusts the old app,
@@ -244,10 +248,14 @@ protocol DeepgramKeyBackend: Sendable {
     func exists() -> Bool
     /// Removes any copy under the previous app identity. Failures are logged, never thrown.
     func deleteLegacyBestEffort()
+    /// Records, synchronously and without touching the Keychain, that the previous
+    /// identity's item must be ignored from now on.
+    func forgetLegacyKey()
 }
 
 extension DeepgramKeyBackend {
     func deleteLegacyBestEffort() {}
+    func forgetLegacyKey() {}
 }
 
 struct KeychainKeyBackend: DeepgramKeyBackend {
@@ -258,4 +266,5 @@ struct KeychainKeyBackend: DeepgramKeyBackend {
     func delete() throws { try Keychain.delete(account: account) }
     func exists() -> Bool { DeepgramKeyStore.keyIsStored() }
     func deleteLegacyBestEffort() { IdentityMigration.live().removeLegacyKey(force: true) }
+    func forgetLegacyKey() { IdentityMigration.live().forgetLegacyKey() }
 }

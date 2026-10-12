@@ -103,7 +103,9 @@ Builds before the rename were `ai.karko.sadaa` with data in `Sadaa/`; `Sources/U
 moves the files, preferences and Keychain item once at launch (snapshot and `UV_FIRST_RUN=force` runs never migrate; they read
 `Sadaa/` while it still holds data). An old-identity copy still running is asked to quit first; if it stays, the app shows an
 alert ("An older copy of Useful Voice is still running") and exits before any store, hotkey tap or write, and the next launch
-migrates. `UV_MIGRATE_ONLY=1` runs only the migration, prints a JSON summary and exits. It refuses to start (exit 2) unless
+migrates. If `Sadaa/` is a symbolic link and `UsefulVoice/` already exists, the link cannot be renamed, so the app keeps using the
+`Sadaa` link for good (even when its target is unmounted), logged once; with no `UsefulVoice/` the link itself is renamed.
+`UV_MIGRATE_ONLY=1` runs only the migration, prints a JSON summary and exits. It refuses to start (exit 2) unless
 `CFFIXED_USER_HOME` points at a scratch home (it moves real files) AND `UV_MIGRATION_TEST_PREFIX` is non-empty (it must never
 touch the production Keychain or preferences). The prefix covers only the defaults domains and Keychain services; files follow
 the scratch home. Two further hooks work only with migrate-only plus a prefix: `UV_MIGRATION_TEST_SEED_KEY=<dummy>` stores a

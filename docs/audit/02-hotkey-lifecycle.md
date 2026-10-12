@@ -1,6 +1,6 @@
 # Audit 02 — Global Hotkey Capture, App Lifecycle, Menu Bar, HUD Window, Login Item, Window Management
 
-**Target:** `/Users/wasimjalali/Desktop/Personal Project/useful-voice`
+**Target:** `useful-voice` (repository root)
 **Method:** read-only static audit. No files outside this report were modified; `swift build` / `swift test` were not run (blocked by sandbox).
 **Files read in full:** `Sources/UsefulVoiceApp/AppDelegate.swift`, `HotkeyManager.swift`, `main.swift`, `LoginItem.swift`, `MainWindowController.swift`, `HUD/HUDPanel.swift`, `HUD/HUDView.swift`, `UsefulVoiceViewModel.swift`, `RootView.swift`, `Sources/UsefulVoiceCore/Hotkey/RightOptionTapRecognizer.swift`, `Sources/UsefulVoiceCore/Layout/ResponsiveLayoutRules.swift`, `bundle/Info.plist`, `Makefile`, `scripts/setup-signing.sh`, `Tests/UsefulVoiceCoreTests/{RightOptionTapRecognizerTests,ResponsiveLayoutRulesTests}.swift`.
 **Supporting reads (for cross-checks):** `Sources/UsefulVoiceCore/Settings/AppSettings.swift`, `Settings/Keychain.swift`, `DictationController.swift`, `Pages/SettingsPage.swift`, `Package.swift`, `.github/workflows/ci.yml`, `README.md`, plus `codesign`/`plutil`/`file`/`lipo` inspection of the already-built `dist/UsefulVoice.app`.

@@ -19,7 +19,7 @@ is split by what is actually provable on each platform.
 
 | Area | Evidence |
 | --- | --- |
-| All platform-free logic | `npm test` — **507 tests, 19 files**, run on macOS |
+| All platform-free logic | `npm test` — **511 tests, 20 files**, run on macOS |
 | Type safety | `npm run typecheck` — clean |
 | Build | `npm run build` — main, preload and renderer all emitted |
 | Preload↔renderer contract | `npm run self-test` — API exposed, 66 methods, no Node leak |
@@ -61,7 +61,7 @@ npm start           # launch the app
 
 Then open **Settings** and paste a Deepgram API key from
 <https://console.deepgram.com/>. The key is required before dictation will work;
-the app says so plainly on the Home page rather than failing silently.
+the app says so plainly rather than failing silently.
 
 ## Building installers
 
@@ -159,9 +159,9 @@ edit. Write failures surface in the UI.
   press again to stop. If another app already owns the combination the app tells
   you, instead of silently never starting.
 - **Tray icon** — filled while recording. Left-click opens the window. The menu
-  offers start/stop, cancel, retry, copy-last and the four pages.
+  offers start/stop, cancel, retry, copy-last and the pages.
 - **Closing the window does not quit.** The app is tray-resident so the hotkey keeps
-  working. Quit from the tray menu or `Ctrl+Q`.
+  working. Quit from the tray menu.
 
 ## Data and privacy
 
@@ -173,9 +173,11 @@ Everything lives in `%APPDATA%\Useful Voice`:
 | `data.json` | dictionary, corrections, shortcuts, history, notes |
 | `diagnostics.log` | recent problems — never transcript text, never the key |
 
-Audio is held in memory only while transcribing and is never written to disk. Only
-the resulting text is sent to Deepgram. Uninstalling keeps this folder on purpose;
-Settings shows the path so you can remove it yourself.
+Audio is held in memory only while transcribing and is never written to disk. Each
+recording's audio is uploaded to Deepgram for transcription, along with your
+dictionary's correct spellings as keyterms. Nothing else leaves your PC, and there
+is no analytics or tracking. Uninstalling keeps this folder on purpose; Settings
+shows the path so you can remove it yourself.
 
 ## Known gaps
 

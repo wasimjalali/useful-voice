@@ -14,10 +14,7 @@ enum Clipboard {
     /// skips them: deep-copying one would force its lazy PasteSentinel promise
     /// (faking a consumed paste) and capture our own dictation as "the user's
     /// clipboard".
-    static let deliveryMarker = NSPasteboard.PasteboardType("ai.useful.voice.delivery")
-    /// The marker the previous app identity put on its own paste. A paste it left
-    /// on the clipboard is still ours, not the user's data.
-    static let legacyDeliveryMarker = NSPasteboard.PasteboardType(IdentityMigration.Legacy.deliveryMarker)
+    static let deliveryMarker = NSPasteboard.PasteboardType(DeliveryMarker.current)
 
     /// Types we copy out eagerly. Reading an arbitrary pasteboard type can be a
     /// blocking IPC round trip to the app that owns the data (a promised file
@@ -46,9 +43,8 @@ enum Clipboard {
     /// Deep-copy the current items so they survive a `clearContents()`.
     static func snapshot(_ pasteboard: NSPasteboard = .general) -> SnapshotResult {
         guard let items = pasteboard.pasteboardItems else { return .empty }
-        let userItems = items.filter {
-            !$0.types.contains(deliveryMarker) && !$0.types.contains(legacyDeliveryMarker)
-        }
+        // Both identities' markers: a paste the old build left is still ours.
+        let userItems = items.filter { !DeliveryMarker.marks(types: $0.types.map(\.rawValue)) }
         guard !userItems.isEmpty else { return .empty }
 
         var copies: [NSPasteboardItem] = []

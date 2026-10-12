@@ -187,15 +187,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Diagnostics section of Settings shows: the user can then delete that copy.
     private func recordLegacyCopyDiagnostic() {
         guard !launch.legacyFound.isEmpty else { return }
-        if launch.legacyStillRunning.isEmpty {
-            Diagnostics.shared.warning(
-                "identity-migration",
-                "an older copy of the app (\(IdentityMigration.Legacy.bundleID)) was running and was asked to quit; delete that copy so it cannot start again")
-        } else {
-            Diagnostics.shared.warning(
-                "identity-migration",
-                "an older copy of the app (\(IdentityMigration.Legacy.bundleID)) is still running, so your data was not moved this launch (it moves next launch). Quit and delete that copy")
-        }
+        Diagnostics.shared.warning(
+            "identity-migration",
+            "an older copy of the app (\(IdentityMigration.Legacy.bundleID)) was running and was asked to quit; delete that copy so it cannot start again")
     }
 
     /// Launch at login is registered per bundle id, so a user who had it on under
@@ -258,13 +252,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Facts known immediately at launch. Deliberately says nothing about the key,
     /// which is not known yet - see `recordKeyStateDiagnostic`.
     private func recordLaunchDiagnostic() {
+        // A render or forced first run adds no launch line: it would land in the old
+        // folder's log before the migration and say "manual start" there.
+        guard migrationAllowed else { return }
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
-        let loginItem = LoginItem.isEnabled
-            ? IdentityMigration.LaunchLine.startsAtLogin : IdentityMigration.LaunchLine.manualStart
         Diagnostics.shared.info(
             "launch",
-            "Useful Voice \(version) (\(build)) on macOS \(ProcessInfo.processInfo.operatingSystemVersionString); \(loginItem)",
+            IdentityMigration.LaunchLine.message(
+                version: version, build: build,
+                os: ProcessInfo.processInfo.operatingSystemVersionString,
+                loginEnabled: LoginItem.isEnabled),
         )
     }
 
@@ -630,7 +628,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let audioPath = record.audioPath,
               let audioURL = RecordingLocator.resolve(
                   storedPath: audioPath,
-                  recordingsDirectory: DataFolder.current().appendingPathComponent("Recordings")),
+                  recordingsDirectory: DataFolder.current().appendingPathComponent("Recordings"),
+                  legacyRecordingsDirectory: DataFolder.legacyRecordingsDirectory),
               let languageMemory
         else {
             viewModel?.reprocessHistoryTextOnly(record)

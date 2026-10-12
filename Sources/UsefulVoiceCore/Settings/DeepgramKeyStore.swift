@@ -172,11 +172,13 @@ public final class DeepgramKeyStore: @unchecked Sendable {
     public func remove() async throws {
         try await perform {
             try self.backend.delete()
-            // A key left under the previous app identity would stay readable (and
-            // be migrated back) after the user removed theirs. Best effort: the
-            // old item trusts the old app, so this may prompt or be refused.
-            self.backend.deleteLegacyBestEffort()
             self.publish(nil, problem: nil)
+            // A key left under the previous app identity would stay readable (and
+            // be migrated back) after the user removed theirs. Best effort, and
+            // queued AFTER the caller is released: the old item trusts the old app,
+            // so the delete may sit on a Keychain prompt, and the UI must not wait
+            // for it. It is still ahead of any later key operation on this queue.
+            self.queue.async { self.backend.deleteLegacyBestEffort() }
         }
     }
 

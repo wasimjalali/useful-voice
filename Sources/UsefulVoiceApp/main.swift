@@ -78,19 +78,29 @@ MainActor.assumeIsolated {
         exit(0)
     }
     let launch = LaunchMigration.runAtLaunch(legacyInstances: runningLegacyCopies())
-    if !launch.legacyStillRunning.isEmpty {
-        // An older copy would not quit, so nothing was moved: read its folder this
-        // launch (like a render) and migrate on the next one.
-        setenv(LaunchMode.legacyFallbackVariable, "1", 1)
+    if launch.mustQuitForLegacyCopy {
+        // An older copy would not quit and still owns its data folder. Running beside
+        // it would give two hotkey taps and two writers on the same files, so say so
+        // and leave before any store, tap or write. The next launch migrates.
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        app.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "An older copy of Useful Voice is still running."
+        alert.informativeText = "Quit it, then open Useful Voice again."
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+        exit(0)
     }
 
-    // A render or a copy waiting on the old app writes no preferences, so the
-    // scrollbar style is applied in memory for them.
+    // A render writes no preferences, so the scrollbar style is applied in memory
+    // for it, merged into the argument domain rather than replacing it.
     if LaunchMode.migrationAllowed(environment: ProcessInfo.processInfo.environment) {
         UserDefaults.standard.set("WhenScrolling", forKey: "AppleShowScrollBars")
     } else {
-        UserDefaults.standard.setVolatileDomain(
-            ["AppleShowScrollBars": "WhenScrolling"], forName: UserDefaults.argumentDomain)
+        var arguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+        arguments["AppleShowScrollBars"] = "WhenScrolling"
+        UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
     }
     let app = NSApplication.shared
     let delegate = AppDelegate(launch: launch)

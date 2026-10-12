@@ -26,22 +26,19 @@ public enum LaunchMode: Equatable, Sendable {
         return .normal
     }
 
-    /// Set in-process by `main.swift` when an older copy of the app refused to quit:
-    /// the migration is postponed to a later launch and this launch reads the old
-    /// data folder, like a render, without migrating.
-    public static let legacyFallbackVariable = "UV_LEGACY_FALLBACK"
-
-    /// A real launch that is allowed to migrate and to write preferences.
+    /// A real launch that is allowed to migrate and to write preferences (and to
+    /// add its launch line to the log).
     public static func migrationAllowed(environment: [String: String]) -> Bool {
-        current(environment: environment) == .normal && environment[legacyFallbackVariable] != "1"
+        current(environment: environment) == .normal
     }
 
     /// Why migrate-only must not start, or `nil` when it may.
     ///
     /// The hook moves real files and consumes the real login-at-login signal, so it
     /// is refused unless `CFFIXED_USER_HOME` points somewhere other than the real
-    /// home. (The test prefix covers preferences and the Keychain only; files
-    /// follow the home directory.)
+    /// home. It also needs a non-empty test prefix: without one its Keychain and
+    /// preferences steps would run on the production names. (The prefix covers
+    /// preferences and the Keychain only; files follow the home directory.)
     public static func migrateOnlyRefusal(
         environment: [String: String],
         realHome: String = realHomeDirectory
@@ -49,6 +46,9 @@ public enum LaunchMode: Equatable, Sendable {
         guard environment[migrateOnlyVariable] == "1" else { return nil }
         if migrateOnlyConflictsWithPreview(environment: environment) {
             return "UV_MIGRATE_ONLY cannot be combined with UV_SNAPSHOT or UV_FIRST_RUN=force"
+        }
+        guard let prefix = environment[testPrefixVariable], !prefix.isEmpty else {
+            return "UV_MIGRATE_ONLY needs a non-empty UV_MIGRATION_TEST_PREFIX: it must never touch the real Keychain or preferences"
         }
         guard let fixed = environment["CFFIXED_USER_HOME"], !fixed.isEmpty else {
             return "UV_MIGRATE_ONLY moves real files: set CFFIXED_USER_HOME to a scratch home first"
@@ -94,14 +94,25 @@ public enum DataFolder {
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL {
         resolve(appSupport: appSupport,
-                preview: LaunchMode.current(environment: environment) == .preview
-                    || environment[LaunchMode.legacyFallbackVariable] == "1")
+                preview: LaunchMode.current(environment: environment) == .preview)
     }
 
-    /// The new folder, except in a preview run that finds the previous identity's
-    /// folder still holding data the new one lacks: a render before the first
-    /// real launch must show the user's data exactly as the old build did. Reads
-    /// only; creates and changes nothing.
+    /// The previous identity's recordings folder, where history written by the old
+    /// build still points.
+    public static var legacyRecordingsDirectory: URL {
+        appSupport
+            .appendingPathComponent(IdentityMigration.Names.production.legacyFolderName, isDirectory: true)
+            .appendingPathComponent("Recordings", isDirectory: true)
+    }
+
+    /// The new folder, except:
+    ///  * in a preview run that finds the previous identity's folder still holding
+    ///    data the new one lacks: a render before the first real launch must show
+    ///    the user's data exactly as the old build did;
+    ///  * when the old folder is a symbolic link the migration could not rename
+    ///    (the new folder was already taken): the app keeps using the link, so the
+    ///    user never sees an empty app.
+    /// Reads only; creates and changes nothing.
     public static func resolve(
         appSupport: URL,
         fileManager: FileManager = .default,
@@ -109,9 +120,16 @@ public enum DataFolder {
         names: IdentityMigration.Names = .production
     ) -> URL {
         let new = appSupport.appendingPathComponent(names.newFolderName, isDirectory: true)
-        guard preview else { return new }
         let legacy = appSupport.appendingPathComponent(names.legacyFolderName, isDirectory: true)
+        guard preview else { return isLinkToFolder(legacy, fileManager: fileManager) ? legacy : new }
         return holdsUnmigratedData(legacy: legacy, new: new, fileManager: fileManager) ? legacy : new
+    }
+
+    static func isLinkToFolder(_ url: URL, fileManager: FileManager) -> Bool {
+        guard (try? fileManager.attributesOfItem(atPath: url.path))?[.type] as? FileAttributeType
+                == .typeSymbolicLink else { return false }
+        var isDirectory: ObjCBool = false   // follows the link
+        return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 
     /// True while the old folder has at least one entry the new folder does not.

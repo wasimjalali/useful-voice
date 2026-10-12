@@ -7,10 +7,14 @@ import Foundation
 public struct MigrationLookup: Equatable, Sendable {
     public var result: Keychain.Lookup
     public var userDenied: Bool
+    /// The item was read but its value can never be used (empty or not text), so
+    /// reading it again cannot help.
+    public var unusable: Bool
 
-    public init(_ result: Keychain.Lookup, userDenied: Bool = false) {
+    public init(_ result: Keychain.Lookup, userDenied: Bool = false, unusable: Bool = false) {
         self.result = result
         self.userDenied = userDenied
+        self.unusable = unusable
     }
 }
 
@@ -31,7 +35,10 @@ public struct SystemMigrationKeychain: MigrationKeychain {
 
     public func lookup(service: String, account: String) -> MigrationLookup {
         let read = Keychain.lookupWithStatus(account: account, service: service)
-        return MigrationLookup(read.lookup, userDenied: Keychain.isUserDenial(status: read.status))
+        var unusable = false
+        if read.status == errSecSuccess, case .unavailable = read.lookup { unusable = true }
+        return MigrationLookup(read.lookup, userDenied: Keychain.isUserDenial(status: read.status),
+                               unusable: unusable)
     }
 
     public func write(_ value: String, service: String, account: String) throws {
@@ -84,6 +91,12 @@ public struct IdentityMigration {
     public static let loginRestorePendingFlag = "uv.loginItemRestorePending"
     /// Preference: the clashes already written to the log, so each is logged once.
     public static let loggedConflictsKey = "uv.identityConflictsLogged"
+    /// Preference: the move failures already written to the log, so each is logged once.
+    public static let loggedFailuresKey = "uv.identityFailuresLogged"
+    /// Preference: how many times copying the key failed (write or read-back).
+    public static let keychainFailuresKey = "uv.keychainMigrationFailures"
+    /// After this many failed copies the key is no longer retried.
+    public static let maxKeychainRetries = 3
 
     /// The two phrases the launch record in `diagnostics.log` ends with. The app
     /// writes them; the migration reads the old build's last one to learn whether
@@ -96,6 +109,17 @@ public struct IdentityMigration {
         public static let startsAtLogin = "starts at login"
         public static let manualStart = "manual start"
         static let category = "launch"
+        /// Present in every launch line the NEW build writes and absent from the old
+        /// build's, so a render or refused launch of the new build appending its own
+        /// line to the old log can never be mistaken for the old build's last launch.
+        public static let newBuildTag = "[ai.useful.voice]"
+
+        /// The launch record's text, ending in the login phrase.
+        public static func message(version: String, build: String, os: String,
+                                   loginEnabled: Bool) -> String {
+            "Useful Voice \(version) (\(build)) \(newBuildTag) on macOS \(os); "
+                + (loginEnabled ? startsAtLogin : manualStart)
+        }
     }
 
     /// Everything that differs between the real run and a test run.
@@ -159,6 +183,9 @@ public struct IdentityMigration {
         /// Entries that could not be moved, with the reason.
         public var failed: [String] = []
         public var legacyFolderRemoved = false
+        /// The old folder was a symbolic link and was renamed to the new name, so
+        /// the data stays wherever the link points.
+        public var legacyLinkRenamed = false
         /// Preference keys copied from the old domain.
         public var defaultsCopied = 0
         /// The preferences had already been copied by an earlier launch.
@@ -181,6 +208,9 @@ public struct IdentityMigration {
         case absent
         /// The user refused access to the old item; it is never asked again.
         case readDenied
+        /// The old item's value is empty or not text; retrying cannot help, so it is
+        /// not tried again.
+        case unusableValue
         /// The old item could not be read for another reason (locked keychain,
         /// unreadable value); tried again next launch.
         case readFailed
@@ -279,16 +309,31 @@ public struct IdentityMigration {
         // lstat semantics: a symlink reports as a symlink, not as its target.
         guard let attributes = try? fileManager.attributesOfItem(atPath: legacy.path) else { return }
         let kind = attributes[.type] as? FileAttributeType
+        guard kind == .typeSymbolicLink || kind == .typeDirectory else { return }
+
+        // Before anything moves (and before the link check), so neither a name clash
+        // on the log nor a link can hide it. Reads through a link.
+        readLoginSignal(into: &report)
+
         if kind == .typeSymbolicLink {
-            // Following it could move data from, or across, a volume the user
-            // pointed the folder at on purpose. Left for the user to sort out.
-            report.failed.append("\(names.legacyFolderName): is a symbolic link, left alone")
+            // The user pointed the folder somewhere on purpose, maybe another
+            // volume. Moving its contents would copy across volumes, so the LINK is
+            // renamed instead, which keeps the data where the user put it. That is
+            // impossible when the new folder already exists (a rename cannot land
+            // on it): the link then stays, and the app keeps using it
+            // (`DataFolder.resolve`).
+            if present(new) {
+                report.failed.append("\(names.legacyFolderName): is a symbolic link and \(names.newFolderName) already exists, left alone")
+            } else {
+                do {
+                    try fileManager.moveItem(at: legacy, to: new)
+                    report.legacyLinkRenamed = true
+                } catch {
+                    report.failed.append("\(names.legacyFolderName): \(error.localizedDescription)")
+                }
+            }
             return
         }
-        guard kind == .typeDirectory else { return }
-
-        // Before anything moves, so a name clash on the log cannot hide it.
-        readLoginSignal(into: &report)
 
         let entries: [String]
         do {
@@ -403,8 +448,17 @@ public struct IdentityMigration {
         if !fresh.isEmpty {
             defaults.set(alreadyLogged.union(fresh).sorted(), forKey: Self.loggedConflictsKey)
         }
-        for failure in report.failed {
+        let failuresLogged = Set(defaults.stringArray(forKey: Self.loggedFailuresKey) ?? [])
+        let freshFailures = report.failed.filter { !failuresLogged.contains($0) }
+        for failure in freshFailures {
             diagnostics.error("identity-migration", "could not move \(failure)")
+        }
+        if !freshFailures.isEmpty {
+            defaults.set(failuresLogged.union(freshFailures).sorted(), forKey: Self.loggedFailuresKey)
+        }
+        if report.legacyLinkRenamed {
+            diagnostics.info("identity-migration",
+                             "renamed the \(from) folder link to \(to); the data stays where the link points")
         }
         if report.defaultsCopied > 0 {
             diagnostics.info("identity-migration", "copied \(report.defaultsCopied) preference(s)")
@@ -418,7 +472,8 @@ public struct IdentityMigration {
     /// no signal rather than a guess.
     public static func launchedAtLogin(inDiagnosticsLog text: String) -> Bool? {
         let marker = "] \(LaunchLine.category): "
-        for line in text.split(whereSeparator: \.isNewline).reversed() where line.contains(marker) {
+        for line in text.split(whereSeparator: \.isNewline).reversed()
+        where line.contains(marker) && !line.contains(LaunchLine.newBuildTag) {
             if line.hasSuffix(LaunchLine.startsAtLogin) { return true }
             if line.hasSuffix(LaunchLine.manualStart) { return false }
             return nil
@@ -508,11 +563,22 @@ public struct IdentityMigration {
             try keychain.delete(service: service, account: account)
             return true
         } catch {
-            if Self.isUserDenial(error) { defaults.set(true, forKey: Self.keychainAttemptedFlag) }
+            // A refusal is remembered so it is not asked again. A forced delete (the
+            // user removed their key) is remembered whatever the reason: the leftover
+            // must never count as a key or migrate back next launch.
+            if force || Self.isUserDenial(error) { defaults.set(true, forKey: Self.keychainAttemptedFlag) }
             diagnostics.failure("identity-migration", error,
                                 context: "the old Keychain item could not be deleted and was left in place")
             return false
         }
+    }
+
+    /// A failed copy is retried next launch, up to `maxKeychainRetries` times in total;
+    /// then the old item is left alone and the app asks for a key.
+    private func noteCopyFailure() {
+        let failures = defaults.integer(forKey: Self.keychainFailuresKey) + 1
+        defaults.set(failures, forKey: Self.keychainFailuresKey)
+        if failures >= Self.maxKeychainRetries { defaults.set(true, forKey: Self.keychainAttemptedFlag) }
     }
 
     private static func isUserDenial(_ error: Error) -> Bool {
@@ -546,6 +612,13 @@ public struct IdentityMigration {
         case .absent:
             return .absent
         case .unavailable(let reason):
+            if read.unusable {
+                // The item was read; its value is empty or not text. Retrying cannot help.
+                defaults.set(true, forKey: Self.keychainAttemptedFlag)
+                diagnostics.warning("identity-migration",
+                                    "the old Keychain item has no usable value (\(reason)); it was left in place and the app will ask for a key")
+                return .unusableValue
+            }
             if read.userDenied {
                 // Remembered: the user said no, so they are not asked again.
                 defaults.set(true, forKey: Self.keychainAttemptedFlag)
@@ -564,15 +637,17 @@ public struct IdentityMigration {
         do {
             try keychain.write(value, service: newService, account: account)
         } catch {
+            noteCopyFailure()
             diagnostics.failure("identity-migration", error,
-                                context: "could not save the Deepgram key under the new Keychain service; the old item was left in place and will be tried again next launch")
+                                context: "could not save the Deepgram key under the new Keychain service; the old item was left in place")
             return .writeFailed
         }
 
         guard keychain.lookup(service: newService, account: account).result == .found(value) else {
             try? keychain.delete(service: newService, account: account)
+            noteCopyFailure()
             diagnostics.error("identity-migration",
-                              "the copied Deepgram key did not read back as written; the copy was removed and the old item left in place for the next launch")
+                              "the copied Deepgram key did not read back as written; the copy was removed and the old item left in place")
             return .verifyFailed
         }
 
@@ -636,15 +711,19 @@ public enum LaunchMigration {
         public var legacyFound: [Int32] = []
         /// Copies that did not quit in time. The migration was postponed.
         public var legacyStillRunning: [Int32] = []
+
+        /// An old copy would not quit. The caller must show a message and exit
+        /// before any store, hotkey tap or write: that copy still owns its folder.
+        public var mustQuitForLegacyCopy: Bool { !legacyStillRunning.isEmpty }
     }
 
     /// Before anything touches the data folder, the preferences or the key store.
     ///
     /// - A normal launch first asks any running copy of the old app to quit. If
-    ///   one is still running after a short wait, nothing is moved this launch
-    ///   (the old app may still be writing to its folder); the old preferences
-    ///   apply in memory and the caller reads the old folder until the next launch.
-    ///   Otherwise it migrates files and preferences and returns the report.
+    ///   one is still running after a short wait, nothing is moved and the outcome
+    ///   says so (`mustQuitForLegacyCopy`): that copy still owns its folder, so the
+    ///   caller shows a message and exits rather than run beside it. Otherwise it
+    ///   migrates files and preferences and returns the report.
     /// - A render or forced first run migrates nothing; it applies the old
     ///   preferences in memory so the screen shows the user's real settings.
     /// - Migrate-only returns no report here (`migrateOnlySummary` runs it).
@@ -658,7 +737,7 @@ public enum LaunchMigration {
             let (found, remaining) = legacyInstances.clear()
             let migration = makeMigration(environment)
             if !remaining.isEmpty {
-                migration.registerLegacyDefaultsInMemory()
+                // Nothing is moved, copied or applied: the caller exits.
                 return Outcome(report: nil, legacyFound: found, legacyStillRunning: remaining)
             }
             return Outcome(report: migration.run(), legacyFound: found, legacyStillRunning: [])
@@ -709,6 +788,7 @@ public enum LaunchMigration {
             "discarded": report.discarded,
             "failed": report.failed,
             "legacyFolderRemoved": report.legacyFolderRemoved,
+            "legacyLinkRenamed": report.legacyLinkRenamed,
             "defaultsCopied": report.defaultsCopied,
             "defaultsAlreadyMigrated": report.defaultsAlreadyMigrated,
             "keychain": keychain.rawValue,

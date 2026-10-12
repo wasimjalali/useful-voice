@@ -94,7 +94,7 @@ jobs:
   # An install made under the old Karko appId must be replaced, not duplicated, by
   # the current installer. electron-builder derives the NSIS uninstall key from
   # `build.nsis.guid` (pinned to the old appId's GUID), so this builds the legacy
-  # identity as 0.9.0, installs it, then installs the current build over it.
+  # identity as 0.0.1, installs it, then installs the current build over it.
   windows-upgrade:
     runs-on: windows-latest
     timeout-minutes: 30
@@ -121,14 +121,14 @@ jobs:
       # The legacy config is the current build config minus the pinned nsis.guid, so
       # electron-builder derives the GUID from the old appId exactly as it did for real
       # old installs. The "same uninstall key" assertion below then proves the pin.
-      - name: Build legacy-identity installer (0.9.0)
+      - name: Build legacy-identity installer (0.0.1)
         run: |
           $ErrorActionPreference = 'Stop'
           $cfg = (Get-Content package.json -Raw | ConvertFrom-Json).build
           $cfg.appId = 'ai.karko.usefulvoice'
           $cfg.nsis.PSObject.Properties.Remove('guid')
           if ($cfg.nsis.PSObject.Properties['guid']) { throw 'guid still present in legacy config' }
-          $cfg.extraMetadata | Add-Member -NotePropertyName version -NotePropertyValue '0.9.0' -Force
+          $cfg.extraMetadata | Add-Member -NotePropertyName version -NotePropertyValue '0.0.1' -Force
           $cfg.directories.output = 'release-old'
           $cfg | ConvertTo-Json -Depth 20 | Set-Content legacy-builder.json -Encoding utf8
           npx electron-builder --win nsis --publish never --config legacy-builder.json
@@ -187,7 +187,7 @@ jobs:
           $old = @(Get-UvEntries)
           Show-Entries 'after old install' $old
           if ($old.Count -ne 1 -or $old[0].Hive -ne 'HKCU') { throw "Expected 1 HKCU Useful Voice entry after the old install, found $($old.Count): $(($old | ForEach-Object { $_.Hive + ':' + $_.Key }) -join ', ')" }
-          if ($old[0].DisplayVersion -ne '0.9.0') { throw "Expected DisplayVersion 0.9.0, found $($old[0].DisplayVersion)" }
+          if ($old[0].DisplayVersion -ne '0.0.1') { throw "Expected DisplayVersion 0.0.1, found $($old[0].DisplayVersion)" }
 
           Install-Silent 'release-new'
           $new = @(Get-UvEntries)

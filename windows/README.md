@@ -41,7 +41,7 @@ These are honestly unverified. They are the parts that touch Windows itself:
 - **Clipboard save/restore and Ctrl+V delivery** into Notepad, Word, browsers,
   Electron apps and terminals.
 - **Tray icon rendering** at real Windows DPI settings.
-- **The installer flow** (`Useful Voice-1.0.0-x64.exe`) and the portable build on a
+- **The installer flow** (`Useful Voice-0.1.0-x64.exe`) and the portable build on a
   clean machine.
 - **DPAPI key encryption** on a real user profile.
 
@@ -72,9 +72,9 @@ npm run dist:portable   # portable exe only
 
 Artifacts land in `release/`:
 
-- `Useful Voice-1.0.0-x64.exe`: per-user installer (no admin prompt) with a
+- `Useful Voice-0.1.0-x64.exe`: per-user installer (no admin prompt) with a
   Start-menu shortcut and an uninstaller that **keeps your data**.
-- `Useful Voice-1.0.0-portable.exe`: single file, no installation.
+- `Useful Voice-0.1.0-portable.exe`: single file, no installation.
 
 ### Code signing
 

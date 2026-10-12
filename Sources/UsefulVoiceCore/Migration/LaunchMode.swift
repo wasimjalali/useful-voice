@@ -26,6 +26,51 @@ public enum LaunchMode: Equatable, Sendable {
         return .normal
     }
 
+    /// Set in-process by `main.swift` when an older copy of the app refused to quit:
+    /// the migration is postponed to a later launch and this launch reads the old
+    /// data folder, like a render, without migrating.
+    public static let legacyFallbackVariable = "UV_LEGACY_FALLBACK"
+
+    /// A real launch that is allowed to migrate and to write preferences.
+    public static func migrationAllowed(environment: [String: String]) -> Bool {
+        current(environment: environment) == .normal && environment[legacyFallbackVariable] != "1"
+    }
+
+    /// Why migrate-only must not start, or `nil` when it may.
+    ///
+    /// The hook moves real files and consumes the real login-at-login signal, so it
+    /// is refused unless `CFFIXED_USER_HOME` points somewhere other than the real
+    /// home. (The test prefix covers preferences and the Keychain only; files
+    /// follow the home directory.)
+    public static func migrateOnlyRefusal(
+        environment: [String: String],
+        realHome: String = realHomeDirectory
+    ) -> String? {
+        guard environment[migrateOnlyVariable] == "1" else { return nil }
+        if migrateOnlyConflictsWithPreview(environment: environment) {
+            return "UV_MIGRATE_ONLY cannot be combined with UV_SNAPSHOT or UV_FIRST_RUN=force"
+        }
+        guard let fixed = environment["CFFIXED_USER_HOME"], !fixed.isEmpty else {
+            return "UV_MIGRATE_ONLY moves real files: set CFFIXED_USER_HOME to a scratch home first"
+        }
+        func normal(_ path: String) -> String {
+            URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
+        }
+        if normal(fixed) == normal(realHome) {
+            return "UV_MIGRATE_ONLY moves real files: CFFIXED_USER_HOME is the real home, use a scratch home"
+        }
+        return nil
+    }
+
+    /// The account's home from the user database, which `HOME` and
+    /// `CFFIXED_USER_HOME` cannot change.
+    public static var realHomeDirectory: String {
+        if let entry = getpwuid(getuid()), let dir = entry.pointee.pw_dir {
+            return String(cString: dir)
+        }
+        return NSHomeDirectory()
+    }
+
     /// Both a render and migrate-only were asked for. The caller refuses to
     /// start rather than silently ignoring one of them.
     public static func migrateOnlyConflictsWithPreview(environment: [String: String]) -> Bool {
@@ -49,7 +94,8 @@ public enum DataFolder {
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL {
         resolve(appSupport: appSupport,
-                preview: LaunchMode.current(environment: environment) == .preview)
+                preview: LaunchMode.current(environment: environment) == .preview
+                    || environment[LaunchMode.legacyFallbackVariable] == "1")
     }
 
     /// The new folder, except in a preview run that finds the previous identity's

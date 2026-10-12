@@ -70,8 +70,10 @@ public final class Diagnostics: @unchecked Sendable {
         self.directory = directory
     }
 
-    public static func defaultDirectory() -> URL? {
-        DataFolder.current()
+    public static func defaultDirectory(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL? {
+        DataFolder.current(environment: environment)
     }
 
     /// Whether the process is a test run rather than the app.

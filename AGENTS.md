@@ -97,10 +97,15 @@ The app is `ai.useful.voice` (executable `UsefulVoice`, data in `~/Library/Appli
 Keychain service `ai.useful.voice`), signed by `make bundle` with the self-signed "Useful Voice Release"
 certificate. Never create a new one: a new certificate resets every user's Accessibility and Microphone grants.
 On another Mac, import the `.p12` from the password manager (`scripts/setup-signing.sh` prints how).
+The rename itself needs one Accessibility and Microphone re-grant per user (macOS keys those grants to the bundle id);
+the existing "Accessibility is off" banner already shows until it is done, so there is no extra notice.
 Builds before the rename were `ai.karko.sadaa` with data in `Sadaa/`; `Sources/UsefulVoiceCore/Migration/IdentityMigration.swift`
 moves the files, preferences and Keychain item once at launch (snapshot and `UV_FIRST_RUN=force` runs never migrate; they read
-`Sadaa/` while it still holds data). `UV_MIGRATE_ONLY=1` runs only the migration, prints a JSON summary and exits;
-with `UV_MIGRATION_TEST_PREFIX=<p>` it uses prefixed Keychain and defaults names so a check never touches the real ones.
+`Sadaa/` while it still holds data). An old-identity copy still running is asked to quit first; if it stays, the move waits
+for the next launch. `UV_MIGRATE_ONLY=1` runs only the migration, prints a JSON summary and exits, and refuses to start
+(exit 2) unless `CFFIXED_USER_HOME` points at a scratch home, because it moves real files. `UV_MIGRATION_TEST_PREFIX=<p>`
+prefixes only the defaults domains and Keychain services, so a check never touches the real ones; files follow the scratch
+home. `scripts/e2e-identity-migration.sh <app bundle> <source data folder> <out dir>` runs the whole thing on a copy.
 Windows keeps `%APPDATA%\Useful Voice`; `build.nsis.guid` is pinned to the old appId's GUID so installers upgrade in place
 (the `windows-upgrade` CI job proves it).
 

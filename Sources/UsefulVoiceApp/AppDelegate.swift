@@ -6,9 +6,10 @@ import UsefulVoiceCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    /// What the one-time identity migration did at this launch (nil in a render
-    /// or forced first-run, which never migrate).
-    private let migrationReport: IdentityMigration.Report?
+    /// What the one-time identity migration did at this launch (no report in a
+    /// render or forced first run, which never migrate, or when an older copy of
+    /// the app would not quit).
+    private let launch: LaunchMigration.Outcome
     private var statusItem: NSStatusItem?
     /// The menu bar menu and its header row (see MenuBarMenu).
     private var menuBar: MenuBarMenu?
@@ -43,9 +44,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// actually ended (retryLast jumps straight to .transcribing).
     private var lastDictationState: DictationState = .idle
 
-    init(migrationReport: IdentityMigration.Report?) {
-        self.migrationReport = migrationReport
+    init(launch: LaunchMigration.Outcome) {
+        self.launch = launch
         super.init()
+    }
+
+    /// Whether this process may migrate and write preferences: a real launch with
+    /// no older copy of the app still running.
+    private var migrationAllowed: Bool {
+        LaunchMode.migrationAllowed(environment: ProcessInfo.processInfo.environment)
     }
 
     /// A dictation is mid-flight (recording or processing).
@@ -99,11 +106,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !isSnapshot, SingleInstance.yieldToExistingInstance() { return }
         // Settles the English default for new installs while an existing one
         // stays on Auto-detect. Must run before anything reads the language.
-        // A forced first-run preview saves nothing, so it skips this too.
-        if !FirstRunGate.isForced(environment: ProcessInfo.processInfo.environment) {
+        // A render or forced first-run preview saves nothing, so it skips this too.
+        if migrationAllowed {
             settings.resolveLanguageDefault(hasPriorData: hasPriorData())
         }
 
+        recordLegacyCopyDiagnostic()
         restoreLaunchAtLoginIfNeeded()
 
         // Recorded before the key cache is primed, because priming can block
@@ -174,20 +182,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// An older copy of the app (the previous bundle id) keeps its own hotkey tap
+    /// and its own data folder, so it is worth a line in the log, which the
+    /// Diagnostics section of Settings shows: the user can then delete that copy.
+    private func recordLegacyCopyDiagnostic() {
+        guard !launch.legacyFound.isEmpty else { return }
+        if launch.legacyStillRunning.isEmpty {
+            Diagnostics.shared.warning(
+                "identity-migration",
+                "an older copy of the app (\(IdentityMigration.Legacy.bundleID)) was running and was asked to quit; delete that copy so it cannot start again")
+        } else {
+            Diagnostics.shared.warning(
+                "identity-migration",
+                "an older copy of the app (\(IdentityMigration.Legacy.bundleID)) is still running, so your data was not moved this launch (it moves next launch). Quit and delete that copy")
+        }
+    }
+
     /// Launch at login is registered per bundle id, so a user who had it on under
     /// the old identity would silently lose it. The old build's last launch line
-    /// in `diagnostics.log` says whether it was on (`IdentityMigration` read it
-    /// before the file moved); this turns it on again, once. No signal, no change.
+    /// in `diagnostics.log` said whether it was on (`IdentityMigration` read it
+    /// before the file moved and left a pending flag); this turns it on again and
+    /// clears the flag only once it is confirmed on. No signal, no change.
     private func restoreLaunchAtLoginIfNeeded() {
-        guard migrationReport?.legacyLaunchedAtLogin == true, !LoginItem.isEnabled else { return }
-        do {
-            try LoginItem.setEnabled(true)
-            Diagnostics.shared.info("identity-migration", "launch at login turned back on under the new app identity")
-        } catch {
-            Diagnostics.shared.failure(
-                "identity-migration", error,
-                context: "could not turn launch at login back on after the rename")
-        }
+        guard migrationAllowed else { return }
+        IdentityMigration.live().restoreLoginItemIfPending(
+            isEnabled: { LoginItem.isEnabled },
+            enable: { try LoginItem.setEnabled(true) })
     }
 
     /// Whether this Mac has used the app before: history, usage stats or a
@@ -281,7 +301,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // The one-time move of the key from the old Keychain service, on the
             // key store's own queue and ahead of its first read. A render or a
             // forced first run never migrates.
-            if LaunchMode.current(environment: ProcessInfo.processInfo.environment) == .normal {
+            if LaunchMode.migrationAllowed(environment: ProcessInfo.processInfo.environment) {
                 DeepgramKeyStore.shared.migrateLegacyKey(with: IdentityMigration.live())
             }
             DeepgramKeyStore.shared.load()
@@ -605,15 +625,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func reprocessHistory(_ record: DictationRecord) {
+        // The stored path is absolute and predates the data folder rename, so it is
+        // resolved against today's Recordings folder when it no longer exists.
         guard let audioPath = record.audioPath,
-              FileManager.default.fileExists(atPath: audioPath),
+              let audioURL = RecordingLocator.resolve(
+                  storedPath: audioPath,
+                  recordingsDirectory: DataFolder.current().appendingPathComponent("Recordings")),
               let languageMemory
         else {
             viewModel?.reprocessHistoryTextOnly(record)
             return
         }
 
-        let audioURL = URL(fileURLWithPath: audioPath)
         // Reprocess in the language the dictation ran in, not whatever is
         // pinned now - a German record re-runs its German rules even if the
         // user has since switched to English. `resolvedPin` validates the

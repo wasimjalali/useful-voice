@@ -1,4 +1,5 @@
 import AppKit
+import UsefulVoiceCore
 
 /// Save and restore the user's clipboard around a synthetic paste or copy.
 ///
@@ -14,6 +15,9 @@ enum Clipboard {
     /// (faking a consumed paste) and capture our own dictation as "the user's
     /// clipboard".
     static let deliveryMarker = NSPasteboard.PasteboardType("ai.useful.voice.delivery")
+    /// The marker the previous app identity put on its own paste. A paste it left
+    /// on the clipboard is still ours, not the user's data.
+    static let legacyDeliveryMarker = NSPasteboard.PasteboardType(IdentityMigration.Legacy.deliveryMarker)
 
     /// Types we copy out eagerly. Reading an arbitrary pasteboard type can be a
     /// blocking IPC round trip to the app that owns the data (a promised file
@@ -42,7 +46,9 @@ enum Clipboard {
     /// Deep-copy the current items so they survive a `clearContents()`.
     static func snapshot(_ pasteboard: NSPasteboard = .general) -> SnapshotResult {
         guard let items = pasteboard.pasteboardItems else { return .empty }
-        let userItems = items.filter { !$0.types.contains(deliveryMarker) }
+        let userItems = items.filter {
+            !$0.types.contains(deliveryMarker) && !$0.types.contains(legacyDeliveryMarker)
+        }
         guard !userItems.isEmpty else { return .empty }
 
         var copies: [NSPasteboardItem] = []

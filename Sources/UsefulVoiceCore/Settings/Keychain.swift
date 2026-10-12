@@ -49,7 +49,7 @@ public enum Keychain {
     /// configured" when the truth was that it had been refused permission to read
     /// the key it had. The user's only recourse — re-entering a working key — was
     /// exactly the wrong one.
-    public enum Lookup: Equatable {
+    public enum Lookup: Equatable, Sendable {
         /// The item exists and its data decoded.
         case found(String)
         /// No item is stored under this account. The only case that means
@@ -67,6 +67,20 @@ public enum Keychain {
 
     /// Reads an item while distinguishing absence from refusal.
     public static func lookup(account: String, service: String = Keychain.service) -> Lookup {
+        lookupWithStatus(account: account, service: service).lookup
+    }
+
+    /// True when the status means the user (or the system on their behalf) refused
+    /// access, as opposed to a transient state such as a locked keychain.
+    public static func isUserDenial(status: OSStatus) -> Bool {
+        status == errSecUserCanceled || status == errSecAuthFailed
+    }
+
+    /// `lookup`, plus the raw status, for callers that must tell a refusal from a
+    /// transient failure (the identity migration retries the latter).
+    public static func lookupWithStatus(
+        account: String, service: String = Keychain.service
+    ) -> (lookup: Lookup, status: OSStatus) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -76,7 +90,7 @@ public enum Keychain {
         ]
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        return classify(status: status, result: result)
+        return (classify(status: status, result: result), status)
     }
 
     /// Turns a `SecItemCopyMatching` result into a `Lookup`.

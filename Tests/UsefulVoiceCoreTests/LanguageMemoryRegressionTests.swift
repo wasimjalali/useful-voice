@@ -52,15 +52,15 @@ import Testing
     @Test func testSelfContainingRuleIsNotAppliedTwice() {
         // An alias whose replacement contains its own match. The post-processor
         // applies rules, expands snippets, then applies rules again; without the
-        // first-pass filter this produced "Karko AI AI".
-        let term = MemoryTerm(phrase: "Karko AI", aliases: ["Karko"], priority: .always)
+        // first-pass filter this produced "Acme AI AI".
+        let term = MemoryTerm(phrase: "Acme AI", aliases: ["Acme"], priority: .always)
         let snapshot = LanguageMemorySnapshot(terms: [term])
         let result = LanguageMemoryPostProcessor.rawResult(
-            for: "Karko",
+            for: "Acme",
             snapshot: snapshot,
             language: .en
         )
-        #expect(result.text == "Karko AI")
+        #expect(result.text == "Acme AI")
     }
 
     @Test func testSelfContainingRuleIsNotTripled() {

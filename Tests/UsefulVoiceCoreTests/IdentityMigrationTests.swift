@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import Testing
 @testable import UsefulVoiceCore
 
@@ -123,8 +124,12 @@ private final class FakeMigrationKeychain: MigrationKeychain, @unchecked Sendabl
     private var items: [String: String] = [:]
 
     var lookupOverride: [String: Keychain.Lookup] = [:]   // by service
+    var deniedServices: Set<String> = []                   // overridden lookups that are user refusals
     var failWrites = false
     var failDeletes: Set<String> = []                      // services
+    var denyDeletes: Set<String> = []                      // services whose delete the user refuses
+    /// Runs after `exists` has computed its answer, to simulate another process.
+    var afterExists: [String: () -> Void] = [:]
     var corruptWrites = false                              // stored value differs from the written one
     private(set) var lookups: [String] = []
     private(set) var existsCalls: [String] = []
@@ -145,15 +150,22 @@ private final class FakeMigrationKeychain: MigrationKeychain, @unchecked Sendabl
     func exists(service: String, account: String) -> Bool {
         lock.lock(); defer { lock.unlock() }
         existsCalls.append(service)
-        return items[key(service, account)] != nil
+        let answer = items[key(service, account)] != nil
+        let hook = afterExists[service]
+        lock.unlock()
+        hook?()
+        lock.lock()
+        return answer
     }
 
-    func lookup(service: String, account: String) -> Keychain.Lookup {
+    func lookup(service: String, account: String) -> MigrationLookup {
         lock.lock(); defer { lock.unlock() }
         lookups.append(service)
-        if let forced = lookupOverride[service] { return forced }
-        guard let value = items[key(service, account)] else { return .absent }
-        return .found(value)
+        if let forced = lookupOverride[service] {
+            return MigrationLookup(forced, userDenied: deniedServices.contains(service))
+        }
+        guard let value = items[key(service, account)] else { return MigrationLookup(.absent) }
+        return MigrationLookup(.found(value))
     }
 
     func write(_ value: String, service: String, account: String) throws {
@@ -165,6 +177,7 @@ private final class FakeMigrationKeychain: MigrationKeychain, @unchecked Sendabl
     func delete(service: String, account: String) throws {
         lock.lock(); defer { lock.unlock() }
         deletes.append(service)
+        if denyDeletes.contains(service) { throw KeychainError.unexpectedStatus(errSecUserCanceled) }
         if failDeletes.contains(service) { throw KeychainError.unexpectedStatus(-25308) }
         items[key(service, account)] = nil
     }
@@ -205,8 +218,11 @@ private struct Harness {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("uv-migration-\(id)")
         appSupport = root.appendingPathComponent("Application Support")
         names = IdentityMigration.Names(
-            legacyDefaultsDomain: "uv.test.legacy.\(id)",
-            newDefaultsDomain: "uv.test.new.\(id)",
+            // An absolute path is a preferences domain stored at that path, so the
+            // plist lives in this test's temp folder and is deleted with it, not in
+            // ~/Library/Preferences.
+            legacyDefaultsDomain: root.appendingPathComponent("legacy-defaults").path,
+            newDefaultsDomain: root.appendingPathComponent("new-defaults").path,
             legacyKeychainService: "uv.test.legacy.service.\(id)",
             newKeychainService: "uv.test.new.service.\(id)",
             legacyFolderName: "LegacyFolder",
@@ -233,20 +249,9 @@ private struct Harness {
     }
 
     func cleanUp() {
-        Self.removeDomain(names.newDefaultsDomain)
+        defaults.removePersistentDomain(forName: names.newDefaultsDomain)
+        defaults.synchronize()
         try? FileManager.default.removeItem(at: root)
-    }
-
-    /// Removes a throwaway preferences domain and the empty plist it leaves behind,
-    /// so the suite does not litter `~/Library/Preferences`.
-    static func removeDomain(_ name: String) {
-        let suite = UserDefaults(suiteName: name)
-        suite?.removePersistentDomain(forName: name)
-        suite?.synchronize()   // flush before deleting the file, or the daemon rewrites it
-        if let library = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first {
-            try? FileManager.default.removeItem(
-                at: library.appendingPathComponent("Preferences/\(name).plist"))
-        }
     }
 
     func legacy(_ name: String, _ text: String) {
@@ -561,9 +566,12 @@ struct IdentityMigrationDefaultsTests {
     }
 
     @Test func theLegacyDomainIsLeftUntouched() {
-        let legacyName = "uv.test.legacy.real.\(UUID().uuidString)"
+        let legacyRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("uv-legacy-defaults-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: legacyRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: legacyRoot) }
+        let legacyName = legacyRoot.appendingPathComponent("legacy").path
         let legacySuite = UserDefaults(suiteName: legacyName)!
-        defer { Harness.removeDomain(legacyName) }
         legacySuite.set("dark", forKey: "appearance")
         legacySuite.set(true, forKey: "uv.firstRunCompleted")
 
@@ -657,9 +665,9 @@ struct IdentityMigrationKeychainTests {
 
         #expect(outcome == .alreadyPresent)
         #expect(h.keychain.lookups.isEmpty)               // no decrypting read, so no prompt
-        #expect(h.keychain.deletes.isEmpty)
         #expect(h.keychain.value(service: h.names.newKeychainService) == "new-key")
-        #expect(h.keychain.value(service: h.names.legacyKeychainService) == "old-key")
+        // The leftover old copy is cleaned up without ever being read.
+        #expect(h.keychain.value(service: h.names.legacyKeychainService) == nil)
     }
 
     @Test func nothingStoredAnywhereIsAbsent() {
@@ -676,6 +684,7 @@ struct IdentityMigrationKeychainTests {
         let h = Harness(); defer { h.cleanUp() }
         h.keychain.seed("old-key", service: h.names.legacyKeychainService)
         h.keychain.lookupOverride[h.names.legacyKeychainService] = .unavailable("keychain access was denied")
+        h.keychain.deniedServices = [h.names.legacyKeychainService]
 
         let first = h.migration().migrateKeychain(diagnostics: h.silentDiagnostics())
 
@@ -701,7 +710,10 @@ struct IdentityMigrationKeychainTests {
         #expect(outcome == .writeFailed)
         #expect(h.keychain.deletes.isEmpty)
         #expect(h.keychain.value(service: h.names.legacyKeychainService) == "old-key")
-        #expect(h.defaults.bool(forKey: IdentityMigration.keychainAttemptedFlag))
+        // Not a refusal, so not remembered: the next launch tries again and works.
+        #expect(!h.defaults.bool(forKey: IdentityMigration.keychainAttemptedFlag))
+        h.keychain.failWrites = false
+        #expect(h.migration().migrateKeychain(diagnostics: h.silentDiagnostics()) == .migrated)
     }
 
     @Test func aFailedVerifyRemovesTheCopyAndKeepsTheLegacyItem() {
@@ -715,7 +727,7 @@ struct IdentityMigrationKeychainTests {
         #expect(h.keychain.value(service: h.names.newKeychainService) == nil)   // the bad copy is gone
         #expect(h.keychain.value(service: h.names.legacyKeychainService) == "old-key")
         #expect(h.keychain.deletes == [h.names.newKeychainService])
-        #expect(h.defaults.bool(forKey: IdentityMigration.keychainAttemptedFlag))
+        #expect(!h.defaults.bool(forKey: IdentityMigration.keychainAttemptedFlag))
     }
 
     @Test func aLeftoverLegacyItemDoesNotUndoAGoodMigration() {
@@ -728,8 +740,12 @@ struct IdentityMigrationKeychainTests {
         #expect(first == .migratedLegacyRemains)
         #expect(h.keychain.value(service: h.names.newKeychainService) == "old-key")
 
+        // The next launch finds the new item and retries removing the leftover.
+        h.keychain.failDeletes = []
         let second = h.migration().migrateKeychain(diagnostics: h.silentDiagnostics())
         #expect(second == .alreadyPresent)
+        #expect(h.keychain.value(service: h.names.legacyKeychainService) == nil)
+        #expect(h.keychain.lookups == [h.names.legacyKeychainService, h.names.newKeychainService])   // never re-read
     }
 
     /// The same steps against the real Keychain, under throwaway service names. The
@@ -920,12 +936,16 @@ struct LoginSignalTests {
 
         let first = h.migration().run(diagnostics: h.silentDiagnostics())
         #expect(first.legacyLaunchedAtLogin == true)
+        #expect(h.defaults.bool(forKey: IdentityMigration.loginRestorePendingFlag))
 
-        // A clash keeps the old log in the old folder; the signal must not fire again.
+        // The restore happened. A clash then keeps an old log in the old folder; it
+        // must not set the flag again behind the user's back.
+        h.defaults.removeObject(forKey: IdentityMigration.loginRestorePendingFlag)
         h.legacy("diagnostics.log", line("starts at login") + "\n")
         h.new("diagnostics.log", "new")
         let second = h.migration().run(diagnostics: h.silentDiagnostics())
         #expect(second.legacyLaunchedAtLogin == nil)
+        #expect(!h.defaults.bool(forKey: IdentityMigration.loginRestorePendingFlag))
     }
 
     @Test func theSignalIsReadEvenWhenTheLogClashes() {
@@ -946,5 +966,554 @@ struct LoginSignalTests {
         let report = h.migration().run(diagnostics: h.silentDiagnostics())
 
         #expect(report.legacyLaunchedAtLogin == nil)
+    }
+}
+
+// MARK: - Review round 1: more failure modes
+//
+//  R1  Stored absolute recording paths still point into the old folder after the
+//      move: they must resolve inside today's Recordings folder, and only there.
+//      -> RecordingLocatorTests
+//  R2  An older copy of the app runs beside the new one: it is asked to quit,
+//      waited for (bounded), and if it stays the migration is postponed.
+//      -> LegacyInstancesTests, LaunchMigrationTests
+//  R3  keyIsStored must not see both items missing while a migration swaps them.
+//      -> keyPresenceChecksTheLegacyItemFirst
+//  R4  A transient Keychain failure (locked at login, failed write, bad read-back)
+//      is retried next launch; only a refusal is remembered.
+//      -> aLockedKeychainIsRetriedNextLaunch, aFailedVerifyThatCannotReadBackIsRetried,
+//         aFailedWriteLeavesTheLegacyItemAlone, aDeniedReadDeletesNothingAndIsNeverRetried
+//  R5  A listed item that then reads as absent is "absent", not a crash.
+//      -> anItemThatVanishesBetweenExistsAndReadIsAbsent
+//  R6  Launch at login stays pending until confirmed on.
+//      -> LoginRestoreTests
+//  R7  Migrate-only is refused unless CFFIXED_USER_HOME is a scratch home.
+//      -> MigrateOnlyRefusalTests
+//  R8  Finder litter clashes vanish; a clash is logged once; models/ is not walked.
+//      -> disposableClashesAreDropped, aClashIsLoggedOnce, onlyMovedEntriesAreRestricted
+//  R9  Removing the key also removes the old identity's copy; a leftover is retried.
+//      -> removingTheKeyAlsoRemovesTheLegacyCopy, aLeftoverIsCleanedUpOnALaterLaunch,
+//         aRefusedLeftoverDeleteIsNotAskedAgain
+//  R10 Log > 64 KB, a symlinked old folder, a regular file where the new folder
+//      goes, a real Diagnostics launch line.
+//      -> hugeLegacyLogOnlyItsTailIsRead, aSymlinkedLegacyFolderIsLeftAlone,
+//         aRegularFileWhereTheNewFolderGoesFailsLoudly, theRealLaunchLineIsParsed
+//  R11 A postponed launch (older copy still running) touches nothing.
+//      -> runWithoutMovingFilesDoesNothing, LaunchMigrationTests
+
+@Suite("Identity migration: recordings")
+struct RecordingLocatorTests {
+    private func makeRecordings() -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("uv-rec-\(UUID().uuidString)/Recordings")
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    @Test func aStoredPathThatStillExistsWins() throws {
+        let dir = makeRecordings(); defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
+        let elsewhere = dir.deletingLastPathComponent().appendingPathComponent("keep.wav")
+        try Data("a".utf8).write(to: elsewhere)
+        try Data("b".utf8).write(to: dir.appendingPathComponent("keep.wav"))
+
+        let url = RecordingLocator.resolve(storedPath: elsewhere.path, recordingsDirectory: dir)
+
+        #expect(url?.path == elsewhere.path)
+    }
+
+    @Test func aPathInTheOldFolderResolvesInsideTheNewRecordingsFolder() throws {
+        let dir = makeRecordings(); defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
+        try Data("a".utf8).write(to: dir.appendingPathComponent("20261001-090000.wav"))
+
+        let url = RecordingLocator.resolve(
+            storedPath: "/Users/someone/Library/Application Support/Sadaa/Recordings/20261001-090000.wav",
+            recordingsDirectory: dir)
+
+        #expect(url?.path == dir.appendingPathComponent("20261001-090000.wav").path)
+    }
+
+    @Test func aMissingFileOrAHostileNameResolvesToNothing() throws {
+        let dir = makeRecordings(); defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
+        // A secret next to (not inside) the recordings folder.
+        try Data("secret".utf8).write(to: dir.deletingLastPathComponent().appendingPathComponent("secret.txt"))
+
+        #expect(RecordingLocator.resolve(storedPath: "/gone/Recordings/x.wav", recordingsDirectory: dir) == nil)
+        #expect(RecordingLocator.resolve(storedPath: "/gone/Recordings/../secret.txt", recordingsDirectory: dir) == nil)
+        #expect(RecordingLocator.resolve(storedPath: "/gone/Recordings/..", recordingsDirectory: dir) == nil)
+        #expect(RecordingLocator.resolve(storedPath: "", recordingsDirectory: dir) == nil)
+        #expect(RecordingLocator.resolve(storedPath: "/", recordingsDirectory: dir) == nil)
+    }
+
+    /// The real sequence: a record written by the old build, then the migration,
+    /// then Retry looks the recording up.
+    @Test func aSadaaPathRecordWorksAfterTheMigration() {
+        let h = Harness(); defer { h.cleanUp() }
+        let oldPath = h.legacyFolder.appendingPathComponent("Recordings/r1.wav").path
+        h.legacy("Recordings/r1.wav", "audio")
+        let record = DictationRecord(text: "hi", createdAt: Date(), language: "en",
+                                     provider: "deepgram", durationSeconds: 1, audioPath: oldPath)
+        _ = h.migration().run(diagnostics: h.silentDiagnostics())
+        #expect(!h.exists(URL(fileURLWithPath: oldPath)))
+
+        let url = RecordingLocator.resolve(
+            storedPath: record.audioPath ?? "",
+            recordingsDirectory: h.newFolder.appendingPathComponent("Recordings"))
+
+        #expect(url?.path == h.newFolder.appendingPathComponent("Recordings/r1.wav").path)
+        #expect(url.flatMap { h.text($0) } == "audio")
+    }
+}
+
+private final class FakeLegacyCopies: @unchecked Sendable {
+    var running: [Int32]
+    let quitsWhenAsked: Bool
+    private(set) var quitRequests = 0
+    private(set) var sleeps: [TimeInterval] = []
+
+    init(running: [Int32], quitsWhenAsked: Bool) {
+        self.running = running
+        self.quitsWhenAsked = quitsWhenAsked
+    }
+
+    var instances: LegacyInstances {
+        LegacyInstances(
+            runningPIDs: { self.running },
+            requestQuit: {
+                self.quitRequests += 1
+                if self.quitsWhenAsked { self.running = [] }
+            },
+            sleep: { self.sleeps.append($0) })
+    }
+}
+
+@Suite("Identity migration: older copies")
+struct LegacyInstancesTests {
+    @Test func nothingRunningMeansNothingAsked() {
+        let fake = FakeLegacyCopies(running: [], quitsWhenAsked: true)
+        let result = fake.instances.clear()
+        #expect(result.found.isEmpty && result.remaining.isEmpty)
+        #expect(fake.quitRequests == 0)
+    }
+
+    @Test func aCopyThatQuitsIsWaitedFor() {
+        let fake = FakeLegacyCopies(running: [42], quitsWhenAsked: true)
+        let result = fake.instances.clear()
+        #expect(result.found == [42])
+        #expect(result.remaining.isEmpty)
+        #expect(fake.quitRequests == 1)
+    }
+
+    @Test func aCopyThatStaysIsReportedAfterABoundedWait() {
+        let fake = FakeLegacyCopies(running: [42, 43], quitsWhenAsked: false)
+        let result = fake.instances.clear(timeout: 1, poll: 0.25)
+        #expect(result.remaining == [42, 43])
+        #expect(fake.quitRequests == 1)             // asked politely once, never killed
+        #expect(fake.sleeps.count == 4)             // bounded: timeout / poll
+    }
+}
+
+@Suite("Identity migration: launch")
+struct LaunchMigrationTests {
+    private func seeded() -> Harness {
+        let h = Harness(legacyDefaults: ["uv.test.launch.\(UUID().uuidString)": "x"])
+        h.legacy("history.json", "[1]")
+        return h
+    }
+
+    @Test func aNormalLaunchMigrates() {
+        let h = seeded(); defer { h.cleanUp() }
+        let outcome = LaunchMigration.runAtLaunch(
+            environment: [:], makeMigration: { _ in h.migration() }, legacyInstances: .none)
+
+        #expect(outcome.report?.moved == ["history.json"])
+        #expect(outcome.legacyStillRunning.isEmpty)
+        #expect(h.exists(h.newFolder.appendingPathComponent("history.json")))
+    }
+
+    @Test func aRenderOrForcedFirstRunMigratesNothing() {
+        for environment in [["UV_SNAPSHOT": "/tmp/x.png@10x10"], ["UV_FIRST_RUN": "force"]] {
+            let h = seeded(); defer { h.cleanUp() }
+            let outcome = LaunchMigration.runAtLaunch(
+                environment: environment, makeMigration: { _ in h.migration() }, legacyInstances: .none)
+
+            #expect(outcome.report == nil)
+            #expect(h.exists(h.legacyFolder.appendingPathComponent("history.json")))
+            #expect(!h.exists(h.newFolder))
+            #expect(!h.defaults.bool(forKey: IdentityMigration.migratedFlag))
+        }
+    }
+
+    @Test func migrateOnlyIsNotRunByTheLaunchPath() {
+        let h = seeded(); defer { h.cleanUp() }
+        let outcome = LaunchMigration.runAtLaunch(
+            environment: ["UV_MIGRATE_ONLY": "1"], makeMigration: { _ in h.migration() }, legacyInstances: .none)
+
+        #expect(outcome.report == nil)
+        #expect(h.exists(h.legacyFolder.appendingPathComponent("history.json")))
+    }
+
+    @Test func anOlderCopyThatQuitsLetsTheMigrationRun() {
+        let h = seeded(); defer { h.cleanUp() }
+        let fake = FakeLegacyCopies(running: [7], quitsWhenAsked: true)
+
+        let outcome = LaunchMigration.runAtLaunch(
+            environment: [:], makeMigration: { _ in h.migration() }, legacyInstances: fake.instances)
+
+        #expect(outcome.legacyFound == [7])
+        #expect(outcome.legacyStillRunning.isEmpty)
+        #expect(outcome.report?.moved == ["history.json"])
+    }
+
+    @Test func anOlderCopyThatStaysPostponesTheMigrationAndTouchesNothing() {
+        let key = "uv.test.launch.\(UUID().uuidString)"
+        let h = Harness(legacyDefaults: [key: "x"]); defer { h.cleanUp() }
+        h.legacy("history.json", "[1]")
+        let fake = FakeLegacyCopies(running: [7], quitsWhenAsked: false)
+
+        let outcome = LaunchMigration.runAtLaunch(
+            environment: [:], makeMigration: { _ in h.migration() }, legacyInstances: fake.instances)
+
+        #expect(outcome.report == nil)
+        #expect(outcome.legacyStillRunning == [7])
+        #expect(h.exists(h.legacyFolder.appendingPathComponent("history.json")))
+        #expect(!h.exists(h.newFolder))
+        #expect(!h.defaults.bool(forKey: IdentityMigration.migratedFlag))
+        // The old preferences still apply, in memory.
+        #expect(h.defaults.string(forKey: key) == "x")
+        // And a later launch, with the old copy gone, finishes the job.
+        let later = LaunchMigration.runAtLaunch(
+            environment: [:], makeMigration: { _ in h.migration() }, legacyInstances: .none)
+        #expect(later.report?.moved == ["history.json"])
+    }
+
+    @Test func migrationAllowedOnlyForARealLaunchWithoutAFallback() {
+        #expect(LaunchMode.migrationAllowed(environment: [:]))
+        #expect(!LaunchMode.migrationAllowed(environment: ["UV_SNAPSHOT": "x"]))
+        #expect(!LaunchMode.migrationAllowed(environment: ["UV_FIRST_RUN": "force"]))
+        #expect(!LaunchMode.migrationAllowed(environment: [LaunchMode.legacyFallbackVariable: "1"]))
+    }
+}
+
+@Suite("Identity migration: migrate-only guard")
+struct MigrateOnlyRefusalTests {
+    private let home = "/Users/real"
+
+    @Test func refusedWithoutAScratchHome() {
+        let base = ["UV_MIGRATE_ONLY": "1"]
+        #expect(LaunchMode.migrateOnlyRefusal(environment: base, realHome: home) != nil)
+        #expect(LaunchMode.migrateOnlyRefusal(
+            environment: base.merging(["CFFIXED_USER_HOME": ""]) { $1 }, realHome: home) != nil)
+        #expect(LaunchMode.migrateOnlyRefusal(
+            environment: base.merging(["CFFIXED_USER_HOME": home]) { $1 }, realHome: home) != nil)
+        #expect(LaunchMode.migrateOnlyRefusal(
+            environment: base.merging(["CFFIXED_USER_HOME": home + "/"]) { $1 }, realHome: home) != nil)
+        // A prefix alone does not make it safe: it covers preferences and Keychain only.
+        #expect(LaunchMode.migrateOnlyRefusal(
+            environment: base.merging(["UV_MIGRATION_TEST_PREFIX": "t."]) { $1 }, realHome: home) != nil)
+    }
+
+    @Test func allowedWithAScratchHomeAndIgnoredOtherwise() {
+        #expect(LaunchMode.migrateOnlyRefusal(
+            environment: ["UV_MIGRATE_ONLY": "1", "CFFIXED_USER_HOME": "/private/tmp/scratch"],
+            realHome: home) == nil)
+        #expect(LaunchMode.migrateOnlyRefusal(environment: [:], realHome: home) == nil)
+        #expect(LaunchMode.migrateOnlyRefusal(
+            environment: ["UV_MIGRATE_ONLY": "1", "UV_SNAPSHOT": "x", "CFFIXED_USER_HOME": "/private/tmp/scratch"],
+            realHome: home) != nil)
+    }
+}
+
+@Suite("Identity migration: launch at login restore")
+struct LoginRestoreTests {
+    private func pendingHarness() -> Harness {
+        let h = Harness()
+        h.defaults.set(true, forKey: IdentityMigration.loginRestorePendingFlag)
+        return h
+    }
+
+    @Test func nothingPendingDoesNothing() {
+        let h = Harness(); defer { h.cleanUp() }
+        var enabled = 0
+        let result = h.migration().restoreLoginItemIfPending(
+            isEnabled: { false }, enable: { enabled += 1 }, diagnostics: h.silentDiagnostics())
+        #expect(result == nil)
+        #expect(enabled == 0)
+    }
+
+    @Test func enablesThenClearsThePendingFlag() {
+        let h = pendingHarness(); defer { h.cleanUp() }
+        var on = false
+        let sink = h.silentDiagnostics()
+        let result = h.migration().restoreLoginItemIfPending(
+            isEnabled: { on }, enable: { on = true }, diagnostics: sink)
+        #expect(result == true)
+        #expect(!h.defaults.bool(forKey: IdentityMigration.loginRestorePendingFlag))
+        #expect(sink.entries().contains { $0.message.contains("launch at login turned back on") })
+    }
+
+    @Test func alreadyOnJustClearsTheFlag() {
+        let h = pendingHarness(); defer { h.cleanUp() }
+        var enabled = 0
+        let result = h.migration().restoreLoginItemIfPending(
+            isEnabled: { true }, enable: { enabled += 1 }, diagnostics: h.silentDiagnostics())
+        #expect(result == true)
+        #expect(enabled == 0)
+        #expect(!h.defaults.bool(forKey: IdentityMigration.loginRestorePendingFlag))
+    }
+
+    @Test func aFailedRegistrationStaysPendingForTheNextLaunch() {
+        let h = pendingHarness(); defer { h.cleanUp() }
+        struct Boom: Error {}
+        let first = h.migration().restoreLoginItemIfPending(
+            isEnabled: { false }, enable: { throw Boom() }, diagnostics: h.silentDiagnostics())
+        #expect(first == false)
+        #expect(h.defaults.bool(forKey: IdentityMigration.loginRestorePendingFlag))
+
+        var on = false
+        let second = h.migration().restoreLoginItemIfPending(
+            isEnabled: { on }, enable: { on = true }, diagnostics: h.silentDiagnostics())
+        #expect(second == true)
+        #expect(!h.defaults.bool(forKey: IdentityMigration.loginRestorePendingFlag))
+    }
+
+    @Test func aRegistrationThatDoesNotTakeStaysPending() {
+        let h = pendingHarness(); defer { h.cleanUp() }
+        let result = h.migration().restoreLoginItemIfPending(
+            isEnabled: { false }, enable: {}, diagnostics: h.silentDiagnostics())
+        #expect(result == false)
+        #expect(h.defaults.bool(forKey: IdentityMigration.loginRestorePendingFlag))
+    }
+
+    /// The launch line the app really writes, through a real file-backed sink.
+    @Test func theRealLaunchLineIsParsed() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("uv-diag-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let sink = Diagnostics(directory: dir)
+        sink.info("launch", "Useful Voice 0.1.0 (12) on macOS Version 15.0; \(IdentityMigration.LaunchLine.startsAtLogin)")
+        sink.flush()
+        let on = try String(contentsOf: dir.appendingPathComponent("diagnostics.log"), encoding: .utf8)
+        #expect(IdentityMigration.launchedAtLogin(inDiagnosticsLog: on) == true)
+
+        sink.info("launch", "Useful Voice 0.1.0 (12) on macOS Version 15.0; \(IdentityMigration.LaunchLine.manualStart)")
+        sink.flush()
+        let off = try String(contentsOf: dir.appendingPathComponent("diagnostics.log"), encoding: .utf8)
+        #expect(IdentityMigration.launchedAtLogin(inDiagnosticsLog: off) == false)
+    }
+}
+
+@Suite("Identity migration: more files and Keychain cases")
+struct IdentityMigrationReviewTests {
+    private func line(_ tail: String) -> String {
+        "2026-10-01T09:00:00Z [INFO] launch: Useful Voice 0.1.0 (12) on macOS Version 15.0; \(tail)"
+    }
+
+    @Test func hugeLegacyLogOnlyItsTailIsRead() {
+        let junk = String(repeating: "2026-10-01T09:00:00Z [INFO] other: filler line\n", count: 3_000)   // > 64 KB
+        #expect(junk.utf8.count > 64 * 1024)
+
+        let tailCase = Harness(); defer { tailCase.cleanUp() }
+        tailCase.legacy("diagnostics.log", junk + line("starts at login") + "\n")
+        #expect(tailCase.migration().run(diagnostics: tailCase.silentDiagnostics()).legacyLaunchedAtLogin == true)
+
+        let headCase = Harness(); defer { headCase.cleanUp() }
+        headCase.legacy("diagnostics.log", line("starts at login") + "\n" + junk)
+        #expect(headCase.migration().run(diagnostics: headCase.silentDiagnostics()).legacyLaunchedAtLogin == nil)
+    }
+
+    @Test func aSymlinkedLegacyFolderIsLeftAlone() throws {
+        let h = Harness(); defer { h.cleanUp() }
+        let target = h.root.appendingPathComponent("elsewhere")
+        h.put(target.appendingPathComponent("history.json"), "[1]")
+        try FileManager.default.createSymbolicLink(at: h.legacyFolder, withDestinationURL: target)
+
+        let report = h.migration().run(diagnostics: h.silentDiagnostics())
+
+        #expect(report.moved.isEmpty)
+        #expect(report.failed.count == 1)
+        #expect(report.failed[0].contains("symbolic link"))
+        #expect(h.text(target.appendingPathComponent("history.json")) == "[1]")
+        #expect((try? FileManager.default.destinationOfSymbolicLink(atPath: h.legacyFolder.path)) != nil)
+        #expect(!h.exists(h.newFolder))
+    }
+
+    @Test func aRegularFileWhereTheNewFolderGoesFailsLoudly() {
+        let h = Harness(); defer { h.cleanUp() }
+        h.put(h.newFolder, "i am a file")
+        h.legacy("history.json", "[1]")
+
+        let report = h.migration().run(diagnostics: h.silentDiagnostics())
+
+        #expect(report.moved.isEmpty)
+        #expect(!report.failed.isEmpty)
+        #expect(h.text(h.legacyFolder.appendingPathComponent("history.json")) == "[1]")
+        #expect(h.text(h.newFolder) == "i am a file")
+    }
+
+    @Test func disposableClashesAreDropped() {
+        let h = Harness(); defer { h.cleanUp() }
+        h.new(".DS_Store", "new finder")
+        h.new("Icon\r", "new icon")
+        h.legacy(".DS_Store", "old finder")
+        h.legacy("Icon\r", "old icon")
+        h.legacy("history.json", "[1]")
+
+        let report = h.migration().run(diagnostics: h.silentDiagnostics())
+
+        #expect(Set(report.discarded) == [".DS_Store", "Icon\r"])
+        #expect(report.conflicts.isEmpty)
+        #expect(report.moved == ["history.json"])
+        #expect(report.legacyFolderRemoved)
+        #expect(h.text(h.newFolder.appendingPathComponent(".DS_Store")) == "new finder")
+    }
+
+    @Test func aClashIsLoggedOnce() {
+        let h = Harness(); defer { h.cleanUp() }
+        h.new("diagnostics.log", "new")
+        h.legacy("diagnostics.log", "old")
+        let sink = h.silentDiagnostics()
+
+        _ = h.migration().run(diagnostics: sink)
+        let second = h.migration().run(diagnostics: sink)
+
+        #expect(second.conflicts == ["diagnostics.log"])   // still reported ...
+        #expect(sink.entries(level: .warning).filter { $0.message.contains("diagnostics.log") }.count == 1)   // ... but logged once
+    }
+
+    @Test func onlyMovedEntriesAreRestricted() throws {
+        let h = Harness(); defer { h.cleanUp() }
+        h.new("models/m.bin", "weights")
+        let model = h.newFolder.appendingPathComponent("models/m.bin")
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: model.path)
+        h.legacy("history.json", "[1]")
+
+        _ = h.migration().run(diagnostics: h.silentDiagnostics())
+
+        let mode = (try? FileManager.default.attributesOfItem(atPath: model.path))?[.posixPermissions] as? NSNumber
+        #expect(mode?.intValue == 0o644)   // not re-walked
+    }
+
+    @Test func runWithoutMovingFilesDoesNothing() {
+        let h = Harness(legacyDefaults: ["a": 1]); defer { h.cleanUp() }
+        h.legacy("history.json", "[1]")
+
+        let report = h.migration().run(diagnostics: h.silentDiagnostics(), moveFiles: false)
+
+        #expect(report == IdentityMigration.Report())
+        #expect(h.exists(h.legacyFolder.appendingPathComponent("history.json")))
+        #expect(!h.defaults.bool(forKey: IdentityMigration.migratedFlag))
+    }
+
+    // MARK: Keychain
+
+    @Test func keyPresenceChecksTheLegacyItemFirst() {
+        let h = Harness(); defer { h.cleanUp() }
+        h.keychain.seed("old-key", service: h.names.legacyKeychainService)
+        // A migration finishing right after the check of the NEW item would make a
+        // new-first order see both missing; legacy-first never gets that far.
+        h.keychain.afterExists[h.names.newKeychainService] = {
+            h.keychain.seed("old-key", service: h.names.newKeychainService)
+            try? h.keychain.delete(service: h.names.legacyKeychainService, account: DeepgramKeyStore.account)
+        }
+
+        #expect(h.migration().keyIsStored())
+        #expect(h.keychain.existsCalls.first == h.names.legacyKeychainService)
+    }
+
+    @Test func aLockedKeychainIsRetriedNextLaunch() {
+        let h = Harness(); defer { h.cleanUp() }
+        h.keychain.seed("old-key", service: h.names.legacyKeychainService)
+        h.keychain.lookupOverride[h.names.legacyKeychainService] = .unavailable("the keychain is locked")
+
+        let first = h.migration().migrateKeychain(diagnostics: h.silentDiagnostics())
+
+        #expect(first == .readFailed)
+        #expect(!h.defaults.bool(forKey: IdentityMigration.keychainAttemptedFlag))
+        #expect(h.keychain.deletes.isEmpty)
+        #expect(h.migration().keyIsStored())              // still counts: the key is there
+
+        h.keychain.lookupOverride[h.names.legacyKeychainService] = nil
+        #expect(h.migration().migrateKeychain(diagnostics: h.silentDiagnostics()) == .migrated)
+    }
+
+    @Test func aFailedVerifyThatCannotReadBackIsRetried() {
+        let h = Harness(); defer { h.cleanUp() }
+        h.keychain.seed("old-key", service: h.names.legacyKeychainService)
+        h.keychain.lookupOverride[h.names.newKeychainService] = .unavailable("the keychain returned status -1")
+
+        let outcome = h.migration().migrateKeychain(diagnostics: h.silentDiagnostics())
+
+        #expect(outcome == .verifyFailed)
+        #expect(h.keychain.value(service: h.names.newKeychainService) == nil)
+        #expect(h.keychain.value(service: h.names.legacyKeychainService) == "old-key")
+        #expect(!h.defaults.bool(forKey: IdentityMigration.keychainAttemptedFlag))
+    }
+
+    @Test func anItemThatVanishesBetweenExistsAndReadIsAbsent() {
+        let h = Harness(); defer { h.cleanUp() }
+        h.keychain.seed("old-key", service: h.names.legacyKeychainService)
+        h.keychain.lookupOverride[h.names.legacyKeychainService] = .absent
+
+        #expect(h.migration().migrateKeychain(diagnostics: h.silentDiagnostics()) == .absent)
+        #expect(h.keychain.deletes.isEmpty)
+        #expect(h.keychain.value(service: h.names.newKeychainService) == nil)
+    }
+
+    @Test func aRefusedLeftoverDeleteIsNotAskedAgain() {
+        let h = Harness(); defer { h.cleanUp() }
+        h.keychain.seed("old-key", service: h.names.legacyKeychainService)
+        h.keychain.denyDeletes = [h.names.legacyKeychainService]
+
+        #expect(h.migration().migrateKeychain(diagnostics: h.silentDiagnostics()) == .migratedLegacyRemains)
+        #expect(h.defaults.bool(forKey: IdentityMigration.keychainAttemptedFlag))
+        let deletesSoFar = h.keychain.deletes.count
+
+        #expect(h.migration().migrateKeychain(diagnostics: h.silentDiagnostics()) == .alreadyPresent)
+        #expect(h.keychain.deletes.count == deletesSoFar)   // no second prompt
+    }
+
+    @Test func aLeftoverIsCleanedUpOnALaterLaunch() {
+        let h = Harness(); defer { h.cleanUp() }
+        h.keychain.seed("new-key", service: h.names.newKeychainService)
+        h.keychain.seed("old-key", service: h.names.legacyKeychainService)
+
+        #expect(h.migration().migrateKeychain(diagnostics: h.silentDiagnostics()) == .alreadyPresent)
+        #expect(h.keychain.value(service: h.names.legacyKeychainService) == nil)
+        #expect(h.keychain.value(service: h.names.newKeychainService) == "new-key")
+        #expect(h.keychain.lookups.isEmpty)
+    }
+
+    @Test func removingTheLegacyKeyIgnoresAnEarlierRefusalWhenForced() {
+        let h = Harness(); defer { h.cleanUp() }
+        h.keychain.seed("old-key", service: h.names.legacyKeychainService)
+        h.defaults.set(true, forKey: IdentityMigration.keychainAttemptedFlag)
+
+        #expect(!h.migration().removeLegacyKey(diagnostics: h.silentDiagnostics()))
+        #expect(h.keychain.value(service: h.names.legacyKeychainService) == "old-key")
+        #expect(h.migration().removeLegacyKey(force: true, diagnostics: h.silentDiagnostics()))
+        #expect(h.keychain.value(service: h.names.legacyKeychainService) == nil)
+    }
+}
+
+private final class RecordingKeyBackend: DeepgramKeyBackend, @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var deletes = 0
+    private(set) var legacyDeletes = 0
+    func lookup() -> Keychain.Lookup { .absent }
+    func write(_ value: String) throws {}
+    func delete() throws { lock.lock(); deletes += 1; lock.unlock() }
+    func exists() -> Bool { false }
+    func deleteLegacyBestEffort() { lock.lock(); legacyDeletes += 1; lock.unlock() }
+}
+
+@Suite("Identity migration: removing the key")
+struct RemoveKeyTests {
+    @Test func removingTheKeyAlsoRemovesTheLegacyCopy() async throws {
+        let backend = RecordingKeyBackend()
+        let store = DeepgramKeyStore(backend: backend)
+
+        try await store.remove()
+
+        #expect(backend.deletes == 1)
+        #expect(backend.legacyDeletes == 1)
     }
 }

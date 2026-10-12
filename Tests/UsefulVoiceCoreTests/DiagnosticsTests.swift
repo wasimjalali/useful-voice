@@ -219,7 +219,8 @@ struct DiagnosticsTests {
 
     @Test("the default log lives beside the rest of the app's data")
     func defaultDirectoryIsDiscoverable() throws {
-        let directory = try #require(Diagnostics.defaultDirectory())
+        // An empty environment: the folder name must not depend on how the test is launched.
+        let directory = try #require(Diagnostics.defaultDirectory(environment: [:]))
 
         // The Settings page tells the user their data is in this folder, and the
         // Diagnostics section shows entries from this log. If the two ever diverge,

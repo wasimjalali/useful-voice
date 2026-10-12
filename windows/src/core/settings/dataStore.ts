@@ -482,6 +482,13 @@ export class DataStore {
 
   // ---- persistence -------------------------------------------------------
 
+  private frozen = false;
+
+  /** While frozen, `flush` writes nothing. */
+  setFrozen(frozen: boolean): void {
+    this.frozen = frozen;
+  }
+
   /** Queue a write. Multiple mutations inside the window collapse into one. */
   private scheduleSave(): void {
     if (!this.writable) return;
@@ -504,6 +511,9 @@ export class DataStore {
       this.writeTimer = null;
     }
     if (!this.writable) return false;
+    // A frozen store (a forced first-run session) writes nothing, so the file stays
+    // byte-identical to what the install had.
+    if (this.frozen) return true;
     // Serialise writes so a debounced save and an explicit flush cannot interleave
     // and produce a partially written file.
     if (this.writeInFlight) await this.writeInFlight;

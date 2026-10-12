@@ -109,3 +109,21 @@ export interface NoteDTO {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface FirstRunStateDTO {
+  /** The flow should show when the window opens. */
+  pending: boolean;
+  /** `--force-first-run`: nothing the flow does is saved. */
+  forced: boolean;
+  /** `--first-run-step=<step>`: jump straight to a step with sample data. */
+  step: import('../core/firstRun/gate.js').FirstRunStep | null;
+  keySaved: boolean;
+  hotkey: string;
+  language: string;
+}
+
+export interface FirstRunKeyCheck {
+  ok: boolean;
+  kind?: 'rejected' | 'network' | 'failed';
+  message: string;
+}

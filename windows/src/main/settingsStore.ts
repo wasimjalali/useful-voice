@@ -25,6 +25,8 @@ interface SettingsFile {
    * (if limited) exposure.
    */
   apiKeyPlaintextWarning?: boolean;
+  /** Set once the first-run setup has been finished or skipped, or was never needed. */
+  firstRunCompleted?: boolean;
 }
 
 const CURRENT_SETTINGS_VERSION = 1;
@@ -40,6 +42,9 @@ export class SettingsStore {
   private plaintextKeyWarning = false;
   private loaded = false;
   private lastSaveError: Error | null = null;
+  private completedFirstRun = false;
+  private keyOnDisk = false;
+  private frozen = false;
   private readonly statusListeners = new Set<(status: SaveStatus) => void>();
 
   private readonly filePath: string;
@@ -65,6 +70,8 @@ export class SettingsStore {
       // launch rather than honoured until the user next opens Settings.
       this.settings = normaliseSettings(this.settings);
       this.plaintextKeyWarning = incoming.apiKeyPlaintextWarning === true;
+      this.completedFirstRun = incoming.firstRunCompleted === true;
+      this.keyOnDisk = typeof incoming.apiKeyEncrypted === 'string' && incoming.apiKeyEncrypted.length > 0;
       if (typeof incoming.apiKeyEncrypted === 'string' && incoming.apiKeyEncrypted.length > 0) {
         this.apiKey = this.decrypt(incoming.apiKeyEncrypted);
         if (this.apiKey === null) {
@@ -91,6 +98,33 @@ export class SettingsStore {
 
   get saveError(): Error | null {
     return this.lastSaveError;
+  }
+
+  /** The first-run setup was finished or skipped. */
+  get firstRunCompleted(): boolean {
+    return this.completedFirstRun;
+  }
+
+  /**
+   * A key was stored, whether or not it can be read now. Presence only, so a key that
+   * fails to decrypt still counts as configured for the first-run gate.
+   */
+  get hasStoredKey(): boolean {
+    return this.keyOnDisk || this.hasApiKey;
+  }
+
+  markFirstRunCompleted(): void {
+    if (this.completedFirstRun) return;
+    this.completedFirstRun = true;
+    void this.save();
+  }
+
+  /**
+   * While frozen, `save` writes nothing. A `--force-first-run` session uses it so the
+   * flow can never change the install, whatever else asks for a save (quit included).
+   */
+  setFrozen(frozen: boolean): void {
+    this.frozen = frozen;
   }
 
   get isApiKeyEncrypted(): boolean {
@@ -135,6 +169,7 @@ export class SettingsStore {
     const trimmed = key.trim();
     if (trimmed.length === 0) return { ok: false, error: 'The API key is empty.' };
     this.apiKey = trimmed;
+    this.keyOnDisk = true;
     this.plaintextKeyWarning = false;
     void this.save();
     return { ok: true };
@@ -142,6 +177,7 @@ export class SettingsStore {
 
   clearApiKey(): void {
     this.apiKey = null;
+    this.keyOnDisk = false;
     this.plaintextKeyWarning = false;
     void this.save();
   }
@@ -173,11 +209,27 @@ export class SettingsStore {
     }
   }
 
-  /** Persist settings and the key. Reports failure instead of swallowing it. */
-  async save(): Promise<SaveStatus> {
+  private saveChain: Promise<unknown> = Promise.resolve();
+
+  /**
+   * Persist settings and the key. Reports failure instead of swallowing it.
+   *
+   * Saves run one after another: two overlapping writes of the same file (a key save
+   * the settings page kicks off while another caller awaits its own) fight over the
+   * temp file and one of them fails.
+   */
+  save(): Promise<SaveStatus> {
+    const run = this.saveChain.then(() => this.write());
+    this.saveChain = run.catch(() => undefined);
+    return run;
+  }
+
+  private async write(): Promise<SaveStatus> {
+    if (this.frozen) return { ok: true };
     const payload: SettingsFile = {
       version: CURRENT_SETTINGS_VERSION,
       settings: this.settings,
+      ...(this.completedFirstRun ? { firstRunCompleted: true } : {}),
     };
     if (this.apiKey !== null && this.apiKey.length > 0) {
       const encrypted = this.encrypt(this.apiKey);

@@ -6,6 +6,7 @@ import * as vocabulary from './pages/vocabulary.js';
 import * as insights from './pages/insights.js';
 import * as settings from './pages/settings.js';
 import * as stream from './pages/stream.js';
+import { startFirstRunIfPending } from './components/firstRun.js';
 import { mountRecorder } from './recorder.js';
 import { mountMain, type PageModule } from './shell.js';
 
@@ -40,5 +41,9 @@ else {
     insights: { render: insights.renderInsightsPage, headerActions: actions(insights, 'headerActionsForInsights') },
     settings: { render: settings.renderSettingsPage, headerActions: actions(settings, 'headerActionsForSettings') },
   };
-  void loadFlags().then(() => mountMain(pages));
+  void loadFlags().then(() => {
+    mountMain(pages);
+    // A fresh install (or --force-first-run) opens the setup flow over the shell.
+    void startFirstRunIfPending();
+  });
 }

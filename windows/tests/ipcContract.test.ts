@@ -117,6 +117,7 @@ const NAMESPACES = [
   'backup',
   'clipboard',
   'dictation',
+  'firstrun',
   'history',
   'hud',
   'memory',

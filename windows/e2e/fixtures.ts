@@ -14,7 +14,7 @@ function record(id: string, text: string, language: string, minutesAgo: number, 
 }
 
 /** A scratch user-data folder with a realistic mix: English, German and Persian, over several days. */
-export async function seedUserData(): Promise<string> {
+export async function seedUserData(options: { firstRunCompleted?: boolean } = {}): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'uv-e2e-'));
   const history = [
     record('h1', 'Can you check whether the build is green before the release?', 'en', 4, 'Cursor'),
@@ -30,5 +30,10 @@ export async function seedUserData(): Promise<string> {
   ];
   const payload = { terms: [], replacements: [], snippets: [], suggestions: [], history, notes };
   await fs.writeFile(path.join(dir, 'data.json'), JSON.stringify({ version: 1, payload }, null, 2));
+  // A seeded folder is an install that has been set up, so the first-run flow stays out of
+  // the way of every spec that is not about it. The first-run spec passes `false`.
+  if (options.firstRunCompleted !== false) {
+    await fs.writeFile(path.join(dir, 'settings.json'), JSON.stringify({ version: 1, firstRunCompleted: true }, null, 2));
+  }
   return dir;
 }

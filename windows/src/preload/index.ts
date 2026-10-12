@@ -7,6 +7,8 @@ import type {
   HudAction,
   HudFrame,
   MemorySnapshotDTO,
+  FirstRunKeyCheck,
+  FirstRunStateDTO,
   NoteDTO,
   ResolvedTheme,
   SettingsDTO,
@@ -184,6 +186,24 @@ const api = {
   clearApiKey: (): Promise<void> => ipcRenderer.invoke('settings:clear-api-key'),
   testApiKey: (): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke('settings:test-api-key'),
   resetApiKey: (): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke('settings:reset-api-key'),
+
+  // ---- first-run setup ----
+  firstRunState: (): Promise<FirstRunStateDTO> => ipcRenderer.invoke('firstrun:get'),
+  /** The flow is on screen: a hotkey dictation then goes into the flow's field. */
+  firstRunSetOpen: (open: boolean): Promise<void> => ipcRenderer.invoke('firstrun:set-open', open),
+  /** Checks a pasted key against Deepgram without saving it. */
+  firstRunCheckKey: (key: string): Promise<FirstRunKeyCheck> => ipcRenderer.invoke('firstrun:check-key', key),
+  firstRunSaveKey: (key: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('firstrun:save-key', key),
+  firstRunSetLanguage: (code: string): Promise<void> => ipcRenderer.invoke('firstrun:set-language', code),
+  firstRunSetHotkey: (accelerator: string): Promise<void> => ipcRenderer.invoke('firstrun:set-hotkey', accelerator),
+  /** `completed`: finished or skipped, so the flow does not open again. */
+  firstRunFinish: (completed: boolean): Promise<void> => ipcRenderer.invoke('firstrun:finish', completed),
+  /** The practice dictation's text, while the flow is open. */
+  onPracticeResult: (handler: (result: { text: string }) => void): (() => void) => {
+    const listener = (_event: unknown, payload: { text: string }): void => handler(payload);
+    ipcRenderer.on('firstrun:practice', listener);
+    return () => ipcRenderer.removeListener('firstrun:practice', listener);
+  },
 
   // ---- memory ----
   getMemory: (): Promise<MemorySnapshotDTO> => ipcRenderer.invoke('memory:get'),

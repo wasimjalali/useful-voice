@@ -18,6 +18,9 @@ import {
 import { selectKeyterms } from '../core/memory/biasBuilder.js';
 import { HUD_EXIT_MS, HudModel, languageLabel, type HudFrame } from '../core/hudModel.js';
 import { normaliseLanguageCode } from '../core/transcription/languages.js';
+import { decideFirstRun, firstRunLaunch, type FirstRunStep } from '../core/firstRun/gate.js';
+import { ProviderError } from '../core/transcription/deepgramProvider.js';
+import { installDeepgramStub } from './e2eStub.js';
 import {
   transcribe as transcribeRequest,
   type DeepgramConfig,
@@ -77,6 +80,12 @@ if (userDataArg) app.setPath('userData', path.resolve(userDataArg.slice('--uv-da
 if (E2E) {
   // CI runners have no GPU; software rendering keeps hidden windows painting.
   app.disableHardwareAcceleration();
+  // A fake microphone that plays a tone, and no permission prompt, so the first-run
+  // level meter and a practice dictation can run on a machine with no audio input.
+  app.commandLine.appendSwitch('use-fake-device-for-media-stream');
+  app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
+  // Deepgram is answered locally (see e2eStub.ts): no network, no real key.
+  installDeepgramStub(app.getPath('userData'));
   // Window lifecycle in <userData>/e2e.log (a Windows GUI app's stdout is not
   // reliably piped), so a failed run says where it stopped.
   const e2eLog = (line: string): void => {
@@ -163,6 +172,29 @@ class UsefulVoiceApp {
   private service!: DictationService;
   private diagnostics!: Diagnostics;
 
+  /**
+   * First-run setup. `pending`: the flow shows when the main window opens. `forced`
+   * (`--force-first-run`): nothing the flow does is saved, so `sandbox` freezes the
+   * settings and data files and keeps dictations out of the history until it ends.
+   */
+  private firstRun: {
+    pending: boolean;
+    forced: boolean;
+    step: FirstRunStep | null;
+    sandbox: boolean;
+    /** The flow is on screen: a hotkey dictation becomes a window one, so nothing is pasted elsewhere. */
+    open: boolean;
+    /** The language picked in a forced run, used instead of the saved one. */
+    language: string | null;
+    /** The key checked in a forced run, held in memory only so the practice dictation can use it. */
+    key: string | null;
+  } = { pending: false, forced: false, step: null, sandbox: false, open: false, language: null, key: null };
+
+  /** The key dictation uses: the one checked in a forced run, else the saved one. */
+  private dictationKey(): string | null {
+    return this.firstRun.sandbox && this.firstRun.key ? this.firstRun.key : this.settings.revealApiKey();
+  }
+
   /** Talks to the hidden recorder window: start acks, tokens, discard on cancel. */
   private recorder!: RecorderBridge;
 
@@ -213,6 +245,23 @@ class UsefulVoiceApp {
 
     this.data = new DataStore(path.join(app.getPath('userData'), 'data.json'));
     await this.data.load();
+
+    // Decided here, before any window exists. An existing user (a key already saved)
+    // is marked completed and never sees the flow; a forced run shows it and freezes
+    // both stores so it cannot change the install.
+    const launch = firstRunLaunch(process.argv);
+    const decision = decideFirstRun({
+      completed: this.settings.firstRunCompleted,
+      keyStored: this.settings.hasStoredKey,
+      forced: launch.forced,
+    });
+    if (decision === 'skipAndMarkCompleted') this.settings.markFirstRunCompleted();
+    this.firstRun.forced = launch.forced;
+    this.firstRun.pending = decision === 'show';
+    this.firstRun.step = decision === 'show' ? launch.step : null;
+    this.firstRun.sandbox = launch.forced && decision === 'show';
+    this.settings.setFrozen(this.firstRun.sandbox);
+    this.data.setFrozen(this.firstRun.sandbox);
     this.diagnostics.log('data', `load outcome: ${this.data.outcome.status}`);
     this.data.onSaveFailure((error) => {
       this.diagnostics.log('data', `save failed: ${error.message}`);
@@ -529,8 +578,9 @@ class UsefulVoiceApp {
       this.hudHideTimer = null;
     }
     if (frame) {
-      const window = this.ensureHudWindow();
-      if (!window.isVisible()) {
+      // The suite never puts a window on the screen.
+      const window = E2E ? null : this.ensureHudWindow();
+      if (window && !window.isVisible()) {
         this.placeHud(window);
         // Back to click-through: a button from the last view may have left it switched off.
         window.setIgnoreMouseEvents(true, { forward: true });
@@ -864,7 +914,7 @@ class UsefulVoiceApp {
         // Adapt the pure request builder to the port the state machine expects.
         transcribe: (request, signal) => {
           const config: DeepgramConfig = {
-            apiKey: this.settings.revealApiKey() ?? '',
+            apiKey: this.dictationKey() ?? '',
             smartFormat: request.smartFormat,
             spokenPunctuation: request.spokenPunctuation,
           };
@@ -882,9 +932,12 @@ class UsefulVoiceApp {
         },
       },
       sink: { deliver: (request) => this.deliver(request) },
-      settings: () => this.settings.all,
+      settings: () =>
+        this.firstRun.sandbox && this.firstRun.language
+          ? { ...this.settings.all, languagePin: this.firstRun.language }
+          : this.settings.all,
       memory: () => this.data.memorySnapshot(),
-      apiKey: async () => this.settings.revealApiKey(),
+      apiKey: async () => this.dictationKey(),
       onStatus: (status) => this.handleStatus(status),
       // Before the idle status, so a window can show its done line before it resets.
       onOutcome: (outcome) => {
@@ -897,6 +950,12 @@ class UsefulVoiceApp {
       },
       onDiagnostic: (category, message) => this.diagnostics.log(category, message),
       onCompleted: (outcome) => {
+        // The practice dictation in the setup flow: its text goes to the flow's field.
+        if (this.firstRun.open && this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.webContents.send('firstrun:practice', { text: outcome.text });
+        }
+        // A forced run saves nothing: no history, no usage counts.
+        if (this.firstRun.sandbox) return;
         this.data.appendHistory({
           id: outcome.id,
           text: outcome.text,
@@ -948,7 +1007,10 @@ class UsefulVoiceApp {
    * Only a hotkey start needs the foreground window: that is the app its text is
    * pasted into. A window start pastes nothing, so it records no target at all.
    */
-  private async toggleDictation(source: DictationSource): Promise<void> {
+  private async toggleDictation(requested: DictationSource): Promise<void> {
+    // While the setup flow is open the hotkey dictates into the flow's own field, never
+    // into the app in front.
+    const source: DictationSource = requested === 'hotkey' && this.firstRun.open ? 'window' : requested;
     let targetApp: string | undefined;
     let targetHandle: number | undefined;
     if (this.service.currentState === 'idle' || this.service.currentState === 'error') this.recordingHandle = undefined;
@@ -1244,6 +1306,54 @@ class UsefulVoiceApp {
       this.settings.clearApiKey();
       await this.settings.save();
       return { ok: true, message: 'The stored key was removed. Add a new one.' };
+    });
+
+    // ---- first-run setup ----
+    ipcMain.handle('firstrun:get', () => ({
+      pending: this.firstRun.pending,
+      forced: this.firstRun.forced,
+      step: this.firstRun.step,
+      // A forced run pretends to be a new install: whatever key is saved does not count.
+      keySaved: !this.firstRun.forced && this.settings.hasApiKey,
+      hotkey: this.settings.all.hotkey.accelerator,
+      language: this.firstRun.language ?? this.settings.all.languagePin,
+    }));
+    ipcMain.handle('firstrun:set-open', (_event, open: unknown) => {
+      this.firstRun.open = open === true;
+    });
+    ipcMain.handle('firstrun:check-key', (_event, key: unknown) => this.checkCandidateKey(key));
+    ipcMain.handle('firstrun:save-key', async (_event, key: unknown) => {
+      if (typeof key !== 'string') return { ok: false, error: 'The API key is empty.' };
+      // A forced run saves nothing; the check already passed.
+      if (this.firstRun.sandbox) {
+        this.firstRun.key = key.trim();
+        return { ok: true };
+      }
+      const result = this.settings.setApiKey(key);
+      if (!result.ok) return result;
+      const saved = await this.settings.save();
+      if (!saved.ok) return { ok: false, error: saved.message ?? "Couldn't save the key. Try again." };
+      this.broadcast('settings:changed');
+      return { ok: true };
+    });
+    ipcMain.handle('firstrun:set-language', (_event, code: unknown) => {
+      if (typeof code !== 'string') return;
+      if (this.firstRun.sandbox) {
+        this.firstRun.language = normaliseLanguageCode(code);
+        return;
+      }
+      this.setLanguage(code);
+    });
+    ipcMain.handle('firstrun:set-hotkey', (_event, accelerator: unknown) => {
+      if (typeof accelerator !== 'string' || accelerator.trim().length === 0 || this.firstRun.sandbox) return;
+      this.settings.update({ hotkey: { ...this.settings.all.hotkey, accelerator } });
+      this.registerHotkey();
+      this.broadcast('settings:changed');
+    });
+    ipcMain.handle('firstrun:finish', (_event, completed: unknown) => {
+      this.firstRun.pending = false;
+      this.firstRun.open = false;
+      if (completed === true && !this.firstRun.sandbox) this.settings.markFirstRunCompleted();
     });
 
     ipcMain.handle('memory:get', () => this.memoryDto());
@@ -1572,6 +1682,31 @@ class UsefulVoiceApp {
     }
   }
 
+  /**
+   * Check a key the person just pasted, without saving it. A refused key and a dead
+   * network are different answers, so the flow can say which.
+   */
+  private async checkCandidateKey(key: unknown): Promise<{ ok: boolean; kind?: 'rejected' | 'network' | 'failed'; message: string }> {
+    if (typeof key !== 'string' || key.trim().length === 0) {
+      return { ok: false, kind: 'failed', message: 'The API key is empty.' };
+    }
+    try {
+      const { encodeWav } = await import('../core/audio/wav.js');
+      await transcribeRequest({
+        audio: encodeWav(new Float32Array(16_000)),
+        hint: { language: 'en', keyterms: [] },
+        config: { apiKey: key.trim(), smartFormat: false },
+        maxAttempts: 1,
+      });
+      return { ok: true, message: 'The key works.' };
+    } catch (error) {
+      const kind = error instanceof ProviderError ? error.kind : null;
+      if (kind === 'unauthorized') return { ok: false, kind: 'rejected', message: (error as Error).message };
+      if (kind === 'transport' || kind === 'timedOut') return { ok: false, kind: 'network', message: (error as Error).message };
+      return { ok: false, kind: 'failed', message: (error as Error).message };
+    }
+  }
+
   private buildApplicationMenu(): void {
     // The main window has no native frame, so this menu bar is never shown (see
     // `openWindow`). It is kept because it still owns the standard edit shortcuts and
@@ -1734,6 +1869,7 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     'app:save-status': { ok: true },
     'app:get-theme': 'light',
     'app:flags': { previewFeatures: false },
+    'firstrun:get': { pending: false, forced: false, step: null, keySaved: true, hotkey: 'Control+Alt+Space', language: 'auto' },
   };
   for (const [channel, value] of Object.entries(stubs)) {
     ipcMain.handle(channel, () => value);
@@ -1844,11 +1980,13 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     // The count is checked against the documented boundary rather than a vague lower
     // bound: `tests/ipcContract.test.ts` pins this same number to the README, so a
     // channel added or lost anywhere fails one of the two.
-    // 66: the theme (`getTheme`, `onThemeChanged`), `showDiagnosticsLog`, `onOutcome` +
+    // 74: the first-run setup (`firstRunState`, `firstRunSetOpen`, `firstRunCheckKey`,
+    // `firstRunSaveKey`, `firstRunSetLanguage`, `firstRunSetHotkey`, `firstRunFinish`,
+    // `onPracticeResult`), the theme (`getTheme`, `onThemeChanged`), `showDiagnosticsLog`, `onOutcome` +
     // `onTelemetry`, `getFlags`, and the floating windows (`onHudView`, `hudPointer`,
     // `hudAction`, `hudDrag`, `onAnnounce`, `pickerChoose`, `pickerClose`, `onSettingsChanged`), and `sendAudioStarted`.
     // Kept in step with the README by the comment below.
-    const EXPECTED_API_METHODS = 66;
+    const EXPECTED_API_METHODS = 74;
     record(
       'preload exposes API',
       preloadProbe.hasApi

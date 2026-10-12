@@ -178,7 +178,7 @@ test('fresh install: every step, a bad key blocks, a good key advances, then nev
     await expect(win.locator('.fr-alert')).toHaveCount(0);
     await key.press('Enter');
     await expect(page(win, 'deepgramKey')).toBeVisible();
-    await expect(fr(win).getByText('Key works.')).toBeVisible();
+    await expect(fr(win).locator('.fr-ok', { hasText: 'Key works.' })).toBeVisible();
     await shot(win, 'flow-03-key-saved');
     const saved = await settingsWhere(userData, (s) => typeof s?.apiKeyEncrypted === 'string');
     expect(typeof saved?.apiKeyEncrypted).toBe('string');
@@ -209,7 +209,7 @@ test('fresh install: every step, a bad key blocks, a good key advances, then nev
     await win.waitForTimeout(2200); // the fake device beeps about once a second
     await fr(win).getByRole('button', { name: 'Stop', exact: true }).click();
     await expect(pad).toHaveValue('Hello from Useful Voice.', { timeout: 20_000 });
-    await expect(fr(win).getByText("It worked. That's all there is to it.")).toBeVisible();
+    await expect(fr(win).locator('.fr-ok', { hasText: "It worked. That's all there is to it." })).toBeVisible();
     await shot(win, 'flow-05-try-it-worked');
     await fr(win).getByRole('button', { name: 'Finish setup' }).click();
 

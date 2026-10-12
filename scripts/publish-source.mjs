@@ -85,42 +85,75 @@ try {
   throw new Error(`${PUBLIC_REPO} has no main branch to start from`);
 }
 const AUTHOR_EMAIL = AUTHOR.match(/<(.+)>/)[1];
-// Pushes exactly this branch to the same-named branch, whatever remote.origin.push or push.default say,
-// then opens the PR.
-const pushAndOpenPr = () => {
-  git(clone, "push", "-q", "-u", "origin", `refs/heads/${branch}:refs/heads/${branch}`);
-  const pr = execFileSync("gh", ["pr", "create", "--repo", PUBLIC_REPO, "--head", branch, "--base", "main",
-    "--title", `Useful Voice ${values.version} source`, "--body", `Source snapshot of Useful Voice ${values.version}.`], { cwd: clone, encoding: "utf8" }).trim();
+
+// The same names build-runtime refuses to ship; a tracked one stops the publish.
+const SECRET = /^(\.env(\..*)?|.*\.env|\.envrc|\.netrc|\.pgpass|\.htpasswd|\.npmrc|\.git-credentials|id_(rsa|dsa|ecdsa|ed25519)(\..*)?|.*\.(pem|key|p12|pfx|p8|jks|keystore|token|gpg|asc|kubeconfig|tfvars|tfstate)|kubeconfig|terraform\.tfstate.*|secrets?(\..*)?|credentials?(\..*)?|client_secret.*|service-account.*\.json)$/i;
+const BACKUP_SUFFIX = /(\.(bak|backup|orig|old|save|swp|tmp)\d*|\.\d+|\.\d{4}-\d{2}-\d{2}|~)+$/i;
+// A name with a newline, a Unicode line or paragraph separator or another control or format
+// character slips past line-based patterns (`.` does not match them), so it is refused outright.
+const ODD_NAME = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+const refuseOddNames = (paths) => {
+  const odd = paths.filter((f) => ODD_NAME.test(f));
+  if (odd.length) throw new Error(`refusing to publish: paths with control or separator characters: ${odd.map((f) => JSON.stringify(f)).join(", ")}`);
+};
+// The one set of guards for what may be published, run on the source tree's files and on the
+// tree of the commit about to be pushed: no odd names, nothing on EXCLUDE, nothing secret-looking.
+const guard = (paths) => {
+  refuseOddNames(paths);
+  const excluded = paths.filter((f) => EXCLUDE.some((re) => re.test(f)));
+  if (excluded.length) throw new Error(`refusing to publish excluded paths: ${excluded.join(", ")}`);
+  const secrets = paths.filter((f) => [path.basename(f), path.basename(f).replace(BACKUP_SUFFIX, "")].some((n) => SECRET.test(n)));
+  if (secrets.length) throw new Error(`refusing to publish files that look like secrets: ${secrets.join(", ")}`);
+};
+const tracked = gitRaw(ROOT, "ls-files", "-z").split("\0").filter(Boolean);
+refuseOddNames(tracked); // before EXCLUDE: an odd name must not be able to dodge it
+const files = tracked.filter((f) => !EXCLUDE.some((re) => re.test(f)));
+guard(files);
+// A commit is publishable only if its tree is exactly the filtered source tree and passes the guards.
+const verifyCommit = (ref) => {
+  const inCommit = gitRaw(clone, "ls-tree", "-r", "-z", "--name-only", ref).split("\0").filter(Boolean);
+  guard(inCommit);
+  const want = new Set(files);
+  const extra = inCommit.filter((f) => !want.has(f));
+  const have = new Set(inCommit);
+  const missing = files.filter((f) => !have.has(f));
+  if (extra.length || missing.length) throw new Error(`${ref} does not match the source tree (extra: ${extra.slice(0, 5).join(", ") || "none"}; missing: ${missing.slice(0, 5).join(", ") || "none"})`);
+};
+
+// Pushes exactly this branch to the same-named branch, whatever remote.origin.push, push.default or
+// push.followTags say, then opens the PR (or reports the one that exists).
+const gh = (...args) => execFileSync("gh", args, { cwd: clone, encoding: "utf8" }).trim();
+const openPr = () => {
+  const existing = gh("pr", "list", "--repo", PUBLIC_REPO, "--head", branch, "--state", "open", "--json", "url", "--jq", ".[0].url");
+  const pr = existing || gh("pr", "create", "--repo", PUBLIC_REPO, "--head", branch, "--base", "main",
+    "--title", `Useful Voice ${values.version} source`, "--body", `Source snapshot of Useful Voice ${values.version}.`);
   process.stdout.write(`${pr}\n`);
 };
+const pushAndOpenPr = () => {
+  git(clone, "push", "-q", "-u", "--no-follow-tags", "origin", `refs/heads/${branch}:refs/heads/${branch}`);
+  openPr();
+};
 const branchExistsLocally = () => { try { git(clone, "rev-parse", "--verify", "-q", `refs/heads/${branch}`); return true; } catch { return false; } };
+const remoteBranchSha = () => git(clone, "ls-remote", "--heads", "origin", `refs/heads/${branch}`).split(/\s+/)[0];
 if (values["push-existing"]) {
   // Second step of preview-then-push: push the branch a previous run built, after checking it is
-  // still exactly one commit on origin/main with the noreply author and committer.
+  // still exactly one commit on origin/main with the noreply author and committer, and that its
+  // tree is exactly what this source tree would publish.
   if (!branchExistsLocally()) throw new Error(`${branch} does not exist in ${clone}; run without --push-existing first`);
-  if (git(clone, "ls-remote", "--heads", "origin", branch) !== "") throw new Error(`${branch} already exists on origin; delete it there to republish this version`);
   const commits = git(clone, "rev-list", `origin/main..refs/heads/${branch}`).split("\n").filter(Boolean);
   if (commits.length !== 1) throw new Error(`${branch} must be exactly one commit on origin/main, found ${commits.length}`);
   if (git(clone, "rev-parse", `refs/heads/${branch}^`) !== git(clone, "rev-parse", "origin/main")) throw new Error(`${branch} is not cut from the current origin/main`);
   const who = git(clone, "log", "-1", "--format=%ae%n%ce", `refs/heads/${branch}`).split("\n");
   if (who.length !== 2 || who.some((e) => e !== AUTHOR_EMAIL)) throw new Error(`${branch} is not authored and committed by ${AUTHOR_EMAIL}`);
-  pushAndOpenPr();
+  verifyCommit(`refs/heads/${branch}`);
+  const remote = remoteBranchSha();
+  if (remote === "") pushAndOpenPr();
+  else if (remote === git(clone, "rev-parse", `refs/heads/${branch}`)) openPr(); // pushed earlier, the PR step failed: resume
+  else throw new Error(`${branch} on origin is a different commit (${remote.slice(0, 7)}); delete it there to republish this version`);
   process.exit(0);
 }
 if (branchExistsLocally()) throw new Error(`${branch} already exists in ${clone}; run with --push-existing to push it, or delete it to rebuild`);
-if (git(clone, "ls-remote", "--heads", "origin", branch) !== "") throw new Error(`${branch} already exists on origin; delete it there to republish this version`);
-
-const tracked = gitRaw(ROOT, "ls-files", "-z").split("\0").filter(Boolean);
-// A name with a newline or other control character slips past line-based patterns (`.` does not
-// match a newline), so such a path is refused outright, before EXCLUDE or the secret guard.
-const odd = tracked.filter((f) => /[\x00-\x1f\x7f]/.test(f));
-if (odd.length) throw new Error(`refusing to publish: tracked paths with control characters: ${odd.map((f) => JSON.stringify(f)).join(", ")}`);
-const files = tracked.filter((f) => !EXCLUDE.some((re) => re.test(f)));
-// The same names build-runtime refuses to ship; a tracked one stops the publish.
-const SECRET = /^(\.env(\..*)?|.*\.env|\.envrc|\.netrc|\.pgpass|\.htpasswd|\.npmrc|\.git-credentials|id_(rsa|dsa|ecdsa|ed25519)(\..*)?|.*\.(pem|key|p12|pfx|p8|jks|keystore|token|gpg|asc|kubeconfig|tfvars|tfstate)|kubeconfig|terraform\.tfstate.*|secrets?(\..*)?|credentials?(\..*)?|client_secret.*|service-account.*\.json)$/i;
-const BACKUP_SUFFIX = /(\.(bak|backup|orig|old|save|swp|tmp)\d*|\.\d+|\.\d{4}-\d{2}-\d{2}|~)+$/i;
-const secrets = files.filter((f) => [path.basename(f), path.basename(f).replace(BACKUP_SUFFIX, "")].some((n) => SECRET.test(n)));
-if (secrets.length) throw new Error(`refusing to publish files that look like secrets: ${secrets.join(", ")}`);
+if (remoteBranchSha() !== "") throw new Error(`${branch} already exists on origin; delete it there to republish this version`);
 
 // Everything happens in a temporary worktree of the clone, detached at origin/main, so the
 // supplied clone is untouched if any step fails. The branch is created only once the commit exists.
@@ -145,6 +178,7 @@ try {
       env: { ...process.env, GIT_COMMITTER_NAME: "Wasim Jalali", GIT_COMMITTER_EMAIL: AUTHOR_EMAIL },
     });
     commit = git(tree, "rev-parse", "HEAD");
+    verifyCommit(commit); // final check on what was actually committed, before the branch exists
     git(clone, "branch", branch, commit);
     process.stdout.write(`${JSON.stringify({ files: files.length, from: sha, branch, commit: commit.slice(0, 7) })}\n`);
   }

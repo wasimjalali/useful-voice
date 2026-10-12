@@ -6,6 +6,9 @@ import UsefulVoiceCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// What the one-time identity migration did at this launch (nil in a render
+    /// or forced first-run, which never migrate).
+    private let migrationReport: IdentityMigration.Report?
     private var statusItem: NSStatusItem?
     /// The menu bar menu and its header row (see MenuBarMenu).
     private var menuBar: MenuBarMenu?
@@ -39,6 +42,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Previous dictation state, so the stop chime only plays when a recording
     /// actually ended (retryLast jumps straight to .transcribing).
     private var lastDictationState: DictationState = .idle
+
+    init(migrationReport: IdentityMigration.Report?) {
+        self.migrationReport = migrationReport
+        super.init()
+    }
 
     /// A dictation is mid-flight (recording or processing).
     private var isDictationBusy: Bool {
@@ -95,6 +103,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !FirstRunGate.isForced(environment: ProcessInfo.processInfo.environment) {
             settings.resolveLanguageDefault(hasPriorData: hasPriorData())
         }
+
+        restoreLaunchAtLoginIfNeeded()
 
         // Recorded before the key cache is primed, because priming can block
         // indefinitely on a keychain authorization dialog. It previously ran only
@@ -164,15 +174,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Launch at login is registered per bundle id, so a user who had it on under
+    /// the old identity would silently lose it. The old build's last launch line
+    /// in `diagnostics.log` says whether it was on (`IdentityMigration` read it
+    /// before the file moved); this turns it on again, once. No signal, no change.
+    private func restoreLaunchAtLoginIfNeeded() {
+        guard migrationReport?.legacyLaunchedAtLogin == true, !LoginItem.isEnabled else { return }
+        do {
+            try LoginItem.setEnabled(true)
+            Diagnostics.shared.info("identity-migration", "launch at login turned back on under the new app identity")
+        } catch {
+            Diagnostics.shared.failure(
+                "identity-migration", error,
+                context: "could not turn launch at login back on after the rename")
+        }
+    }
+
     /// Whether this Mac has used the app before: history, usage stats or a
     /// stored Deepgram key. The key check is presence only, so it never prompts.
     private func hasPriorData() -> Bool {
-        let folder = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Sadaa")
+        let folder = DataFolder.current()
         let files = ["history.json", "usage-stats.json"]
         return files.contains { FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path) }
-            || Keychain.exists(account: DeepgramKeyStore.account)
+            || DeepgramKeyStore.keyIsStored()
     }
 
     /// Builds the first-run flow and wires it to the hotkey tap and the window.
@@ -216,7 +240,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func recordLaunchDiagnostic() {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
-        let loginItem = LoginItem.isEnabled ? "starts at login" : "manual start"
+        let loginItem = LoginItem.isEnabled
+            ? IdentityMigration.LaunchLine.startsAtLogin : IdentityMigration.LaunchLine.manualStart
         Diagnostics.shared.info(
             "launch",
             "Useful Voice \(version) (\(build)) on macOS \(ProcessInfo.processInfo.operatingSystemVersionString); \(loginItem)",
@@ -253,6 +278,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// background thread, keeps both app launch and the event tap responsive.
     private func primeKeyCache() {
         DispatchQueue.global(qos: .userInitiated).async {
+            // The one-time move of the key from the old Keychain service, on the
+            // key store's own queue and ahead of its first read. A render or a
+            // forced first run never migrates.
+            if LaunchMode.current(environment: ProcessInfo.processInfo.environment) == .normal {
+                DeepgramKeyStore.shared.migrateLegacyKey(with: IdentityMigration.live())
+            }
             DeepgramKeyStore.shared.load()
             DispatchQueue.main.async { [weak self] in
                 self?.viewModel?.refreshConfig()
@@ -374,10 +405,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         recorder.onLevel = { [weak self] level in
             DispatchQueue.main.async { self?.currentLevel = level }
         }
-        let sadaaDir = FileManager.default.urls(
-            for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Sadaa")
-        let appSupport = sadaaDir.appendingPathComponent("Recordings")
+        let dataDir = DataFolder.current()
+        let appSupport = dataDir.appendingPathComponent("Recordings")
         // Never trap here. A failed app-support directory (full disk, managed
         // Mac, permission change) must not turn launch-at-login into an
         // invisible crash loop; RecordingStore.make falls back to a temporary
@@ -385,19 +414,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let store = RecordingStore.make(directory: appSupport)
 
         try? FileManager.default.createDirectory(
-            at: sadaaDir, withIntermediateDirectories: true)
+            at: dataDir, withIntermediateDirectories: true)
         // Owner-only. The directory is created with the process umask (022 on a
         // default macOS install), which would make the dictionary, the full
         // dictation history and the retained recordings readable by every other
         // account on the machine. This also corrects files written by an earlier
         // build, and directories restored from a backup (modes are not preserved).
-        FileProtection.restrictRecursively(sadaaDir)
+        FileProtection.restrictRecursively(dataDir)
         let history = DictationHistory(
-            fileURL: sadaaDir.appendingPathComponent("history.json"))
+            fileURL: dataDir.appendingPathComponent("history.json"))
         self.history = history
 
         let usageStats = UsageStatsStore(
-            fileURL: sadaaDir.appendingPathComponent("usage-stats.json"))
+            fileURL: dataDir.appendingPathComponent("usage-stats.json"))
         // Seed once from existing history, but only when history was read cleanly.
         if history.loadOutcome.allowsWriting {
             usageStats.seedIfFresh(from: history.all())
@@ -405,14 +434,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.usageStats = usageStats
 
         let languageMemory = LanguageMemoryMigrator.migrateIfNeeded(
-            memoryURL: sadaaDir.appendingPathComponent("language-memory.json"),
-            dictionaryURL: sadaaDir.appendingPathComponent("dictionary.json"),
-            snippetsURL: sadaaDir.appendingPathComponent("snippets.json"))
+            memoryURL: dataDir.appendingPathComponent("language-memory.json"),
+            dictionaryURL: dataDir.appendingPathComponent("dictionary.json"),
+            snippetsURL: dataDir.appendingPathComponent("snippets.json"))
         self.languageMemory = languageMemory
 
         let scratchpad = ScratchpadMigrator.migrateIfNeeded(
-            scratchpadURL: sadaaDir.appendingPathComponent("scratchpad.json"),
-            notesURL: sadaaDir.appendingPathComponent("notes.json"))
+            scratchpadURL: dataDir.appendingPathComponent("scratchpad.json"),
+            notesURL: dataDir.appendingPathComponent("notes.json"))
         self.scratchpad = scratchpad
 
         // Model directory is created and hardened once up front so the

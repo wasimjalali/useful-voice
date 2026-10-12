@@ -13,7 +13,7 @@ enum Clipboard {
     /// skips them: deep-copying one would force its lazy PasteSentinel promise
     /// (faking a consumed paste) and capture our own dictation as "the user's
     /// clipboard".
-    static let deliveryMarker = NSPasteboard.PasteboardType("ai.karko.sadaa.delivery")
+    static let deliveryMarker = NSPasteboard.PasteboardType("ai.useful.voice.delivery")
 
     /// Types we copy out eagerly. Reading an arbitrary pasteboard type can be a
     /// blocking IPC round trip to the app that owns the data (a promised file

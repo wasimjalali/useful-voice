@@ -1,0 +1,84 @@
+import Foundation
+
+/// What kind of launch this is, from the environment alone.
+///
+/// The distinction exists for one reason: a render (`UV_SNAPSHOT`) or a forced
+/// first run (`UV_FIRST_RUN=force`) is a look at the app, not a use of it, so
+/// neither may migrate or write the user's data. `UV_MIGRATE_ONLY=1` is the
+/// opposite, a test hook that runs the identity migration and exits.
+public enum LaunchMode: Equatable, Sendable {
+    /// A real launch: the identity migration runs.
+    case normal
+    /// A render or a forced first run: nothing is migrated or written.
+    case preview
+    /// `UV_MIGRATE_ONLY=1`: run the migration, print a summary, exit.
+    case migrateOnly
+
+    public static let migrateOnlyVariable = "UV_MIGRATE_ONLY"
+    public static let testPrefixVariable = "UV_MIGRATION_TEST_PREFIX"
+    public static let snapshotVariable = "UV_SNAPSHOT"
+
+    /// A preview wins over migrate-only: a render must never migrate, whatever
+    /// else is set.
+    public static func current(environment: [String: String]) -> LaunchMode {
+        if isPreview(environment: environment) { return .preview }
+        if environment[migrateOnlyVariable] == "1" { return .migrateOnly }
+        return .normal
+    }
+
+    /// Both a render and migrate-only were asked for. The caller refuses to
+    /// start rather than silently ignoring one of them.
+    public static func migrateOnlyConflictsWithPreview(environment: [String: String]) -> Bool {
+        environment[migrateOnlyVariable] == "1" && isPreview(environment: environment)
+    }
+
+    private static func isPreview(environment: [String: String]) -> Bool {
+        environment[snapshotVariable] != nil || FirstRunGate.isForced(environment: environment)
+    }
+}
+
+/// Where the app keeps its data files.
+public enum DataFolder {
+    /// `~/Library/Application Support`.
+    public static var appSupport: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    }
+
+    /// The data folder for this process.
+    public static func current(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL {
+        resolve(appSupport: appSupport,
+                preview: LaunchMode.current(environment: environment) == .preview)
+    }
+
+    /// The new folder, except in a preview run that finds the previous identity's
+    /// folder still holding data the new one lacks: a render before the first
+    /// real launch must show the user's data exactly as the old build did. Reads
+    /// only; creates and changes nothing.
+    public static func resolve(
+        appSupport: URL,
+        fileManager: FileManager = .default,
+        preview: Bool,
+        names: IdentityMigration.Names = .production
+    ) -> URL {
+        let new = appSupport.appendingPathComponent(names.newFolderName, isDirectory: true)
+        guard preview else { return new }
+        let legacy = appSupport.appendingPathComponent(names.legacyFolderName, isDirectory: true)
+        return holdsUnmigratedData(legacy: legacy, new: new, fileManager: fileManager) ? legacy : new
+    }
+
+    /// True while the old folder has at least one entry the new folder does not.
+    /// An entry that exists in both is a clash the migration deliberately left
+    /// behind, and the new folder is the truth for it.
+    static func holdsUnmigratedData(legacy: URL, new: URL, fileManager: FileManager) -> Bool {
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: legacy.path, isDirectory: &isDirectory),
+              isDirectory.boolValue,
+              let entries = try? fileManager.contentsOfDirectory(atPath: legacy.path)
+        else { return false }
+        return entries.contains { name in
+            (try? fileManager.attributesOfItem(atPath: new.appendingPathComponent(name).path)) == nil
+        }
+    }
+}

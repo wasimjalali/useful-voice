@@ -29,7 +29,7 @@ public final class DeepgramKeyStore: @unchecked Sendable {
 
     private let backend: DeepgramKeyBackend
     /// Owns every keychain operation on this item and every cache write.
-    private let queue = DispatchQueue(label: "ai.karko.sadaa.deepgram-key", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "ai.useful.voice.deepgram-key", qos: .userInitiated)
 
     /// Guards the three fields below for readers on other threads. Written only
     /// from `queue`.
@@ -46,6 +46,25 @@ public final class DeepgramKeyStore: @unchecked Sendable {
     /// Injects the storage, so tests never touch the user's keychain.
     init(backend: DeepgramKeyBackend) {
         self.backend = backend
+    }
+
+    /// Runs the one-time move of the key from the previous app identity's Keychain
+    /// service, on this store's queue and so ahead of any read or write of the key.
+    /// Off the main thread only: reading the old item may show one Keychain prompt.
+    @discardableResult
+    public func migrateLegacyKey(
+        with migration: IdentityMigration,
+        diagnostics: Diagnostics = .shared
+    ) -> IdentityMigration.KeychainOutcome {
+        dispatchPrecondition(condition: .notOnQueue(queue))
+        return queue.sync { migration.migrateKeychain(diagnostics: diagnostics) }
+    }
+
+    /// Whether a key is stored, from the Keychain itself (attributes only, so it
+    /// never prompts) and never from the cache. Counts the previous identity's
+    /// item until the migration has had its one try; see `IdentityMigration`.
+    public static func keyIsStored() -> Bool {
+        IdentityMigration.live().keyIsStored()
     }
 
     /// The key as last read, or `nil` when none is configured. Never touches the
@@ -225,5 +244,5 @@ struct KeychainKeyBackend: DeepgramKeyBackend {
     func lookup() -> Keychain.Lookup { Keychain.lookup(account: account) }
     func write(_ value: String) throws { try Keychain.set(value, account: account) }
     func delete() throws { try Keychain.delete(account: account) }
-    func exists() -> Bool { Keychain.exists(account: account) }
+    func exists() -> Bool { DeepgramKeyStore.keyIsStored() }
 }

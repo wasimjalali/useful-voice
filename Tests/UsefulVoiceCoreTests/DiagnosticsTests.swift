@@ -154,7 +154,7 @@ struct DiagnosticsTests {
         let parent = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: parent) }
         // The directory passed in does not exist yet, which is the first-run case.
-        let directory = parent.appendingPathComponent("nested/Sadaa")
+        let directory = parent.appendingPathComponent("nested/UsefulVoice")
         let diagnostics = Diagnostics(directory: directory)
 
         diagnostics.error("pipeline", "boom")
@@ -224,7 +224,7 @@ struct DiagnosticsTests {
         // The Settings page tells the user their data is in this folder, and the
         // Diagnostics section shows entries from this log. If the two ever diverge,
         // the app would be pointing at a file it does not write.
-        #expect(directory.lastPathComponent == "Sadaa")
+        #expect(directory.lastPathComponent == "UsefulVoice")
         #expect(directory.path.contains("Application Support"))
     }
 }
@@ -233,7 +233,7 @@ struct DiagnosticsTests {
 ///
 /// It did: every store routes through `Diagnostics.shared`, so a test that
 /// provoked a failing read appended its fixture to the developer's own
-/// `~/Library/Application Support/Sadaa/diagnostics.log`. Injecting a silent sink
+/// `~/Library/Application Support/UsefulVoice/diagnostics.log`. Injecting a silent sink
 /// per test was one forgotten call site away from recurring, so the guard lives in
 /// `Diagnostics` — and these tests exist because the guard's first implementation
 /// (a `.build` path check) silently did nothing on this toolchain, where the suite

@@ -59,7 +59,7 @@ public final class Diagnostics: @unchecked Sendable {
 
     private let lock = NSLock()
     private var buffer: [Entry] = []
-    private let queue = DispatchQueue(label: "ai.karko.sadaa.diagnostics", qos: .utility)
+    private let queue = DispatchQueue(label: "ai.useful.voice.diagnostics", qos: .utility)
     private let directory: URL?
     private var fileURL: URL? { directory?.appendingPathComponent("diagnostics.log") }
 
@@ -71,10 +71,7 @@ public final class Diagnostics: @unchecked Sendable {
     }
 
     public static func defaultDirectory() -> URL? {
-        FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            .first?
-            .appendingPathComponent("Sadaa")
+        DataFolder.current()
     }
 
     /// Whether the process is a test run rather than the app.
@@ -82,7 +79,7 @@ public final class Diagnostics: @unchecked Sendable {
     /// Detected so the shared sink cannot write into a real install's log during a
     /// test run. It did: because every store routes through `Diagnostics.shared`,
     /// any test that provoked a failed read appended its fixture to the
-    /// developer's own `~/Library/Application Support/Sadaa/diagnostics.log` —
+    /// developer's own `~/Library/Application Support/UsefulVoice/diagnostics.log` —
     /// 252 lines of `corrupt.json` and `unreadable.json` in a live install's log,
     /// which would have made that log actively misleading to debug against.
     ///

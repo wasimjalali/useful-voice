@@ -475,7 +475,7 @@ struct MemoryLanguageCompatibilityTests {
     /// Skipped on CI and on any machine without the file; it exists to be run against
     /// a real install, which unit fixtures cannot substitute for.
     @Test func testLiveStoreSurvivesARoundTrip() throws {
-        let path = ("~/Library/Application Support/Sadaa/language-memory.json" as NSString)
+        let path = ("~/Library/Application Support/UsefulVoice/language-memory.json" as NSString)
             .expandingTildeInPath
         let url = URL(fileURLWithPath: path)
         guard let original = try? Data(contentsOf: url) else { return }

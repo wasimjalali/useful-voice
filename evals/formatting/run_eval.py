@@ -25,9 +25,12 @@ VARIANTS = {
 
 def api_key():
     key = os.environ.get("DEEPGRAM_API_KEY", "")
-    if not key:
+    # New service first; the old one holds the key until the app has migrated it.
+    for service in ("ai.useful.voice", "ai.karko.sadaa"):
+        if key:
+            break
         key = subprocess.run(
-            ["security", "find-generic-password", "-s", "ai.karko.sadaa", "-a", "deepgram-key", "-w"],
+            ["security", "find-generic-password", "-s", service, "-a", "deepgram-key", "-w"],
             capture_output=True, text=True).stdout.strip()
     if not key:
         sys.exit("No API key: set DEEPGRAM_API_KEY or store one in the Keychain.")

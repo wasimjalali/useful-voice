@@ -3,20 +3,22 @@ ENTITLEMENTS = bundle/UsefulVoice.entitlements
 
 # Local development signing. Used by `bundle` / `run` / `install`.
 #
-# Sign with the stable self-signed identity if it exists (set up once via
-# scripts/setup-signing.sh), otherwise fall back to ad-hoc. Ad-hoc signing
-# changes the code hash every build, which makes macOS drop the Accessibility
-# grant on each reinstall; the stable identity keeps the hotkey working.
+# Sign with the stable "Useful Voice Release" identity if it is in the login
+# keychain (imported once from the password manager; see scripts/setup-signing.sh),
+# otherwise fall back to ad-hoc. Ad-hoc signing changes the code hash every build,
+# which makes macOS drop the Accessibility grant on each reinstall; the stable
+# identity keeps the hotkey working.
 #
-# Do NOT switch this to a Developer ID: the TCC grant for the Accessibility tap
-# is bound to the signing identity, so changing it forces every existing user to
-# re-grant. Distribution signing is the separate `bundle-release` target below.
-SIGN_IDENTITY = $(shell security find-identity -p codesigning 2>/dev/null | grep -q "Sadaa Local Signing" && echo "Sadaa Local Signing" || echo "-")
+# Do NOT create a new certificate or switch this to another identity: the TCC
+# grant for the Accessibility tap and the Microphone is bound to the signing
+# identity, so changing it forces every existing user to re-grant. Distribution
+# signing is the separate `bundle-release` target below.
+SIGN_IDENTITY = $(shell security find-identity -p codesigning 2>/dev/null | grep -q '"Useful Voice Release"' && echo "Useful Voice Release" || echo "-")
 
 # Warn loudly when signing ad-hoc, which silently drops the Accessibility grant
-# on every reinstall. Run scripts/setup-signing.sh once to fix it.
+# on every reinstall. Run scripts/setup-signing.sh to see how to import the identity.
 ifeq ($(SIGN_IDENTITY),-)
-$(warning Signing ad-hoc: run ./scripts/setup-signing.sh once so the Accessibility grant survives reinstalls.)
+$(warning Signing ad-hoc: import the "Useful Voice Release" identity (scripts/setup-signing.sh) so the Accessibility grant survives reinstalls.)
 endif
 
 # Distribution signing. `make bundle-release` needs a real Developer ID; if one
@@ -37,20 +39,20 @@ SWIFT_TEST_FLAGS = -Xswiftc -F -Xswiftc $(CLT_FRAMEWORKS)
 MARKETING_VERSION ?= 1.0.0
 BUILD_NUMBER ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 
-# App icon. Xcode's actool compiles the Icon Composer bundle (assets/branding/Sadaa.icon,
+# App icon. Xcode's actool compiles the Icon Composer bundle (assets/branding/UsefulVoice.icon,
 # light and dark appearances) into Assets.car, which CFBundleIconName points at. It needs
-# Xcode.app, so on Command Line Tools only the bundle falls back to the light Sadaa.icns
+# Xcode.app, so on Command Line Tools only the bundle falls back to the light UsefulVoice.icns
 # that CFBundleIconFile names. The icns is copied after actool so it is never overwritten.
 define compile_icon
 	@if xcrun --find actool >/dev/null 2>&1; then \
-		xcrun actool "$(CURDIR)/assets/branding/Sadaa.icon" --compile "$(CURDIR)/$(APP)/Contents/Resources" \
+		xcrun actool "$(CURDIR)/assets/branding/UsefulVoice.icon" --compile "$(CURDIR)/$(APP)/Contents/Resources" \
 			--output-format human-readable-text --notices --warnings --errors \
-			--output-partial-info-plist "$$(mktemp)" --app-icon Sadaa \
+			--output-partial-info-plist "$$(mktemp)" --app-icon UsefulVoice \
 			--platform macosx --minimum-deployment-target 14.0 --target-device mac; \
 	else \
 		echo "warning: actool not found (needs Xcode.app); shipping the light icon only" >&2; \
 	fi
-	cp assets/branding/Sadaa.icns $(APP)/Contents/Resources/Sadaa.icns
+	cp assets/branding/UsefulVoice.icns $(APP)/Contents/Resources/UsefulVoice.icns
 	cp assets/branding/StatusItem*.png $(APP)/Contents/Resources/
 endef
 
@@ -71,14 +73,14 @@ bundle: build
 	rm -rf $(APP)
 	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources $(APP)/Contents/Frameworks
 	cp bundle/Info.plist $(APP)/Contents/Info.plist
-	cp .build/release/UsefulVoiceApp $(APP)/Contents/MacOS/Sadaa
+	cp .build/release/UsefulVoiceApp $(APP)/Contents/MacOS/UsefulVoice
 	$(call compile_icon)
-	cp assets/branding/useful-voice-mark-dark.png $(APP)/Contents/Resources/SadaaLogo.png
+	cp assets/branding/useful-voice-mark-dark.png $(APP)/Contents/Resources/UsefulVoiceLogo.png
 	cp -R .build/release/$(FRAMEWORK) $(APP)/Contents/Frameworks/
 	@# The binary's own rpaths point at SPM's build/artifact dirs; inside the
 	@# bundle the framework lives at ../Frameworks relative to the executable.
 	install_name_tool -add_rpath "@executable_path/../Frameworks" \
-		$(APP)/Contents/MacOS/Sadaa 2>/dev/null || true
+		$(APP)/Contents/MacOS/UsefulVoice 2>/dev/null || true
 	@# Stamp the version from a single source of truth so shipped binaries are
 	@# distinguishable when triaging a report, and CFBundleVersion increases
 	@# monotonically (required for updates to install cleanly).
@@ -125,12 +127,12 @@ endif
 	rm -rf $(APP)
 	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources $(APP)/Contents/Frameworks
 	cp bundle/Info.plist $(APP)/Contents/Info.plist
-	cp .build/release/UsefulVoiceApp $(APP)/Contents/MacOS/Sadaa
+	cp .build/release/UsefulVoiceApp $(APP)/Contents/MacOS/UsefulVoice
 	$(call compile_icon)
-	cp assets/branding/useful-voice-mark-dark.png $(APP)/Contents/Resources/SadaaLogo.png
+	cp assets/branding/useful-voice-mark-dark.png $(APP)/Contents/Resources/UsefulVoiceLogo.png
 	cp -R .build/release/$(FRAMEWORK) $(APP)/Contents/Frameworks/
 	install_name_tool -add_rpath "@executable_path/../Frameworks" \
-		$(APP)/Contents/MacOS/Sadaa 2>/dev/null || true
+		$(APP)/Contents/MacOS/UsefulVoice 2>/dev/null || true
 	plutil -replace CFBundleShortVersionString -string "$(MARKETING_VERSION)" $(APP)/Contents/Info.plist
 	plutil -replace CFBundleVersion -string "$(BUILD_NUMBER)" $(APP)/Contents/Info.plist
 	@# No --deep: Apple documents it as unsuitable for distribution signing.

@@ -48,9 +48,28 @@ private func runMaintenanceFlagIfPresent() -> Bool {
 
 MainActor.assumeIsolated {
     _ = runMaintenanceFlagIfPresent()
+
+    // The one-time move from the previous app identity (data folder, preferences,
+    // Keychain key). It runs here, before the delegate exists and before anything
+    // reads the data folder, the preferences or the key store. A render or a forced
+    // first run never migrates.
+    let environment = ProcessInfo.processInfo.environment
+    if LaunchMode.migrateOnlyConflictsWithPreview(environment: environment) {
+        FileHandle.standardError.write(Data(
+            "UV_MIGRATE_ONLY cannot be combined with UV_SNAPSHOT or UV_FIRST_RUN=force\n".utf8))
+        exit(2)
+    }
+    if LaunchMode.current(environment: environment) == .migrateOnly {
+        // Test hook: migrate, print one JSON line and exit, with no UI, status
+        // item, hotkey tap or single-instance guard.
+        FileHandle.standardOutput.write(Data((LaunchMigration.migrateOnlySummary() + "\n").utf8))
+        exit(0)
+    }
+    let migrationReport = LaunchMigration.runAtLaunch()
+
     UserDefaults.standard.set("WhenScrolling", forKey: "AppleShowScrollBars")
     let app = NSApplication.shared
-    let delegate = AppDelegate()
+    let delegate = AppDelegate(migrationReport: migrationReport)
     app.delegate = delegate
     app.setActivationPolicy(.accessory)
     app.run()

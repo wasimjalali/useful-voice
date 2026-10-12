@@ -5,9 +5,13 @@ public enum KeychainError: Error {
     case unexpectedStatus(OSStatus)
 }
 
-/// Generic-password storage under service "ai.karko.sadaa".
+/// Generic-password storage under service "ai.useful.voice".
+///
+/// Every operation takes the service as a parameter, defaulting to the app's own.
+/// Only the one-time identity migration passes another (the previous identity's
+/// service, or a test prefix), so the rest of the app never names a service.
 public enum Keychain {
-    private static let service = "ai.karko.sadaa"
+    public static let service = "ai.useful.voice"
 
     /// Upsert via SecItemUpdate-then-SecItemAdd so the stored key can't be
     /// lost between a delete and an add.
@@ -15,7 +19,7 @@ public enum Keychain {
     /// are iOS semantics; on macOS file-based login keychains the attribute
     /// is ignored, and opting into the data-protection keychain would need
     /// entitlements an ad-hoc-signed app doesn't have.
-    public static func set(_ value: String, account: String) throws {
+    public static func set(_ value: String, account: String, service: String = Keychain.service) throws {
         let data = Data(value.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -62,7 +66,7 @@ public enum Keychain {
     }
 
     /// Reads an item while distinguishing absence from refusal.
-    public static func lookup(account: String) -> Lookup {
+    public static func lookup(account: String, service: String = Keychain.service) -> Lookup {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -120,7 +124,7 @@ public enum Keychain {
     /// caller until the user answers it (which happens after a re-signed
     /// reinstall). An existence check decrypts nothing, so it never prompts and
     /// is safe to call at launch to decide whether a provider is configured.
-    public static func exists(account: String) -> Bool {
+    public static func exists(account: String, service: String = Keychain.service) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -134,7 +138,7 @@ public enum Keychain {
 
     /// Deletes the item. Nothing stored counts as success; any other failure
     /// throws, so a caller never reports a removal the keychain refused.
-    public static func delete(account: String) throws {
+    public static func delete(account: String, service: String = Keychain.service) throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

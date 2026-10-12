@@ -1335,7 +1335,8 @@ describe('cancel while the recorder is still starting', () => {
     starting.open();
     await press;
     expect(ctx.service.currentState).toBe('idle');
-    expect(ctx.recorder.cancelCalls).toBe(1);
+    // Told to drop it at the cancel, and again when the start lands (the fallback).
+    expect(ctx.recorder.cancelCalls).toBe(2);
     expect(ctx.statuses.some((status) => status.state === 'recording')).toBe(false);
     expect(ctx.statuses.some((status) => status.state === 'error')).toBe(false);
   });
@@ -1350,6 +1351,42 @@ describe('cancel while the recorder is still starting', () => {
     starting.open();
     await press;
     expect(ctx.statuses.some((status) => status.state === 'error')).toBe(false);
+    expect(ctx.service.currentState).toBe('idle');
+  });
+
+  it('a cancel during a hung start lets the next start proceed at once, and the old one never clobbers it', async () => {
+    const ctx = setup();
+    const hung = gate();
+    ctx.recorder.startGate = hung.promise;
+    const first = ctx.service.toggle({ source: 'window' });
+    await ctx.service.cancel();
+    // The old start is still hung, but the recorder was told to drop it already.
+    expect(ctx.recorder.cancelCalls).toBe(1);
+    ctx.recorder.startGate = null;
+    await ctx.service.toggle({ source: 'window' });
+    expect(ctx.service.currentState).toBe('recording');
+    // The hung start finally answers: it must not cancel or replace the live recording.
+    hung.open();
+    await first;
+    expect(ctx.service.currentState).toBe('recording');
+    expect(ctx.recorder.cancelCalls).toBe(1);
+  });
+
+  it('reports a start in progress, also from the error state', async () => {
+    const ctx = setup();
+    ctx.recorder.startError = new Error('Permission denied');
+    await ctx.service.toggle({ source: 'window' });
+    expect(ctx.service.currentState).toBe('error');
+    const hung = gate();
+    ctx.recorder.startError = null;
+    ctx.recorder.startGate = hung.promise;
+    const again = ctx.service.toggle({ source: 'window' });
+    expect(ctx.service.isStarting).toBe(true);
+    await ctx.service.cancel();
+    expect(ctx.service.isStarting).toBe(false);
+    expect(ctx.service.currentState).toBe('idle');
+    hung.open();
+    await again;
     expect(ctx.service.currentState).toBe('idle');
   });
 

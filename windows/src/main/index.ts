@@ -215,12 +215,24 @@ class UsefulVoiceApp {
   private endPractice(): void {
     if (!this.practiceActive) return;
     this.practiceActive = false;
-    if (this.service.currentState === 'error') return;
+    // An error waiting for Retry is left alone, unless a new start began from it.
+    if (this.service.currentState === 'error' && !this.service.isStarting) return;
     void this.service.cancel().catch((error: Error) => this.diagnostics.log('dictation', `could not cancel the practice dictation: ${error.message}`));
   }
 
   /** What the e2e suite can read and trigger in main. Installed only under `--e2e`. */
   private installE2eHooks(): void {
+    // Every recorder start goes through here under e2e, so a spec can fail it once or hold it.
+    const recorder = this.recorder as unknown as { start: () => Promise<void> };
+    const realStart = recorder.start.bind(recorder);
+    recorder.start = async () => {
+      if (this.e2eFailStart) {
+        this.e2eFailStart = false;
+        throw new Error('Permission denied: microphone access is blocked.');
+      }
+      await this.e2eHold;
+      return realStart();
+    };
     (globalThis as Record<string, unknown>).__uv = {
       firstRunOpen: () => this.firstRun.open,
       serviceState: () => this.service.currentState,
@@ -231,15 +243,12 @@ class UsefulVoiceApp {
         this.e2eRefused = accelerator;
       },
       holdRecorderStart: () => {
-        const recorder = this.recorder as unknown as { start: () => Promise<void> };
-        const real = recorder.start.bind(recorder);
         this.e2eHold = new Promise<void>((resolve) => {
           this.e2eRelease = resolve;
         });
-        recorder.start = async () => {
-          await this.e2eHold;
-          return real();
-        };
+      },
+      failNextRecorderStart: () => {
+        this.e2eFailStart = true;
       },
       releaseRecorderStart: () => this.e2eRelease?.(),
       holdStateRequests: () => {
@@ -257,6 +266,7 @@ class UsefulVoiceApp {
   /** E2E only: an accelerator Windows is pretending another app owns, and a held recorder start. */
   private e2eRefused: string | null = null;
   private e2eHold: Promise<void> | null = null;
+  private e2eFailStart = false;
   private e2eRelease: (() => void) | null = null;
   private e2eStateHold: Promise<void> | null = null;
   private e2eStateRelease: (() => void) | null = null;

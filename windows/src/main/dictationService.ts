@@ -231,6 +231,11 @@ export class DictationService {
     return this.state;
   }
 
+  /** The recorder is still starting: nothing records yet, but a start is in flight. */
+  get isStarting(): boolean {
+    return this.starting;
+  }
+
   get isBusy(): boolean {
     return this.state === 'recording' || this.state === 'transcribing' || this.state === 'delivering';
   }
@@ -290,12 +295,14 @@ export class DictationService {
       this.setState('error', classifyRecordingFailure(error));
       return;
     } finally {
-      this.starting = false;
+      // A cancel already released the flag (and a newer start may own it now).
+      if (token === this.startToken) this.starting = false;
     }
 
-    // Cancelled while the recorder was starting: it has begun now, so tell it to drop it.
+    // Cancelled while the recorder was starting: it has begun now, so tell it to drop it,
+    // unless a newer start or recording already owns the recorder.
     if (token !== this.startToken) {
-      await this.deps.recorder.cancel().catch(() => undefined);
+      if (!this.starting && this.session === null) await this.deps.recorder.cancel().catch(() => undefined);
       return;
     }
     this.session = session;
@@ -357,6 +364,11 @@ export class DictationService {
     // The recorder is still starting: nothing is recording yet to stop, so abandon the start.
     if (this.starting) {
       this.startToken += 1;
+      // Released now so the next press is not ignored while a hung recorder start times out.
+      this.starting = false;
+      void this.deps.recorder.cancel().catch(() => undefined);
+      // A start from the error state: the person moved on, so the old error goes too.
+      if (this.state === 'error') this.setState('idle');
       return;
     }
     if (this.state === 'idle') return;

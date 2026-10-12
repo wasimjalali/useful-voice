@@ -902,6 +902,21 @@ test('leaving Try it while the recorder is still starting never starts a recordi
     expect(await main.state()).toBe('idle');
     expect(await live()).toBe(0);
     await expect(fr(win).getByRole('button', { name: 'Continue', exact: true })).toBeVisible();
+
+    // The same from the error state: a failed practice, Start again, leave while held.
+    await fr(win).getByRole('button', { name: 'Continue', exact: true }).click();
+    await main.call('failNextRecorderStart');
+    await fr(win).getByRole('button', { name: 'Start recording' }).click();
+    await until(async () => (await main.state()) === 'error', 'the practice error');
+    await main.call('holdRecorderStart');
+    await fr(win).getByRole('button', { name: 'Start recording' }).click();
+    await win.waitForTimeout(300);
+    await fr(win).getByRole('button', { name: 'Back' }).click();
+    await win.waitForTimeout(300);
+    await main.call('releaseRecorderStart');
+    await win.waitForTimeout(2000);
+    expect(await main.state()).toBe('idle');
+    expect(await live()).toBe(0);
   } finally {
     await run.stop();
     await remove(userData);

@@ -46,7 +46,17 @@ public final class DictationController {
     private let isSecureInputActive: () -> Bool
     /// The app in front. Read when a hotkey dictation starts (the paste target)
     /// and again at delivery, so text is pasted only where it was dictated for.
+    /// Used only when `focusTarget` is not given.
     private let frontmostApp: () -> FrontmostApp?
+    /// What has focus now, in full (app, process, window, element, browser URL).
+    /// Read at the hotkey press to lock the target, and at delivery to check it.
+    private let focusTarget: (() -> DeliveryTarget?)?
+    /// Whether the target's process still exists.
+    private let isTargetRunning: (DeliveryTarget) -> Bool
+    /// Brings the target app, window and element back to the front. Returns
+    /// whether the app reports it came forward; the controller then checks the
+    /// focus again itself, so a reported success is never trusted on its own.
+    private let reactivate: (DeliveryTarget) async -> Bool
     private var pendingRawMode = false
     /// Where the dictation now in flight was started, and the app it will paste
     /// into. Written once, when recording starts, and never by the stop toggle,
@@ -54,7 +64,7 @@ public final class DictationController {
     /// retryLast() does not read them at all.
     private var activeSource: DictationSource = .hotkey
     private var activeAppName: String?
-    private var activeApp: FrontmostApp?
+    private var activeTarget: DeliveryTarget?
     /// Identifies the delivery in flight. A completion acts only if it still
     /// holds the current token, so a second call, or a late one from an earlier
     /// dictation, cannot fire an outcome or end the next dictation's delivery.
@@ -71,6 +81,12 @@ public final class DictationController {
 
     /// True when a failed dictation can be retried on its retained audio.
     public var canRetry: Bool { lastFailedAudio != nil }
+
+    /// The target locked at the hotkey press of the dictation now in flight (or
+    /// the last one), nil for a window dictation. The app layer reads it while
+    /// formatting and delivering, so both use the app the user dictated into, not
+    /// whatever is in front by then.
+    public var deliveryTarget: DeliveryTarget? { activeTarget }
 
     public init(recorder: AudioRecording,
                 providers: @escaping () -> [TranscriptionProvider],
@@ -90,7 +106,10 @@ public final class DictationController {
                 formatterUnavailable: @escaping () -> Void = {},
                 now: @escaping () -> Date = { Date() },
                 isSecureInputActive: @escaping () -> Bool = { false },
-                frontmostApp: @escaping () -> FrontmostApp? = { nil }) {
+                frontmostApp: @escaping () -> FrontmostApp? = { nil },
+                focusTarget: (() -> DeliveryTarget?)? = nil,
+                isTargetRunning: @escaping (DeliveryTarget) -> Bool = { _ in true },
+                reactivate: @escaping (DeliveryTarget) async -> Bool = { _ in false }) {
         self.recorder = recorder
         self.providers = providers
         self.store = store
@@ -107,6 +126,9 @@ public final class DictationController {
         self.now = now
         self.isSecureInputActive = isSecureInputActive
         self.frontmostApp = frontmostApp
+        self.focusTarget = focusTarget
+        self.isTargetRunning = isTargetRunning
+        self.reactivate = reactivate
         // The recorder calls this on the main thread and only for its live
         // session (see AudioRecording.onAutoStop), so it acts at once: no extra
         // hop in which a stale call could end the NEXT recording. The state check
@@ -133,9 +155,9 @@ public final class DictationController {
             pendingRawMode = rawMode
             let mode: DeliveryMode = activeSource == .window ? .copy : .paste
             let appName = activeAppName
-            let startApp = activeApp
+            let target = activeTarget
             state = .transcribing   // synchronous: a racing toggle now sees .transcribing and is ignored
-            processingTask = Task { await stopAndProcess(mode: mode, appName: appName, startApp: startApp) }
+            processingTask = Task { await stopAndProcess(mode: mode, appName: appName, target: target) }
         case .transcribing, .delivering:
             break // busy; ignore to avoid double-processing
         }
@@ -214,11 +236,12 @@ public final class DictationController {
             try recorder.start(to: url)
             recordingStartedAt = now()
             // Captured now, for this dictation only. Only a hotkey dictation
-            // pastes, so only it needs the app it will paste into.
+            // pastes, so only it needs the target it will paste into: the app,
+            // window and element in front at the press, locked until delivery.
             activeSource = source
-            let front = source == .hotkey ? frontmostApp() : nil
-            activeApp = front
-            activeAppName = front?.name
+            let target = source == .hotkey ? currentFocus() : nil
+            activeTarget = target
+            activeAppName = target?.appName
             state = .recording
         } catch {
             state = .error(DictationError.startFailure(error))
@@ -226,7 +249,7 @@ public final class DictationController {
     }
 
     private func stopAndProcess(mode: DeliveryMode, appName: String?,
-                                 startApp: FrontmostApp?) async {
+                                 target: DeliveryTarget?) async {
         let audioURL: URL
         do {
             audioURL = try recorder.stop()
@@ -254,7 +277,7 @@ public final class DictationController {
         // response omits one.
         let measuredDuration = recordingStartedAt.map { max(0, now().timeIntervalSince($0)) }
         await process(audioURL: audioURL, measuredDuration: measuredDuration,
-                      mode: mode, appName: appName, startApp: startApp)
+                      mode: mode, appName: appName, target: target)
     }
 
     private static let noSpeech = DictationError(
@@ -269,7 +292,7 @@ public final class DictationController {
                          presetContext: FormattingContext? = nil,
                          mode deliveryMode: DeliveryMode,
                          appName: String?,
-                         startApp: FrontmostApp? = nil) async {
+                         target: DeliveryTarget? = nil) async {
         // Raw mode is consumed exactly once, at the top: a failed or empty
         // transcript used to leave the flag set and leak raw mode into the next
         // dictation.
@@ -435,6 +458,18 @@ public final class DictationController {
 
         state = .delivering
         try? store.prune(keep: recordingsToKeep)
+        // A hotkey dictation pastes only into the target locked at the press. If
+        // focus has moved (the user clicked into another composer, or stopped from
+        // Useful Voice's own window), the target is brought back first; if that
+        // does not work, or the target is gone, the text is copied and the user is
+        // told, rather than pasted into the wrong place. Started and still in
+        // Useful Voice (a note) pastes.
+        var deliverMode = deliveryMode
+        var pasteRedirected = false
+        if deliverMode == .paste, !(await lockOnTarget(target)) {
+            deliverMode = .copy
+            pasteRedirected = true
+        }
         // Hold .delivering until delivery actually settles; the busy mutex then
         // spans the whole paste/verify/restore window instead of dropping to
         // .idle the instant the synthetic paste is posted.
@@ -445,17 +480,6 @@ public final class DictationController {
         deliveryToken += 1
         let token = deliveryToken
         let words = DictationOutcome.wordCount(of: finalText)
-        // A hotkey dictation pastes only into the app it started in. If the user
-        // has since moved (or stopped it from Useful Voice's own window after
-        // starting elsewhere), the paste would land in the wrong place, so deliver
-        // by copy and say so. Started and still in Useful Voice (a note) pastes.
-        var deliverMode = deliveryMode
-        var pasteRedirected = false
-        if deliverMode == .paste, let now = frontmostApp(),
-           now.id != startApp?.id {
-            deliverMode = .copy
-            pasteRedirected = true
-        }
         deliver(finalText, deliverMode) { [weak self] report in
             guard let self, self.state == .delivering,
                   self.deliveryToken == token else { return }
@@ -471,6 +495,34 @@ public final class DictationController {
                     kind: .deliveryFailed,
                     message: "Couldn't copy the text. It's saved in Useful Voice."))
             }
+        }
+    }
+
+    /// What has focus now: the full target when the app layer reads one, else
+    /// just the frontmost app.
+    private func currentFocus() -> DeliveryTarget? {
+        if let focusTarget { return focusTarget() }
+        return frontmostApp().map(DeliveryTarget.init(app:))
+    }
+
+    /// Runs the target lock (see `TargetLock`): true when the text may be
+    /// inserted, with the target in front; false when it must only be copied.
+    private func lockOnTarget(_ target: DeliveryTarget?) async -> Bool {
+        let running = target.map(isTargetRunning) ?? false
+        var decision = TargetLock.check(target: target, current: currentFocus(), targetRunning: running)
+        if decision == .reactivate, let target {
+            let reactivated = await reactivate(target)
+            decision = TargetLock.recheck(target: target, current: currentFocus(), reactivated: reactivated)
+        }
+        switch decision {
+        case .insert:
+            return true
+        case .reactivate:
+            return false   // unreachable: recheck never asks again
+        case .copyOnly(let reason):
+            diagnostics.record(level: .info, category: "delivery",
+                               message: "target not reachable (\(reason)); copied instead of pasting")
+            return false
         }
     }
 

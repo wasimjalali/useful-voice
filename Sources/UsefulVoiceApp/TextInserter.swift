@@ -8,6 +8,7 @@ enum DeliveryOutcome {
     case pasted          // synthetic Cmd-V landed (or a Cmd-V app where we can't prove it)
     case clipboardOnly   // nothing landed; the user pastes manually
     case secureFieldCopied // a password field has focus: left on the clipboard, never typed
+    case targetLost      // the captured target lost focus before the insert: left on the clipboard
     case failed          // the clipboard write itself failed: the text is nowhere but History
 }
 
@@ -73,6 +74,10 @@ struct TextInserter {
     /// Posts a synthetic Cmd-V. Returns whether it could be posted at all
     /// (Accessibility trust is required); false means it never went out.
     private let synthesizePaste: () -> Bool
+    /// Types the text as synthesised Unicode keystrokes (type-out mode). Returns
+    /// whether every chunk went out; it stops early, and returns false, the moment
+    /// a password field takes focus.
+    private let synthesizeTyping: (String) -> Bool
     /// Writes text into the focused element via AX. Returns the raw AX result,
     /// which is not trusted on its own (Terminal reports success but inserts
     /// nothing) - the caller verifies with a character-count check.
@@ -95,6 +100,7 @@ struct TextInserter {
     init(pasteboard: @escaping () -> NSPasteboard = { .general },
          isSecureInput: @escaping () -> Bool = { IsSecureEventInputEnabled() },
          synthesizePaste: @escaping () -> Bool = TextInserter.postCommandV,
+         synthesizeTyping: @escaping (String) -> Bool = TextInserter.postUnicodeText,
          axInsert: @escaping (String) -> Bool = TextInserter.axWriteSelectedText,
          focusedProbe: @escaping () -> (identifier: String, charCount: Int?)?
             = TextInserter.probeFocusedElement,
@@ -108,6 +114,7 @@ struct TextInserter {
         self.pasteboard = pasteboard
         self.isSecureInput = isSecureInput
         self.synthesizePaste = synthesizePaste
+        self.synthesizeTyping = synthesizeTyping
         self.axInsert = axInsert
         self.focusedProbe = focusedProbe
         self.restoreClipboard = restoreClipboard
@@ -117,7 +124,19 @@ struct TextInserter {
         self.finalCheck = finalCheck
     }
 
+    /// - Parameters:
+    ///   - method: paste (Cmd-V) or type it out. Exactly one is used: a typed
+    ///     delivery never posts Cmd-V and never runs the AX insert fallback, so
+    ///     the text cannot land twice.
+    ///   - restorePreviousClipboard: the user's setting. Off leaves the dictation
+    ///     on the clipboard even after a proven insert.
+    ///   - onTarget: checked right before anything is posted. False means the
+    ///     target captured at the hotkey press is no longer focused: nothing is
+    ///     posted and the dictation stays on the clipboard.
     func deliver(_ text: String,
+                 method: InsertionMethod = .paste,
+                 restorePreviousClipboard: Bool = true,
+                 onTarget: @escaping () -> Bool = { true },
                  completion: @escaping (DeliveryOutcome) -> Void = { _ in }) {
         let pb = pasteboard()
 
@@ -157,10 +176,23 @@ struct TextInserter {
         }
         let ourChangeCount = pb.changeCount
 
-        let posted = synthesizePaste()
+        // The last look before anything is posted: the target locked at the hotkey
+        // press must still be the focus. The dictation is already on the clipboard,
+        // so a lost target loses nothing; it is never pasted somewhere else.
+        guard onTarget() else {
+            completion(.targetLost)
+            onDeliverySettled?()
+            return
+        }
+
+        // One way in, never both. A secure field that appeared since the check
+        // above stops typing before the first keystroke (see postUnicodeText).
+        let posted = method == .typeOut ? synthesizeTyping(text) : synthesizePaste()
 
         let restore = { (proof: Bool) -> Bool in
-            guard proof, canRestoreSafely else { return false }
+            guard DeliveryPolicy.shouldRestoreClipboard(
+                proven: proof, canRestoreSafely: canRestoreSafely,
+                restorePreviousClipboard: restorePreviousClipboard) else { return false }
             return self.restoreClipboard(saved, pb, ourChangeCount)
         }
 
@@ -185,9 +217,11 @@ struct TextInserter {
             }()
             // Only into a field that reports its length and did not change: an AX
             // insert we can't verify is never trusted, and after a posted paste into
-            // such a field it would double the text.
+            // such a field it would double the text. Never after type-out: keystrokes
+            // still queued in the target would land on top of the insert.
             var axInsertGrew = false
-            if let before = probeBefore, let beforeCount = before.charCount,
+            if method == .paste,
+               let before = probeBefore, let beforeCount = before.charCount,
                !targetChanged, !self.isSecureInput(),
                self.axInsert(text),
                let after = self.focusedProbe(),
@@ -204,6 +238,13 @@ struct TextInserter {
 
         guard posted else { runFallback(nil); return }
 
+        // Typed text arrives one event at a time, so a long dictation needs longer
+        // before the field has grown by all of it (capped, so a huge one still
+        // settles quickly; an unconfirmed growth only keeps the dictation).
+        let typingAllowance = method == .typeOut ? min(1.5, Double(payloadLength) / 1000) : 0
+        let firstCheck = self.firstCheck + typingAllowance
+        let finalCheck = self.finalCheck + typingAllowance
+
         // Checks are scheduled, never blocking, so the target stays responsive
         // while it reads the clipboard and grows.
         schedule(firstCheck) {
@@ -213,7 +254,7 @@ struct TextInserter {
                 self.onDeliverySettled?()
                 return
             }
-            self.schedule(self.finalCheck - self.firstCheck) {
+            self.schedule(finalCheck - firstCheck) {
                 let after = self.focusedProbe()
                 if self.landed(since: probeBefore, after: after, payloadLength: payloadLength) {
                     _ = restore(true)
@@ -367,6 +408,37 @@ struct TextInserter {
         guard !items.isEmpty else { return false }
         guard pb.changeCount == expectedChangeCount else { return false }
         return Clipboard.restore(items, to: pb)
+    }
+
+    /// Types `text` as synthesised Unicode keystrokes.
+    ///
+    /// Each key event carries the characters themselves
+    /// (`keyboardSetUnicodeString`), so the result does not depend on the keyboard
+    /// layout. Chunks never split an emoji (see `TypeOutChunker`). Typing stops
+    /// before the next chunk the moment secure input turns on: a password field
+    /// never receives a keystroke from here.
+    private static func postUnicodeText(_ text: String) -> Bool {
+        guard AXIsProcessTrusted() else { return false }
+        guard let source = CGEventSource(stateID: .combinedSessionState) else { return false }
+        for chunk in TypeOutChunker.chunks(of: text) {
+            guard !IsSecureEventInputEnabled() else { return false }
+            guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
+                  let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
+            else { return false }
+            chunk.withUnsafeBufferPointer { units in
+                down.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units.baseAddress)
+                up.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units.baseAddress)
+            }
+            // No modifiers: a key still held from the hotkey must not turn the text
+            // into shortcuts.
+            down.flags = []
+            up.flags = []
+            down.post(tap: .cghidEventTap)
+            up.post(tap: .cghidEventTap)
+            // A short gap so slow targets (terminals over ssh) keep up.
+            usleep(2_000)
+        }
+        return true
     }
 
     private static func postCommandV() -> Bool {

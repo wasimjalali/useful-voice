@@ -75,4 +75,19 @@ public enum DeliveryPolicy {
         // paste.
         return pastePosted ? .keepDictationPasted : .keepDictationManual
     }
+
+    /// Whether the user's previous clipboard may be written back now.
+    ///
+    /// - Parameters:
+    ///   - proven: the text provably landed (the element grew by the payload, or a
+    ///     decision that `restoresUserClipboard`).
+    ///   - canRestoreSafely: the snapshot was copied in full (or the clipboard was
+    ///     empty); a partial copy must never replace the user's data.
+    ///   - restorePreviousClipboard: the user's setting. Off leaves the dictation
+    ///     on the clipboard even after a proven paste.
+    public static func shouldRestoreClipboard(proven: Bool,
+                                              canRestoreSafely: Bool,
+                                              restorePreviousClipboard: Bool) -> Bool {
+        proven && canRestoreSafely && restorePreviousClipboard
+    }
 }

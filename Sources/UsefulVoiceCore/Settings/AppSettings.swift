@@ -274,6 +274,8 @@ public final class AppSettings {
         static let localModelID = "localModelID"
         static let appearance = "appearance"
         static let dailyWordGoal = "dailyWordGoal"
+        static let restorePreviousClipboard = "restorePreviousClipboard"
+        static let typeOutAppIDs = "typeOutAppIDs"
     }
 
     /// Words per day the Insights goal ring aims at, until the person sets another.
@@ -425,5 +427,42 @@ public final class AppSettings {
             return stored >= 1 ? stored : Self.defaultDailyWordGoal
         }
         set { defaults.set(max(1, newValue), forKey: Keys.dailyWordGoal) }
+    }
+
+    /// After a paste that provably landed, put back what the user had on the
+    /// clipboard before. Off leaves the dictation on the clipboard. Default: on,
+    /// the behaviour before this setting existed, so an install that never saved
+    /// it is unchanged. An unproven paste never restores either way.
+    public var restorePreviousClipboard: Bool {
+        get { defaults.object(forKey: Keys.restorePreviousClipboard) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Keys.restorePreviousClipboard) }
+    }
+
+    /// Bundle ids of the apps that get the dictation typed out as keystrokes
+    /// instead of pasted (terminals, apps that block paste). Empty by default: every
+    /// app pastes until the user turns typing on for it. Stored without duplicates;
+    /// a stored value of the wrong type reads as empty.
+    public var typeOutAppIDs: [String] {
+        get {
+            let stored = defaults.array(forKey: Keys.typeOutAppIDs) as? [String] ?? []
+            return Self.normalisedAppIDs(stored)
+        }
+        set { defaults.set(Self.normalisedAppIDs(newValue), forKey: Keys.typeOutAppIDs) }
+    }
+
+    /// Turns typing on or off for one app.
+    public func setTypeOut(_ enabled: Bool, forAppID appID: String) {
+        var ids = typeOutAppIDs.filter { $0.lowercased() != appID.lowercased() }
+        if enabled { ids.append(appID) }
+        typeOutAppIDs = ids
+    }
+
+    private static func normalisedAppIDs(_ ids: [String]) -> [String] {
+        var seen = Set<String>()
+        return ids.compactMap { raw in
+            let id = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !id.isEmpty, seen.insert(id.lowercased()).inserted else { return nil }
+            return id
+        }
     }
 }

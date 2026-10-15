@@ -97,6 +97,12 @@ final class MenuBarMenu: NSObject, NSMenuDelegate {
         menu.addItem(fixItem)
         configure(settingsItem, title: "Open settings", action: #selector(openSettings), key: ",")
         menu.addItem(settingsItem)
+        // Only release builds have an update feed (Updater.swift).
+        if AppUpdater.shared.isAvailable {
+            let updateItem = NSMenuItem()
+            configure(updateItem, title: "Check for Updates…", action: #selector(checkForUpdates))
+            menu.addItem(updateItem)
+        }
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(title: "Quit Useful Voice",
@@ -237,6 +243,8 @@ final class MenuBarMenu: NSObject, NSMenuDelegate {
     }
 
     @objc private func openMainWindow() { actions.openMainWindow() }
+
+    @objc private func checkForUpdates() { AppUpdater.shared.checkForUpdates() }
 
     /// Opens Settings. When the last issue needs the engine set up, the window
     /// scrolls to the Engine group, which is that issue's fix.

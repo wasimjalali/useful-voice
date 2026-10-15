@@ -61,3 +61,63 @@ It copies `git ls-files` only, minus the paths in `EXCLUDE` (old Sadaa audits an
 until screenshots with synthetic data are approved, and any media that could show real windows).
 
 A new file that shows real data or the owner's account belongs on `EXCLUDE` before it is committed.
+
+## Building a macOS release
+
+`scripts/release-mac.mjs` (ported from Useful Bot) builds everything a release publishes into
+`dist/release`, on the release Mac:
+
+```sh
+node scripts/release-mac.mjs --version X.Y.Z
+```
+
+| File | What it is |
+|---|---|
+| `Useful-Voice-macOS.zip` | The app, signed for Sparkle with the update key. Sparkle and `install.sh` download it. |
+| `Useful-Voice-macOS.dmg` | The same app beside an Applications link over the branded background (`bundle/dmg/`), for browser downloads. |
+| `appcast.xml` | One-item Sparkle feed pointing at this release's zip. Written last: its presence marks a whole release. |
+| `install.sh` | The curl installer (`scripts/install.sh`) with this release's zip URL and SHA-256 baked in. |
+| `release-notes.md` | A draft from `bundle/release-notes.md`: fill in New, Better and Fixed, then paste it into the GitHub release. |
+
+The version comes from `--version`; the build number (`CFBundleVersion`, which Sparkle compares) is
+`git rev-list --count HEAD`, so it only grows. The script refuses a dirty tree, a missing
+"Useful Voice Release" identity, and an update key in the Keychain that differs from the public key
+in the script. It builds through `make bundle` with the version, the certificate and the feed, checks
+the designated requirement is `identifier "ai.useful.voice" and certificate root = H"0911ad55..."`
+(UV-004), then mounts the DMG read-only and checks its layout, the app's signature, version, feed,
+designated requirement and that it is the same build as the zip (CDHash). Nothing is uploaded.
+
+Signing follows UV-004: the free self-signed "Useful Voice Release" certificate, no hardened runtime,
+no notarization. That is why `install.sh` clears the quarantine flag (after checking the SHA-256 and
+the signature) and the DMG window says Open Anyway. The Makefile's `bundle-release`, `notarize` and
+`dmg` targets are the Developer ID path (Option A), not used.
+
+The `Release dry run` workflow builds a whole release on every PR that touches this pipeline, ad hoc
+signed with a throwaway key made on the runner, and installs it through the generated `install.sh`.
+`--ad-hoc` refuses the real key account, so a test build can never pass for a release.
+
+### The update key (once, before the first release)
+
+Sparkle's EdDSA key does not exist yet, so the script refuses to build a release. On the release Mac:
+
+```sh
+swift package resolve
+.build/artifacts/sparkle/Sparkle/bin/generate_keys --account useful-voice     # prints the public key
+.build/artifacts/sparkle/Sparkle/bin/generate_keys --account useful-voice -x useful-voice-sparkle.key
+```
+
+Store the exported private key in the password manager, then delete the file. Put the public key in
+`ED_PUBLIC_KEY` in `scripts/release-mac.mjs` in a PR. Never make a second key: every installed copy
+only trusts this one.
+
+### Publishing (owner only)
+
+1. Create the GitHub release `vX.Y.Z` on `useful-voice-releases` and attach the zip, the DMG,
+   `appcast.xml` and `install.sh` (the default feed and install URLs read the latest release's assets).
+2. Paste the filled `release-notes.md` as its notes.
+3. Publish the source snapshot (above).
+
+Before the first public release, check the update path end to end on a clean user: install the
+previous version through the curl one-liner, grant Accessibility and Microphone, then update through
+Sparkle (menu bar, Check for Updates…) and dictate with the hotkey without re-granting. Back up
+`~/Library/Application Support/UsefulVoice/` before switching your own Mac to the release build.

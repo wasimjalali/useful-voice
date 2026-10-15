@@ -56,6 +56,23 @@ define compile_icon
 	cp assets/branding/StatusItem*.png $(APP)/Contents/Resources/
 endef
 
+# Sparkle, for in-app updates. The framework ships signed by its authors and ditto
+# keeps that signature (and the framework's symlinks). The updater only runs when a
+# release build passes its feed and public key (scripts/release-mac.mjs sets
+# SU_FEED_URL and SU_PUBLIC_ED_KEY); a local build carries neither and never updates.
+SU_FEED_URL ?=
+SU_PUBLIC_ED_KEY ?=
+define embed_sparkle
+	rm -rf $(APP)/Contents/Frameworks/Sparkle.framework
+	ditto .build/release/Sparkle.framework $(APP)/Contents/Frameworks/Sparkle.framework
+	@if [ -n "$(SU_FEED_URL)$(SU_PUBLIC_ED_KEY)" ]; then \
+		[ -n "$(SU_FEED_URL)" ] && [ -n "$(SU_PUBLIC_ED_KEY)" ] || { echo "error: SU_FEED_URL and SU_PUBLIC_ED_KEY go together" >&2; exit 1; }; \
+		plutil -insert SUFeedURL -string "$(SU_FEED_URL)" $(APP)/Contents/Info.plist && \
+		plutil -insert SUPublicEDKey -string "$(SU_PUBLIC_ED_KEY)" $(APP)/Contents/Info.plist && \
+		plutil -insert SUEnableAutomaticChecks -bool YES $(APP)/Contents/Info.plist; \
+	fi
+endef
+
 .PHONY: build test bundle run install uninstall bundle-release notarize dmg clean
 
 build:
@@ -77,6 +94,7 @@ bundle: build
 	$(call compile_icon)
 	cp assets/branding/useful-voice-mark-dark.png $(APP)/Contents/Resources/UsefulVoiceLogo.png
 	cp -R .build/release/$(FRAMEWORK) $(APP)/Contents/Frameworks/
+	$(call embed_sparkle)
 	@# The binary's own rpaths point at SPM's build/artifact dirs; inside the
 	@# bundle the framework lives at ../Frameworks relative to the executable.
 	install_name_tool -add_rpath "@executable_path/../Frameworks" \
@@ -88,6 +106,8 @@ bundle: build
 	plutil -replace CFBundleVersion -string "$(BUILD_NUMBER)" $(APP)/Contents/Info.plist
 	@# Nested code is signed inside-out: the framework gets its own signature
 	@# (the upstream XCFramework is only ad-hoc signed), then the bundle.
+	@# Sparkle keeps its authors' signature: without the hardened runtime there is
+	@# no library validation, so the app loads it as signed.
 	codesign --force --sign "$(SIGN_IDENTITY)" $(APP)/Contents/Frameworks/$(FRAMEWORK)
 	codesign --force --sign "$(SIGN_IDENTITY)" $(APP)
 	@codesign -dv $(APP) 2>&1 | sed -n 's/^/    /p'
@@ -131,6 +151,7 @@ endif
 	$(call compile_icon)
 	cp assets/branding/useful-voice-mark-dark.png $(APP)/Contents/Resources/UsefulVoiceLogo.png
 	cp -R .build/release/$(FRAMEWORK) $(APP)/Contents/Frameworks/
+	$(call embed_sparkle)
 	install_name_tool -add_rpath "@executable_path/../Frameworks" \
 		$(APP)/Contents/MacOS/UsefulVoice 2>/dev/null || true
 	plutil -replace CFBundleShortVersionString -string "$(MARKETING_VERSION)" $(APP)/Contents/Info.plist
@@ -141,6 +162,14 @@ endif
 	codesign --force --options runtime --timestamp \
 		--sign "$(DEVID_IDENTITY)" \
 		$(APP)/Contents/Frameworks/$(FRAMEWORK)
+	@# The hardened runtime's library validation only loads code from the same
+	@# team, so Sparkle is re-signed in the order its docs give
+	@# (sparkle-project.org/documentation/sandboxing).
+	codesign -f -s "$(DEVID_IDENTITY)" -o runtime --timestamp $(APP)/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Installer.xpc
+	codesign -f -s "$(DEVID_IDENTITY)" -o runtime --timestamp --preserve-metadata=entitlements $(APP)/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc
+	codesign -f -s "$(DEVID_IDENTITY)" -o runtime --timestamp $(APP)/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate
+	codesign -f -s "$(DEVID_IDENTITY)" -o runtime --timestamp $(APP)/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app
+	codesign -f -s "$(DEVID_IDENTITY)" -o runtime --timestamp $(APP)/Contents/Frameworks/Sparkle.framework
 	codesign --force --options runtime --timestamp \
 		--entitlements $(ENTITLEMENTS) \
 		--sign "$(DEVID_IDENTITY)" $(APP)

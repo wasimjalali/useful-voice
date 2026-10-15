@@ -1,0 +1,140 @@
+name: Release dry run
+
+# Builds a whole macOS release (zip, DMG, appcast.xml, install.sh, release notes)
+# the way scripts/release-mac.mjs does on the release Mac, but ad hoc signed and
+# with a throwaway update key made on the runner, then installs it through the
+# generated install.sh from a local server. Nothing is published, and these
+# builds can never update a real install (they don't carry the real key).
+on:
+  pull_request:
+    paths:
+      - scripts/release-mac.mjs
+      - scripts/install.sh
+      - bundle/**
+      - Makefile
+      - Package.swift
+      - Package.resolved
+      - Sources/UsefulVoiceApp/Updater.swift
+      - .github/workflows/release-dry-run.yml
+  workflow_dispatch:
+
+concurrency:
+  group: release-dry-run-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-release:
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        # Explicit, for -o pipefail: a failed build piped into tee must fail the step.
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The build number is the commit count, so the whole history.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # generate_keys and sign_update keep the key in the default keychain. A fresh,
+      # unlocked one keeps them from waiting on a prompt nobody can answer.
+      - name: Throwaway keychain
+        run: |
+          KC="$RUNNER_TEMP/release-dry-run.keychain-db"
+          security create-keychain -p dry-run "$KC"
+          security set-keychain-settings "$KC"
+          security unlock-keychain -p dry-run "$KC"
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$KC"
+
+      - name: Resolve packages
+        run: swift package resolve
+
+      - name: Throwaway update key
+        run: |
+          BIN=.build/artifacts/sparkle/Sparkle/bin
+          "$BIN/generate_keys" --account uv-dry-run
+          echo "ED_KEY=$("$BIN/generate_keys" --account uv-dry-run -p)" >> "$GITHUB_ENV"
+
+      # The guards that keep a test build from passing for a real one.
+      - name: Refuses without the real key or with ad hoc on the real account
+        run: |
+          set +e
+          node scripts/release-mac.mjs --version 0.0.1 2> no-key.txt; code=$?
+          cat no-key.txt
+          [ "$code" -eq 1 ] && grep -q "no update key yet" no-key.txt || { echo "expected a refusal without the update key"; exit 1; }
+          node scripts/release-mac.mjs --version 0.0.1 --ad-hoc --ed-public-key "$ED_KEY" 2> real-account.txt; code=$?
+          cat real-account.txt
+          [ "$code" -eq 1 ] && grep -q "throwaway key" real-account.txt || { echo "expected a refusal of ad hoc on the real account"; exit 1; }
+
+      - name: Build the release
+        run: |
+          node scripts/release-mac.mjs --version 0.0.1 --ad-hoc \
+            --ed-account uv-dry-run --ed-public-key "$ED_KEY" \
+            --download-base http://127.0.0.1:8765 \
+            --feed-url http://127.0.0.1:8765/appcast.xml | tee release.json
+
+      - name: Check the release folder
+        run: |
+          cd dist/release
+          ls -la
+          for f in Useful-Voice-macOS.zip Useful-Voice-macOS.dmg appcast.xml install.sh release-notes.md; do
+            [ -f "$f" ] || { echo "missing $f"; exit 1; }
+          done
+          xmllint --noout appcast.xml
+          grep -q 'sparkle:edSignature="' appcast.xml
+          grep -q 'url="http://127.0.0.1:8765/Useful-Voice-macOS.zip"' appcast.xml
+          if grep -n '@@' install.sh release-notes.md; then echo "unfilled placeholders"; exit 1; fi
+          grep -q 'curl -fsSL http://127.0.0.1:8765/install.sh | sh' release-notes.md
+          # The signature in the appcast verifies against the throwaway public key.
+          sig=$(sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p' appcast.xml)
+          ../../.build/artifacts/sparkle/Sparkle/bin/sign_update --verify Useful-Voice-macOS.zip "$sig" --account uv-dry-run
+
+      # The curl one-liner, against a local server, into a scratch Applications
+      # folder. UV_INSTALL_NO_OPEN keeps the runner from launching the app.
+      - name: Install through install.sh
+        run: |
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory dist/release > server.log 2>&1 &
+          for i in $(seq 1 20); do curl -fsS -o /dev/null http://127.0.0.1:8765/install.sh && break; sleep 0.5; done
+          DEST="$RUNNER_TEMP/Applications"
+          mkdir -p "$DEST"
+          curl -fsSL http://127.0.0.1:8765/install.sh | UV_INSTALL_DIR="$DEST" UV_INSTALL_NO_OPEN=1 sh
+          APP="$DEST/Useful Voice.app"
+          codesign --verify --strict --deep "$APP"
+          [ "$(plutil -extract CFBundleShortVersionString raw "$APP/Contents/Info.plist")" = 0.0.1 ]
+          [ "$(plutil -extract SUFeedURL raw "$APP/Contents/Info.plist")" = http://127.0.0.1:8765/appcast.xml ]
+          [ "$(plutil -extract SUPublicEDKey raw "$APP/Contents/Info.plist")" = "$ED_KEY" ]
+          [ -d "$APP/Contents/Frameworks/Sparkle.framework" ]
+          [ -z "$(xattr "$APP")" ] || { xattr "$APP"; echo "the installed app still has extended attributes"; exit 1; }
+          # A second run replaces the install in place.
+          curl -fsSL http://127.0.0.1:8765/install.sh | UV_INSTALL_DIR="$DEST" UV_INSTALL_NO_OPEN=1 sh
+          ls -a "$DEST"
+          [ "$(ls -A "$DEST")" = "Useful Voice.app" ] || { echo "expected only Useful Voice.app in $DEST"; exit 1; }
+
+      - name: A tampered download is refused
+        run: |
+          cp dist/release/Useful-Voice-macOS.zip good.zip
+          printf 'x' >> dist/release/Useful-Voice-macOS.zip
+          DEST="$RUNNER_TEMP/Tampered"
+          mkdir -p "$DEST"
+          set +e
+          curl -fsSL http://127.0.0.1:8765/install.sh | UV_INSTALL_DIR="$DEST" UV_INSTALL_NO_OPEN=1 sh 2> tampered.txt; code=$?
+          cat tampered.txt
+          mv good.zip dist/release/Useful-Voice-macOS.zip
+          [ "$code" -ne 0 ] && grep -q "does not match this release" tampered.txt || { echo "expected the tampered zip to be refused"; exit 1; }
+          [ -z "$(ls -A "$DEST")" ] || { echo "a refused install left files behind"; exit 1; }
+
+      - name: Upload the dry-run release
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dry-run
+          path: |
+            dist/release
+            release.json
+          retention-days: 7
+          if-no-files-found: ignore

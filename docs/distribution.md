@@ -141,5 +141,6 @@ When a certificate exists: set `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` as CI s
 ### What the update check sends
 
 A GET for `latest.yml` (and the installer when there is one) to github.com. GitHub sees the IP
-address and the app's user agent, as it does for any download. Nothing about the user, their
-dictations or their settings is sent, and there is still no analytics.
+address and the app's user agent, as it does for any download. electron-updater would also send a
+random per-install ID; the app replaces it with a fixed all-zero value. Nothing about the user,
+their dictations or their settings is sent, and there is still no analytics.

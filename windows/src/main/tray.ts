@@ -195,8 +195,8 @@ export function buildTrayTemplate(
     state.updateReady
       ? {
           label: `Restart to update to ${state.updateReady}`,
-          // A restart mid-dictation would throw the recording away.
-          enabled: !state.recording && !state.transcribing,
+          // A restart mid-dictation, or with a failed one held for retry, would throw it away.
+          enabled: !state.recording && !state.transcribing && !state.canRetry,
           click: () => handlers.onRestartToUpdate(),
         }
       : null,

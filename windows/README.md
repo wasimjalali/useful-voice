@@ -89,7 +89,8 @@ The installed app uses `electron-updater` with the GitHub provider: it reads `la
 the newest release of `wasimjalali/useful-voice-releases` a minute after launch and then every
 12 hours, downloads the installer in the background, checks its SHA-512 and installs it
 silently when the app quits, or at once from the tray's "Restart to update". The portable exe,
-development runs and `--e2e` runs never check. Log lines go to `diagnostics.log` under
+development runs, `release/win-unpacked` (no uninstaller beside the exe) and `--e2e` runs never
+check. "Restart to update" waits while a dictation is running or held for retry. Log lines go to `diagnostics.log` under
 `[update]`.
 
 ### Code signing

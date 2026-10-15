@@ -376,7 +376,7 @@ class UsefulVoiceApp {
       onCancel: () => void this.cancelDictation(),
       onSetLanguage: (code) => this.setLanguage(code),
       onSetFormatting: (enabled) => this.setFormatting(enabled),
-      onRestartToUpdate: () => void this.quit({ restartToUpdate: true }),
+      onRestartToUpdate: () => this.restartToUpdate(),
     });
     if (!E2E) this.tray.create();
     this.syncTray();
@@ -385,7 +385,7 @@ class UsefulVoiceApp {
       onReady: () => {
         this.syncTray();
         // CI's update test: install as soon as the download is verified, through the tray item's path.
-        if (process.env.UV_UPDATE_INSTALL_WHEN_READY === '1') void this.quit({ restartToUpdate: true });
+        if (process.env.UV_UPDATE_INSTALL_WHEN_READY === '1') this.restartToUpdate();
       },
     });
     this.updater.start(E2E);
@@ -930,6 +930,16 @@ class UsefulVoiceApp {
     });
   }
 
+  /** The tray's "Restart to update". Held while a dictation is running or waiting for retry. */
+  private restartToUpdate(): void {
+    const state = this.service.currentState;
+    if (this.service.canRetry || state === 'recording' || state === 'transcribing' || state === 'delivering') {
+      this.diagnostics.log('update', `restart held: dictation ${state}, retry pending ${this.service.canRetry}`);
+      return;
+    }
+    void this.quit({ restartToUpdate: true });
+  }
+
   async quit(options: { restartToUpdate?: boolean } = {}): Promise<void> {
     try {
       await this.service.cancel();
@@ -943,7 +953,19 @@ class UsefulVoiceApp {
       this.tray?.destroy();
       // `app.exit` skips the quit events electron-updater listens for, so a downloaded
       // update is handed to its installer here, on every quit.
-      this.updater?.installOnExit(options.restartToUpdate === true);
+      const restart = options.restartToUpdate === true;
+      const updateReady = this.updater?.ready;
+      const installing = this.updater?.installOnExit(restart) ?? false;
+      if (updateReady) {
+        // Written synchronously: the diagnostics flush above has run, and nothing async survives `app.exit`.
+        try {
+          appendFileSync(this.diagnostics.path, `${new Date().toISOString()} [update] installer for ${updateReady} ${installing ? 'started' : 'did not start'}\n`);
+        } catch {
+          // The log is a diagnostic aid only.
+        }
+      }
+      // The person asked for a restart: come back even if the installer could not start.
+      if (restart && !installing) app.relaunch();
       app.exit(0);
     }
   }

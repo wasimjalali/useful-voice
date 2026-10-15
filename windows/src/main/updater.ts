@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import { app } from 'electron';
 import electronUpdater from 'electron-updater';
 
@@ -32,12 +34,15 @@ export function updatesDisabledReason(input: {
   platform: NodeJS.Platform;
   e2e: boolean;
   portable: boolean;
+  /** The NSIS uninstaller sits beside the exe: a real install, not `release/win-unpacked`. */
+  installed: boolean;
 }): string | null {
   if (input.platform !== 'win32') return 'not Windows';
   if (!input.isPackaged) return 'not a packaged build';
   if (input.e2e) return 'E2E run';
   // The portable exe unpacks to a temp folder on every launch: there is nothing to update in place.
   if (input.portable) return 'portable build';
+  if (!input.installed) return 'not an installed copy';
   return null;
 }
 
@@ -58,6 +63,7 @@ export class Updater {
       platform: process.platform,
       e2e,
       portable: Boolean(process.env.PORTABLE_EXECUTABLE_DIR),
+      installed: existsSync(path.join(path.dirname(process.execPath), `Uninstall ${app.getName()}.exe`)),
     });
     if (reason) {
       this.options.log(`updates off: ${reason}`);
@@ -73,10 +79,13 @@ export class Updater {
       debug: () => undefined,
     };
     updater.autoDownload = true;
-    // Backstop for a quit that does not go through `quit()` below. `install` refuses
-    // a second call, so the two can never run the installer twice.
-    updater.autoInstallOnAppQuit = true;
+    // Installing is `quit()`'s job only. The library's own quit hook could also fire at
+    // logoff or shutdown, and an installer cut off mid-run can leave the app half removed.
+    updater.autoInstallOnAppQuit = false;
     updater.disableWebInstaller = true;
+    // electron-updater sends a random per-install ID with every check (for staged rollouts,
+    // which this app does not use). A fixed value keeps the check anonymous.
+    updater.requestHeaders = { 'x-user-staging-id': '00000000-0000-0000-0000-000000000000' };
     updater.on('update-downloaded', (info) => {
       this.readyVersion = info.version;
       this.options.onReady(info.version);
@@ -87,6 +96,8 @@ export class Updater {
       this.checking = true;
       updater
         .checkForUpdates()
+        // A failed download rejects this promise too; the 'error' listener has already logged it.
+        .then((result) => result?.downloadPromise?.catch(() => undefined))
         .catch((error: unknown) => this.options.log(`check failed: ${(error as Error).message}`))
         .finally(() => {
           this.checking = false;

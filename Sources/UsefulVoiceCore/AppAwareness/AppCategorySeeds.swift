@@ -15,12 +15,13 @@ import Foundation
 /// - Coding agents are Coding: Claude Code runs in a terminal (so it is already Coding),
 ///   claude.ai/code, chatgpt.com/codex and the Codex desktop app are Coding by address.
 /// - Discord is Personal chat, even though servers are sometimes work.
+/// - The Dia browser is not listed: its bundle id could not be confirmed from a public source.
 public enum AppCategorySeeds {
     public static let emailApps: [String] = [
         "com.apple.mail", // Mail
         "com.microsoft.Outlook", // Outlook for Mac
         "com.readdle.smartemail-Mac", // Spark (unverified)
-        "com.superhuman.electron", // Superhuman (unverified)
+        "com.superhuman.electron", // Superhuman
         "org.mozilla.thunderbird", // Thunderbird
         "outlook.exe", // Outlook (classic)
         "olk.exe", // Outlook (new)
@@ -55,6 +56,7 @@ public enum AppCategorySeeds {
         "com.hnc.Discord", // Discord
         "com.facebook.archon", // Messenger (unverified)
         "whatsapp.exe",
+        "whatsapp.root.exe",
         "telegram.exe",
         "signal.exe",
         "discord.exe",
@@ -71,15 +73,16 @@ public enum AppCategorySeeds {
         "com.github.wez.wezterm", // WezTerm
         "com.microsoft.VSCode", // VS Code
         "com.microsoft.VSCodeInsiders",
-        "com.vscodium", // VSCodium (unverified)
+        "com.vscodium", // VSCodium
         "com.todesktop.230313mzl4w4u92", // Cursor
         "com.exafunction.windsurf", // Windsurf
         "dev.zed.Zed", // Zed
         "dev.zed.Zed-Preview",
         "com.apple.dt.Xcode",
         "com.google.android.studio", // Android Studio
-        "com.openai.codex", // Codex desktop app (unverified)
+        "com.openai.codex", // Codex desktop app (also the id of the macOS ChatGPT desktop app, per the Homebrew casks)
         "windowsterminal.exe",
+        "openconsole.exe", // Windows Terminal's console host
         "wt.exe",
         "powershell.exe",
         "pwsh.exe",
@@ -90,6 +93,8 @@ public enum AppCategorySeeds {
         "wezterm-gui.exe",
         "alacritty.exe",
         "code.exe", // VS Code
+        "code - insiders.exe",
+        "vscodium.exe",
         "cursor.exe",
         "windsurf.exe",
         "zed.exe", // unverified
@@ -144,6 +149,9 @@ public enum AppCategorySeeds {
         "com.brave.Browser.nightly",
         "org.mozilla.firefox",
         "org.mozilla.firefoxdeveloperedition",
+        "org.mozilla.nightly", // Firefox Nightly
+        "app.zen-browser.zen", // Zen
+        "com.kagi.kagimacOS", // Orion
         "com.operasoftware.Opera",
         "com.vivaldi.Vivaldi",
     ]
@@ -196,6 +204,7 @@ public enum AppCategorySeeds {
         URLRule("outlook.live.com", .email),
         URLRule("outlook.office.com", .email),
         URLRule("outlook.office365.com", .email),
+        URLRule("outlook.cloud.microsoft", .email),
         // Work chat.
         URLRule("slack.com", .workChat, subdomains: true),
         URLRule("teams.microsoft.com", .workChat),
@@ -204,6 +213,7 @@ public enum AppCategorySeeds {
         URLRule("chat.google.com", .workChat),
         URLRule("claude.ai", .workChat),
         URLRule("chatgpt.com", .workChat),
+        URLRule("chat.openai.com", .workChat),
         // Personal chat.
         URLRule("web.whatsapp.com", .personalChat),
         URLRule("web.telegram.org", .personalChat),

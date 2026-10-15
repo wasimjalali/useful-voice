@@ -16,13 +16,14 @@ import type { AppCategory } from './appCategory.js';
  * - Coding agents are Coding: Claude Code runs in a terminal (so it is already Coding),
  *   claude.ai/code, chatgpt.com/codex and the Codex desktop app are Coding by address.
  * - Discord is Personal chat, even though servers are sometimes work.
+ * - The Dia browser is not listed: its bundle id could not be confirmed from a public source.
  */
 
 export const EMAIL_APPS: readonly string[] = [
   'com.apple.mail', // Mail
   'com.microsoft.Outlook', // Outlook for Mac
   'com.readdle.smartemail-Mac', // Spark (unverified)
-  'com.superhuman.electron', // Superhuman (unverified)
+  'com.superhuman.electron', // Superhuman
   'org.mozilla.thunderbird', // Thunderbird
   'outlook.exe', // Outlook (classic)
   'olk.exe', // Outlook (new)
@@ -57,6 +58,7 @@ export const PERSONAL_CHAT_APPS: readonly string[] = [
   'com.hnc.Discord', // Discord
   'com.facebook.archon', // Messenger (unverified)
   'whatsapp.exe',
+  'whatsapp.root.exe',
   'telegram.exe',
   'signal.exe',
   'discord.exe',
@@ -73,15 +75,16 @@ export const CODING_APPS: readonly string[] = [
   'com.github.wez.wezterm', // WezTerm
   'com.microsoft.VSCode', // VS Code
   'com.microsoft.VSCodeInsiders',
-  'com.vscodium', // VSCodium (unverified)
+  'com.vscodium', // VSCodium
   'com.todesktop.230313mzl4w4u92', // Cursor
   'com.exafunction.windsurf', // Windsurf
   'dev.zed.Zed', // Zed
   'dev.zed.Zed-Preview',
   'com.apple.dt.Xcode',
   'com.google.android.studio', // Android Studio
-  'com.openai.codex', // Codex desktop app (unverified)
+  'com.openai.codex', // Codex desktop app (also the id of the macOS ChatGPT desktop app, per the Homebrew casks)
   'windowsterminal.exe',
+  'openconsole.exe', // Windows Terminal's console host
   'wt.exe',
   'powershell.exe',
   'pwsh.exe',
@@ -92,6 +95,8 @@ export const CODING_APPS: readonly string[] = [
   'wezterm-gui.exe',
   'alacritty.exe',
   'code.exe', // VS Code
+  'code - insiders.exe',
+  'vscodium.exe',
   'cursor.exe',
   'windsurf.exe',
   'zed.exe', // unverified
@@ -146,6 +151,9 @@ export const BROWSER_BUNDLE_IDS: readonly string[] = [
   'com.brave.Browser.nightly',
   'org.mozilla.firefox',
   'org.mozilla.firefoxdeveloperedition',
+  'org.mozilla.nightly', // Firefox Nightly
+  'app.zen-browser.zen', // Zen
+  'com.kagi.kagimacOS', // Orion
   'com.operasoftware.Opera',
   'com.vivaldi.Vivaldi',
 ];
@@ -201,6 +209,7 @@ export const URL_RULES: readonly URLRule[] = [
   rule('outlook.live.com', 'email'),
   rule('outlook.office.com', 'email'),
   rule('outlook.office365.com', 'email'),
+  rule('outlook.cloud.microsoft', 'email'),
   // Work chat.
   rule('slack.com', 'workChat', { subdomains: true }),
   rule('teams.microsoft.com', 'workChat'),
@@ -209,6 +218,7 @@ export const URL_RULES: readonly URLRule[] = [
   rule('chat.google.com', 'workChat'),
   rule('claude.ai', 'workChat'),
   rule('chatgpt.com', 'workChat'),
+  rule('chat.openai.com', 'workChat'),
   // Personal chat.
   rule('web.whatsapp.com', 'personalChat'),
   rule('web.telegram.org', 'personalChat'),

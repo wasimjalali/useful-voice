@@ -1,4 +1,4 @@
-import { chars, isAlnum, isNumber, isUpper, isWS } from './categoryText.js';
+import { chars, isAlnum, isDigit, isUpper, isWS } from './categoryText.js';
 
 /**
  * Coding category rules. Mirrors `Sources/UsefulVoiceCore/Formatting/CategoryCoding.swift`
@@ -15,10 +15,27 @@ import { chars, isAlnum, isNumber, isUpper, isWS } from './categoryText.js';
 
 const EXTENSIONS = new Set([
   'ts', 'tsx', 'js', 'jsx', 'json', 'md', 'py', 'swift', 'rs', 'go', 'rb', 'java', 'kt', 'c', 'h',
-  'cpp', 'cs', 'css', 'html', 'yml', 'yaml', 'toml', 'sh', 'txt', 'env', 'lock', 'sql',
+  'cpp', 'cs', 'css', 'html', 'yml', 'yaml', 'toml', 'sh', 'txt', 'lock', 'sql',
 ]);
 
-/** Names that are a dot file when spoken alone: "dot gitignore" is `.gitignore`. */
+/**
+ * Extensions that are also everyday words or letters. "red dot go" is prose; "main dot go"
+ * is a file. These convert only after a name that looks like a file name.
+ */
+const AMBIGUOUS_EXTENSIONS = new Set(['go', 'c', 'h', 'lock']);
+
+/** Plain words that are common file names, so "main dot go" converts. Code-like words qualify anyway. */
+const COMMON_BASENAMES = new Set([
+  'main', 'index', 'mod', 'server', 'client', 'util', 'cargo', 'yarn', 'package', 'pipfile',
+  'poetry', 'composer', 'hello', 'foo', 'bar', 'baz', 'run', 'setup', 'handler', 'router',
+  'types', 'model', 'models', 'api', 'db', 'cli', 'cmd', 'parser', 'helper', 'helpers', 'common',
+  'init', 'start', 'example', 'sample', 'demo', 'script', 'readme', 'license', 'makefile',
+]);
+
+/**
+ * Names that are a dot file when spoken alone: "dot gitignore" is `.gitignore`. They are
+ * not in EXTENSIONS: "copy dot env" is "copy .env", never `copy.env`.
+ */
 const DOTFILES = new Set([
   'env', 'gitignore', 'gitattributes', 'npmrc', 'nvmrc', 'eslintrc', 'prettierrc', 'editorconfig',
   'dockerignore', 'babelrc', 'zshrc', 'bashrc',
@@ -28,7 +45,12 @@ const DOTFILES = new Set([
 const NOT_NAMES = new Set([
   'a', 'an', 'the', 'this', 'that', 'these', 'those', 'my', 'your', 'his', 'her', 'its', 'our',
   'their', 'of', 'in', 'on', 'at', 'to', 'for', 'and', 'or', 'but', 'is', 'it', 'with', 'as', 'by',
-  'from', 'i', 'we', 'you', 'he', 'she', 'they', 'be', 'are', 'was',
+  'from', 'i', 'we', 'you', 'he', 'she', 'they', 'be', 'are', 'was', 'were', 'am', 'been', 'have',
+  'has', 'had', 'do', 'does', 'did', 'can', 'could', 'would', 'should', 'will', 'not', 'no', 'yes',
+  'if', 'so', 'than', 'then', 'when', 'while', 'where', 'what', 'who', 'which', 'why', 'how', 'about',
+  'into', 'over', 'under', 'after', 'before', 'between', 'up', 'down', 'out', 'off', 'them', 'him',
+  'me', 'us', 'there', 'here', 'now', 'just', 'also', 'only', 'very', 'more', 'most', 'some', 'any',
+  'all', 'each', 'every', 'other', 'such',
   'cd', 'ls', 'cat', 'rm', 'mv', 'cp', 'mkdir', 'touch', 'open', 'edit', 'use', 'type', 'press',
   'add', 'insert', 'put', 'say',
 ]);
@@ -137,10 +159,43 @@ function isCodeLike(t: Tok): boolean {
   for (let i = 0; i < cs.length; i++) {
     const c = cs[i] as string;
     if (c === '_' || c === '/' || c === '.' || c === '~' || c === '@') return true;
-    if (isNumber(c)) return true;
+    if (isDigit(c)) return true;
     if (i > 0 && isUpper(c)) return true;
   }
   return PATH_WORDS.has(t.core.toLowerCase());
+}
+
+const IDENTIFIER_PUNCT = new Set(['_', '-']);
+
+/** ASCII letters, digits, "_" and "-" only: the shape of a variable, function or flag name. */
+function isIdentifierShaped(t: Tok): boolean {
+  const cs = chars(t.core);
+  return (
+    cs.length > 0 &&
+    cs.every((c) => (c.length === 1 && c < '\u0080' && isAlnum(c)) || IDENTIFIER_PUNCT.has(c))
+  );
+}
+
+/** Whether a word can be part of a path. Bare numbers cannot: "slash 20 percent" is prose. */
+function isPathish(t: Tok): boolean {
+  if (t.file) return true;
+  const cs = chars(t.core);
+  if (cs.some((c) => c === '/' || c === '.' || c === '_' || c === '~' || c === '@')) return true;
+  if (PATH_WORDS.has(t.core.toLowerCase())) return true;
+  return cs.some((c) => !isDigit(c) && isAlnum(c));
+}
+
+/** Whether a name can stand in front of an ambiguous extension such as ".go". */
+function isFileBase(t: Tok): boolean {
+  return isCodeLike(t) || COMMON_BASENAMES.has(t.core.toLowerCase());
+}
+
+/** "index.ts", "src/app.tsx": a name that already ends in a known extension. */
+function looksLikeFileName(core: string): boolean {
+  const cs = chars(core);
+  const dot = cs.lastIndexOf('.');
+  if (dot <= 0 || cs[0] === '@') return false;
+  return EXTENSIONS.has(cs.slice(dot + 1).join('').toLowerCase()) && cs[dot - 1] !== '/';
 }
 
 /** "index dot ts" and "foo dot test dot ts" become `index.ts` and `foo.test.ts`. */
@@ -149,9 +204,8 @@ function convertFileNames(toks: Tok[]): Tok[] {
   let i = 0;
   while (i < toks.length) {
     const first = toks[i] as Tok;
-    let end = -1;
+    let e = i;
     if (isNameWord(first) && first.trail === '' && i + 2 < toks.length) {
-      let e = i;
       // Walk "name dot name dot name ...", stopping at a word that carries trailing punctuation.
       while (
         e + 2 < toks.length &&
@@ -162,24 +216,33 @@ function convertFileNames(toks: Tok[]): Tok[] {
       ) {
         e += 2;
       }
-      if (e > i && EXTENSIONS.has((toks[e] as Tok).core.toLowerCase())) end = e;
     }
-    if (end < 0) {
+    if (e === i) {
       out.push(first);
       i += 1;
       continue;
     }
+    const extension = (toks[e] as Tok).core.toLowerCase();
+    const valid =
+      EXTENSIONS.has(extension) &&
+      (!AMBIGUOUS_EXTENSIONS.has(extension) || isFileBase(toks[e - 2] as Tok));
+    if (!valid) {
+      // Every shorter chain ends at the same word, so it fails the same way: skip them all.
+      for (let k = i; k <= e; k++) out.push(toks[k] as Tok);
+      i = e + 1;
+      continue;
+    }
     const parts: string[] = [];
-    for (let k = i; k <= end; k += 2) parts.push((toks[k] as Tok).core);
-    parts[parts.length - 1] = (parts[parts.length - 1] as string).toLowerCase();
+    for (let k = i; k <= e; k += 2) parts.push((toks[k] as Tok).core);
+    parts[parts.length - 1] = extension;
     out.push({
       sep: first.sep,
       lead: first.lead,
       core: parts.join('.'),
-      trail: (toks[end] as Tok).trail,
+      trail: (toks[e] as Tok).trail,
       file: true,
     });
-    i = end + 1;
+    i = e + 1;
   }
   return out;
 }
@@ -235,18 +298,39 @@ function convertSymbols(toks: Tok[]): Tok[] {
       j++;
     }
     const lastOut = out[out.length - 1];
-    const left = lastOut !== undefined && isNameWord(lastOut) && lastOut.trail === '' ? lastOut : null;
+    let left: Tok | null =
+      lastOut !== undefined && isNameWord(lastOut) && lastOut.trail === '' ? lastOut : null;
     const nextTok = toks[j];
-    const right = nextTok !== undefined && isNameWord(nextTok) && nextTok.lead === '' ? nextTok : null;
+    let right: Tok | null =
+      nextTok !== undefined && isNameWord(nextTok) && nextTok.lead === '' ? nextTok : null;
     const runLength = j - i;
+
+    // Around a slash, only path-like words join: "slash 20 percent" is prose.
+    if (slashes > 0) {
+      if (left !== null && !isPathish(left)) left = null;
+      if (right !== null && !isPathish(right)) right = null;
+    }
+    // "copy dot env": a dot file on its own, not joined to the word before it.
+    const dotFile =
+      dots === 1 &&
+      runLength === 1 &&
+      right !== null &&
+      DOTFILES.has(right.core.toLowerCase()) &&
+      (left === null || !isCodeLike(left));
+    if (dotFile) left = null;
 
     let allowed = false;
     if (underscores === runLength) {
-      allowed = (left !== null && right !== null) || (runLength >= 2 && (left !== null || right !== null));
+      // Both sides must look like identifiers: "the underscore key" is prose.
+      const identifiers =
+        (left === null || isIdentifierShaped(left)) && (right === null || isIdentifierShaped(right));
+      allowed =
+        identifiers &&
+        ((left !== null && right !== null) || (runLength >= 2 && (left !== null || right !== null)));
     } else if (dots > 0 && slashes > 0) {
       allowed = true;
-    } else if (dots === 1 && runLength === 1 && left === null && right !== null) {
-      allowed = DOTFILES.has(right.core.toLowerCase());
+    } else if (dotFile) {
+      allowed = true;
     } else if (left !== null && right !== null) {
       allowed = isCodeLike(left) || isCodeLike(right);
     } else if (slashes === runLength && left === null && right !== null) {
@@ -285,7 +369,7 @@ function convertMentions(toks: Tok[]): Tok[] {
       tok.trail === '' &&
       (word === 'at' || word === 'tag') &&
       next !== undefined &&
-      next.file &&
+      (next.file || looksLikeFileName(next.core)) &&
       next.lead === ''
     ) {
       out.push({ sep: tok.sep, lead: '', core: `@${next.core}`, trail: next.trail, file: true });

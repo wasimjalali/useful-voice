@@ -9,10 +9,33 @@ import Foundation
 /// a dictated sign-off or a spoken "new paragraph". The one thing it can add is the user's
 /// own name under a dictated sign-off, and only when a non-empty name is passed in.
 public enum CategoryEmail {
-    /// Dictations shorter than this are left alone unless they open with a greeting.
-    public static let minWords = 25
+    /// A dictation of at least this many words is laid out as an email even without a greeting
+    /// or sign-off (so a spoken "new paragraph" works). Shorter ones are laid out only when they
+    /// open with a greeting or close with a sign-off.
+    public static let longDictationWords = 25
 
     private static let greetingWords: Set<String> = ["hi", "hey", "hello", "dear"]
+
+    /// Group words a greeting may address in lower case: "Hey team,", "Hello everyone!".
+    private static let greetingGroupWords: Set<String> = [
+        "team", "all", "everyone", "everybody", "there", "guys", "folks", "friends", "both", "gang",
+    ]
+
+    /// Titles that carry their own dot inside a greeting: "Dear Dr. Smith,".
+    private static let greetingTitles: Set<String> = ["mr.", "mrs.", "ms.", "dr.", "prof."]
+
+    /// Capitalised words that are not names: closing words and common sentence openers. A word
+    /// from this list after a greeting or a sign-off is a sentence, not a person ("Thanks. Bye.").
+    /// Left out because they are names too: will, may, mark, grace, hope.
+    private static let nonNameWords: Set<String> = [
+        "bye", "goodbye", "cheers", "thanks", "thank", "sorry", "please", "soon", "later", "today",
+        "tomorrow", "tonight", "again", "now", "yes", "no", "ok", "okay", "sure", "hello", "hi", "hey",
+        "regards", "best", "sincerely", "enjoy", "great", "good", "love", "take", "see", "talk", "speak",
+        "night", "morning", "evening", "i", "it", "we", "you", "he", "she", "they", "the", "this", "that",
+        "these", "those", "there", "here", "what", "when", "where", "why", "how", "who", "which", "can",
+        "could", "would", "should", "do", "does", "did", "is", "are", "was", "were", "have", "has", "had",
+        "let", "just", "also", "so", "but", "and", "or", "if", "then", "maybe", "well", "oh", "wow",
+    ]
 
     /// Sign-off phrases, longest first so "best regards" wins over "best".
     private static let signOffs: [[String]] = [
@@ -44,12 +67,31 @@ public enum CategoryEmail {
         return out
     }
 
-    /// How many leading words form a greeting ("Hi Sam," is 2), or 0. It must end in a comma or "!".
+    /// A capitalised word of letters, or a group word ("team"), that is not a closing or opening word.
+    private static func isGreetingNameWord(_ word: String) -> Bool {
+        guard let first = word.first,
+              word.allSatisfy({ $0.isLetter || $0 == "-" || $0 == "'" || $0 == "\u{2019}" }) else { return false }
+        let lower = word.lowercased()
+        if nonNameWords.contains(lower) { return false }
+        return first.isUppercase || greetingGroupWords.contains(lower)
+    }
+
+    /// How many leading words form a greeting ("Hi Sarah," is 2), or 0. The greeting word needs
+    /// a comma or "!" right after it, or right after one to three name words that follow it.
+    /// "Hey can you check this, it is urgent." has neither, so it is not a greeting.
     private static func greetingLength(_ words: [String]) -> Int {
         guard let first = words.first,
-              greetingWords.contains(stripTrailing(first, ",.!").lowercased()) else { return 0 }
-        let limit = min(5, words.count)
-        for n in 1...limit where endsWithAny(words[n - 1], ",!") { return n }
+              greetingWords.contains(stripTrailing(first, ",!").lowercased()) else { return 0 }
+        if endsWithAny(first, ",!") { return 1 }
+        for n in 1...3 {
+            guard n < words.count else { return 0 }
+            let word = words[n]
+            let closes = endsWithAny(word, ",!")
+            let core = stripTrailing(word, ",!")
+            if !closes && greetingTitles.contains(core.lowercased()) { continue }
+            if !isGreetingNameWord(core) { return 0 }
+            if closes { return n + 1 }
+        }
         return 0
     }
 
@@ -77,9 +119,10 @@ public enum CategoryEmail {
         return out
     }
 
-    /// A dictated name after a sign-off: letters only, capitalised, never "I".
+    /// A dictated name after a sign-off: letters only, capitalised, and not a closing or opening word.
     private static func isNameWord(_ word: String) -> Bool {
-        guard let first = word.first, first.isUppercase, word != "I" else { return false }
+        guard let first = word.first, first.isUppercase,
+              !nonNameWords.contains(word.lowercased()) else { return false }
         return word.allSatisfy { $0.isLetter || $0 == "-" }
     }
 
@@ -131,20 +174,20 @@ public enum CategoryEmail {
     }
 
     /// Structures a dictation as an email: greeting line, paragraphs, sign-off, and the
-    /// user's name under a dictated sign-off. Returns the text unchanged when it is under
-    /// the word minimum with no greeting, already contains a line break, or has nothing to
-    /// lay out.
+    /// user's name under a dictated sign-off. Laid out only with an explicit greeting or
+    /// sign-off, or when long (`longDictationWords`). Returns the text unchanged when it
+    /// already contains a line break or has nothing to lay out.
     public static func structure(_ text: String, userName: String?,
                                  dictionaryWords: [String] = []) -> String {
         if CategoryText.containsNewline(text) { return text }
         let spoken = CategoryText.splitWords(text)
         let greetingCount = greetingLength(spoken)
-        if spoken.count < minWords && greetingCount == 0 { return text }
-
         let greeting: String? = greetingCount > 0 ? spoken[0..<greetingCount].joined(separator: " ") : nil
         let marked = markBreaks(Array(spoken[greetingCount...]))
         let hadBreak = marked.contains(breakMark)
         let signOff = findSignOff(marked)
+        let isLong = spoken.count >= longDictationWords
+        if greeting == nil && signOff == nil && !isLong { return text }
         if greeting == nil && signOff == nil && !hadBreak { return text }
 
         let bodyWords = signOff == nil ? marked : Array(marked[0..<signOff!.start])

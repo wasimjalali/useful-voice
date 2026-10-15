@@ -13,10 +13,23 @@ import Foundation
 public enum CategoryCoding {
     private static let extensions: Set<String> = [
         "ts", "tsx", "js", "jsx", "json", "md", "py", "swift", "rs", "go", "rb", "java", "kt", "c", "h",
-        "cpp", "cs", "css", "html", "yml", "yaml", "toml", "sh", "txt", "env", "lock", "sql",
+        "cpp", "cs", "css", "html", "yml", "yaml", "toml", "sh", "txt", "lock", "sql",
     ]
 
-    /// Names that are a dot file when spoken alone: "dot gitignore" is `.gitignore`.
+    /// Extensions that are also everyday words or letters. "red dot go" is prose; "main dot go"
+    /// is a file. These convert only after a name that looks like a file name.
+    private static let ambiguousExtensions: Set<String> = ["go", "c", "h", "lock"]
+
+    /// Plain words that are common file names, so "main dot go" converts. Code-like words qualify anyway.
+    private static let commonBasenames: Set<String> = [
+        "main", "index", "mod", "server", "client", "util", "cargo", "yarn", "package", "pipfile",
+        "poetry", "composer", "hello", "foo", "bar", "baz", "run", "setup", "handler", "router",
+        "types", "model", "models", "api", "db", "cli", "cmd", "parser", "helper", "helpers", "common",
+        "init", "start", "example", "sample", "demo", "script", "readme", "license", "makefile",
+    ]
+
+    /// Names that are a dot file when spoken alone: "dot gitignore" is `.gitignore`. They are
+    /// not in `extensions`: "copy dot env" is "copy .env", never `copy.env`.
     private static let dotfiles: Set<String> = [
         "env", "gitignore", "gitattributes", "npmrc", "nvmrc", "eslintrc", "prettierrc", "editorconfig",
         "dockerignore", "babelrc", "zshrc", "bashrc",
@@ -26,7 +39,12 @@ public enum CategoryCoding {
     private static let notNames: Set<String> = [
         "a", "an", "the", "this", "that", "these", "those", "my", "your", "his", "her", "its", "our",
         "their", "of", "in", "on", "at", "to", "for", "and", "or", "but", "is", "it", "with", "as", "by",
-        "from", "i", "we", "you", "he", "she", "they", "be", "are", "was",
+        "from", "i", "we", "you", "he", "she", "they", "be", "are", "was", "were", "am", "been", "have",
+        "has", "had", "do", "does", "did", "can", "could", "would", "should", "will", "not", "no", "yes",
+        "if", "so", "than", "then", "when", "while", "where", "what", "who", "which", "why", "how", "about",
+        "into", "over", "under", "after", "before", "between", "up", "down", "out", "off", "them", "him",
+        "me", "us", "there", "here", "now", "just", "also", "only", "very", "more", "most", "some", "any",
+        "all", "each", "every", "other", "such",
         "cd", "ls", "cat", "rm", "mv", "cp", "mkdir", "touch", "open", "edit", "use", "type", "press",
         "add", "insert", "put", "say",
     ]
@@ -123,10 +141,39 @@ public enum CategoryCoding {
         if t.file { return true }
         for (i, c) in t.core.enumerated() {
             if c == "_" || c == "/" || c == "." || c == "~" || c == "@" { return true }
-            if c.isNumber { return true }
+            if CategoryText.isDigit(c) { return true }
             if i > 0 && c.isUppercase { return true }
         }
         return pathWords.contains(t.core.lowercased())
+    }
+
+    /// ASCII letters, digits, "_" and "-" only: the shape of a variable, function or flag name.
+    private static func isIdentifierShaped(_ t: Tok) -> Bool {
+        if t.core.isEmpty { return false }
+        return t.core.allSatisfy { c in
+            c == "_" || c == "-" || (c.isASCII && CategoryText.isAlnum(c))
+        }
+    }
+
+    /// Whether a word can be part of a path. Bare numbers cannot: "slash 20 percent" is prose.
+    private static func isPathish(_ t: Tok) -> Bool {
+        if t.file { return true }
+        if t.core.contains(where: { $0 == "/" || $0 == "." || $0 == "_" || $0 == "~" || $0 == "@" }) { return true }
+        if pathWords.contains(t.core.lowercased()) { return true }
+        return t.core.contains { !CategoryText.isDigit($0) && CategoryText.isAlnum($0) }
+    }
+
+    /// Whether a name can stand in front of an ambiguous extension such as ".go".
+    private static func isFileBase(_ t: Tok) -> Bool {
+        isCodeLike(t) || commonBasenames.contains(t.core.lowercased())
+    }
+
+    /// "index.ts", "src/app.tsx": a name that already ends in a known extension.
+    private static func looksLikeFileName(_ core: String) -> Bool {
+        let cs = Array(core)
+        guard let dot = cs.lastIndex(of: "."), dot > 0, cs[0] != "@" else { return false }
+        let after = String(cs[(dot + 1)...]).lowercased()
+        return extensions.contains(after) && cs[dot - 1] != "/"
     }
 
     /// "index dot ts" and "foo dot test dot ts" become `index.ts` and `foo.test.ts`.
@@ -135,9 +182,8 @@ public enum CategoryCoding {
         var i = 0
         while i < toks.count {
             let first = toks[i]
-            var end = -1
+            var e = i
             if isNameWord(first) && first.trail.isEmpty && i + 2 < toks.count {
-                var e = i
                 // Walk "name dot name dot name ...", stopping at a word that carries trailing punctuation.
                 while e + 2 < toks.count
                         && toks[e].trail.isEmpty
@@ -146,23 +192,31 @@ public enum CategoryCoding {
                         && toks[e + 2].lead.isEmpty {
                     e += 2
                 }
-                if e > i && extensions.contains(toks[e].core.lowercased()) { end = e }
             }
-            if end < 0 {
+            if e == i {
                 out.append(first)
                 i += 1
                 continue
             }
+            let ext = toks[e].core.lowercased()
+            let valid = extensions.contains(ext)
+                && (!ambiguousExtensions.contains(ext) || isFileBase(toks[e - 2]))
+            if !valid {
+                // Every shorter chain ends at the same word, so it fails the same way: skip them all.
+                for k in i...e { out.append(toks[k]) }
+                i = e + 1
+                continue
+            }
             var parts: [String] = []
             var k = i
-            while k <= end {
+            while k <= e {
                 parts.append(toks[k].core)
                 k += 2
             }
-            parts[parts.count - 1] = parts[parts.count - 1].lowercased()
+            parts[parts.count - 1] = ext
             out.append(Tok(sep: first.sep, lead: first.lead, core: parts.joined(separator: "."),
-                           trail: toks[end].trail, file: true))
-            i = end + 1
+                           trail: toks[e].trail, file: true))
+            i = e + 1
         }
         return out
     }
@@ -213,13 +267,29 @@ public enum CategoryCoding {
             if j < toks.count, isNameWord(toks[j]), toks[j].lead.isEmpty { right = toks[j] }
             let runLength = j - i
 
+            // Around a slash, only path-like words join: "slash 20 percent" is prose.
+            if slashes > 0 {
+                if let l = left, !isPathish(l) { left = nil }
+                if let r = right, !isPathish(r) { right = nil }
+            }
+            // "copy dot env": a dot file on its own, not joined to the word before it.
+            var dotFile = false
+            if dots == 1 && runLength == 1, let r = right, dotfiles.contains(r.core.lowercased()) {
+                dotFile = left == nil || !isCodeLike(left!)
+            }
+            if dotFile { left = nil }
+
             var allowed = false
             if underscores == runLength {
-                allowed = (left != nil && right != nil) || (runLength >= 2 && (left != nil || right != nil))
+                // Both sides must look like identifiers: "the underscore key" is prose.
+                let identifiers = (left == nil || isIdentifierShaped(left!))
+                    && (right == nil || isIdentifierShaped(right!))
+                allowed = identifiers
+                    && ((left != nil && right != nil) || (runLength >= 2 && (left != nil || right != nil)))
             } else if dots > 0 && slashes > 0 {
                 allowed = true
-            } else if dots == 1 && runLength == 1 && left == nil && right != nil {
-                allowed = dotfiles.contains(right!.core.lowercased())
+            } else if dotFile {
+                allowed = true
             } else if let l = left, let r = right {
                 allowed = isCodeLike(l) || isCodeLike(r)
             } else if slashes == runLength && left == nil && right != nil {
@@ -250,7 +320,8 @@ public enum CategoryCoding {
             let tok = toks[i]
             let word = tok.core.lowercased()
             if tok.lead.isEmpty, tok.trail.isEmpty, word == "at" || word == "tag",
-               i + 1 < toks.count, toks[i + 1].file, toks[i + 1].lead.isEmpty {
+               i + 1 < toks.count, toks[i + 1].file || looksLikeFileName(toks[i + 1].core),
+               toks[i + 1].lead.isEmpty {
                 let next = toks[i + 1]
                 out.append(Tok(sep: tok.sep, lead: "", core: "@" + next.core, trail: next.trail, file: true))
                 i += 2

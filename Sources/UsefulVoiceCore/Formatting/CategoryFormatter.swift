@@ -24,7 +24,7 @@ public enum CategoryFormatter {
         if category == .coding {
             return CategoryContinuation.apply(textBeforeCursor: textBeforeCursor,
                                               dictation: CategoryCoding.format(dictation),
-                                              dictionaryWords: dictionaryWords, lowercase: false)
+                                              dictionaryWords: dictionaryWords, lowercase: false, code: true)
         }
 
         var text = dictation

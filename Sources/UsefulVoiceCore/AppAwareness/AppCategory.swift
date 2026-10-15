@@ -91,3 +91,46 @@ public enum AutoSendKey: String, CaseIterable, Codable, Sendable {
         }
     }
 }
+
+/// The user's per-app category choices, keyed by app id (bundle id or executable name).
+///
+/// Decodes leniently so a settings file never fails to load because of it: a null or
+/// malformed value is no overrides, and an entry whose category is unknown (written by a
+/// newer or older app version) is dropped. Settings that stored nothing at all decode with
+/// `container.decodeAppCategoryOverrides(forKey:)`, which gives no overrides for a missing key.
+public struct AppCategoryOverrides: Equatable, Sendable, Codable {
+    public var byApp: [String: AppCategory]
+
+    public init(_ byApp: [String: AppCategory] = [:]) { self.byApp = byApp }
+
+    private struct Entry: Decodable {
+        let category: AppCategory?
+        init(from decoder: Decoder) throws {
+            let raw = try? decoder.singleValueContainer().decode(String.self)
+            category = raw.flatMap { AppCategory(rawValue: $0) }
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let entries = try? container.decode([String: Entry].self)
+        var result: [String: AppCategory] = [:]
+        for (key, entry) in entries ?? [:] {
+            if let category = entry.category { result[key] = category }
+        }
+        byApp = result
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(byApp)
+    }
+}
+
+extension KeyedDecodingContainer {
+    /// The stored overrides, or none when the key is missing (a settings file from before
+    /// overrides existed) or holds something unreadable.
+    public func decodeAppCategoryOverrides(forKey key: Key) -> AppCategoryOverrides {
+        (try? decodeIfPresent(AppCategoryOverrides.self, forKey: key)) ?? AppCategoryOverrides()
+    }
+}

@@ -25,12 +25,18 @@ export function isUpper(c: string): boolean {
   return /^\p{Uppercase}/u.test(c);
 }
 
-export function isNumber(c: string): boolean {
-  return /^\p{N}/u.test(c);
+/** ASCII 0-9 only. Swift's Character.isNumber and \p{N} disagree on CJK numerals, so both sides use this. */
+export function isDigit(c: string): boolean {
+  return c.length === 1 && c >= '0' && c <= '9';
 }
 
 export function isAlnum(c: string): boolean {
-  return isLetter(c) || isNumber(c);
+  return isLetter(c) || isDigit(c);
+}
+
+/** Lower-cases A-Z only. Full Unicode folding would turn the Kelvin sign (U+212A) into "k". */
+export function asciiLower(text: string): string {
+  return text.replace(/[A-Z]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 32));
 }
 
 export function chars(text: string): string[] {

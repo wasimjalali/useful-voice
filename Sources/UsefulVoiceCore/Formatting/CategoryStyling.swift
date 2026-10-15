@@ -6,9 +6,16 @@ import Foundation
 /// Formal leaves the text as is. Casual drops the closing full stop of a one-sentence
 /// message (never a ? or !). Very casual does that and lowercases the first letter.
 public enum CategoryStyling {
+    /// A final dot after one of these belongs to the word: "and so on, etc." keeps its dot.
+    private static let abbreviations: Set<String> = [
+        "etc", "dr", "mr", "mrs", "ms", "prof", "sr", "jr", "vs", "inc", "ltd", "co", "corp", "st", "ave",
+        "approx", "dept", "fig", "misc",
+    ]
+
     /// Drops the final "." of a single-sentence message. Left alone when: there is a line
-    /// break, another sentence ends inside the text, the text ends in "..", or the last word
-    /// has a dot inside it ("p.m.", "e.g.", "3.5.", "index.ts.").
+    /// break, another sentence ends inside the text, the text ends in "..", the last word
+    /// has a dot inside it ("p.m.", "e.g.", "3.5.", "index.ts.") or is an abbreviation
+    /// ("etc.", "Dr.").
     public static func dropTrailingFullStop(_ text: String) -> String {
         if CategoryText.containsNewline(text) { return text }
         let cs = Array(text)
@@ -25,7 +32,9 @@ public enum CategoryStyling {
         }
         var wordStart = stem.count
         while wordStart > 0 && !CategoryText.isWS(stem[wordStart - 1]) { wordStart -= 1 }
-        if stem[wordStart...].contains(".") { return text }
+        let lastWord = stem[wordStart...]
+        if lastWord.contains(".") { return text }
+        if abbreviations.contains(String(lastWord).lowercased()) { return text }
         return String(stem) + String(cs[end...])
     }
 

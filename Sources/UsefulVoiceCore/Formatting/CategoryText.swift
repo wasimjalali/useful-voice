@@ -8,7 +8,26 @@ enum CategoryText {
 
     static func isNewline(_ c: Character) -> Bool { c == "\n" || c == "\r" || c == "\r\n" }
 
-    static func isAlnum(_ c: Character) -> Bool { c.isLetter || c.isNumber }
+    /// ASCII 0-9 only. Character.isNumber and TypeScript's \p{N} disagree on CJK numerals, so both sides use this.
+    static func isDigit(_ c: Character) -> Bool {
+        guard let v = c.asciiValue else { return false }
+        return v >= 48 && v <= 57
+    }
+
+    static func isAlnum(_ c: Character) -> Bool { c.isLetter || isDigit(c) }
+
+    /// Lower-cases A-Z only. Full Unicode folding would turn the Kelvin sign (U+212A) into "k".
+    static func asciiLower(_ text: String) -> String {
+        var out = String.UnicodeScalarView()
+        for u in text.unicodeScalars {
+            if u.value >= 65 && u.value <= 90, let lower = Unicode.Scalar(u.value + 32) {
+                out.append(lower)
+            } else {
+                out.append(u)
+            }
+        }
+        return String(out)
+    }
 
     static func trimWS(_ text: String) -> String {
         let cs = Array(text)

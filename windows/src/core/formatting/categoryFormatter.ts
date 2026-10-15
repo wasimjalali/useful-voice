@@ -30,7 +30,7 @@ export function formatForCategory(dictation: string, options: CategoryFormatOpti
   const before = options.textBeforeCursor ?? null;
 
   if (options.category === 'coding') {
-    return applyContinuation(before, formatCoding(dictation), words, { lowercase: false });
+    return applyContinuation(before, formatCoding(dictation), words, { lowercase: false, code: true });
   }
 
   let text = dictation;

@@ -12,10 +12,37 @@ import { chars, containsNewline, isLetter, isUpper, splitWords, trimWS } from '.
  * dictated sign-off, and only when a non-empty name is passed in.
  */
 
-/** Dictations shorter than this are left alone unless they open with a greeting. */
-export const EMAIL_MIN_WORDS = 25;
+/**
+ * A dictation of at least this many words is laid out as an email even without a greeting or
+ * sign-off (so a spoken "new paragraph" works). Shorter ones are laid out only when they
+ * open with a greeting or close with a sign-off.
+ */
+export const EMAIL_LONG_DICTATION_WORDS = 25;
 
 const GREETING_WORDS = new Set(['hi', 'hey', 'hello', 'dear']);
+
+/** Group words a greeting may address in lower case: "Hey team,", "Hello everyone!". */
+const GREETING_GROUP_WORDS = new Set([
+  'team', 'all', 'everyone', 'everybody', 'there', 'guys', 'folks', 'friends', 'both', 'gang',
+]);
+
+/** Titles that carry their own dot inside a greeting: "Dear Dr. Smith,". */
+const GREETING_TITLES = new Set(['mr.', 'mrs.', 'ms.', 'dr.', 'prof.']);
+
+/**
+ * Capitalised words that are not names: closing words and common sentence openers. A word
+ * from this list after a greeting or a sign-off is a sentence, not a person ("Thanks. Bye.").
+ * Left out because they are names too: will, may, mark, grace, hope.
+ */
+const NON_NAME_WORDS = new Set([
+  'bye', 'goodbye', 'cheers', 'thanks', 'thank', 'sorry', 'please', 'soon', 'later', 'today',
+  'tomorrow', 'tonight', 'again', 'now', 'yes', 'no', 'ok', 'okay', 'sure', 'hello', 'hi', 'hey',
+  'regards', 'best', 'sincerely', 'enjoy', 'great', 'good', 'love', 'take', 'see', 'talk', 'speak',
+  'night', 'morning', 'evening', 'i', 'it', 'we', 'you', 'he', 'she', 'they', 'the', 'this', 'that',
+  'these', 'those', 'there', 'here', 'what', 'when', 'where', 'why', 'how', 'who', 'which', 'can',
+  'could', 'would', 'should', 'do', 'does', 'did', 'is', 'are', 'was', 'were', 'have', 'has', 'had',
+  'let', 'just', 'also', 'so', 'but', 'and', 'or', 'if', 'then', 'maybe', 'well', 'oh', 'wow',
+]);
 
 /** Sign-off phrases, longest first so "best regards" wins over "best". */
 const SIGN_OFFS: readonly (readonly string[])[] = [
@@ -47,13 +74,32 @@ function stripTrailing(word: string, marks: string): string {
   return cs.join('');
 }
 
-/** How many leading words form a greeting ("Hi Sam," is 2), or 0. It must end in a comma or "!". */
+/** A capitalised word of letters, or a group word ("team"), that is not a closing or opening word. */
+function isGreetingNameWord(word: string): boolean {
+  const cs = chars(word);
+  if (cs.length === 0 || !cs.every((c) => isLetter(c) || c === '-' || c === "'" || c === '\u2019')) return false;
+  const lower = word.toLowerCase();
+  if (NON_NAME_WORDS.has(lower)) return false;
+  return isUpper(cs[0] as string) || GREETING_GROUP_WORDS.has(lower);
+}
+
+/**
+ * How many leading words form a greeting ("Hi Sarah," is 2), or 0. The greeting word needs
+ * a comma or "!" right after it, or right after one to three name words that follow it.
+ * "Hey can you check this, it is urgent." has neither, so it is not a greeting.
+ */
 function greetingLength(words: string[]): number {
   const first = words[0];
-  if (first === undefined || !GREETING_WORDS.has(stripTrailing(first, ',.!').toLowerCase())) return 0;
-  const limit = Math.min(5, words.length);
-  for (let n = 1; n <= limit; n++) {
-    if (endsWithAny(words[n - 1] as string, ',!')) return n;
+  if (first === undefined || !GREETING_WORDS.has(stripTrailing(first, ',!').toLowerCase())) return 0;
+  if (endsWithAny(first, ',!')) return 1;
+  for (let n = 1; n <= 3; n++) {
+    const word = words[n];
+    if (word === undefined) return 0;
+    const closes = endsWithAny(word, ',!');
+    const core = stripTrailing(word, ',!');
+    if (!closes && GREETING_TITLES.has(core.toLowerCase())) continue;
+    if (!isGreetingNameWord(core)) return 0;
+    if (closes) return n + 1;
   }
   return 0;
 }
@@ -84,11 +130,11 @@ function markBreaks(words: string[]): string[] {
   return out;
 }
 
-/** A dictated name after a sign-off: letters only, capitalised, never "I". */
+/** A dictated name after a sign-off: letters only, capitalised, and not a closing or opening word. */
 function isNameWord(word: string): boolean {
   const cs = chars(word);
   if (cs.length === 0 || !isUpper(cs[0] as string)) return false;
-  if (word === 'I') return false;
+  if (NON_NAME_WORDS.has(word.toLowerCase())) return false;
   return cs.every((c) => isLetter(c) || c === '-');
 }
 
@@ -139,9 +185,9 @@ function withComma(phrase: string): string {
 
 /**
  * Structures a dictation as an email: greeting line, paragraphs, sign-off, and the
- * user's name under a dictated sign-off. Returns the text unchanged when it is under
- * the word minimum with no greeting, already contains a line break, or has nothing to
- * lay out.
+ * user's name under a dictated sign-off. Laid out only with an explicit greeting or
+ * sign-off, or when long (EMAIL_LONG_DICTATION_WORDS). Returns the text unchanged when
+ * it already contains a line break or has nothing to lay out.
  */
 export function structureEmail(
   text: string,
@@ -151,12 +197,12 @@ export function structureEmail(
   if (containsNewline(text)) return text;
   const spoken = splitWords(text);
   const greetingWords = greetingLength(spoken);
-  if (spoken.length < EMAIL_MIN_WORDS && greetingWords === 0) return text;
-
   const greeting = greetingWords > 0 ? spoken.slice(0, greetingWords).join(' ') : null;
   const marked = markBreaks(spoken.slice(greetingWords));
   const hadBreak = marked.includes(BREAK);
   const signOff = findSignOff(marked);
+  const isLong = spoken.length >= EMAIL_LONG_DICTATION_WORDS;
+  if (greeting === null && signOff === null && !isLong) return text;
   if (greeting === null && signOff === null && !hadBreak) return text;
 
   const bodyWords = signOff === null ? marked : marked.slice(0, signOff.start);

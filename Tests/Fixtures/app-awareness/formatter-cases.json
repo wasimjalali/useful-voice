@@ -130,14 +130,14 @@
   {
    "id": "code-file-ext-list",
    "category": "coding",
-   "input": "a dot c, b dot h, x dot cpp, y dot cs, z dot css, q dot html, w dot yml, e dot yaml, r dot toml, t dot sh, u dot sql, v dot lock, k dot kt",
-   "expected": "a dot c, b.h, x.cpp, y.cs, z.css, q.html, w.yml, e.yaml, r.toml, t.sh, u.sql, v.lock, k.kt"
+   "input": "a dot c, foo dot h, x dot cpp, y dot cs, z dot css, q dot html, w dot yml, e dot yaml, r dot toml, t dot sh, u dot sql, Cargo dot lock, k dot kt",
+   "expected": "a dot c, foo.h, x.cpp, y.cs, z.css, q.html, w.yml, e.yaml, r.toml, t.sh, u.sql, Cargo.lock, k.kt"
   },
   {
    "id": "code-file-ext-list-2",
    "category": "coding",
    "input": "main dot swift, lib dot rs, app dot go, app dot rb, App dot java, run dot py, env dot env, x dot jsx, x dot tsx, x dot js, x dot md",
-   "expected": "main.swift, lib.rs, app.go, app.rb, App.java, run.py, env.env, x.jsx, x.tsx, x.js, x.md"
+   "expected": "main.swift, lib.rs, app.go, app.rb, App.java, run.py, env .env, x.jsx, x.tsx, x.js, x.md"
   },
   {
    "id": "code-file-keeps-case",
@@ -786,11 +786,11 @@
    "expected": "Open AI is here"
   },
   {
-   "id": "style-very-casual-name-not-in-dictionary",
+   "id": "style-very-casual-name-kept-without-dictionary",
    "category": "personalChat",
    "style": "veryCasual",
    "input": "Sam is here.",
-   "expected": "sam is here"
+   "expected": "Sam is here"
   },
   {
    "id": "style-very-casual-single-capital",
@@ -817,8 +817,8 @@
    "id": "style-very-casual-multiline",
    "category": "personalChat",
    "style": "veryCasual",
-   "input": "Hello there.\nHow are you.",
-   "expected": "hello there.\nHow are you."
+   "input": "Are you there.\nHow are you.",
+   "expected": "are you there.\nHow are you."
   },
   {
    "id": "style-very-casual-falls-back-work-chat",
@@ -842,11 +842,11 @@
    "expected": "Sounds good"
   },
   {
-   "id": "style-unicode-first-letter",
+   "id": "style-unicode-first-letter-kept",
    "category": "personalChat",
    "style": "veryCasual",
    "input": "École is open.",
-   "expected": "école is open"
+   "expected": "École is open"
   },
   {
    "id": "cont-unknown-context",
@@ -1033,11 +1033,11 @@
    "expected": " Wasim agrees"
   },
   {
-   "id": "cont-name-not-in-dictionary",
+   "id": "cont-name-kept-without-dictionary",
    "category": "other",
    "before": "and",
    "input": "Wasim agrees",
-   "expected": " wasim agrees"
+   "expected": " Wasim agrees"
   },
   {
    "id": "cont-lowercases-single-capital-word",
@@ -1054,11 +1054,11 @@
    "expected": " 5 pm works"
   },
   {
-   "id": "cont-unicode",
+   "id": "cont-unicode-first-letter-kept",
    "category": "other",
    "before": "Café",
    "input": "Ça va",
-   "expected": " ça va"
+   "expected": " Ça va"
   },
   {
    "id": "cont-already-lowercase",
@@ -1093,21 +1093,21 @@
    "category": "other",
    "before": "He said “",
    "input": "Hello",
-   "expected": "hello"
+   "expected": "Hello"
   },
   {
    "id": "cont-straight-open-quote",
    "category": "other",
    "before": "He said \"",
    "input": "Hello",
-   "expected": "hello"
+   "expected": "Hello"
   },
   {
    "id": "cont-straight-open-quote-after-equals",
    "category": "other",
    "before": "name=\"",
    "input": "Hello",
-   "expected": "hello"
+   "expected": "Hello"
   },
   {
    "id": "cont-closing-quote-gets-space",
@@ -1190,8 +1190,8 @@
    "id": "cont-dictation-leading-space",
    "category": "other",
    "before": "and",
-   "input": " Hello",
-   "expected": " hello"
+   "input": " The cat",
+   "expected": " the cat"
   },
   {
    "id": "cont-bullet-dash",
@@ -1218,15 +1218,15 @@
    "id": "cont-bullet-only-at-line-start",
    "category": "other",
    "before": "Buy - ",
-   "input": "Milk",
-   "expected": "milk"
+   "input": "The milk",
+   "expected": "the milk"
   },
   {
    "id": "cont-hyphen-word-end",
    "category": "other",
    "before": "well-",
-   "input": "Next",
-   "expected": " next"
+   "input": "The next",
+   "expected": " the next"
   },
   {
    "id": "cont-after-ellipsis",
@@ -1254,8 +1254,8 @@
    "id": "cont-dictation-with-newline",
    "category": "other",
    "before": "and",
-   "input": "Line one\nLine two",
-   "expected": " line one\nLine two"
+   "input": "The line\nLine two",
+   "expected": " the line\nLine two"
   },
   {
    "id": "email-full",
@@ -1357,12 +1357,6 @@
    "category": "email",
    "input": "Can you send me the report",
    "expected": "Can you send me the report"
-  },
-  {
-   "id": "email-short-with-sign-off-no-greeting",
-   "category": "email",
-   "input": "Can you send me the report. Thanks, Sam",
-   "expected": "Can you send me the report. Thanks, Sam"
   },
   {
    "id": "email-long-nothing-to-lay-out",
@@ -1624,7 +1618,7 @@
    "category": "email",
    "before": "Hello Sam, I wanted to say",
    "input": "Hi Sam, We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track. Thanks, Sam",
-   "expected": " hi Sam, We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track. Thanks, Sam"
+   "expected": " Hi Sam, We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track. Thanks, Sam"
   },
   {
    "id": "email-after-sentence-same-line-skips-layout",
@@ -1666,6 +1660,845 @@
    "category": "email",
    "input": "Hi Sam, one thing, new paragraph, two things.",
    "expected": "Hi Sam,\n\nOne thing,\n\nTwo things."
+  },
+  {
+   "id": "cont-name-kept",
+   "category": "other",
+   "before": "I was talking to",
+   "input": "Sarah said hi",
+   "expected": " Sarah said hi"
+  },
+  {
+   "id": "cont-initialism-kept",
+   "category": "other",
+   "before": "and",
+   "input": "A.I. is here",
+   "expected": " A.I. is here"
+  },
+  {
+   "id": "cont-title-kept",
+   "category": "other",
+   "before": "and",
+   "input": "Dr. Smith is here",
+   "expected": " Dr. Smith is here"
+  },
+  {
+   "id": "cont-initial-kept",
+   "category": "other",
+   "before": "and",
+   "input": "A. Smith called",
+   "expected": " A. Smith called"
+  },
+  {
+   "id": "cont-slash-after-opener-kept",
+   "category": "other",
+   "before": "and",
+   "input": "A/B test",
+   "expected": " A/B test"
+  },
+  {
+   "id": "cont-opener-the",
+   "category": "other",
+   "before": "and",
+   "input": "The cat",
+   "expected": " the cat"
+  },
+  {
+   "id": "cont-opener-a",
+   "category": "other",
+   "before": "and",
+   "input": "A cat",
+   "expected": " a cat"
+  },
+  {
+   "id": "cont-opener-contraction",
+   "category": "other",
+   "before": "and",
+   "input": "We're late",
+   "expected": " we're late"
+  },
+  {
+   "id": "cont-opener-curly-contraction",
+   "category": "other",
+   "before": "and",
+   "input": "It’s late",
+   "expected": " it’s late"
+  },
+  {
+   "id": "cont-opener-comma",
+   "category": "other",
+   "before": "and",
+   "input": "Yes, sure",
+   "expected": " yes, sure"
+  },
+  {
+   "id": "cont-opener-full-stop",
+   "category": "other",
+   "before": "and",
+   "input": "Yes. Sure",
+   "expected": " yes. Sure"
+  },
+  {
+   "id": "cont-opener-dictionary-wins",
+   "category": "other",
+   "before": "and",
+   "words": [
+    "The Verge"
+   ],
+   "input": "The Verge says",
+   "expected": " The Verge says"
+  },
+  {
+   "id": "cont-opener-after-open-quote",
+   "category": "other",
+   "before": "He said, \"",
+   "input": "The answer",
+   "expected": "the answer"
+  },
+  {
+   "id": "cont-opener-after-open-paren",
+   "category": "other",
+   "before": "foo (",
+   "input": "The answer",
+   "expected": "the answer"
+  },
+  {
+   "id": "cont-opener-after-curly-quote",
+   "category": "other",
+   "before": "He said, “",
+   "input": "The answer",
+   "expected": "the answer"
+  },
+  {
+   "id": "cont-opener-after-nested-openers",
+   "category": "other",
+   "before": "foo ([",
+   "input": "The answer",
+   "expected": "the answer"
+  },
+  {
+   "id": "cont-opener-after-open-brace",
+   "category": "other",
+   "before": "foo {",
+   "input": "The answer",
+   "expected": "the answer"
+  },
+  {
+   "id": "cont-sentence-start-after-open-quote",
+   "category": "other",
+   "before": "He said. \"",
+   "input": "The answer",
+   "expected": "The answer"
+  },
+  {
+   "id": "cont-sentence-start-after-curly-quote",
+   "category": "other",
+   "before": "He said. “",
+   "input": "The answer",
+   "expected": "The answer"
+  },
+  {
+   "id": "cont-sentence-start-after-open-paren",
+   "category": "other",
+   "before": "Done. (",
+   "input": "The answer",
+   "expected": "The answer"
+  },
+  {
+   "id": "cont-start-of-text-after-open-paren",
+   "category": "other",
+   "before": "(",
+   "input": "The answer",
+   "expected": "The answer"
+  },
+  {
+   "id": "cont-start-of-line-after-open-quote",
+   "category": "other",
+   "before": "Hello\n\"",
+   "input": "The answer",
+   "expected": "The answer"
+  },
+  {
+   "id": "cont-start-of-line-after-quote-and-space",
+   "category": "other",
+   "before": "Hello\n\" ",
+   "input": "The answer",
+   "expected": "The answer"
+  },
+  {
+   "id": "cont-open-quote-then-newline",
+   "category": "other",
+   "before": "Hello \"\n",
+   "input": "The answer",
+   "expected": "The answer"
+  },
+  {
+   "id": "cont-single-open-quote",
+   "category": "other",
+   "before": "He said, '",
+   "input": "The answer",
+   "expected": "the answer"
+  },
+  {
+   "id": "cont-apostrophe-is-not-an-opening-quote",
+   "category": "other",
+   "before": "the dogs'",
+   "input": "The answer",
+   "expected": " the answer"
+  },
+  {
+   "id": "cont-name-after-open-quote-kept",
+   "category": "other",
+   "before": "He said, \"",
+   "input": "Sarah said",
+   "expected": "Sarah said"
+  },
+  {
+   "id": "style-vc-name-kept",
+   "category": "personalChat",
+   "style": "veryCasual",
+   "input": "Sarah is here.",
+   "expected": "Sarah is here"
+  },
+  {
+   "id": "style-vc-initialism-kept",
+   "category": "personalChat",
+   "style": "veryCasual",
+   "input": "A.I. is great.",
+   "expected": "A.I. is great."
+  },
+  {
+   "id": "style-vc-title-kept",
+   "category": "personalChat",
+   "style": "veryCasual",
+   "input": "Dr. Smith is here.",
+   "expected": "Dr. Smith is here."
+  },
+  {
+   "id": "style-vc-opener-lowercased",
+   "category": "personalChat",
+   "style": "veryCasual",
+   "input": "The cat sat.",
+   "expected": "the cat sat"
+  },
+  {
+   "id": "style-vc-opener-are",
+   "category": "personalChat",
+   "style": "veryCasual",
+   "input": "Are you free tonight.",
+   "expected": "are you free tonight"
+  },
+  {
+   "id": "style-vc-not-an-opener",
+   "category": "personalChat",
+   "style": "veryCasual",
+   "input": "Sounds good, see you.",
+   "expected": "sounds good, see you"
+  },
+  {
+   "id": "email-greeting-sentence-not-a-greeting",
+   "category": "email",
+   "input": "Hey can you check this, it is urgent.",
+   "expected": "Hey can you check this, it is urgent."
+  },
+  {
+   "id": "email-greeting-name-sentence-not-a-greeting",
+   "category": "email",
+   "input": "Hi Sarah can you check this, it is urgent.",
+   "expected": "Hi Sarah can you check this, it is urgent."
+  },
+  {
+   "id": "email-greeting-sentence-long-not-a-greeting",
+   "category": "email",
+   "input": "Hey can you check this, it is urgent. We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track.",
+   "expected": "Hey can you check this, it is urgent. We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track."
+  },
+  {
+   "id": "email-greeting-name-comma",
+   "category": "email",
+   "input": "Hi Sarah, can you check this?",
+   "expected": "Hi Sarah,\n\nCan you check this?"
+  },
+  {
+   "id": "email-greeting-title",
+   "category": "email",
+   "input": "Dear Dr. Smith, thank you for your time.",
+   "expected": "Dear Dr. Smith,\n\nThank you for your time."
+  },
+  {
+   "id": "email-greeting-three-names",
+   "category": "email",
+   "input": "Hi Anne Marie Smith, hello again.",
+   "expected": "Hi Anne Marie Smith,\n\nHello again."
+  },
+  {
+   "id": "email-greeting-four-names-rejected",
+   "category": "email",
+   "input": "Hi Anne Marie Van Smith, hello again.",
+   "expected": "Hi Anne Marie Van Smith, hello again."
+  },
+  {
+   "id": "email-greeting-lowercase-word-rejected",
+   "category": "email",
+   "input": "Hi Sarah and Tom, hello again.",
+   "expected": "Hi Sarah and Tom, hello again."
+  },
+  {
+   "id": "email-greeting-closing-word-rejected",
+   "category": "email",
+   "input": "Hi Thanks, for the update.",
+   "expected": "Hi Thanks, for the update."
+  },
+  {
+   "id": "email-greeting-group-word",
+   "category": "email",
+   "input": "Hi everyone, lunch is here.",
+   "expected": "Hi everyone,\n\nLunch is here."
+  },
+  {
+   "id": "email-greeting-group-word-capital",
+   "category": "email",
+   "input": "Hello Team, lunch is here.",
+   "expected": "Hello Team,\n\nLunch is here."
+  },
+  {
+   "id": "email-greeting-title-then-name-exclaim",
+   "category": "email",
+   "input": "Hello Mrs. Jones! Welcome.",
+   "expected": "Hello Mrs. Jones!\n\nWelcome."
+  },
+  {
+   "id": "email-greeting-title-alone-rejected",
+   "category": "email",
+   "input": "Dear Dr. thanks for coming",
+   "expected": "Dear Dr. thanks for coming"
+  },
+  {
+   "id": "email-greeting-period-word",
+   "category": "email",
+   "input": "Hi. Sam, thanks.",
+   "expected": "Hi. Sam, thanks."
+  },
+  {
+   "id": "email-greeting-only-stays-one-line",
+   "category": "email",
+   "input": "Hello everyone!",
+   "expected": "Hello everyone!"
+  },
+  {
+   "id": "email-greeting-only-name-stays-one-line",
+   "category": "email",
+   "input": "Dear Dr. Smith,",
+   "expected": "Dear Dr. Smith,"
+  },
+  {
+   "id": "email-greeting-not-first-word",
+   "category": "email",
+   "input": "Well, hi Sam, how are you",
+   "expected": "Well, hi Sam, how are you"
+  },
+  {
+   "id": "email-greeting-word-inside-another",
+   "category": "email",
+   "input": "Hiking Sam, how are you",
+   "expected": "Hiking Sam, how are you"
+  },
+  {
+   "id": "email-greeting-curly-apostrophe-name",
+   "category": "email",
+   "input": "Hi D’Arcy, hello again.",
+   "expected": "Hi D’Arcy,\n\nHello again."
+  },
+  {
+   "id": "email-greeting-digit-word-rejected",
+   "category": "email",
+   "input": "Hi Sam2, hello again.",
+   "expected": "Hi Sam2, hello again."
+  },
+  {
+   "id": "email-short-sign-off-lays-out",
+   "category": "email",
+   "input": "Can you send me the report. Thanks, Sam",
+   "expected": "Can you send me the report.\n\nThanks,\nSam"
+  },
+  {
+   "id": "email-short-sign-off-adds-user-name",
+   "category": "email",
+   "userName": "Wasim",
+   "input": "Can you send me the report. Thanks.",
+   "expected": "Can you send me the report.\n\nThanks,\nWasim"
+  },
+  {
+   "id": "email-short-new-paragraph-alone-untouched",
+   "category": "email",
+   "input": "One. New paragraph. Two.",
+   "expected": "One. New paragraph. Two."
+  },
+  {
+   "id": "email-long-new-paragraph-lays-out",
+   "category": "email",
+   "input": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track. New paragraph. Next steps.",
+   "expected": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track.\n\nNext steps."
+  },
+  {
+   "id": "email-24-words-new-paragraph-untouched",
+   "category": "email",
+   "input": "Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word. New paragraph. Next.",
+   "expected": "Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word. New paragraph. Next."
+  },
+  {
+   "id": "email-25-words-new-paragraph-lays-out",
+   "category": "email",
+   "input": "Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word. New paragraph. Next.",
+   "expected": "Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word.\n\nNext."
+  },
+  {
+   "id": "email-sign-off-closing-word-not-a-name",
+   "category": "email",
+   "input": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track. Thanks. Bye.",
+   "expected": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track. Thanks. Bye."
+  },
+  {
+   "id": "email-short-sign-off-closing-word-not-a-name",
+   "category": "email",
+   "input": "OK. Thanks. Bye.",
+   "expected": "OK. Thanks. Bye."
+  },
+  {
+   "id": "email-sign-off-sentence-opener-not-a-name",
+   "category": "email",
+   "input": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track. Thanks. We will see.",
+   "expected": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track. Thanks. We will see."
+  },
+  {
+   "id": "email-sign-off-sorry-not-a-name",
+   "category": "email",
+   "input": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track. Thanks. Sorry.",
+   "expected": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track. Thanks. Sorry."
+  },
+  {
+   "id": "email-sign-off-name-after-period",
+   "category": "email",
+   "input": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track. Thanks. Sam.",
+   "expected": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track.\n\nThanks,\nSam"
+  },
+  {
+   "id": "email-sign-off-name-digit-rejected",
+   "category": "email",
+   "input": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track. Thanks, Sam2.",
+   "expected": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track. Thanks, Sam2."
+  },
+  {
+   "id": "email-sign-off-name-lowercase-rejected",
+   "category": "email",
+   "input": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track. Thanks, sam.",
+   "expected": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track. Thanks, sam."
+  },
+  {
+   "id": "code-copy-dot-env",
+   "category": "coding",
+   "input": "copy dot env",
+   "expected": "copy .env"
+  },
+  {
+   "id": "code-project-dot-env",
+   "category": "coding",
+   "input": "project dot env",
+   "expected": "project .env"
+  },
+  {
+   "id": "code-dot-env-in-sentence",
+   "category": "coding",
+   "input": "copy dot env to the server",
+   "expected": "copy .env to the server"
+  },
+  {
+   "id": "code-dot-env-trailing-comma",
+   "category": "coding",
+   "input": "copy dot env, then run it",
+   "expected": "copy .env, then run it"
+  },
+  {
+   "id": "code-dot-env-code-like-left",
+   "category": "coding",
+   "input": "src/app dot env",
+   "expected": "src/app.env"
+  },
+  {
+   "id": "code-dot-env-camel-left",
+   "category": "coding",
+   "input": "myApp dot env",
+   "expected": "myApp.env"
+  },
+  {
+   "id": "code-dot-npmrc-after-word",
+   "category": "coding",
+   "input": "copy dot npmrc",
+   "expected": "copy .npmrc"
+  },
+  {
+   "id": "code-red-dot-go",
+   "category": "coding",
+   "input": "red dot go",
+   "expected": "red dot go"
+  },
+  {
+   "id": "code-red-dot-go-sentence",
+   "category": "coding",
+   "input": "look at the red dot go away",
+   "expected": "look at the red dot go away"
+  },
+  {
+   "id": "code-main-dot-go",
+   "category": "coding",
+   "input": "main dot go",
+   "expected": "main.go"
+  },
+  {
+   "id": "code-ambiguous-c",
+   "category": "coding",
+   "input": "red dot c and foo dot c",
+   "expected": "red dot c and foo.c"
+  },
+  {
+   "id": "code-ambiguous-h",
+   "category": "coding",
+   "input": "door dot h and parser dot h",
+   "expected": "door dot h and parser.h"
+  },
+  {
+   "id": "code-ambiguous-lock",
+   "category": "coding",
+   "input": "door dot lock and Cargo dot lock",
+   "expected": "door dot lock and Cargo.lock"
+  },
+  {
+   "id": "code-ambiguous-with-code-like-base",
+   "category": "coding",
+   "input": "my_tool dot go and v2 dot go",
+   "expected": "my_tool.go and v2.go"
+  },
+  {
+   "id": "code-ambiguous-multi-dot-ok",
+   "category": "coding",
+   "input": "red dot main dot go",
+   "expected": "red.main.go"
+  },
+  {
+   "id": "code-ambiguous-multi-dot-rejected",
+   "category": "coding",
+   "input": "red dot blue dot go",
+   "expected": "red dot blue dot go"
+  },
+  {
+   "id": "code-unambiguous-ext-after-plain-word",
+   "category": "coding",
+   "input": "red dot md",
+   "expected": "red.md"
+  },
+  {
+   "id": "code-slash-percent",
+   "category": "coding",
+   "input": "slash 20 percent",
+   "expected": "slash 20 percent"
+  },
+  {
+   "id": "code-slash-numbers",
+   "category": "coding",
+   "input": "20 slash 30",
+   "expected": "20 slash 30"
+  },
+  {
+   "id": "code-slash-path-then-number",
+   "category": "coding",
+   "input": "src slash 20",
+   "expected": "src slash 20"
+  },
+  {
+   "id": "code-slash-number-then-path",
+   "category": "coding",
+   "input": "20 slash src",
+   "expected": "20 /src"
+  },
+  {
+   "id": "code-slash-leading-path",
+   "category": "coding",
+   "input": "slash usr",
+   "expected": "/usr"
+  },
+  {
+   "id": "code-slash-leading-number-rejected",
+   "category": "coding",
+   "input": "slash 2024",
+   "expected": "slash 2024"
+  },
+  {
+   "id": "code-slash-dot-slash-with-number",
+   "category": "coding",
+   "input": "dot slash 20",
+   "expected": "./ 20"
+  },
+  {
+   "id": "code-slash-version-in-path",
+   "category": "coding",
+   "input": "docs slash v2",
+   "expected": "docs/v2"
+  },
+  {
+   "id": "code-underscore-non-ascii-left",
+   "category": "coding",
+   "input": "café underscore bar",
+   "expected": "café underscore bar"
+  },
+  {
+   "id": "code-underscore-non-ascii-right",
+   "category": "coding",
+   "input": "foo underscore café",
+   "expected": "foo underscore café"
+  },
+  {
+   "id": "code-underscore-path-neighbour",
+   "category": "coding",
+   "input": "src/app underscore index",
+   "expected": "src/app underscore index"
+  },
+  {
+   "id": "code-underscore-dunder-non-ascii",
+   "category": "coding",
+   "input": "underscore underscore café",
+   "expected": "underscore underscore café"
+  },
+  {
+   "id": "code-underscore-prose-stopword-right",
+   "category": "coding",
+   "input": "foo underscore the",
+   "expected": "foo underscore the"
+  },
+  {
+   "id": "code-underscore-prose-stopword-left",
+   "category": "coding",
+   "input": "and underscore foo",
+   "expected": "and underscore foo"
+  },
+  {
+   "id": "code-underscore-user-id",
+   "category": "coding",
+   "input": "user underscore id",
+   "expected": "user_id"
+  },
+  {
+   "id": "code-underscore-with-digits",
+   "category": "coding",
+   "input": "item underscore 2",
+   "expected": "item_2"
+  },
+  {
+   "id": "code-underscore-hyphen-names",
+   "category": "coding",
+   "input": "my-tool underscore v2",
+   "expected": "my-tool_v2"
+  },
+  {
+   "id": "code-tag-dotted",
+   "category": "coding",
+   "input": "tag index.ts please",
+   "expected": "@index.ts please"
+  },
+  {
+   "id": "code-at-dotted-path",
+   "category": "coding",
+   "input": "at src/app.tsx",
+   "expected": "@src/app.tsx"
+  },
+  {
+   "id": "code-at-dotted-after-words",
+   "category": "coding",
+   "input": "look at readme.md",
+   "expected": "look @readme.md"
+  },
+  {
+   "id": "code-tag-dotted-upper-ext",
+   "category": "coding",
+   "input": "tag README.MD",
+   "expected": "@README.MD"
+  },
+  {
+   "id": "code-tag-dotted-not-a-file",
+   "category": "coding",
+   "input": "tag foo.bar",
+   "expected": "tag foo.bar"
+  },
+  {
+   "id": "code-tag-abbreviation",
+   "category": "coding",
+   "input": "tag e.g.",
+   "expected": "tag e.g."
+  },
+  {
+   "id": "code-tag-bare-extension",
+   "category": "coding",
+   "input": "tag .ts",
+   "expected": "tag .ts"
+  },
+  {
+   "id": "code-tag-hidden-in-folder",
+   "category": "coding",
+   "input": "tag src/.ts",
+   "expected": "tag src/.ts"
+  },
+  {
+   "id": "code-tag-already-mention",
+   "category": "coding",
+   "input": "tag @index.ts",
+   "expected": "tag @index.ts"
+  },
+  {
+   "id": "code-tag-quoted-file",
+   "category": "coding",
+   "input": "tag \"index.ts\"",
+   "expected": "tag \"index.ts\""
+  },
+  {
+   "id": "code-tag-then-spoken-file",
+   "category": "coding",
+   "input": "tag index.ts and tag app dot tsx",
+   "expected": "@index.ts and @app.tsx"
+  },
+  {
+   "id": "code-cjk-numerals",
+   "category": "coding",
+   "input": "二 dot 三",
+   "expected": "二 dot 三"
+  },
+  {
+   "id": "code-arabic-indic-digits",
+   "category": "coding",
+   "input": "٣ dot ٤",
+   "expected": "٣ dot ٤"
+  },
+  {
+   "id": "code-ascii-digits",
+   "category": "coding",
+   "input": "3 dot 4",
+   "expected": "3.4"
+  },
+  {
+   "id": "code-before-dot",
+   "category": "coding",
+   "before": "foo.",
+   "input": "bar",
+   "expected": "bar"
+  },
+  {
+   "id": "code-before-underscore",
+   "category": "coding",
+   "before": "snake_",
+   "input": "case",
+   "expected": "case"
+  },
+  {
+   "id": "code-before-dash",
+   "category": "coding",
+   "before": "--",
+   "input": "help",
+   "expected": "help"
+  },
+  {
+   "id": "code-before-colon",
+   "category": "coding",
+   "before": "key:",
+   "input": "value",
+   "expected": "value"
+  },
+  {
+   "id": "code-before-word",
+   "category": "coding",
+   "before": "foo",
+   "input": "bar",
+   "expected": " bar"
+  },
+  {
+   "id": "code-before-comma",
+   "category": "coding",
+   "before": "foo,",
+   "input": "bar",
+   "expected": " bar"
+  },
+  {
+   "id": "nocode-before-dot-needs-space",
+   "category": "docsNotes",
+   "before": "foo.",
+   "input": "Bar",
+   "expected": " Bar"
+  },
+  {
+   "id": "nocode-before-underscore-needs-space",
+   "category": "other",
+   "before": "snake_",
+   "input": "case",
+   "expected": " case"
+  },
+  {
+   "id": "nocode-before-dash-needs-space",
+   "category": "other",
+   "before": "well-",
+   "input": "case",
+   "expected": " case"
+  },
+  {
+   "id": "nocode-before-colon-needs-space",
+   "category": "other",
+   "before": "Note:",
+   "input": "case",
+   "expected": " case"
+  },
+  {
+   "id": "style-abbrev-etc",
+   "category": "workChat",
+   "input": "Send the files, etc.",
+   "expected": "Send the files, etc."
+  },
+  {
+   "id": "style-abbrev-dr",
+   "category": "workChat",
+   "input": "I saw Dr.",
+   "expected": "I saw Dr."
+  },
+  {
+   "id": "style-abbrev-mr-upper",
+   "category": "workChat",
+   "input": "I saw MR.",
+   "expected": "I saw MR."
+  },
+  {
+   "id": "style-abbrev-inc",
+   "category": "workChat",
+   "input": "He works at Acme Inc.",
+   "expected": "He works at Acme Inc."
+  },
+  {
+   "id": "style-abbrev-vs",
+   "category": "workChat",
+   "input": "Cats vs.",
+   "expected": "Cats vs."
+  },
+  {
+   "id": "style-abbrev-prefix-word-still-drops",
+   "category": "workChat",
+   "input": "It was my etcetera.",
+   "expected": "It was my etcetera"
+  },
+  {
+   "id": "style-abbrev-no-still-drops",
+   "category": "workChat",
+   "input": "No.",
+   "expected": "No"
+  },
+  {
+   "id": "style-non-abbrev-drops",
+   "category": "workChat",
+   "input": "Sounds good, thanks.",
+   "expected": "Sounds good, thanks"
   }
  ]
 }

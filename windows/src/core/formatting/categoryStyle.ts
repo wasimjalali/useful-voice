@@ -10,10 +10,17 @@ import { chars, containsNewline, isWS } from './categoryText.js';
  * message (never a ? or !). Very casual does that and lowercases the first letter.
  */
 
+/** A final dot after one of these belongs to the word: "and so on, etc." keeps its dot. */
+const ABBREVIATIONS = new Set([
+  'etc', 'dr', 'mr', 'mrs', 'ms', 'prof', 'sr', 'jr', 'vs', 'inc', 'ltd', 'co', 'corp', 'st', 'ave',
+  'approx', 'dept', 'fig', 'misc',
+]);
+
 /**
  * Drops the final "." of a single-sentence message. Left alone when: there is a line
- * break, another sentence ends inside the text, the text ends in "..", or the last word
- * has a dot inside it ("p.m.", "e.g.", "3.5.", "index.ts.").
+ * break, another sentence ends inside the text, the text ends in "..", the last word
+ * has a dot inside it ("p.m.", "e.g.", "3.5.", "index.ts.") or is an abbreviation
+ * ("etc.", "Dr.").
  */
 export function dropTrailingFullStop(text: string): string {
   if (containsNewline(text)) return text;
@@ -32,7 +39,9 @@ export function dropTrailingFullStop(text: string): string {
   }
   let wordStart = stem.length;
   while (wordStart > 0 && !isWS(stem[wordStart - 1] as string)) wordStart--;
-  if (stem.slice(wordStart).includes('.')) return text;
+  const lastWord = stem.slice(wordStart);
+  if (lastWord.includes('.')) return text;
+  if (ABBREVIATIONS.has(lastWord.join('').toLowerCase())) return text;
   return stem.join('') + cs.slice(end).join('');
 }
 

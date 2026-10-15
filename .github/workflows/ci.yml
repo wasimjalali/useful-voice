@@ -250,13 +250,6 @@ jobs:
           $newVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
 
           Install-Silent 'release-old' -retryOnCrash
-          # TEMP verification: crash a child with an access violation and check the WER capture. Reverted before merge.
-          $crashExe = Get-Item (Get-Command pwsh).Source
-          $crashSince = Get-Date
-          $crash = Start-Process $crashExe.FullName -ArgumentList '-NoProfile', '-Command', '[System.Runtime.InteropServices.Marshal]::ReadInt32([IntPtr]0x7FFFFFFFFFF0)' -PassThru
-          $crash.WaitForExit()
-          Write-Host "TEMP crasher exited with $($crash.ExitCode) (access violation: $($crash.ExitCode -eq $accessViolation))"
-          Save-InstallerDiagnostics $crashExe ([pscustomobject]@{ Proc = $crash; Since = $crashSince }) | Out-Null
           $old = @(Get-UvEntries)
           Show-Entries 'after old install' $old
           if ($old.Count -ne 1 -or $old[0].Hive -ne 'HKCU') { throw "Expected 1 HKCU Useful Voice entry after the old install, found $($old.Count): $(($old | ForEach-Object { $_.Hive + ':' + $_.Key }) -join ', ')" }

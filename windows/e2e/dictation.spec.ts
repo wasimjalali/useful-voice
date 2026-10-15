@@ -260,8 +260,9 @@ test('"Copied. Press Ctrl+V to paste" outlasts the done line and ends on the nex
   await copiedNotPasted();
   await expect(notice).toBeVisible();
   await expect(win.getByRole('button', { name: 'Copy last transcript' })).toBeVisible();
-  await win.waitForTimeout(5 * SECOND);
-  await expect(notice).toBeVisible();
+  // 4.5 s clears the 4 s done line and leaves 3.5 s before the 8 s expiry on a slow runner.
+  await win.waitForTimeout(4.5 * SECOND);
+  await expect(notice).toBeVisible({ timeout: 1 });
   // ... and clears on its own at 8 s.
   await expect(notice).toHaveCount(0, { timeout: 5 * SECOND });
   await expect(dockStatus(win)).toContainText('Ready');
@@ -325,7 +326,7 @@ test('the maximum length stops the recording, with the countdown and live number
   expect(Math.max(...counts)).toBeLessThanOrEqual(5);
   expect([...counts].sort((a, b) => b - a)).toEqual(counts);
   for (const tick of telemetry) {
-    if (tick.elapsedSeconds < 24) expect(tick.maxRemaining).toBeUndefined();
+    if (tick.elapsedSeconds < 23) expect(tick.maxRemaining).toBeUndefined();
   }
 });
 

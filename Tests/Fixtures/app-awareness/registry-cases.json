@@ -310,6 +310,51 @@
    "expected": "other"
   },
   {
+   "id": "jetbrains-prefix-alone",
+   "appID": "com.jetbrains",
+   "expected": "other"
+  },
+  {
+   "id": "jetbrains-prefix-mid-id",
+   "appID": "xcom.jetbrains.foo",
+   "expected": "other"
+  },
+  {
+   "id": "jetbrains-prefix-case",
+   "appID": "COM.JETBRAINS.GoLand",
+   "expected": "coding"
+  },
+  {
+   "id": "vscode-insiders-win",
+   "appID": "Code - Insiders.exe",
+   "expected": "coding"
+  },
+  {
+   "id": "vscodium-win",
+   "appID": "VSCodium.exe",
+   "expected": "coding"
+  },
+  {
+   "id": "vscodium-mac",
+   "appID": "com.vscodium",
+   "expected": "coding"
+  },
+  {
+   "id": "openconsole-win",
+   "appID": "OpenConsole.exe",
+   "expected": "coding"
+  },
+  {
+   "id": "whatsapp-root-win",
+   "appID": "WhatsApp.Root.exe",
+   "expected": "personalChat"
+  },
+  {
+   "id": "kelvin-sign-id",
+   "appID": "slacK.exe",
+   "expected": "other"
+  },
+  {
    "id": "notes",
    "appID": "com.apple.Notes",
    "expected": "docsNotes"
@@ -382,6 +427,21 @@
   {
    "id": "browser-alone-org.mozilla.firefox",
    "appID": "org.mozilla.firefox",
+   "expected": "other"
+  },
+  {
+   "id": "browser-alone-org.mozilla.nightly",
+   "appID": "org.mozilla.nightly",
+   "expected": "other"
+  },
+  {
+   "id": "browser-alone-app.zen-browser.zen",
+   "appID": "app.zen-browser.zen",
+   "expected": "other"
+  },
+  {
+   "id": "browser-alone-com.kagi.kagimacOS",
+   "appID": "com.kagi.kagimacOS",
    "expected": "other"
   },
   {
@@ -901,6 +961,42 @@
   {
    "url": "http://localhost:3000/mail.google.com",
    "expected": null
+  },
+  {
+   "url": "https://evil.com\\@mail.google.com/",
+   "expected": null
+  },
+  {
+   "url": "https://mail.google.com\\@evil.com/",
+   "expected": "email"
+  },
+  {
+   "url": "https://claude.ai\\code",
+   "expected": "coding"
+  },
+  {
+   "url": "https://slacK.com",
+   "expected": null
+  },
+  {
+   "url": "https://mail.google.com/mail?next=ftp://x",
+   "expected": "email"
+  },
+  {
+   "url": "ht tp://mail.google.com",
+   "expected": null
+  },
+  {
+   "url": "xhttps://mail.google.com",
+   "expected": null
+  },
+  {
+   "url": "https://outlook.cloud.microsoft/mail/",
+   "expected": "email"
+  },
+  {
+   "url": "https://chat.openai.com/c/1",
+   "expected": "workChat"
   }
  ],
  "parse": [
@@ -953,6 +1049,16 @@
    "url": "http://host:port/",
    "host": null,
    "path": null
+  },
+  {
+   "url": "https://evil.com\\@mail.google.com/",
+   "host": "evil.com",
+   "path": "/@mail.google.com/"
+  },
+  {
+   "url": "https://slacK.com",
+   "host": null,
+   "path": null
   }
  ],
  "normalize": [
@@ -975,6 +1081,76 @@
   {
    "raw": "",
    "expected": ""
+  },
+  {
+   "raw": "SLACK.EXE",
+   "expected": "slacK.exe"
+  }
+ ],
+ "overrideDecode": [
+  {
+   "id": "absent",
+   "settings": "{}",
+   "expected": {}
+  },
+  {
+   "id": "null",
+   "settings": "{\"categoryOverrides\": null}",
+   "expected": {}
+  },
+  {
+   "id": "empty",
+   "settings": "{\"categoryOverrides\": {}}",
+   "expected": {}
+  },
+  {
+   "id": "valid",
+   "settings": "{\"categoryOverrides\": {\"com.apple.mail\": \"personalChat\", \"slack.exe\": \"coding\"}}",
+   "expected": {
+    "com.apple.mail": "personalChat",
+    "slack.exe": "coding"
+   }
+  },
+  {
+   "id": "unknown-category-dropped",
+   "settings": "{\"categoryOverrides\": {\"com.apple.mail\": \"bogus\", \"slack.exe\": \"coding\"}}",
+   "expected": {
+    "slack.exe": "coding"
+   }
+  },
+  {
+   "id": "non-string-values-dropped",
+   "settings": "{\"categoryOverrides\": {\"a\": 1, \"b\": null, \"c\": [\"coding\"], \"d\": {\"x\": 1}, \"e\": \"email\"}}",
+   "expected": {
+    "e": "email"
+   }
+  },
+  {
+   "id": "array",
+   "settings": "{\"categoryOverrides\": [\"coding\"]}",
+   "expected": {}
+  },
+  {
+   "id": "string",
+   "settings": "{\"categoryOverrides\": \"coding\"}",
+   "expected": {}
+  },
+  {
+   "id": "number",
+   "settings": "{\"categoryOverrides\": 3}",
+   "expected": {}
+  },
+  {
+   "id": "bool",
+   "settings": "{\"categoryOverrides\": true}",
+   "expected": {}
+  },
+  {
+   "id": "proto-key-kept",
+   "settings": "{\"categoryOverrides\": {\"__proto__\": \"coding\"}}",
+   "expected": {
+    "__proto__": "coding"
+   }
   }
  ]
 }

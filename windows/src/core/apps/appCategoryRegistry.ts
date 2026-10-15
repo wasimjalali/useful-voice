@@ -176,7 +176,8 @@ export function categoryForURL(raw: string): AppCategory | null {
  * newer or older app version wrote it) is dropped. It never throws.
  */
 export function parseCategoryOverrides(raw: unknown): Record<string, AppCategory> {
-  const out: Record<string, AppCategory> = {};
+  // No prototype, so a stored "__proto__" key is kept like any other, as Swift keeps it.
+  const out: Record<string, AppCategory> = Object.create(null) as Record<string, AppCategory>;
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return out;
   for (const [key, value] of Object.entries(raw)) {
     if (isAppCategory(value)) out[key] = value;

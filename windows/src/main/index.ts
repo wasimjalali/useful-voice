@@ -285,6 +285,9 @@ class UsefulVoiceApp {
   /** Whether Esc is registered as a global shortcut. It is, only while recording. */
   private escapeRegistered = false;
 
+  /** Set once `quit()` starts, so a second Quit or launch during it changes nothing. */
+  private quitting: Promise<void> | null = null;
+
   async start(): Promise<void> {
     // A second launch must hand off to the running instance rather than start a
     // second hotkey registration, which Windows would silently refuse.
@@ -293,6 +296,7 @@ class UsefulVoiceApp {
       return;
     }
     app.on('second-instance', (_event, commandLine) => {
+      if (this.quitting) return;
       // The command line belongs to the instance that just started, not to this one,
       // which is why the flag is read from it rather than from `process.argv`: a second
       // launch carrying `--autostart` is a launch nobody clicked, so it must not pull a
@@ -940,7 +944,12 @@ class UsefulVoiceApp {
     void this.quit({ restartToUpdate: true });
   }
 
-  async quit(options: { restartToUpdate?: boolean } = {}): Promise<void> {
+  quit(options: { restartToUpdate?: boolean } = {}): Promise<void> {
+    this.quitting ??= this.runQuit(options);
+    return this.quitting;
+  }
+
+  private async runQuit(options: { restartToUpdate?: boolean }): Promise<void> {
     try {
       await this.service.cancel();
       // Always give the data a chance to reach disk before exiting: a debounced
@@ -955,6 +964,9 @@ class UsefulVoiceApp {
       // update is handed to its installer here, on every quit.
       const restart = options.restartToUpdate === true;
       const updateReady = this.updater?.ready;
+      // The data is flushed, so nothing may start a dictation or an edit while the installer
+      // is checked below: close every window (the app has no window-all-closed quit).
+      if (updateReady) for (const window of BrowserWindow.getAllWindows()) window.destroy();
       const installing = (await this.updater?.installOnExit(restart)) ?? false;
       if (updateReady) {
         // Its own file, appended synchronously: diagnostics.log is rewritten by the next
@@ -962,7 +974,7 @@ class UsefulVoiceApp {
         try {
           appendFileSync(
             path.join(app.getPath('userData'), 'update.log'),
-            `${new Date().toISOString()} installer for ${updateReady} ${installing ? 'started' : 'did not start'}${restart ? ', restart requested' : ''}\n`,
+            `${new Date().toISOString()} installer for ${updateReady} ${installing ? 'started' : `did not start (${this.updater?.lastProblem ?? 'no reason recorded'})`}${restart ? ', restart requested' : ''}\n`,
           );
         } catch {
           // The log is a diagnostic aid only.

@@ -60,7 +60,8 @@ if (!(baseUrl.startsWith('https://') || baseUrl.startsWith('http://127.0.0.1:'))
   fail(`base URL must be HTTPS: ${baseUrl}`);
 }
 // A loopback set is for tests only: it must never land where the real set goes.
-if (baseUrl.startsWith('http://') && (values.publish === undefined || publish === path.join(out, 'publish'))) {
+const samePath = (a, b) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
+if (baseUrl.startsWith('http://') && (values.publish === undefined || samePath(publish, path.join(out, 'publish')))) {
   fail('a 127.0.0.1 base URL needs its own --publish folder, not release/publish');
 }
 

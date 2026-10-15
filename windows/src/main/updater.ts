@@ -22,9 +22,12 @@ const FIRST_CHECK_DELAY_MS = 60_000;
 /** Then twice a day: the app sits in the tray for weeks. */
 const CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
 /**
- * The installer is spawned asynchronously, so a failure to start (a quarantined or missing
- * file, a refused elevation) arrives as an 'error' event after `install` has returned true.
- * "Restart to update" waits this long for one before it lets the app exit.
+ * The installer is spawned asynchronously, so some failures to start arrive as an 'error'
+ * event after `install` has returned true; "Restart to update" waits this long for one before
+ * it lets the app exit, and relaunches the app if one came. Not every failure is reported:
+ * the library answers a missing file by opening it in the shell and a refused spawn by
+ * retrying through elevate.exe, and neither outcome comes back. Those leave the app closed
+ * until it is started again; the existence check in `installOnExit` covers the missing file.
  */
 const INSTALL_ERROR_WAIT_MS = 1500;
 
@@ -56,6 +59,7 @@ export class Updater {
   private readyVersion: string | null = null;
   private downloadedFile: string | null = null;
   private lastErrorAt = 0;
+  private problem: string | null = null;
   private timer: NodeJS.Timeout | null = null;
   private checking = false;
 
@@ -63,6 +67,11 @@ export class Updater {
 
   get ready(): string | null {
     return this.readyVersion;
+  }
+
+  /** Why the last install attempt failed, for update.log. */
+  get lastProblem(): string | null {
+    return this.problem;
   }
 
   start(e2e: boolean): void {
@@ -84,9 +93,11 @@ export class Updater {
       // Minus the random ID the library writes to <userData>/.updaterId: it never leaves the
       // machine (see requestHeaders below), and diagnostics.log may be shared in a bug report.
       info: (message?: unknown) => {
-        if (!String(message).startsWith('Generated new staging user ID')) this.options.log(String(message));
+        if (!/user id/i.test(String(message))) this.options.log(String(message));
       },
-      warn: (message?: unknown) => this.options.log(`warn: ${String(message)}`),
+      warn: (message?: unknown) => {
+        if (!/user id/i.test(String(message))) this.options.log(`warn: ${String(message)}`);
+      },
       error: (message?: unknown) => this.options.log(`error: ${String(message)}`),
       debug: () => undefined,
     };
@@ -105,6 +116,7 @@ export class Updater {
     });
     updater.on('error', (error) => {
       this.lastErrorAt = Date.now();
+      this.problem = error.message;
       this.options.log(`error: ${error.message}`);
     });
     const check = (): void => {
@@ -134,17 +146,22 @@ export class Updater {
     if (!this.readyVersion) return false;
     if (this.timer) clearInterval(this.timer);
     if (!this.downloadedFile || !existsSync(this.downloadedFile)) {
-      this.options.log('install skipped: the downloaded installer is gone');
+      this.problem = 'the downloaded installer is gone';
+      this.options.log(`install skipped: ${this.problem}`);
       return false;
     }
     const updater = electronUpdater.autoUpdater;
-    if (!(updater instanceof electronUpdater.BaseUpdater)) return false;
+    if (!(updater instanceof electronUpdater.BaseUpdater)) {
+      this.problem = 'no installer-based updater';
+      return false;
+    }
     const startedAt = Date.now();
     let started = false;
     try {
       started = updater.install(true, relaunch);
     } catch (error) {
-      this.options.log(`install failed: ${(error as Error).message}`);
+      this.problem = (error as Error).message;
+      this.options.log(`install failed: ${this.problem}`);
       return false;
     }
     if (started && relaunch) {

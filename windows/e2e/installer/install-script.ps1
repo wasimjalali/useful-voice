@@ -38,7 +38,7 @@ function Get-UvEntries {
     Get-ChildItem $root -ErrorAction SilentlyContinue | ForEach-Object {
       $p = Get-ItemProperty $_.PSPath
       if ($p.DisplayName -like 'Useful Voice*') {
-        [pscustomobject]@{ Root = $root; Key = $_.PSChildName; DisplayVersion = $p.DisplayVersion; InstallLocation = $p.InstallLocation; InstallDir = $(if ($p.UninstallString -match '^"([^"]+)"') { Split-Path -Parent $Matches[1] } else { $p.InstallLocation }) }
+        [pscustomobject]@{ Root = $root; Key = $_.PSChildName; DisplayVersion = $p.DisplayVersion; InstallLocation = $p.InstallLocation; InstallDir = $(if ($p.UninstallString -match '^"([^"]+)"') { Split-Path -Parent $Matches[1] } else { Join-Path $env:LOCALAPPDATA 'Programs\Useful Voice' }) }
       }
     }
   }

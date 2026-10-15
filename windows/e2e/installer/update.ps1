@@ -29,7 +29,7 @@ function Say([string]$line) { $line | Tee-Object -FilePath $report -Append }
 
 function Get-UvEntry {
   $all = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
-    ForEach-Object { $p = Get-ItemProperty $_.PSPath; if ($p.DisplayName -like 'Useful Voice*') { [pscustomobject]@{ Key = $_.PSChildName; DisplayVersion = $p.DisplayVersion; InstallLocation = $p.InstallLocation; InstallDir = $(if ($p.UninstallString -match '^"([^"]+)"') { Split-Path -Parent $Matches[1] } else { $p.InstallLocation }) } } })
+    ForEach-Object { $p = Get-ItemProperty $_.PSPath; if ($p.DisplayName -like 'Useful Voice*') { [pscustomobject]@{ Key = $_.PSChildName; DisplayVersion = $p.DisplayVersion; InstallLocation = $p.InstallLocation; InstallDir = $(if ($p.UninstallString -match '^"([^"]+)"') { Split-Path -Parent $Matches[1] } else { Join-Path $env:LOCALAPPDATA 'Programs\Useful Voice' }) } } })
   if ($all.Count -gt 1) { throw "found $($all.Count) Useful Voice uninstall entries" }
   return $all | Select-Object -First 1
 }
@@ -49,6 +49,8 @@ try {
   Say "app-update.yml of the old build:"
   Say (Get-Content (Join-Path $before.InstallDir 'resources\app-update.yml') -Raw)
 
+  # Only this run's line may satisfy the assertion below.
+  Remove-Item (Join-Path $env:APPDATA 'Useful Voice\update.log') -ErrorAction SilentlyContinue
   $env:UV_UPDATE_INSTALL_WHEN_READY = '1'
   Start-Process -FilePath $exe | Out-Null
   Remove-Item Env:\UV_UPDATE_INSTALL_WHEN_READY

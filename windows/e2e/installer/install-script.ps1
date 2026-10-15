@@ -38,7 +38,7 @@ function Get-UvEntries {
     Get-ChildItem $root -ErrorAction SilentlyContinue | ForEach-Object {
       $p = Get-ItemProperty $_.PSPath
       if ($p.DisplayName -like 'Useful Voice*') {
-        [pscustomobject]@{ Root = $root; Key = $_.PSChildName; DisplayVersion = $p.DisplayVersion; InstallLocation = $p.InstallLocation }
+        [pscustomobject]@{ Root = $root; Key = $_.PSChildName; DisplayVersion = $p.DisplayVersion; InstallLocation = $p.InstallLocation; InstallDir = $(if ($p.UninstallString -match '^"([^"]+)"') { Split-Path -Parent $Matches[1] } else { $p.InstallLocation }) }
       }
     }
   }
@@ -104,7 +104,7 @@ try {
   Say ($entries | Format-List | Out-String)
   if ($entries.Count -ne 1 -or $entries[0].Root -notlike 'HKCU:*') { throw "expected one per-user uninstall entry, found $($entries.Count)" }
   if ($entries[0].DisplayVersion -ne $version) { throw "expected version $version, found $($entries[0].DisplayVersion)" }
-  $exe = Join-Path $entries[0].InstallLocation 'Useful Voice.exe'
+  $exe = Join-Path $entries[0].InstallDir 'Useful Voice.exe'
   if (-not (Test-Path -LiteralPath $exe)) { throw "installed exe missing at $exe" }
   Start-Sleep -Seconds 3
   $running = @(Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue)

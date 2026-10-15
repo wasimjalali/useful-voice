@@ -73,7 +73,13 @@
       ForEach-Object { Get-ItemProperty $_.PSPath } |
       Where-Object { $_.DisplayName -like 'Useful Voice*' } |
       Select-Object -First 1
-    if ($entry -and $entry.InstallLocation) { $exe = Join-Path $entry.InstallLocation 'Useful Voice.exe' }
+    # electron-builder's per-user entry may leave InstallLocation empty; its UninstallString
+    # always names the uninstaller beside the exe.
+    if ($entry -and $entry.InstallLocation) {
+      $exe = Join-Path $entry.InstallLocation 'Useful Voice.exe'
+    } elseif ($entry -and $entry.UninstallString -match '^"([^"]+)"') {
+      $exe = Join-Path (Split-Path -Parent $Matches[1]) 'Useful Voice.exe'
+    }
     if (-not (Test-Path -LiteralPath $exe)) { Fail "the installer finished but $exe is missing." }
 
     Write-Host "Installed Useful Voice $Version. Starting it..."

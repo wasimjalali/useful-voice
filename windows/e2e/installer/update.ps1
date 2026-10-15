@@ -29,7 +29,7 @@ function Say([string]$line) { $line | Tee-Object -FilePath $report -Append }
 
 function Get-UvEntry {
   $all = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
-    ForEach-Object { $p = Get-ItemProperty $_.PSPath; if ($p.DisplayName -like 'Useful Voice*') { [pscustomobject]@{ Key = $_.PSChildName; DisplayVersion = $p.DisplayVersion; InstallLocation = $p.InstallLocation } } })
+    ForEach-Object { $p = Get-ItemProperty $_.PSPath; if ($p.DisplayName -like 'Useful Voice*') { [pscustomobject]@{ Key = $_.PSChildName; DisplayVersion = $p.DisplayVersion; InstallLocation = $p.InstallLocation; InstallDir = $(if ($p.UninstallString -match '^"([^"]+)"') { Split-Path -Parent $Matches[1] } else { $p.InstallLocation }) } } })
   if ($all.Count -gt 1) { throw "found $($all.Count) Useful Voice uninstall entries" }
   return $all | Select-Object -First 1
 }
@@ -43,11 +43,11 @@ try {
   $proc = Start-Process -FilePath $oldInstaller.FullName -ArgumentList '/S' -PassThru
   if (-not $proc.WaitForExit(300000) -or $proc.ExitCode -ne 0) { throw "old installer failed (exit $($proc.ExitCode))" }
   $before = Get-UvEntry
-  Say "installed: $($before.Key) $($before.DisplayVersion) at $($before.InstallLocation)"
+  Say "installed: $($before.Key) $($before.DisplayVersion) at $($before.InstallDir)"
   if ($before.DisplayVersion -ne '0.0.9') { throw "expected 0.0.9 installed, found $($before.DisplayVersion)" }
-  $exe = Join-Path $before.InstallLocation 'Useful Voice.exe'
+  $exe = Join-Path $before.InstallDir 'Useful Voice.exe'
   Say "app-update.yml of the old build:"
-  Say (Get-Content (Join-Path $before.InstallLocation 'resources\app-update.yml') -Raw)
+  Say (Get-Content (Join-Path $before.InstallDir 'resources\app-update.yml') -Raw)
 
   $env:UV_UPDATE_INSTALL_WHEN_READY = '1'
   Start-Process -FilePath $exe | Out-Null

@@ -175,9 +175,9 @@ class Server:
         self.proc = subprocess.Popen(cmd, stdout=self.log, stderr=subprocess.STDOUT, env=env)
         self.cmd = cmd
         t0 = time.time()
-        while time.time() - t0 < 300:
+        while time.time() - t0 < 180:
             if self.proc.poll() is not None:
-                sys.exit(f"llama-server exited early, see {self.log.name}")
+                self.fail("llama-server exited early")
             try:
                 with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/health", timeout=2) as r:
                     if json.load(r).get("status") == "ok":
@@ -185,8 +185,16 @@ class Server:
             except Exception:
                 time.sleep(0.5)
         else:
-            sys.exit("llama-server did not become healthy in 300 s")
+            self.fail("llama-server did not become healthy in 180 s")
         threading.Thread(target=self._poll_rss, daemon=True).start()
+
+    def fail(self, why):
+        """Stop the server, print the end of its log (the reason is usually there) and exit."""
+        self.stop()
+        self.log.flush()
+        tail = Path(self.log.name).read_text(errors="replace").splitlines()[-40:]
+        print("\n".join(tail), flush=True)
+        sys.exit(f"{why}; full log: {self.log.name}")
 
     def _rss_kb(self):
         try:
@@ -386,7 +394,10 @@ def evaluate(args):
                         user = line + "\n" + text
                     else:
                         user = text
-                    r = srv.chat(system, user)
+                    try:
+                        r = srv.chat(system, user)
+                    except Exception as e:  # a hung or crashed server must not hang the run
+                        srv.fail(f"request for {c['id']} failed: {e}")
                     r.update(id=c["id"], model_input=text)
                     rows.append(r)
                     if (i + 1) % 25 == 0:

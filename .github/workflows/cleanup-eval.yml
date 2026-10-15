@@ -65,11 +65,11 @@ jobs:
       # step fails and the artifact keeps the server log that says why.
       - name: Run with Metal (-ngl 99)
         continue-on-error: true
-        timeout-minutes: 12
+        timeout-minutes: 8
         run: >
           python3 evals/cleanup/run_eval.py --work "$RUNNER_TEMP/cleanup"
           --llama-dir "$RUNNER_TEMP/cleanup/llama/llama-b11669" --models-dir "$RUNNER_TEMP/cleanup/models"
-          --subset "$SUBSET" --ngl 99 --port 8110 --variants rules+s1 rules+sf --label macos-15-metal
+          --subset 20 --ngl 99 --port 8110 --variants rules+s1 rules+sf --label macos-15-metal
           --out "$RUNNER_TEMP/out/macos-15-metal.json" | tee "$RUNNER_TEMP/macos-15-metal.txt"
 
       - name: Summary

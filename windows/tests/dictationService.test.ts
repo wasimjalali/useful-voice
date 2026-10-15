@@ -70,6 +70,7 @@
  *  34. Clearing history leaves failed audio that "Retry last recording" can still use.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { DeliveryTarget } from '../src/core/delivery/deliveryTarget.js';
 import {
   DictationService,
   classifyRecordingFailure,
@@ -162,7 +163,7 @@ class FakeTranscriber implements TranscriberPort {
 
 class FakeSink implements TextSinkPort {
   delivered: string[] = [];
-  requests: Array<{ text: string; targetApp?: string; targetHandle?: number; mode: string; signal?: AbortSignal }> = [];
+  requests: Array<{ text: string; targetApp?: string; targetHandle?: number; target?: DeliveryTarget; mode: string; signal?: AbortSignal }> = [];
   result: { delivered: boolean; clipboardFallback: boolean; cancelled?: boolean } = { delivered: true, clipboardFallback: false };
   /** Never resolves, to exercise the delivery timeout. */
   hang = false;
@@ -172,7 +173,7 @@ class FakeSink implements TextSinkPort {
   gate: Promise<void> | null = null;
   error: Error | null = null;
 
-  async deliver(request: { text: string; targetApp?: string; targetHandle?: number; mode: string; signal?: AbortSignal }): Promise<{ delivered: boolean; clipboardFallback: boolean; cancelled?: boolean }> {
+  async deliver(request: { text: string; targetApp?: string; targetHandle?: number; target?: DeliveryTarget; mode: string; signal?: AbortSignal }): Promise<{ delivered: boolean; clipboardFallback: boolean; cancelled?: boolean }> {
     this.delivered.push(request.text);
     this.requests.push(request);
     if (this.error) throw this.error;
@@ -1864,6 +1865,19 @@ describe('review round 1: delivery target and failures', () => {
     await window.service.toggle({ source: 'window', targetApp: 'Slack', targetHandle: 4242 });
     await window.service.toggle({ source: 'window' });
     expect(window.sink.requests[0]?.targetHandle).toBeUndefined();
+  });
+
+  it('hands the target locked at the hotkey press to the sink, and none for a window dictation', async () => {
+    const target: DeliveryTarget = { appId: 'slack', processId: 501, windowHandle: 4242, focusHandle: 7 };
+    const hotkey = setup();
+    await hotkey.service.toggle({ source: 'hotkey', targetApp: 'Slack', targetHandle: 4242, target });
+    await hotkey.service.toggle({ source: 'hotkey' });
+    expect(hotkey.sink.requests[0]?.target).toEqual(target);
+
+    const window = setup();
+    await window.service.toggle({ source: 'window', target });
+    await window.service.toggle({ source: 'window' });
+    expect(window.sink.requests[0]?.target).toBeUndefined();
   });
 
   it('reports a sink that moved the paste to the clipboard as copied-not-pasted', async () => {

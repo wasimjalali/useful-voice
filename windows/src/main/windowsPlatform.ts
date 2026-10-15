@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 // The delivery policy's view of a window: the same identity (process + handle) with
 // the title the UI needs on top, so window info can be handed straight to the policy.
-import type { PasteTarget } from '../core/delivery/clipboardRestore.js';
+import { parseForegroundLine, type ForegroundWindowInfo } from '../core/delivery/foregroundLine.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -25,10 +25,22 @@ const execFileAsync = promisify(execFile);
  * the delivery contract used to be reachable from no test at all.
  */
 
-export interface ForegroundWindowInfo extends PasteTarget {
-  /** Window title, for the HUD's "dictating into X" label. */
-  title: string;
+export type { ForegroundWindowInfo };
+
+/** Whether `value` is a handle that may be interpolated into a script. */
+function isHandle(value: number | undefined): value is number {
+  return value !== undefined && Number.isSafeInteger(value) && value > 0;
 }
+
+/** The C# a guarded insert needs: the foreground window. */
+const FOREGROUND_GUARD = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class UvGuard {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+}
+"@`;
 
 /**
  * Send Ctrl+V.
@@ -38,12 +50,88 @@ export interface ForegroundWindowInfo extends PasteTarget {
  * the Electron version. It is slower than a keybd_event call, which is irrelevant
  * here — one keystroke per dictation.
  */
-export async function pasteClipboard(): Promise<boolean> {
+export async function pasteClipboard(expectedForeground?: number): Promise<'sent' | 'moved' | 'failed'> {
+  // The target lock's last look happens in the same script as the keystroke, so no
+  // other window can take the foreground between the check and the paste.
+  const guard = isHandle(expectedForeground)
+    ? `${FOREGROUND_GUARD}
+if ([UvGuard]::GetForegroundWindow() -ne [IntPtr]${expectedForeground}) { Write-Output "moved"; exit 0 }
+`
+    : '';
   try {
-    await runPowerShell('$wshell = New-Object -ComObject WScript.Shell; $wshell.SendKeys("^v")');
-    return true;
+    const { stdout } = await runPowerShell(
+      `${guard}$wshell = New-Object -ComObject WScript.Shell; $wshell.SendKeys("^v"); Write-Output "sent"`,
+    );
+    return stdout.trim().split(/\r?\n/).pop() === 'moved' ? 'moved' : 'sent';
   } catch {
-    return false;
+    return 'failed';
+  }
+}
+
+/**
+ * Type `text` as Unicode keystrokes (type-out mode), never Ctrl+V.
+ *
+ * `SendInput` with `KEYEVENTF_UNICODE` carries each UTF-16 unit itself, so the result
+ * does not depend on the keyboard layout. The text arrives on stdin as base64 of UTF-8,
+ * never inside the script, so nothing in it can be read as PowerShell. Before the first
+ * keystroke the script refuses a password field (UI Automation's IsPassword), and before
+ * every batch it checks the target window is still in front: `moved` means it stopped
+ * there. Batches never split a surrogate pair (see `typeOutChunks`).
+ */
+export async function typeText(
+  text: string,
+  expectedForeground: number,
+  chunkUnits: number,
+): Promise<'sent' | 'moved' | 'secure' | 'failed'> {
+  if (!isHandle(expectedForeground)) return 'failed';
+  const units = Math.max(2, Math.floor(chunkUnits));
+  const script = `
+Add-Type -AssemblyName UIAutomationClient
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class UvType {
+  [StructLayout(LayoutKind.Sequential)] public struct MOUSEINPUT { public int dx; public int dy; public uint mouseData; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
+  [StructLayout(LayoutKind.Sequential)] public struct KEYBDINPUT { public ushort wVk; public ushort wScan; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
+  [StructLayout(LayoutKind.Explicit)] public struct INPUTUNION { [FieldOffset(0)] public MOUSEINPUT mi; [FieldOffset(0)] public KEYBDINPUT ki; }
+  [StructLayout(LayoutKind.Sequential)] public struct INPUT { public uint type; public INPUTUNION u; }
+  [DllImport("user32.dll", SetLastError=true)] public static extern uint SendInput(uint count, INPUT[] inputs, int size);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  public static string Type(string text, IntPtr expected, int chunk) {
+    int i = 0;
+    while (i < text.Length) {
+      if (GetForegroundWindow() != expected) return "moved";
+      int end = Math.Min(i + chunk, text.Length);
+      if (end < text.Length && (Char.IsHighSurrogate(text[end - 1]) || (text[end - 1] == '\\r' && text[end] == '\\n'))) end -= 1;
+      INPUT[] batch = new INPUT[(end - i) * 2];
+      for (int k = i; k < end; k++) {
+        int j = (k - i) * 2;
+        batch[j].type = 1; batch[j].u.ki.wScan = text[k]; batch[j].u.ki.dwFlags = 0x0004;
+        batch[j + 1].type = 1; batch[j + 1].u.ki.wScan = text[k]; batch[j + 1].u.ki.dwFlags = 0x0004 | 0x0002;
+      }
+      if (SendInput((uint)batch.Length, batch, Marshal.SizeOf(typeof(INPUT))) != (uint)batch.Length) return "failed";
+      i = end;
+      System.Threading.Thread.Sleep(5);
+    }
+    return "sent";
+  }
+}
+"@
+$expected = [IntPtr]${expectedForeground}
+if ([UvType]::GetForegroundWindow() -ne $expected) { Write-Output "moved"; exit 0 }
+try {
+  $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
+  if ($focused -ne $null -and $focused.Current.IsPassword) { Write-Output "secure"; exit 0 }
+} catch {}
+$text = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([Console]::In.ReadToEnd().Trim()))
+Write-Output ([UvType]::Type($text, $expected, ${units}))
+`;
+  try {
+    const { stdout } = await runPowerShell(script, 30_000, Buffer.from(text, 'utf8').toString('base64'));
+    const result = stdout.trim().split(/\r?\n/).pop();
+    return result === 'sent' || result === 'moved' || result === 'secure' ? result : 'failed';
+  } catch {
+    return 'failed';
   }
 }
 
@@ -68,6 +156,15 @@ public class UvForeground {
   [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr hWnd);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+  [StructLayout(LayoutKind.Sequential)] public struct GUITHREADINFO { public int cbSize; public int flags; public IntPtr hwndActive; public IntPtr hwndFocus; public IntPtr hwndCapture; public IntPtr hwndMenuOwner; public IntPtr hwndMoveSize; public IntPtr hwndCaret; public RECT rcCaret; }
+  [DllImport("user32.dll")] public static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO info);
+  public static long Focus(uint thread) {
+    GUITHREADINFO info = new GUITHREADINFO();
+    info.cbSize = Marshal.SizeOf(typeof(GUITHREADINFO));
+    if (!GetGUIThreadInfo(thread, ref info)) return 0;
+    return info.hwndFocus.ToInt64();
+  }
 }
 "@
 $h = [UvForeground]::GetForegroundWindow()
@@ -75,25 +172,109 @@ $len = [UvForeground]::GetWindowTextLength($h)
 $sb = New-Object System.Text.StringBuilder ($len + 1)
 [void][UvForeground]::GetWindowText($h, $sb, $sb.Capacity)
 $procId = 0
-[void][UvForeground]::GetWindowThreadProcessId($h, [ref]$procId)
+$thread = [UvForeground]::GetWindowThreadProcessId($h, [ref]$procId)
+$focus = [UvForeground]::Focus($thread)
 $name = ""
 try { $name = (Get-Process -Id $procId -ErrorAction Stop).ProcessName } catch {}
 # A unit-separator character is used rather than a tab: PowerShell would need a
 # backtick escape for a tab, and the backtick collides with JS template syntax.
-Write-Output ("{0}{1}{2}{1}{3}" -f $h.ToInt64(), [char]31, $name, $sb.ToString())
+# The title goes last: it is the only field that could ever contain odd characters.
+Write-Output ("{0}{1}{2}{1}{3}{1}{4}{1}{5}" -f $h.ToInt64(), [char]31, $name, $procId, $focus, $sb.ToString())
 `;
   try {
     const { stdout } = await runPowerShell(script);
     const line = stdout.trim().split(/\r?\n/).pop() ?? '';
-    // Split on the unit separator emitted above.
-    const [handleText, processName, ...titleParts] = line.split('\u001f');
-    const handle = Number(handleText);
-    if (!Number.isFinite(handle)) return null;
-    return {
-      handle,
-      processName: (processName ?? '').trim(),
-      title: titleParts.join(' ').trim(),
-    };
+    return parseForegroundLine(line);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Bring a dictation's target back to the front (the target lock), with its focused
+ * child when one was captured.
+ *
+ * Windows only hands the foreground over in a few cases; the script attaches to the
+ * thread that owns the current foreground window, which is the documented way for an
+ * input-attached thread to call `SetForegroundWindow`, and then restores the focused
+ * child inside the target. Returns `gone` when the window no longer exists and
+ * `refused` when Windows kept another window in front. The caller reads the foreground
+ * again before inserting anything, so `ok` is never trusted on its own.
+ */
+export async function reactivateWindow(
+  handle: number,
+  focusHandle?: number,
+): Promise<'ok' | 'gone' | 'refused'> {
+  if (!isHandle(handle)) return 'gone';
+  const focus = isHandle(focusHandle) ? focusHandle : 0;
+  const script = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class UvReactivate {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr pid);
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint attach, uint to, bool on);
+  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+  public static string Bring(IntPtr target, IntPtr focus) {
+    if (!IsWindow(target)) return "gone";
+    if (IsIconic(target)) ShowWindow(target, 9);
+    uint me = GetCurrentThreadId();
+    uint front = GetWindowThreadProcessId(GetForegroundWindow(), IntPtr.Zero);
+    uint owner = GetWindowThreadProcessId(target, IntPtr.Zero);
+    bool attachedFront = front != 0 && front != me && AttachThreadInput(me, front, true);
+    bool attachedOwner = owner != 0 && owner != me && owner != front && AttachThreadInput(me, owner, true);
+    BringWindowToTop(target);
+    SetForegroundWindow(target);
+    if (focus != IntPtr.Zero && IsWindow(focus)) SetFocus(focus);
+    if (attachedOwner) AttachThreadInput(me, owner, false);
+    if (attachedFront) AttachThreadInput(me, front, false);
+    return GetForegroundWindow() == target ? "ok" : "refused";
+  }
+}
+"@
+Write-Output ([UvReactivate]::Bring([IntPtr]${handle}, [IntPtr]${focus}))
+`;
+  try {
+    const { stdout } = await runPowerShell(script, 4000);
+    const result = stdout.trim().split(/\r?\n/).pop();
+    return result === 'ok' || result === 'gone' ? result : 'refused';
+  } catch {
+    return 'refused';
+  }
+}
+
+/**
+ * The address bar's text of a browser window (Chrome, Edge, Brave, Firefox), read with
+ * UI Automation: the first edit control in the window, which in these browsers is the
+ * address bar. Null when it cannot be read. Slow on a large page, so callers never wait
+ * on it before recording starts. The value is kept in memory only.
+ */
+export async function browserAddress(handle: number): Promise<string | null> {
+  if (!isHandle(handle)) return null;
+  const script = `
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+$root = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]${handle})
+$cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)
+$edit = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+if ($edit -eq $null) { exit 0 }
+$value = $edit.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+Write-Output ([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($value)))
+`;
+  try {
+    const { stdout } = await runPowerShell(script, 3000);
+    const encoded = stdout.trim().split(/\r?\n/).pop() ?? '';
+    if (!/^[A-Za-z0-9+/=]+$/.test(encoded)) return null;
+    const value = Buffer.from(encoded, 'base64').toString('utf8').trim();
+    return value.length > 0 ? value : null;
   } catch {
     return null;
   }
@@ -390,11 +571,18 @@ export function appVersion(): string {
   return app.getVersion();
 }
 
-async function runPowerShell(script: string, timeoutMs = 8000): Promise<{ stdout: string; stderr: string }> {
-  const result = await execFileAsync(
+async function runPowerShell(
+  script: string,
+  timeoutMs = 8000,
+  input?: string,
+): Promise<{ stdout: string; stderr: string }> {
+  const pending = execFileAsync(
     'powershell.exe',
     ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
     { timeout: timeoutMs, windowsHide: true, maxBuffer: 1024 * 1024 },
   );
+  // stdin is closed either way, so a script that reads it never waits forever.
+  pending.child.stdin?.end(input ?? '');
+  const result = await pending;
   return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
 }

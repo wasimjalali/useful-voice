@@ -17,7 +17,8 @@
  *   5. the paste landed but the original could not be captured exactly (a file
  *      list, say) or held nothing worth restoring -> keep (a partial restore would
  *      destroy user data, and restoring whitespace would destroy the dictation)
- *   6. otherwise                         -> restore the original clipboard
+ *   6. the user turned "restore clipboard after paste" off -> keep
+ *   7. otherwise                         -> restore the original clipboard
  *
  * This module is deliberately pure: the observations (which window had focus, what
  * the clipboard holds) arrive as data, so the policy is testable without Electron
@@ -131,6 +132,14 @@ export type RestoreReason =
   | 'snapshot-incomplete'
   /** The paste landed, and the original clipboard held nothing worth keeping. */
   | 'nothing-to-restore'
+  /**
+   * Typed out (type-out mode) with focus held throughout. Counted as delivered, but a
+   * keystroke never consumes the clipboard, so there is no proof to restore on: the
+   * dictation stays on the clipboard.
+   */
+  | 'typed'
+  /** The paste landed, and the user chose to keep the dictation on the clipboard. */
+  | 'restore-disabled'
   /** The paste landed and the original clipboard is back. */
   | 'restored';
 
@@ -169,6 +178,16 @@ export interface PasteObservation {
    * that distinguishes "the target consumed the paste" from "nothing happened".
    */
   clipboardStillHoldsText: boolean;
+  /**
+   * The user's "restore clipboard after paste" setting. Absent means on, the behaviour
+   * before the setting existed. Off keeps the dictation even after a proven paste.
+   */
+  restorePreviousClipboard?: boolean;
+  /**
+   * How the text went in. `typeOut` sent keystrokes instead of Ctrl+V: `pasteSent` then
+   * means every keystroke went out, and the clipboard-consumed proof does not apply.
+   */
+  method?: 'paste' | 'typeOut';
 }
 
 /**
@@ -183,6 +202,16 @@ export function decideClipboardRestore(observation: PasteObservation): RestoreDe
     // The automation failed before it could reach any window, so the text has to
     // stay on the clipboard and the caller says so rather than pretending it landed.
     return { delivered: false, restore: false, reason: 'paste-failed' };
+  }
+
+  if (observation.method === 'typeOut') {
+    // Typing is the user's own choice for this app (usually a terminal, which is
+    // unverifiable by design), so the unverifiable list does not apply. Focus must
+    // still have stayed on the window it was aimed at.
+    if (target === null || focusAfter === null || focusAfter.handle !== target.handle) {
+      return { delivered: false, restore: false, reason: 'focus-moved' };
+    }
+    return { delivered: true, restore: false, reason: 'typed' };
   }
 
   if (target === null || !isProbablyVerifiable(target)) {
@@ -212,6 +241,10 @@ export function decideClipboardRestore(observation: PasteObservation): RestoreDe
   if (!hasRestorableContent(clipboard)) {
     // Nothing worth putting back (an empty clipboard, or only whitespace).
     return { delivered: true, restore: false, reason: 'nothing-to-restore' };
+  }
+
+  if (observation.restorePreviousClipboard === false) {
+    return { delivered: true, restore: false, reason: 'restore-disabled' };
   }
 
   return { delivered: true, restore: true, reason: 'restored' };

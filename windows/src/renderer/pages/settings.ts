@@ -19,6 +19,7 @@ const GROUPS: Array<[string, string]> = [
   ['general', 'General'],
   ['engine', 'Engine'],
   ['formatting', 'Formatting'],
+  ['pasting', 'Pasting'],
   ['hotkeys', 'Hotkeys'],
   ['appearance', 'Appearance'],
   ['data', 'Data'],
@@ -192,6 +193,7 @@ export function renderSettingsPage(anchor?: string): HTMLElement {
   addGroup('general', generalGroup(settings));
   addGroup('engine', engineGroup());
   addGroup('formatting', formattingGroup(settings));
+  addGroup('pasting', pastingGroup(settings));
   addGroup('hotkeys', hotkeysGroup());
   addGroup('appearance', appearanceGroup(settings));
   addGroup('data', dataGroup(settings, page));
@@ -537,6 +539,44 @@ function formattingGroup(settings: SettingsDTO): HTMLElement {
     ),
   );
   return wrapper;
+}
+
+/** Apps listed under "Type instead of paste" this session, so a row switched off stays put. */
+const typeOutRows = new Set<string>();
+
+function pastingGroup(settings: SettingsDTO): HTMLElement {
+  for (const app of [...settings.typeOutApps, ...(settings.recentTargetApps ?? [])]) typeOutRows.add(app);
+  const enabled = (app: string): boolean => (state.settings?.typeOutApps ?? settings.typeOutApps).includes(app);
+  const setTypeOut = (app: string, on: boolean): Promise<boolean> => {
+    const current = (state.settings?.typeOutApps ?? settings.typeOutApps).filter((id) => id !== app);
+    return save({ typeOutApps: on ? [...current, app] : current });
+  };
+  const restoreHint = (on: boolean): string => (on ? '' : 'Your dictation stays on the clipboard.');
+  const hint = el('span', { class: 's-hint' }, restoreHint(settings.restorePreviousClipboard));
+  const restoreRow = el(
+    'div',
+    { class: 's-row' },
+    el('div', { class: 's-label' }, el('span', {}, 'Restore clipboard after paste'), hint),
+    el(
+      'div',
+      { class: 's-control' },
+      switchControl('Restore clipboard after paste', settings.restorePreviousClipboard, async (value) => {
+        const ok = await save({ restorePreviousClipboard: value });
+        hint.textContent = restoreHint(ok ? value : !value);
+        return ok;
+      }),
+    ),
+  );
+  const apps = [...typeOutRows];
+  const rows = apps.map((app) =>
+    row(app, switchControl(`Type into ${app}`, enabled(app), (value) => setTypeOut(app, value))),
+  );
+  return el(
+    'div',
+    {},
+    surface(restoreRow, row('Type instead of paste', null), ...rows),
+    apps.length === 0 ? el('p', { class: 's-note' }, 'Apps you dictate into show up here.') : null,
+  );
 }
 
 function hotkeysGroup(): HTMLElement {

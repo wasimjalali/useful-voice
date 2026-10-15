@@ -9,6 +9,7 @@ import type {
   MemoryLanguage,
 } from '../core/models.js';
 import { applyMemory } from '../core/memory/memoryPostProcessor.js';
+import type { DeliveryTarget } from '../core/delivery/deliveryTarget.js';
 import { selectKeyterms } from '../core/memory/biasBuilder.js';
 import { RecordingClock, SilenceWatchdog } from '../core/audio/silenceWatchdog.js';
 import { LEVEL_METER_GAIN, MINIMUM_AUDIO_BYTES } from '../core/audio/wav.js';
@@ -73,6 +74,11 @@ export interface DeliveryRequest {
    * delivery, the sink copies instead of pasting.
    */
   targetHandle?: number;
+  /**
+   * The full target captured at the hotkey press (app, process, window, focused child,
+   * browser address). Delivery pastes only into it. Absent in copy mode.
+   */
+  target?: DeliveryTarget;
   /**
    * Aborted when the user cancels. The sink must check it right before it pastes and
    * stop there; once the paste is sent it finishes and reports `delivered`.
@@ -140,6 +146,8 @@ export interface StartOptions {
   targetApp?: string;
   /** Its window handle, so delivery can tell the user has since moved elsewhere. */
   targetHandle?: number;
+  /** The full target captured at the hotkey press. Only a hotkey dictation uses it. */
+  target?: DeliveryTarget;
 }
 
 export interface DictationOutcome {
@@ -162,8 +170,12 @@ export interface DictationOutcome {
   snippetIds: string[];
 }
 
-/** How long delivery may take before the state is released anyway. */
-export const DEFAULT_DELIVERY_TIMEOUT_MS = 5000;
+/**
+ * How long delivery may take before the state is released anyway. Room for the target
+ * lock (reading the foreground, bringing the target back once, reading it again) and for
+ * typing a long dictation out.
+ */
+export const DEFAULT_DELIVERY_TIMEOUT_MS = 10_000;
 
 /** How often the silence and max-length limits are checked, independent of audio frames. */
 export const DEFAULT_TICK_MS = 250;
@@ -184,6 +196,7 @@ interface Session {
   readonly source: DictationSource;
   readonly targetApp?: string;
   readonly targetHandle?: number;
+  readonly target?: DeliveryTarget;
   readonly rawMode: boolean;
   /** The text reached the clipboard or the target, so a later failure is not a failed dictation. */
   delivered: boolean;
@@ -277,6 +290,7 @@ export class DictationService {
       // A window dictation never pastes, so it has no target to record.
       targetApp: options.source === 'hotkey' ? options.targetApp : undefined,
       targetHandle: options.source === 'hotkey' ? options.targetHandle : undefined,
+      target: options.source === 'hotkey' ? options.target : undefined,
       rawMode: options.rawMode === true,
       delivered: false,
       stopping: false,
@@ -785,6 +799,7 @@ export class DictationService {
               mode,
               targetApp: session.targetApp,
               targetHandle: session.targetHandle,
+              target: session.target,
               signal: this.abortController?.signal,
             }
           : { text, mode, signal: this.abortController?.signal };

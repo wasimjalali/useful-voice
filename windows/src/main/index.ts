@@ -10,6 +10,16 @@ import { planLoginItem, wasAutoStarted } from '../core/settings/autostart.js';
 import { decideClipboardRestore, isProbablyVerifiable } from '../core/delivery/clipboardRestore.js';
 import { pasteTargetMoved } from '../core/delivery/pasteTarget.js';
 import {
+  TYPE_OUT_UNITS_PER_CHUNK,
+  appIdFor,
+  checkTarget,
+  insertionMethodFor,
+  isKnownBrowser,
+  recheckTarget,
+  typeOutText,
+  type DeliveryTarget,
+} from '../core/delivery/deliveryTarget.js';
+import {
   normaliseMemoryLanguage,
   type AppSettings,
   type DictationSource,
@@ -49,6 +59,11 @@ import {
   foregroundWindow,
   restoreForegroundWindow,
   pasteClipboard,
+  reactivateWindow,
+  browserAddress,
+  typeText,
+  type ForegroundWindowInfo,
+  ownProcessName,
   playCue,
   restoreClipboard,
   snapshotClipboard,
@@ -171,6 +186,11 @@ class UsefulVoiceApp {
   private pickerOpening = false;
   /** The app the current recording will paste into (a hotkey dictation only). */
   private recordingTarget: string | undefined;
+  /**
+   * Apps dictated into this session, newest first, for the Settings list of apps that
+   * can be switched to typing. In memory only.
+   */
+  private recentTargetApps: string[] = [];
   private service!: DictationService;
   private diagnostics!: Diagnostics;
 
@@ -1152,17 +1172,28 @@ class UsefulVoiceApp {
     }
     let targetApp: string | undefined;
     let targetHandle: number | undefined;
+    let target: DeliveryTarget | undefined;
     if (this.service.currentState === 'idle' || this.service.currentState === 'error') this.recordingHandle = undefined;
     if (source === 'hotkey' && (this.service.currentState === 'idle' || this.service.currentState === 'error')) {
-      // Capture which app is focused NOW, before recording. By the time the
-      // transcript is ready the user may have clicked elsewhere, and pasting into
-      // the wrong window is worse than not pasting at all.
-      const target = await foregroundWindow();
-      targetApp = target ? target.title || target.processName : undefined;
-      targetHandle = target?.handle;
+      // Capture which app is focused NOW, before recording: the target lock. By the
+      // time the transcript is ready the user may have clicked elsewhere, and pasting
+      // into the wrong window is worse than not pasting at all.
+      const front = await foregroundWindow();
+      targetApp = front ? front.title || front.processName : undefined;
+      targetHandle = front?.handle;
       this.recordingHandle = targetHandle;
+      target = front ? toDeliveryTarget(front) : undefined;
+      if (target) this.noteRecentTarget(target);
+      if (target && front && isKnownBrowser(target.appId)) {
+        // Off the critical path: recording never waits on UI Automation. The address
+        // stays on this dictation's target, in memory only.
+        const pending = target;
+        void browserAddress(front.handle).then((address) => {
+          if (address) pending.browserUrl = address;
+        });
+      }
     }
-    await this.service.toggle({ source, targetApp, targetHandle });
+    await this.service.toggle({ source, targetApp, targetHandle, target });
     void this.data.flush();
   }
 
@@ -1219,17 +1250,34 @@ class UsefulVoiceApp {
       clipboard.writeText(text);
       return { delivered: true, clipboardFallback: false };
     }
-    const target = await foregroundWindow();
+    // The target lock: paste only into the window captured at the hotkey press. If
+    // focus moved (the user stopped from the dock, or clicked into another window), the
+    // target is brought back once; if that fails, or it is gone, the text is copied.
+    const lockTarget = request.target;
+    let target = await foregroundWindow();
     if (request.signal?.aborted) return cancelled;
-    if (pasteTargetMoved(request.targetHandle, target)) {
-      // The user stopped from somewhere else (the dock, so Useful Voice is in front) or
-      // clicked away: a paste would land in the wrong window. Leave it on the clipboard.
-      this.diagnostics.log('delivery', 'start window is no longer in front; copied instead of pasting');
+    let lock = checkTarget(lockTarget, target ? toDeliveryTarget(target) : null, true);
+    if (lock.kind === 'reactivate' && lockTarget?.windowHandle !== undefined) {
+      const outcome = await reactivateWindow(lockTarget.windowHandle, lockTarget.focusHandle);
+      if (request.signal?.aborted) return cancelled;
+      target = outcome === 'gone' ? null : await foregroundWindow();
+      lock =
+        outcome === 'gone'
+          ? { kind: 'copyOnly', reason: 'targetGone' }
+          : recheckTarget(lockTarget, target ? toDeliveryTarget(target) : null, outcome === 'ok');
+    } else if (lock.kind === 'reactivate') {
+      lock = { kind: 'copyOnly', reason: 'notRestored' };
+    }
+    if (lock.kind !== 'insert' || !target || pasteTargetMoved(lockTarget?.windowHandle, target)) {
+      const reason = lock.kind === 'copyOnly' ? lock.reason : 'notRestored';
+      this.diagnostics.log('delivery', `target not reachable (${reason}); copied instead of pasting`);
       clipboard.writeText(text);
       return { delivered: false, clipboardFallback: true };
     }
+    const method = insertionMethodFor(target.processName, this.settings.all.typeOutApps);
     const snapshot = snapshotClipboard();
 
+    // The dictation goes on the clipboard first in both modes: the safety net.
     clipboard.writeText(text);
 
     // The last point at which a cancel can still stop the paste. After this line the
@@ -1238,15 +1286,31 @@ class UsefulVoiceApp {
       this.restoreSnapshot(snapshot);
       return cancelled;
     }
-    const pasteSent = await pasteClipboard();
+    // Exactly one way in: typed out, or Ctrl+V. Both scripts check the target is still
+    // in front right before the first keystroke and send nothing when it is not.
+    const sent =
+      method === 'typeOut'
+        ? await typeText(typeOutText(text), target.handle, TYPE_OUT_UNITS_PER_CHUNK)
+        : await pasteClipboard(target.handle);
+    if (sent === 'moved' || sent === 'secure') {
+      this.diagnostics.log(
+        'delivery',
+        sent === 'secure' ? 'a password field has focus; left on clipboard' : 'focus left the target; left on clipboard',
+      );
+      return { delivered: false, clipboardFallback: true };
+    }
+    const pasteSent = sent === 'sent';
 
     // Confirmation is limited to observing that focus did not move and that the
     // clipboard was consumed: reading the target's text is not possible without a
     // UI-automation dependency. Both reads are skipped when they could not mean
-    // anything — an unverifiable target, or a paste that never ran.
+    // anything — an unverifiable target, or a paste that never ran. A typed delivery
+    // only needs the focus check.
     let focusAfter = null as Awaited<ReturnType<typeof foregroundWindow>>;
     let stillOurs = false;
-    if (pasteSent && isProbablyVerifiable(target)) {
+    if (pasteSent && method === 'typeOut') {
+      focusAfter = await foregroundWindow();
+    } else if (pasteSent && isProbablyVerifiable(target)) {
       // The target needs a moment to handle the keystroke; reading the clipboard
       // sooner would see our own text and call a landed paste a failure.
       await delay(CLIPBOARD_RESTORE_DELAY_MS);
@@ -1260,6 +1324,8 @@ class UsefulVoiceApp {
       pasteSent,
       focusAfter,
       clipboardStillHoldsText: stillOurs,
+      restorePreviousClipboard: this.settings.all.restorePreviousClipboard,
+      method,
     });
 
     if (decision.restore) {
@@ -1284,6 +1350,13 @@ class UsefulVoiceApp {
     if (!restored) {
       this.diagnostics.log('clipboard', 'restore did not verify; dictation left in place');
     }
+  }
+
+  /** Remember a hotkey target's app for the Settings type-out list. */
+  private noteRecentTarget(target: DeliveryTarget): void {
+    const id = target.appId;
+    if (!id || id === ownProcessName()) return;
+    this.recentTargetApps = [id, ...this.recentTargetApps.filter((app) => app !== id)].slice(0, 8);
   }
 
   /** The newest dictation still in the history, so a deleted one is never copied back. */
@@ -1423,6 +1496,7 @@ class UsefulVoiceApp {
     ipcMain.handle('settings:get', () => ({
       ...this.settings.all,
       hasApiKey: this.settings.hasApiKey,
+      recentTargetApps: this.recentTargetApps,
     }));
     ipcMain.handle('settings:save', (_event, patch: Partial<AppSettings>) => {
       // A value Electron cannot parse must never be saved: it would make every launch fail.
@@ -1443,7 +1517,7 @@ class UsefulVoiceApp {
       // Goes through the same plan as startup, so the entry written here is the one
       // the launcher will start and the one `--autostart` will therefore arrive on.
       this.applyLoginItem(next.launchAtLogin, 'settings');
-      return { ...next, hasApiKey: this.settings.hasApiKey };
+      return { ...next, hasApiKey: this.settings.hasApiKey, recentTargetApps: this.recentTargetApps };
     });
     ipcMain.handle('settings:set-api-key', (_event, key: string) => this.settings.setApiKey(key));
     ipcMain.handle('settings:clear-api-key', () => this.settings.clearApiKey());
@@ -1942,6 +2016,18 @@ class UsefulVoiceApp {
   }
 }
 
+/** The target lock's view of a foreground window. */
+function toDeliveryTarget(front: ForegroundWindowInfo): DeliveryTarget {
+  const target: DeliveryTarget = { windowHandle: front.handle, windowTitle: front.title };
+  const appId = appIdFor(front.processName);
+  if (appId) target.appId = appId;
+  const name = front.title || front.processName;
+  if (name) target.appName = name;
+  if (front.processId !== undefined) target.processId = front.processId;
+  if (front.focusHandle !== undefined) target.focusHandle = front.focusHandle;
+  return target;
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -2024,7 +2110,8 @@ export async function runSelfTest(): Promise<SelfTestResult> {
       languagePin: 'en', formattingEnabled: true, silenceTimeoutSeconds: 30,
       maxRecordingSeconds: 600, recordingsToKeep: 5, soundEffectsEnabled: true,
       launchAtLogin: false, hotkey: { accelerator: 'Control+Alt+Space', pushToTalk: false },
-      dictionaryBiasBudget: 100, hasApiKey: true,
+      dictionaryBiasBudget: 100, restorePreviousClipboard: true, typeOutApps: [], recentTargetApps: [],
+      hasApiKey: true,
     },
     'memory:get': {
       terms: [], replacements: [], snippets: [], suggestions: [],

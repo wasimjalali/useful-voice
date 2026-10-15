@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy · Useful Voice</title>
+    <meta name="description" content="What Useful Voice keeps on your computer, what it sends, where it goes and why." />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="canonical" href="https://voice.usefulbuild.com/privacy/" />
+    <style>
+@font-face { font-family: "Geist"; src: url("/fonts/geist-variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/fonts/geist-mono-variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+:root {
+  color-scheme: light;
+  --surface: #f8f8f8; --paper-bright: #ffffff; --ink: #171717; --ink-muted: #5c5c5c; --rule: #e0e0e0;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { color-scheme: dark; --surface: #0c0c0c; --paper-bright: #141414; --ink: #f2f2f2; --ink-muted: #a3a3a3; --rule: #2c2c2c; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; overflow-x: clip; }
+body { min-width: 320px; color: var(--ink); background: var(--surface); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+a { color: inherit; text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.nav-inner { display: flex; width: min(100%, 1248px); height: 72px; align-items: center; gap: 20px; margin-inline: auto; padding-inline: 24px; }
+.lockup { display: inline-flex; min-height: 44px; align-items: center; gap: 9px; margin-right: auto; text-decoration: none; }
+.lockup img { display: block; width: 28px; height: 28px; }
+.lockup span { font-size: 18px; font-weight: 550; letter-spacing: -0.03em; }
+.back { display: inline-flex; min-height: 44px; align-items: center; font-size: 14.5px; text-decoration: none; }
+.back:hover { text-decoration: underline; text-underline-offset: 6px; }
+main { width: min(100%, 760px); margin-inline: auto; padding: 56px 24px 120px; }
+.eyebrow { margin: 0 0 18px; color: var(--ink-muted); font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+h1 { margin: 0; font-size: clamp(36px, 5vw, 56px); font-weight: 500; line-height: 1.02; letter-spacing: -0.04em; }
+.lede { margin: 22px 0 0; color: var(--ink-muted); font-size: 18px; line-height: 1.6; }
+.summary { display: grid; gap: 0; margin: 44px 0 8px; padding: 0; list-style: none; border-top: 1px solid var(--ink); }
+.summary li { display: grid; grid-template-columns: minmax(130px, 0.4fr) minmax(0, 1fr); gap: 20px; padding: 16px 0; border-bottom: 1px solid var(--rule); }
+.summary span { color: var(--ink-muted); font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.06em; line-height: 1.9; text-transform: uppercase; }
+.summary strong { font-size: 16px; font-weight: 500; line-height: 1.5; }
+h2 { margin: 56px 0 12px; font-size: 24px; font-weight: 500; letter-spacing: -0.025em; }
+h3 { margin: 28px 0 6px; font-size: 16px; font-weight: 600; }
+p, li { font-size: 16px; line-height: 1.65; }
+p { margin: 0 0 14px; }
+.body ul { margin: 0 0 14px; padding-left: 20px; }
+.body li { margin-bottom: 6px; }
+code { font-family: var(--font-mono); font-size: 0.9em; overflow-wrap: anywhere; }
+.muted { color: var(--ink-muted); }
+footer { border-top: 1px solid var(--rule); }
+.legal { display: flex; justify-content: space-between; gap: 1.5rem; width: min(100%, 1248px); margin-inline: auto; padding: 24px; color: var(--ink-muted); font-family: var(--font-mono); font-size: 0.7rem; line-height: 1.5; }
+.legal p { margin: 0; font-size: inherit; }
+.legal div { display: flex; gap: 1rem; }
+.legal a { display: inline-flex; align-items: center; min-height: 40px; }
+@media (max-width: 720px) {
+  .nav-inner { height: 60px; padding-inline: 16px; }
+  main { padding: 32px 20px 72px; }
+  .summary li { grid-template-columns: 1fr; gap: 4px; }
+  .legal { flex-direction: column; }
+}
+</style>
+  </head>
+  <body>
+    <header>
+      <div class="nav-inner">
+        <a class="lockup" href="/" aria-label="Useful Voice home">
+          <img alt="" src="/brand/useful-voice-mark.svg" width="28" height="28" />
+          <span>Useful Voice</span>
+        </a>
+        <a class="back" href="/">Back to Useful Voice</a>
+      </div>
+    </header>
+
+    <main>
+      <p class="eyebrow">Last updated 16 October 2026</p>
+      <h1>Privacy</h1>
+      <p class="lede">Useful Voice is a dictation app for Mac and Windows. Your dictations, notes and dictionary live on your computer, and we never see them. This page lists everything the app sends, where it goes and why.</p>
+
+      <ul class="summary">
+        <li><span>We receive</span><strong>Nothing. The app has no account and sends us no data</strong></li>
+        <li><span>Deepgram receives</span><strong>Your recordings and dictionary hints, only when Deepgram is your engine</strong></li>
+        <li><span>Tracking</span><strong>None. No analytics, no crash reports, no ads, no selling data</strong></li>
+      </ul>
+
+      <div class="body">
+        <h2>Who we are</h2>
+        <p>Useful Voice is made by Useful Build, a studio operated by Karko AI Inc., 1207 Delaware Ave #412, Wilmington, DE 19806, USA. Questions and requests go to <a href="mailto:hello@usefulbuild.com">hello@usefulbuild.com</a>.</p>
+
+        <h2>What stays on your computer</h2>
+        <p>Your dictation history, notes, dictionary, snippets and settings are stored on your computer, in your user folders. On a Mac, the app also keeps your last 10 recordings so you can retry one. We have no copy and no account system.</p>
+        <p>Cleaning up fillers and formatting the text for the app you're in happen on your computer. To do that, and to put the text back in the right place, the app notes which app and window you were in when you pressed the key and, in a browser, the page address. That stays on your computer: the app's name and its category are saved with each dictation in your history.</p>
+        <p>Your Deepgram key is stored in the macOS Keychain on a Mac, and encrypted with Windows DPAPI on Windows.</p>
+        <p>On a Mac, the app asks for two permissions. Microphone records only while you dictate. Accessibility lets it paste into the field you were in and read the text just before your cursor, so it knows whether you're mid-sentence.</p>
+
+        <h2>What leaves your computer, and why</h2>
+
+        <h3>Deepgram, if you use it</h3>
+        <p>With Deepgram Nova-3 as your engine, each recording's audio goes to Deepgram to be transcribed, with up to 400 tokens of your dictionary words, fixes and snippet triggers as hints. &ldquo;Sounds like&rdquo; forms stay on your computer. The request uses your own Deepgram key, so Deepgram handles it under your account and its own terms and privacy policy. Checking a new key also makes one request to Deepgram.</p>
+
+        <h3>Local models</h3>
+        <p>On a Mac you can transcribe with a Whisper model that runs on your Mac instead. Then your audio never leaves it. The model downloads once from Hugging Face, which sees your IP address and the file you fetch, as with any download.</p>
+
+        <h3>Updates</h3>
+        <p>The app checks the public releases on GitHub for new versions. GitHub sees your IP address and the app version, as with any download. On a Mac, every update is checked against the app's signing key before it installs.</p>
+
+        <h3>Links you open</h3>
+        <p>Links in the app, such as Deepgram's signup page or Report a bug on GitHub, open in your browser. What you do there is between you and that site.</p>
+
+        <h2>What we don't do</h2>
+        <p>No analytics, telemetry or crash reporting in the app. No ads or cross-site tracking. We don't sell data and we don't train AI models on anything you say.</p>
+
+        <h2>This website</h2>
+        <p>voice.usefulbuild.com is served by Cloudflare, which processes technical request data such as IP addresses to deliver the site and protect it from abuse. This site runs no analytics and sets no cookies. Downloads come from GitHub.</p>
+
+        <h2>Your rights</h2>
+        <p>We hold no data about you from the app. If you email us, we keep the conversation until it's no longer needed. If you're in the EEA or the UK, you can ask to see or delete it, or object to how we use it, at <a href="mailto:hello@usefulbuild.com">hello@usefulbuild.com</a>, and you can complain to your local data protection authority.</p>
+
+        <h2>Changes</h2>
+        <p>If what the app sends changes, we update this page and its date first.</p>
+      </div>
+    </main>
+
+    <footer>
+      <div class="legal">
+        <p>Useful Build is a studio operated by Karko AI Inc., a US Delaware corporation. &copy; 2026 Karko AI Inc.</p>
+        <div>
+          <a href="https://usefulbuild.com/imprint/">Imprint</a>
+          <a href="/privacy/" aria-current="page">Privacy</a>
+          <a href="https://usefulbuild.com/terms/">Terms</a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

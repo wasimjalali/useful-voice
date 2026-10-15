@@ -6,10 +6,10 @@ import {
   insertionMethodFor,
   isIdentified,
   isKnownBrowser,
+  pageChanged,
   recheckTarget,
   targetMatches,
   typeOutChunks,
-  typeOutText,
   type DeliveryTarget,
 } from '../src/core/delivery/deliveryTarget.js';
 import { parseForegroundLine } from '../src/core/delivery/foregroundLine.js';
@@ -22,7 +22,10 @@ import { parseForegroundLine } from '../src/core/delivery/foregroundLine.js';
  * the old target; ignoring the window or the focused child; treating "could not read the
  * foreground" as a match; treating a target that recorded no focused child as a mismatch;
  * reactivating a target that is gone, or twice; pasting after a reactivation that brought
- * back the wrong window; pasting when nothing was captured.
+ * back the wrong window; pasting when nothing was captured; pasting into the right tab
+ * after it navigated to another page, or reactivating to "fix" that; treating a
+ * fragment-only change as another page; matching a reused pid that now belongs to
+ * another app; typing out text with a line break (each one is an Enter key).
  */
 
 const slack: DeliveryTarget = {
@@ -50,6 +53,12 @@ describe('targetMatches', () => {
 
   it('rejects another process of the same app', () => {
     expect(targetMatches(slack, current({ processId: 777 }))).toBe(false);
+  });
+
+  it('rejects a reused pid that now belongs to another app', () => {
+    expect(targetMatches(slack, current({ appId: 'notepad' }))).toBe(false);
+    // A side that can't report the app id still matches on the pid.
+    expect(targetMatches(slack, current({ appId: undefined }))).toBe(true);
   });
 
   it('falls back to the app id when a process id is missing', () => {
@@ -137,22 +146,90 @@ describe('recheckTarget', () => {
   });
 });
 
+describe('page address', () => {
+  const page = (browserUrl?: string): DeliveryTarget => ({
+    appId: 'chrome',
+    processId: 900,
+    windowHandle: 0x50,
+    focusHandle: 0x51,
+    browserUrl,
+  });
+
+  it('matches the same page', () => {
+    const target = page('https://mail.google.com/mail/u/0/?tab=rm');
+    expect(targetMatches(target, page('https://mail.google.com/mail/u/0/?tab=rm'))).toBe(true);
+    expect(checkTarget(target, page('https://mail.google.com/mail/u/0/?tab=rm'), true)).toEqual({ kind: 'insert' });
+  });
+
+  it('copies without reactivating when the window shows another page', () => {
+    const target = page('https://mail.google.com/mail/u/0/#inbox');
+    const now = page('https://news.ycombinator.com/');
+    expect(targetMatches(target, now)).toBe(false);
+    expect(checkTarget(target, now, true)).toEqual({ kind: 'copyOnly', reason: 'pageChanged' });
+  });
+
+  it('treats another query as another page', () => {
+    expect(pageChanged(page('https://example.com/search?q=a'), page('https://example.com/search?q=b'))).toBe(true);
+  });
+
+  it('treats a fragment-only change as the same page', () => {
+    const target = page('https://mail.google.com/mail/u/0/#inbox');
+    const now = page('https://mail.google.com/mail/u/0/#inbox/FMfcgz');
+    expect(targetMatches(target, now)).toBe(true);
+    expect(checkTarget(target, now, true)).toEqual({ kind: 'insert' });
+  });
+
+  it('ignores scheme and host case, not path case', () => {
+    expect(targetMatches(page('HTTPS://Example.COM/a'), page('https://example.com/a'))).toBe(true);
+    expect(pageChanged(page('https://example.com/A'), page('https://example.com/a'))).toBe(true);
+  });
+
+  it('does not compare when one side has no web address', () => {
+    expect(targetMatches(page('https://example.com/a'), page(undefined))).toBe(true);
+    expect(targetMatches(page(undefined), page('https://example.com/a'))).toBe(true);
+    expect(targetMatches(page('file:///C:/a.pdf'), page('https://example.com/a'))).toBe(true);
+    expect(targetMatches(page('edge://settings'), page('https://example.com/a'))).toBe(true);
+    expect(targetMatches(page('not a url'), page('https://example.com/a'))).toBe(true);
+  });
+
+  it('copies when the restored window shows another page', () => {
+    const target = page('https://example.com/compose');
+    expect(recheckTarget(target, page('https://example.com/other'), true)).toEqual({
+      kind: 'copyOnly',
+      reason: 'pageChanged',
+    });
+    expect(recheckTarget(target, page('https://example.com/compose#x'), true)).toEqual({ kind: 'insert' });
+  });
+
+  it('still reactivates when another app is in front, whatever its page', () => {
+    const other: DeliveryTarget = { appId: 'notepad', processId: 77, browserUrl: 'https://x.com/' };
+    expect(checkTarget(page('https://example.com/a'), other, true)).toEqual({ kind: 'reactivate' });
+  });
+});
+
 describe('insertionMethodFor', () => {
   it('pastes by default', () => {
-    expect(insertionMethodFor('WindowsTerminal', [])).toBe('paste');
+    expect(insertionMethodFor('WindowsTerminal', [], 'ls -la')).toBe('paste');
   });
 
   it('types only for the apps the user turned on, whatever the case or .exe', () => {
     const list = ['windowsterminal', 'putty'];
-    expect(insertionMethodFor('WindowsTerminal.exe', list)).toBe('typeOut');
-    expect(insertionMethodFor('PUTTY', list)).toBe('typeOut');
-    expect(insertionMethodFor('slack', list)).toBe('paste');
-    expect(insertionMethodFor('windowsterminal', ['WindowsTerminal.exe'])).toBe('typeOut');
+    expect(insertionMethodFor('WindowsTerminal.exe', list, 'ls -la')).toBe('typeOut');
+    expect(insertionMethodFor('PUTTY', list, 'ls -la')).toBe('typeOut');
+    expect(insertionMethodFor('slack', list, 'ls -la')).toBe('paste');
+    expect(insertionMethodFor('windowsterminal', ['WindowsTerminal.exe'], 'ls -la')).toBe('typeOut');
+  });
+
+  it('pastes text with a line break, even for a type-out app', () => {
+    for (const text of ['one\ntwo', 'one\r\ntwo', 'one\rtwo', 'end\n', 'a\u2028b', 'a\u2029b', 'a\u0085b']) {
+      expect(insertionMethodFor('putty', ['putty'], text)).toBe('paste');
+    }
+    expect(insertionMethodFor('putty', ['putty'], 'one two')).toBe('typeOut');
   });
 
   it('pastes for an unknown app', () => {
-    expect(insertionMethodFor(undefined, ['putty'])).toBe('paste');
-    expect(insertionMethodFor('', [''])).toBe('paste');
+    expect(insertionMethodFor(undefined, ['putty'], 'ls -la')).toBe('paste');
+    expect(insertionMethodFor('', [''], 'ls -la')).toBe('paste');
   });
 });
 
@@ -189,10 +266,6 @@ describe('type-out text', () => {
     const chunks = typeOutChunks(text, 7);
     expect(chunks.every((chunk) => chunk.length <= 7)).toBe(true);
     expect(join(chunks)).toBe(text);
-  });
-
-  it('turns every line break into one CR, which Windows types as Enter', () => {
-    expect(typeOutText('one\ntwo\r\nthree')).toBe('one\rtwo\rthree');
   });
 });
 

@@ -512,7 +512,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // is checked once more right before anything is posted.
                     let target = self.controller?.deliveryTarget
                     let method = InsertionMethod.method(forAppID: target?.appID,
-                                                        typeOutApps: self.settings.typeOutAppIDs)
+                                                        typeOutApps: self.settings.typeOutAppIDs,
+                                                        text: text)
                     self.inserter.deliver(
                         text, method: method,
                         restorePreviousClipboard: self.settings.restorePreviousClipboard,

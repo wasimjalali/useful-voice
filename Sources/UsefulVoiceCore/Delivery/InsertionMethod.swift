@@ -12,7 +12,11 @@ public enum InsertionMethod: Equatable, Sendable {
 
     /// The method for an app, from the per-app "type it out" list. Paste unless the
     /// user turned typing on for this app. An unknown app always pastes.
-    public static func method(forAppID appID: String?, typeOutApps: [String]) -> InsertionMethod {
+    ///
+    /// Text with a line break always pastes: a typed line break is an Enter key,
+    /// which sends the message in a chat app or runs the line in a terminal.
+    public static func method(forAppID appID: String?, typeOutApps: [String], text: String) -> InsertionMethod {
+        guard !text.contains(where: \.isNewline) else { return .paste }
         guard let appID, !appID.isEmpty else { return .paste }
         let key = appID.lowercased()
         return typeOutApps.contains { $0.lowercased() == key } ? .typeOut : .paste

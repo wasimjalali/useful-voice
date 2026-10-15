@@ -15,7 +15,12 @@ import Testing
 /// - reactivating a target that quit, or reactivating twice;
 /// - pasting after a reactivation that reported success but brought back the
 ///   wrong window or element;
-/// - pasting when no target was captured at all.
+/// - pasting when no target was captured at all;
+/// - pasting into the right browser tab after it navigated to another page, or
+///   reactivating to "fix" a page change (it can't);
+/// - treating a fragment-only change (an in-page anchor) as another page;
+/// - matching a reused pid that now belongs to another app;
+/// - typing out text with a line break (each one is an Enter key).
 @Suite struct DeliveryTargetTests {
     private let slack = DeliveryTarget(appID: "com.tinyspeck.slackmacgap", appName: "Slack",
                                        processID: 501, windowID: "win#1", windowTitle: "general",
@@ -49,6 +54,13 @@ import Testing
         #expect(TargetLock.matches(noPid, DeliveryTarget(appID: "com.apple.mail", processID: 12)))
         #expect(!TargetLock.matches(noPid, DeliveryTarget(appID: "com.apple.Notes", processID: 12)))
         #expect(!TargetLock.matches(noPid, DeliveryTarget(appID: nil, processID: 12)))
+    }
+
+    @Test func testAReusedPidWithAnotherAppIDDoesNotMatch() {
+        // Same pid, but the app id says it's another app now.
+        #expect(!TargetLock.matches(slack, with(appID: "com.apple.Notes")))
+        // A side that can't report the app id still matches on the pid.
+        #expect(TargetLock.matches(slack, with(appID: nil)))
     }
 
     @Test func testAnotherWindowOfTheSameAppDoesNotMatch() {
@@ -164,27 +176,95 @@ import Testing
         #expect(TargetLock.recheck(target: nil, current: with(), reactivated: true) == .copyOnly(.unknownTarget))
     }
 
+    // MARK: - Page address
+
+    private func page(_ url: String?) -> DeliveryTarget {
+        DeliveryTarget(appID: "com.google.Chrome", appName: "Chrome", processID: 900,
+                       windowID: "win#5", elementID: "AXWebArea#2", browserURL: url)
+    }
+
+    @Test func testTheSamePageMatches() {
+        let target = page("https://mail.google.com/mail/u/0/?tab=rm")
+        #expect(TargetLock.matches(target, page("https://mail.google.com/mail/u/0/?tab=rm")))
+        #expect(TargetLock.check(target: target, current: page("https://mail.google.com/mail/u/0/?tab=rm"),
+                                 targetRunning: true) == .insert)
+    }
+
+    @Test func testAnotherPageDoesNotMatchAndCopiesWithoutReactivating() {
+        let target = page("https://mail.google.com/mail/u/0/#inbox")
+        let now = page("https://news.ycombinator.com/")
+        #expect(!TargetLock.matches(target, now))
+        #expect(TargetLock.check(target: target, current: now, targetRunning: true) == .copyOnly(.pageChanged))
+    }
+
+    @Test func testAnotherQueryIsAnotherPage() {
+        #expect(TargetLock.pageChanged(page("https://example.com/search?q=a"), page("https://example.com/search?q=b")))
+    }
+
+    @Test func testAFragmentOnlyChangeIsTheSamePage() {
+        let target = page("https://mail.google.com/mail/u/0/#inbox")
+        let now = page("https://mail.google.com/mail/u/0/#inbox/FMfcgz")
+        #expect(TargetLock.matches(target, now))
+        #expect(TargetLock.check(target: target, current: now, targetRunning: true) == .insert)
+    }
+
+    @Test func testSchemeAndHostCaseIsIgnored() {
+        #expect(TargetLock.matches(page("HTTPS://Example.COM/a"), page("https://example.com/a")))
+        #expect(TargetLock.pageChanged(page("https://example.com/A"), page("https://example.com/a")))
+    }
+
+    @Test func testOneSideWithoutAnAddressIsNotCompared() {
+        #expect(TargetLock.matches(page("https://example.com/a"), page(nil)))
+        #expect(TargetLock.matches(page(nil), page("https://example.com/a")))
+        // A non-web page (a PDF on disk, a settings page) has no comparable address.
+        #expect(TargetLock.matches(page("file:///Users/me/a.pdf"), page("https://example.com/a")))
+        #expect(TargetLock.matches(page("chrome://settings"), page("https://example.com/a")))
+    }
+
+    @Test func testRecheckCopiesWhenTheRestoredWindowShowsAnotherPage() {
+        let target = page("https://example.com/compose")
+        #expect(TargetLock.recheck(target: target, current: page("https://example.com/other"),
+                                   reactivated: true) == .copyOnly(.pageChanged))
+        #expect(TargetLock.recheck(target: target, current: page("https://example.com/compose#x"),
+                                   reactivated: true) == .insert)
+    }
+
+    @Test func testAMovedFocusStillReactivatesWhateverItsPage() {
+        // Another app in front: the page rule can't decide that, reactivation can.
+        let notes = DeliveryTarget(appID: "com.apple.Notes", processID: 77, browserURL: "https://x.com/")
+        #expect(TargetLock.check(target: page("https://example.com/a"), current: notes,
+                                 targetRunning: true) == .reactivate)
+    }
+
     // MARK: - Insertion method
 
+    @Test func testTextWithALineBreakAlwaysPastes() {
+        let list = ["com.apple.Terminal"]
+        for text in ["one\ntwo", "one\r\ntwo", "one\rtwo", "end\n", "a\u{2028}b", "a\u{2029}b", "a\u{85}b"] {
+            #expect(InsertionMethod.method(forAppID: "com.apple.Terminal", typeOutApps: list, text: text) == .paste)
+        }
+        #expect(InsertionMethod.method(forAppID: "com.apple.Terminal", typeOutApps: list, text: "one two") == .typeOut)
+    }
+
     @Test func testPasteIsTheDefaultForEveryApp() {
-        #expect(InsertionMethod.method(forAppID: "com.apple.Terminal", typeOutApps: []) == .paste)
+        #expect(InsertionMethod.method(forAppID: "com.apple.Terminal", typeOutApps: [], text: "ls -la") == .paste)
     }
 
     @Test func testTypeOutOnlyForAppsTheUserTurnedOn() {
         let list = ["com.apple.Terminal", "com.googlecode.iterm2"]
-        #expect(InsertionMethod.method(forAppID: "com.apple.Terminal", typeOutApps: list) == .typeOut)
-        #expect(InsertionMethod.method(forAppID: "com.googlecode.iterm2", typeOutApps: list) == .typeOut)
-        #expect(InsertionMethod.method(forAppID: "com.tinyspeck.slackmacgap", typeOutApps: list) == .paste)
+        #expect(InsertionMethod.method(forAppID: "com.apple.Terminal", typeOutApps: list, text: "ls -la") == .typeOut)
+        #expect(InsertionMethod.method(forAppID: "com.googlecode.iterm2", typeOutApps: list, text: "ls -la") == .typeOut)
+        #expect(InsertionMethod.method(forAppID: "com.tinyspeck.slackmacgap", typeOutApps: list, text: "ls -la") == .paste)
     }
 
     @Test func testTypeOutMatchIgnoresCase() {
-        #expect(InsertionMethod.method(forAppID: "com.apple.terminal", typeOutApps: ["com.apple.Terminal"])
+        #expect(InsertionMethod.method(forAppID: "com.apple.terminal", typeOutApps: ["com.apple.Terminal"], text: "ls -la")
                 == .typeOut)
     }
 
     @Test func testAnUnknownAppAlwaysPastes() {
-        #expect(InsertionMethod.method(forAppID: nil, typeOutApps: ["com.apple.Terminal"]) == .paste)
-        #expect(InsertionMethod.method(forAppID: "", typeOutApps: [""]) == .paste)
+        #expect(InsertionMethod.method(forAppID: nil, typeOutApps: ["com.apple.Terminal"], text: "ls -la") == .paste)
+        #expect(InsertionMethod.method(forAppID: "", typeOutApps: [""], text: "ls -la") == .paste)
     }
 
     // MARK: - Type-out chunks

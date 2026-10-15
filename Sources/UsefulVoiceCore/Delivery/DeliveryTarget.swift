@@ -25,7 +25,8 @@ public struct DeliveryTarget: Equatable, Sendable {
     /// Identity of the focused element (the composer) inside that window.
     public let elementID: String?
     /// The page address when the app is a known browser and it could be read.
-    /// Held in memory for this dictation only, never logged or stored.
+    /// Held in memory for this dictation only, never logged or stored. Compared
+    /// (scheme, host, path and query) when the focus at delivery also has one.
     public let browserURL: String?
 
     public init(appID: String?,
@@ -63,6 +64,10 @@ public enum TargetLossReason: Equatable, Sendable {
     /// Focus moved and bringing the target back did not work, or brought back a
     /// different window or element.
     case notRestored
+    /// The target window is in front but shows another page (the browser tab
+    /// navigated or another tab took its place). Reactivating cannot bring the old
+    /// page back, so this goes straight to copy.
+    case pageChanged
 }
 
 /// What delivery does about the target before inserting anything.
@@ -84,22 +89,51 @@ public enum TargetCheck: Equatable, Sendable {
 /// rule serves: text is never inserted into a window that is not the captured
 /// target. When in doubt, the dictation is copied, which loses nothing.
 public enum TargetLock {
-    /// Whether `current` (what has focus now) is the captured target.
+    /// Whether `current` (what has focus now) is the captured target: the same
+    /// window and element (`identityMatches`) showing the same page (`pageChanged`).
+    public static func matches(_ target: DeliveryTarget, _ current: DeliveryTarget?) -> Bool {
+        identityMatches(target, current) && !pageChanged(target, current)
+    }
+
+    /// Whether `current` is the target's app, window and element.
     ///
-    /// - The app: the same process when both are known, else the same app id.
+    /// - The app: the same process when both sides know it, and the same app id
+    ///   when both sides know that too (a reused pid with another app is not the
+    ///   target). Without both pids, the same app id.
     /// - The window and the element: compared only when the target recorded one.
     ///   A target that recorded one and a current focus that cannot report it do
     ///   not match: the focus may be anywhere.
-    public static func matches(_ target: DeliveryTarget, _ current: DeliveryTarget?) -> Bool {
+    public static func identityMatches(_ target: DeliveryTarget, _ current: DeliveryTarget?) -> Bool {
         guard let current, target.isIdentified else { return false }
         if let pid = target.processID, let now = current.processID {
             guard pid == now else { return false }
+            if let id = target.appID, let nowID = current.appID, id != nowID { return false }
         } else {
             guard let id = target.appID, id == current.appID else { return false }
         }
         if let window = target.windowID, window != current.windowID { return false }
         if let element = target.elementID, element != current.elementID { return false }
         return true
+    }
+
+    /// Whether both sides read an http(s) page address and the addresses differ.
+    /// A side without one (not a browser, unreadable, a non-web page) is not
+    /// compared. The fragment is ignored: an in-page anchor is the same page.
+    public static func pageChanged(_ target: DeliveryTarget, _ current: DeliveryTarget?) -> Bool {
+        guard let then = pageKey(target.browserURL), let now = pageKey(current?.browserURL) else { return false }
+        return then != now
+    }
+
+    /// The comparable part of a page address: lowercased scheme and host, port,
+    /// path and query. Nil for anything that is not http or https.
+    public static func pageKey(_ address: String?) -> String? {
+        guard let address, let parts = URLComponents(string: address.trimmingCharacters(in: .whitespaces)),
+              let scheme = parts.scheme?.lowercased(), scheme == "http" || scheme == "https",
+              let host = parts.host?.lowercased(), !host.isEmpty else { return nil }
+        let port = parts.port.map { ":\($0)" } ?? ""
+        let path = parts.percentEncodedPath.isEmpty ? "/" : parts.percentEncodedPath
+        let query = parts.percentEncodedQuery.map { "?\($0)" } ?? ""
+        return "\(scheme)://\(host)\(port)\(path)\(query)"
     }
 
     /// The first check at delivery.
@@ -112,7 +146,9 @@ public enum TargetLock {
                              current: DeliveryTarget?,
                              targetRunning: Bool) -> TargetCheck {
         guard let target, target.isIdentified else { return .copyOnly(.unknownTarget) }
-        if matches(target, current) { return .insert }
+        if identityMatches(target, current) {
+            return pageChanged(target, current) ? .copyOnly(.pageChanged) : .insert
+        }
         guard targetRunning else { return .copyOnly(.targetGone) }
         return .reactivate
     }
@@ -127,7 +163,7 @@ public enum TargetLock {
                                current: DeliveryTarget?,
                                reactivated: Bool) -> TargetCheck {
         guard let target, target.isIdentified else { return .copyOnly(.unknownTarget) }
-        guard reactivated, matches(target, current) else { return .copyOnly(.notRestored) }
-        return .insert
+        guard reactivated, identityMatches(target, current) else { return .copyOnly(.notRestored) }
+        return pageChanged(target, current) ? .copyOnly(.pageChanged) : .insert
     }
 }

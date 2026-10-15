@@ -16,7 +16,6 @@ import {
   insertionMethodFor,
   isKnownBrowser,
   recheckTarget,
-  typeOutText,
   type DeliveryTarget,
 } from '../core/delivery/deliveryTarget.js';
 import {
@@ -1274,7 +1273,7 @@ class UsefulVoiceApp {
       clipboard.writeText(text);
       return { delivered: false, clipboardFallback: true };
     }
-    const method = insertionMethodFor(target.processName, this.settings.all.typeOutApps);
+    const method = insertionMethodFor(target.processName, this.settings.all.typeOutApps, text);
     const snapshot = snapshotClipboard();
 
     // The dictation goes on the clipboard first in both modes: the safety net.
@@ -1290,7 +1289,7 @@ class UsefulVoiceApp {
     // in front right before the first keystroke and send nothing when it is not.
     const sent =
       method === 'typeOut'
-        ? await typeText(typeOutText(text), target.handle, TYPE_OUT_UNITS_PER_CHUNK)
+        ? await typeText(text, target.handle, TYPE_OUT_UNITS_PER_CHUNK)
         : await pasteClipboard(target.handle);
     if (sent === 'moved' || sent === 'secure') {
       this.diagnostics.log(

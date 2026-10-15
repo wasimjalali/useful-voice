@@ -8,14 +8,16 @@
 //   node scripts/release-mac.mjs --version 1.0.0 [--feed-url URL] [--download-base URL] [--out DIR] [--allow-dirty]
 //
 // A test machine without the real keys builds with --ad-hoc and its own update
-// key (--ed-account and --ed-public-key from its `generate_keys`). Those builds
+// key (--ed-account or --ed-key-file, and --ed-public-key, from its
+// `generate_keys`; CI uses a key file, since reading another tool's Keychain
+// item waits on a prompt nobody can answer there). Those builds
 // can never update a real install: the app only trusts ED_PUBLIC_KEY, and an
 // ad hoc signature loses the user's Accessibility and Microphone grants.
 //
 // Nothing is uploaded. Publishing is putting the zip, the DMG, appcast.xml and
 // install.sh where --download-base and --feed-url say (docs/distribution.md).
 import { execFileSync, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, createPrivateKey, createPublicKey } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -56,6 +58,7 @@ const { values } = parseArgs({
     out: { type: "string", default: path.join(ROOT, "dist/release") },
     "allow-dirty": { type: "boolean", default: false },
     "ed-account": { type: "string", default: ED_ACCOUNT },
+    "ed-key-file": { type: "string" },
     "ed-public-key": { type: "string", default: ED_PUBLIC_KEY },
     "ad-hoc": { type: "boolean", default: false },
   },
@@ -68,15 +71,18 @@ const fail = (message) => {
 };
 const version = values.version;
 if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
-  process.stderr.write("usage: release-mac.mjs --version X.Y.Z [--feed-url URL] [--download-base URL] [--out DIR] [--allow-dirty] [--ad-hoc --ed-account NAME --ed-public-key KEY]\n");
+  process.stderr.write("usage: release-mac.mjs --version X.Y.Z [--feed-url URL] [--download-base URL] [--out DIR] [--allow-dirty] [--ad-hoc (--ed-account NAME | --ed-key-file FILE) --ed-public-key KEY]\n");
   process.exit(2);
 }
 const adHoc = values["ad-hoc"];
 const edAccount = values["ed-account"];
+const edKeyFile = values["ed-key-file"] && path.resolve(values["ed-key-file"]);
+// How sign_update finds the private key.
+const keySource = edKeyFile ? ["--ed-key-file", edKeyFile] : ["--account", edAccount];
 const edPublicKey = values["ed-public-key"];
 if (adHoc) {
   // An ad hoc build must not look like a real one: it may not use the real key.
-  if (!edPublicKey || edAccount === ED_ACCOUNT || edPublicKey === ED_PUBLIC_KEY) {
+  if (!edPublicKey || (!edKeyFile && edAccount === ED_ACCOUNT) || edPublicKey === ED_PUBLIC_KEY) {
     fail(`--ad-hoc is for test builds and needs a throwaway key: pass --ed-account and --ed-public-key for a key other than "${ED_ACCOUNT}"`);
   }
 } else {
@@ -85,7 +91,7 @@ if (adHoc) {
   }
   // Installed copies trust only the real key, so a release signed with any
   // other could never update them.
-  if (edAccount !== ED_ACCOUNT || edPublicKey !== ED_PUBLIC_KEY) {
+  if (edKeyFile || edAccount !== ED_ACCOUNT || edPublicKey !== ED_PUBLIC_KEY) {
     fail(`a release is signed with the real update key (account "${ED_ACCOUNT}"); another key is only for an --ad-hoc test build`);
   }
   // Sparkle refuses a plain HTTP feed, and install.sh a plain HTTP download.
@@ -115,9 +121,26 @@ if (!adHoc) {
 if (!existsSync(path.join(SPARKLE_BIN, "generate_keys"))) {
   execFileSync("swift", ["package", "resolve"], { cwd: ROOT, stdio: TO_STDERR });
 }
-const keyShown = spawnSync(path.join(SPARKLE_BIN, "generate_keys"), ["--account", edAccount, "-p"], { encoding: "utf8" });
-if (keyShown.status !== 0 || keyShown.stdout.trim() !== edPublicKey) {
-  fail(`the Keychain key for account "${edAccount}" is not the public key given (${edPublicKey}): ${(keyShown.stdout || keyShown.stderr || "").trim()}`);
+if (edKeyFile) {
+  // Sparkle's exported key is base64: a 32-byte Ed25519 seed, or the older
+  // 96-byte form that ends with the public key.
+  const raw = Buffer.from(readFileSync(edKeyFile, "utf8").trim(), "base64");
+  let derived;
+  if (raw.length === 32) {
+    const der = Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), raw]);
+    const jwk = createPublicKey(createPrivateKey({ key: der, format: "der", type: "pkcs8" })).export({ format: "jwk" });
+    derived = Buffer.from(jwk.x, "base64url").toString("base64");
+  } else if (raw.length === 96) {
+    derived = raw.subarray(64).toString("base64");
+  } else {
+    fail(`${edKeyFile} is not a Sparkle EdDSA key (${raw.length} bytes)`);
+  }
+  if (derived !== edPublicKey) fail(`the key in ${edKeyFile} is not the public key given (${edPublicKey})`);
+} else {
+  const keyShown = spawnSync(path.join(SPARKLE_BIN, "generate_keys"), ["--account", edAccount, "-p"], { encoding: "utf8", timeout: 120_000 });
+  if (keyShown.status !== 0 || keyShown.stdout.trim() !== edPublicKey) {
+    fail(`the Keychain key for account "${edAccount}" is not the public key given (${edPublicKey}): ${(keyShown.stdout || keyShown.stderr || keyShown.error?.message || "").trim()}`);
+  }
 }
 
 // The DMG tool, fetched once, before the long build. dmgbuild needs Python
@@ -241,7 +264,8 @@ try {
   if (cdhash(path.join(unzipped, APP_NAME)) !== cdhash(app)) throw new Error("the zip's app is not the build (CDHash differs)");
 
   // `sign_update` prints the enclosure attributes: sparkle:edSignature="…" length="…".
-  const signed = execFileSync(path.join(SPARKLE_BIN, "sign_update"), ["--account", edAccount, zip], { encoding: "utf8" }).trim();
+  // A Keychain prompt nobody answers would otherwise hang here for good.
+  const signed = execFileSync(path.join(SPARKLE_BIN, "sign_update"), [...keySource, zip], { encoding: "utf8", timeout: 120_000 }).trim();
   if (!/sparkle:edSignature="[^"]+"/.test(signed) || !/length="\d+"/.test(signed)) throw new Error(`sign_update gave no signature: ${signed}`);
 
   // The DMG: the same app beside a link to /Applications over the brand

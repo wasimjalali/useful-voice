@@ -11,6 +11,9 @@
 # checked against its EdDSA key.
 set -eu
 
+# Everything runs from main on the last line, so `curl | sh` cut off mid-script
+# runs nothing rather than half of it.
+main() {
 URL="@@ZIP_URL@@"
 SHA256="@@ZIP_SHA256@@"
 DEST="${UV_INSTALL_DIR:-/Applications}"
@@ -53,10 +56,22 @@ fi
 NEW="$DEST/.Useful Voice.app.installing"
 rm -rf "$NEW"
 ditto "$tmp/unpacked/Useful Voice.app" "$NEW" || { rm -rf "$NEW"; die "could not copy the app into $DEST."; }
-xattr -cr "$NEW"
+xattr -cr "$NEW" || { rm -rf "$NEW"; die "could not clear the download's quarantine flag."; }
 codesign --verify --strict "$NEW" || { rm -rf "$NEW"; die "the copied app does not verify."; }
-rm -rf "$APP"
-mv "$NEW" "$APP"
+# The old copy steps aside until the new one is in place, and comes back if
+# the move fails.
+OLD="$DEST/.Useful Voice.app.previous"
+rm -rf "$OLD"
+if [ -e "$APP" ]; then mv "$APP" "$OLD" || { rm -rf "$NEW"; die "could not move the old app aside."; }; fi
+if ! mv "$NEW" "$APP"; then
+  [ -e "$OLD" ] && mv "$OLD" "$APP"
+  rm -rf "$NEW"
+  die "could not move the new app into place; the old one is back."
+fi
+rm -rf "$OLD"
 
 say "Installed $APP"
 [ -n "${UV_INSTALL_NO_OPEN:-}" ] || open "$APP"
+}
+
+main "$@"

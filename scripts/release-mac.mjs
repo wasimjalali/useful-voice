@@ -60,6 +60,8 @@ const { values } = parseArgs({
     "ad-hoc": { type: "boolean", default: false },
   },
 });
+// Tools write their progress to stderr, so stdout carries only the summary JSON.
+const TO_STDERR = ["ignore", 2, 2];
 const fail = (message) => {
   process.stderr.write(`${message}\n`);
   process.exit(1);
@@ -72,12 +74,24 @@ if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
 const adHoc = values["ad-hoc"];
 const edAccount = values["ed-account"];
 const edPublicKey = values["ed-public-key"];
-if (!edPublicKey) {
-  fail(`there is no update key yet: make it on the release Mac (docs/distribution.md, "The update key") and set ED_PUBLIC_KEY in scripts/release-mac.mjs, or pass --ed-public-key for a test build`);
-}
-// An ad hoc build must not look like a real one: it may not use the real key.
-if (adHoc && (edAccount === ED_ACCOUNT || edPublicKey === ED_PUBLIC_KEY)) {
-  fail(`--ad-hoc is for test builds and needs a throwaway key: pass --ed-account and --ed-public-key for a key other than "${ED_ACCOUNT}"`);
+if (adHoc) {
+  // An ad hoc build must not look like a real one: it may not use the real key.
+  if (!edPublicKey || edAccount === ED_ACCOUNT || edPublicKey === ED_PUBLIC_KEY) {
+    fail(`--ad-hoc is for test builds and needs a throwaway key: pass --ed-account and --ed-public-key for a key other than "${ED_ACCOUNT}"`);
+  }
+} else {
+  if (!ED_PUBLIC_KEY) {
+    fail(`there is no update key yet: make it on the release Mac (docs/distribution.md, "The update key") and set ED_PUBLIC_KEY in scripts/release-mac.mjs`);
+  }
+  // Installed copies trust only the real key, so a release signed with any
+  // other could never update them.
+  if (edAccount !== ED_ACCOUNT || edPublicKey !== ED_PUBLIC_KEY) {
+    fail(`a release is signed with the real update key (account "${ED_ACCOUNT}"); another key is only for an --ad-hoc test build`);
+  }
+  // Sparkle refuses a plain HTTP feed, and install.sh a plain HTTP download.
+  for (const name of ["feed-url", "download-base"]) {
+    if (values[name] !== undefined && !values[name].startsWith("https://")) fail(`--${name} must be an https:// URL for a release`);
+  }
 }
 const git = (...args) => execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();
 if (!values["allow-dirty"] && git("status", "--porcelain", "--untracked-files=no") !== "") {
@@ -99,7 +113,7 @@ if (!adHoc) {
 // update from this release could ever install. Checked before the long build.
 // Sparkle's tools come with the Swift package; a fresh checkout has not fetched it yet.
 if (!existsSync(path.join(SPARKLE_BIN, "generate_keys"))) {
-  execFileSync("swift", ["package", "resolve"], { cwd: ROOT, stdio: "inherit" });
+  execFileSync("swift", ["package", "resolve"], { cwd: ROOT, stdio: TO_STDERR });
 }
 const keyShown = spawnSync(path.join(SPARKLE_BIN, "generate_keys"), ["--account", edAccount, "-p"], { encoding: "utf8" });
 if (keyShown.status !== 0 || keyShown.stdout.trim() !== edPublicKey) {
@@ -121,10 +135,10 @@ if (!existsSync(path.join(DMG_VENV, "bin/python"))) {
   let system = "none";
   try { system = pyVersion("python3"); } catch {}
   if (!pyOk(system)) fail(`the DMG needs Python 3.10 or later for dmgbuild; python3 on PATH is ${system} (brew install python)`);
-  execFileSync("python3", ["-m", "venv", DMG_VENV], { stdio: "inherit" });
+  execFileSync("python3", ["-m", "venv", DMG_VENV], { stdio: TO_STDERR });
 }
 // All three pinned: dmgbuild's own dependencies write the .DS_Store and alias.
-execFileSync(path.join(DMG_VENV, "bin/pip"), ["install", "--quiet", "--disable-pip-version-check", ...DMG_PACKAGES], { stdio: "inherit" });
+execFileSync(path.join(DMG_VENV, "bin/pip"), ["install", "--quiet", "--disable-pip-version-check", ...DMG_PACKAGES], { stdio: TO_STDERR });
 // dmgbuild mounts its working image by volume name. With a "Useful Voice"
 // volume already mounted, its copy becomes "Useful Voice 1" and the window's
 // background alias would point at that name.
@@ -148,7 +162,7 @@ execFileSync("make", [
   `SIGN_IDENTITY=${adHoc ? "-" : SIGN_IDENTITY}`,
   `SU_FEED_URL=${values["feed-url"]}`,
   `SU_PUBLIC_ED_KEY=${edPublicKey}`,
-], { cwd: ROOT, stdio: "inherit" });
+], { cwd: ROOT, stdio: TO_STDERR });
 
 const plist = (app, key) => execFileSync("plutil", ["-extract", key, "raw", "-o", "-", path.join(app, "Contents/Info.plist")], { encoding: "utf8" }).trim();
 // The code directory hash, which names exactly one build of the app.
@@ -220,6 +234,11 @@ try {
   execFileSync("ditto", [BUILT_APP, app]);
   if (cdhash(app) !== cdhash(BUILT_APP)) throw new Error("the staged app is not the build (CDHash differs)");
   execFileSync("ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", app, zip]);
+  // What Sparkle and install.sh will unpack: the same build, whole.
+  const unzipped = path.join(scratch, "unzipped");
+  execFileSync("ditto", ["-x", "-k", zip, unzipped]);
+  checkApp(path.join(unzipped, APP_NAME));
+  if (cdhash(path.join(unzipped, APP_NAME)) !== cdhash(app)) throw new Error("the zip's app is not the build (CDHash differs)");
 
   // `sign_update` prints the enclosure attributes: sparkle:edSignature="…" length="…".
   const signed = execFileSync(path.join(SPARKLE_BIN, "sign_update"), ["--account", edAccount, zip], { encoding: "utf8" }).trim();
@@ -229,7 +248,7 @@ try {
   // background (bundle/dmg/). Built before the appcast and installer, so a
   // folder that has those is a whole release.
   for (const [name, scale] of [["background.png", "1"], ["background@2x.png", "2"]]) {
-    execFileSync("swift", [path.join(ROOT, "bundle/dmg/background.swift"), path.join(scratch, name), scale], { stdio: "inherit" });
+    execFileSync("swift", [path.join(ROOT, "bundle/dmg/background.swift"), path.join(scratch, name), scale], { stdio: TO_STDERR });
   }
   // Checked again here: a volume mounted during the long build would rename
   // dmgbuild's working copy (see the check before the build).
@@ -239,7 +258,7 @@ try {
     "-D", `app=${app}`,
     "-D", `background=${path.join(scratch, "background.png")}`,
     VOLUME, dmg,
-  ], { stdio: "inherit" });
+  ], { stdio: TO_STDERR });
 
   // Mounted read-only and out of Finder's sight, checked, then let go.
   mkdirSync(mount);
@@ -283,12 +302,13 @@ try {
     .replace("@@ZIP_SHA256@@", zipSha);
   if (installer.includes("@@ZIP_")) throw new Error("install.sh placeholders were not filled");
   writeFileSync(path.join(out, "install.sh"), installer, { mode: 0o755 });
-  const installUrl = values["feed-url"].replace(/appcast\.xml$/, "install.sh");
+  // Published beside the appcast.
+  const installUrl = new URL("install.sh", values["feed-url"]).href;
   const notes = readFileSync(path.join(ROOT, "bundle/release-notes.md"), "utf8")
     .replaceAll("@@VERSION@@", version)
     .replaceAll("@@INSTALL_COMMAND@@", `curl -fsSL ${installUrl} | sh`)
     .replaceAll("@@SOURCE_URL@@", SOURCE);
-  if (notes.includes("@@")) throw new Error("release-notes.md placeholders were not filled");
+  if (/@@[A-Z_]+@@/.test(notes)) throw new Error("release-notes.md placeholders were not filled");
   writeFileSync(path.join(out, NOTES), notes);
   // Last: its presence marks a finished release folder.
   writeFileSync(path.join(out, "appcast.xml"), appcast);

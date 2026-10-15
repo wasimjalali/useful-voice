@@ -1,4 +1,4 @@
-<!-- Release notes template. scripts/release-mac.mjs fills the @@ fields and writes
+<!-- Release notes template. scripts/release-mac.mjs fills in the version, the install command and the source link, and writes
      dist/release/release-notes.md. Replace each bullet list (delete a heading that
      has nothing under it), then paste the result into the GitHub release. -->
 # Useful Voice @@VERSION@@

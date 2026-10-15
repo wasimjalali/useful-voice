@@ -169,21 +169,87 @@ jobs:
             "== $label ==" | Tee-Object -FilePath $dump -Append
             ($entries | Format-List | Out-String) | Tee-Object -FilePath $dump -Append
           }
-          function Install-Silent($dir) {
-            $exe = Get-ChildItem $dir -Filter '*.exe' | Where-Object { $_.Name -like 'Useful Voice-*' } | Select-Object -First 1
-            if (-not $exe) { throw "No installer found in $dir" }
+          # Run 38395434378 attempt 1 saw the legacy installer die with 0xC0000005 two seconds in,
+          # before writing anything; the same tree passed on the same image version 10 minutes
+          # earlier and on the re-run. Any non-zero exit saves what Windows knows about the crash
+          # (WER events name the faulting module) so the next one can be root-caused.
+          $diagDir = Join-Path $env:RUNNER_TEMP 'installer-diagnostics'
+          New-Item -ItemType Directory -Force -Path $diagDir | Out-Null
+          $accessViolation = -1073741819  # 0xC0000005 as a signed exit code
+          function Test-ExclusiveOpen($path) {
+            try { $fs = [System.IO.File]::Open($path, 'Open', 'Read', 'None'); $fs.Dispose(); 'ok' }
+            catch { "failed ($($_.Exception.InnerException.Message ?? $_.Exception.Message))" }
+          }
+          function Start-Installer($exe) {
+            $age = [int]((Get-Date) - $exe.LastWriteTime).TotalSeconds
+            Write-Host "Launching $($exe.Name): $($exe.Length) bytes, written ${age}s ago, exclusive open: $(Test-ExclusiveOpen $exe.FullName)"
+            $since = Get-Date
             $proc = Start-Process -FilePath $exe.FullName -ArgumentList '/S' -PassThru
             if (-not $proc.WaitForExit(180000)) {
               $diag = (Get-Process | Where-Object { $_.Id -eq $proc.Id -or $_.ProcessName -like '*Useful Voice*' } | Format-Table Id, ProcessName, StartTime | Out-String)
               Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
               throw "Installer $($exe.Name) (PID $($proc.Id)) did not exit within 180s. Related processes:`n$diag"
             }
-            if ($proc.ExitCode -ne 0) { throw "Installer $($exe.Name) exited with $($proc.ExitCode)" }
+            Write-Host "$($exe.Name) (PID $($proc.Id)) exited with $($proc.ExitCode) after $([int]((Get-Date) - $since).TotalSeconds)s"
+            [pscustomobject]@{ Proc = $proc; Since = $since }
+          }
+          # Every section records its own failure so a broken probe never replaces the real error.
+          function Save-InstallerDiagnostics($exe, $run) {
+            $proc = $run.Proc; $since = $run.Since.AddSeconds(-5)
+            $out = Join-Path $diagDir "$($exe.BaseName)-pid$($proc.Id).txt"
+            $section = {
+              param($title, $probe)
+              "== $title ==" | Add-Content $out
+              try { (& $probe | Out-String -Width 400) | Add-Content $out }
+              catch { "probe failed: $($_.Exception.Message)" | Add-Content $out }
+            }
+            ('{0} PID {1} (0x{1:x}) exited with {2} (0x{2:X8})' -f $exe.FullName, $proc.Id, $proc.ExitCode) | Set-Content $out
+            # WER logs Application Error 1000 (faulting module, offset) a few seconds after the crash.
+            & $section 'Application Error / WER events' {
+              $events = @()
+              for ($i = 0; $i -lt 15 -and $events.Count -eq 0; $i++) {
+                $events = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $since; ProviderName = 'Application Error', 'Windows Error Reporting' } -ErrorAction SilentlyContinue)
+                if ($events.Count -eq 0) { Start-Sleep -Seconds 1 }
+              }
+              if ($events.Count) { $events | Format-List TimeCreated, ProviderName, Id, Message } else { 'none within 15s' }
+            }
+            & $section 'Defender status' { Get-MpComputerStatus | Format-List AMServiceEnabled, RealTimeProtectionEnabled, OnAccessProtectionEnabled, AMProductVersion, AntivirusSignatureVersion }
+            & $section 'Defender operational events' { Get-WinEvent -FilterHashtable @{ LogName = 'Microsoft-Windows-Windows Defender/Operational'; StartTime = $since } -ErrorAction SilentlyContinue | Format-List TimeCreated, Id, Message }
+            & $section 'NSIS plugin dirs left in TEMP (shows how far the installer got)' { Get-ChildItem $env:TEMP -Directory -Filter 'ns*.tmp' | Where-Object { $_.LastWriteTime -ge $since } | Get-ChildItem -Recurse | Format-Table FullName, Length, LastWriteTime }
+            & $section 'Install dir' { $d = Join-Path $env:LOCALAPPDATA 'Programs\Useful Voice'; if (Test-Path $d) { "$((Get-ChildItem $d -Recurse -File).Count) files in $d" } else { "$d does not exist" } }
+            & $section 'Uninstall entries' { Get-UvEntries | Format-List }
+            & $section 'WER report files' {
+              $werRoots = "$env:ProgramData\Microsoft\Windows\WER\ReportArchive", "$env:ProgramData\Microsoft\Windows\WER\ReportQueue", "$env:LOCALAPPDATA\Microsoft\Windows\WER\ReportArchive", "$env:LOCALAPPDATA\Microsoft\Windows\WER\ReportQueue"
+              Get-ChildItem $werRoots -Recurse -Filter 'Report.wer' -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -ge $since } | ForEach-Object {
+                Copy-Item $_.FullName (Join-Path $diagDir "$($_.Directory.Name).wer"); $_.FullName
+              }
+            }
+            Get-Content $out | Write-Host
+            $out
+          }
+          # $retryOnCrash is set only for the legacy 0.0.1 installer, which is test scaffolding we
+          # never ship. It retries once, and only on 0xC0000005, with a warning annotation and the
+          # diagnostics saved. A crash of the shipped installer, a second crash or any other
+          # non-zero exit fails the job.
+          function Install-Silent($dir, [switch]$retryOnCrash) {
+            $exe = Get-ChildItem $dir -Filter '*.exe' | Where-Object { $_.Name -like 'Useful Voice-*' } | Select-Object -First 1
+            if (-not $exe) { throw "No installer found in $dir" }
+            $run = Start-Installer $exe
+            if ($run.Proc.ExitCode -eq $accessViolation -and $retryOnCrash) {
+              $report = Save-InstallerDiagnostics $exe $run
+              Write-Host "::warning title=Legacy installer crashed (0xC0000005), retrying once::$($exe.Name) PID $($run.Proc.Id) crashed with an access violation. Diagnostics in the windows-upgrade-registry artifact ($(Split-Path $report -Leaf)). Retrying once."
+              Write-Host "RETRYING $($exe.Name) ONCE AFTER 0xC0000005"
+              $run = Start-Installer $exe
+            }
+            if ($run.Proc.ExitCode -ne 0) {
+              $report = Save-InstallerDiagnostics $exe $run
+              throw "Installer $($exe.Name) exited with $($run.Proc.ExitCode). Diagnostics: $report"
+            }
           }
 
           $newVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
 
-          Install-Silent 'release-old'
+          Install-Silent 'release-old' -retryOnCrash
           $old = @(Get-UvEntries)
           Show-Entries 'after old install' $old
           if ($old.Count -ne 1 -or $old[0].Hive -ne 'HKCU') { throw "Expected 1 HKCU Useful Voice entry after the old install, found $($old.Count): $(($old | ForEach-Object { $_.Hive + ':' + $_.Key }) -join ', ')" }
@@ -209,5 +275,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-upgrade-registry
-          path: ${{ runner.temp }}/uninstall-entries.txt
+          path: |
+            ${{ runner.temp }}/uninstall-entries.txt
+            ${{ runner.temp }}/installer-diagnostics/
           if-no-files-found: ignore

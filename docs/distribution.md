@@ -96,6 +96,10 @@ The `Release dry run` workflow builds a whole release on every PR that touches t
 signed with a throwaway key made on the runner, and installs it through the generated `install.sh`.
 `--ad-hoc` refuses the real key account, so a test build can never pass for a release.
 
+Release builds check the feed daily (`SUEnableAutomaticChecks`), a plain request to GitHub with no
+system profile. A found update never opens a window on its own, since it would take focus from the
+app being dictated into: the menu bar item changes to Install update X.Y.Z instead.
+
 ### The update key (once, before the first release)
 
 Sparkle's EdDSA key does not exist yet, so the script refuses to build a release. On the release Mac:
@@ -119,5 +123,5 @@ only trusts this one.
 
 Before the first public release, check the update path end to end on a clean user: install the
 previous version through the curl one-liner, grant Accessibility and Microphone, then update through
-Sparkle (menu bar, Check for Updates…) and dictate with the hotkey without re-granting. Back up
+Sparkle (menu bar, Install update or Check for updates…) and dictate with the hotkey without re-granting. Back up
 `~/Library/Application Support/UsefulVoice/` before switching your own Mac to the release build.

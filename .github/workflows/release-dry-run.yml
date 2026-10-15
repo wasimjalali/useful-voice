@@ -115,6 +115,9 @@ jobs:
           [ "$(plutil -extract SUFeedURL raw "$APP/Contents/Info.plist")" = http://127.0.0.1:8765/appcast.xml ]
           [ "$(plutil -extract SUPublicEDKey raw "$APP/Contents/Info.plist")" = "$ED_KEY" ]
           [ -d "$APP/Contents/Frameworks/Sparkle.framework" ]
+          # dyld loads every linked framework (Sparkle, whisper) before --version answers.
+          "$APP/Contents/MacOS/UsefulVoice" --version | tee version.txt
+          grep -q "Useful Voice 0.0.1" version.txt
           [ -z "$(xattr "$APP")" ] || { xattr "$APP"; echo "the installed app still has extended attributes"; exit 1; }
           # A second run replaces the install in place.
           curl -fsSL http://127.0.0.1:8765/install.sh | UV_INSTALL_DIR="$DEST" UV_INSTALL_NO_OPEN=1 sh

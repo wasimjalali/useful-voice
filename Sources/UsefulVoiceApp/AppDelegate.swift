@@ -128,9 +128,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if ProcessInfo.processInfo.environment["UV_SNAPSHOT"] == nil { primeKeyCache() }
         chimes.isEnabled = { [settings] in settings.soundEffectsEnabled }
         setUpController()
-        // Before the status item, whose menu shows Check for Updates only when
-        // the updater runs.
-        if !isSnapshot { AppUpdater.shared.start() }
+        // Before the status item, whose menu shows the update item only when the
+        // updater runs. Not in a render or forced first-run preview, which save nothing.
+        if migrationAllowed { AppUpdater.shared.start() }
         if !isSnapshot { setUpStatusItem() }
         setUpFirstRun()
         // `UV_SNAPSHOT=<png path>@<width>x<height>` renders the page named by

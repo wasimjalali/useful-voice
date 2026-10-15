@@ -123,9 +123,10 @@ is the owner's call), so Windows warns about it:
   Click **More info**, then **Run anyway**. Edge may first say the file "isn't commonly
   downloaded": open the **...** menu on the download, then **Keep**.
 - **One-liner.** `install.ps1` checks the installer's SHA-256 against the release before it
-  runs it, so a changed file never runs. The CI report (`windows-install-script` artifact)
-  records whether a file fetched that way carries the mark of the web, which is what decides
-  whether SmartScreen shows its prompt.
+  runs it, so a changed file never runs. A file fetched with `Invoke-WebRequest` carries no mark
+  of the web (the CI install test records this on every run: "Zone.Identifier stream: False"),
+  and SmartScreen's prompt is for files that carry it, so this path should not show "Windows
+  protected your PC". Confirm on a real Windows machine before the site promises it.
 - On Windows 11 with Smart App Control turned on, Microsoft documents that unsigned apps without
   a reputation are blocked, with no Run anyway. Signing is the only fix for those machines.
 

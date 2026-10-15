@@ -33,7 +33,7 @@ const PAGE_ICONS = {
 };
 
 export const PAGES: Array<{ id: Page; label: string; icon: string }> = [
-  { id: 'stream', label: 'Stream', icon: PAGE_ICONS.stream },
+  { id: 'stream', label: 'Dictations', icon: PAGE_ICONS.stream },
   { id: 'notes', label: 'Notes', icon: PAGE_ICONS.notes },
   { id: 'vocabulary', label: 'Vocabulary', icon: PAGE_ICONS.vocabulary },
   { id: 'insights', label: 'Insights', icon: PAGE_ICONS.insights },
@@ -295,7 +295,7 @@ export function mountMain(pages: Record<Page, PageModule>): void {
     el('div', { class: 'rail-foot' }, navItems.get('settings') as HTMLElement, status.element),
   );
 
-  const title = el('h1', { class: 'stage-title' }, 'Stream');
+  const title = el('h1', { class: 'stage-title' }, 'Dictations');
   const headerActions = el('div', { class: 'inline wrap' });
   const header = el('header', { class: 'stage-header' }, title, headerActions);
   const bannerHost = el('div', { class: 'banner-host' });

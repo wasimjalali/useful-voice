@@ -211,7 +211,7 @@ class Server:
             pass
         return round(kb / 1024, 1)
 
-    def chat(self, system, user, timeout=300):
+    def chat(self, system, user, timeout=120):
         body = {
             "messages": ([{"role": "system", "content": system}] if system else [])
             + [{"role": "user", "content": user}],

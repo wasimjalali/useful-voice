@@ -65,6 +65,7 @@ jobs:
       # step fails and the artifact keeps the server log that says why.
       - name: Run with Metal (-ngl 99)
         continue-on-error: true
+        timeout-minutes: 12
         run: >
           python3 evals/cleanup/run_eval.py --work "$RUNNER_TEMP/cleanup"
           --llama-dir "$RUNNER_TEMP/cleanup/llama/llama-b11669" --models-dir "$RUNNER_TEMP/cleanup/models"

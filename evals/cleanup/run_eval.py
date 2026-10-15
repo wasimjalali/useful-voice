@@ -492,9 +492,10 @@ def main():
         data = json.loads(Path(args.rescore).read_text())
         cases = [c for c in json.loads((HERE / "cases.json").read_text(encoding="utf-8")) if c["id"] in set(data["raw"]["cases_ids"])]
         bundle = build_core(Path(args.work))
-        res, _ = rescore(cases, data["raw"], bundle)
+        res, finals = rescore(cases, data["raw"], bundle)
         print_report(res)
         data["result"] = res
+        data["finals"] = finals
         Path(args.rescore).write_text(json.dumps(data, indent=1, ensure_ascii=False))
         return
     cases, raw, bundle = evaluate(args)

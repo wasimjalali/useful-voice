@@ -19,17 +19,17 @@ import Foundation
 ///
 /// "Content words" are the distinct lowercase words of the text minus function words,
 /// filler-like words ("like", "you know"), self-correction cues ("no wait", "I mean") and
-/// spoken-symbol words ("at", "dot", "point", "dollars", the "p m" of a spoken time). Case, punctuation and spacing are ignored:
-/// the guard judges content, not formatting. Numbers count as one content item ("#num"), so
+/// spoken-symbol words ("at", "dot", "point", "dollars", the "p m" of a spoken time). Case,
+/// punctuation and spacing are ignored: the guard judges content, not formatting. Numbers count as
+/// one content item ("#num"), so
 /// "three" -> "3" is neither a drop nor an add, but a model that invents a number, or loses
 /// every number, is caught. A self-correction legitimately removes words ("Monday, no wait,
 /// Tuesday"), so when the input contains a correction cue the allowed drop share is higher.
 ///
-/// The limits below were set before the first eval run and not tuned. After it, the "point" and "p m"
-/// entries were added to the spoken-symbol words and the no-word-change check
-/// added, because the run showed spoken decimals and times being rejected and format-only edits
-/// getting through (see
-/// `evals/results/2026-10-16-cleanup.md`).
+/// The limits below were set before the first eval run and not tuned. After that run, "point" and
+/// "p m" were added to the spoken-symbol words (spoken decimals and times were being rejected) and
+/// the no-word-change check was added (format-only edits were getting through). See
+/// `evals/results/2026-10-16-cleanup.md`.
 public enum CleanupGuard {
     public enum Reason: String, Equatable, Sendable {
         case reasoning, empty, tooLong, noWordChange, droppedContent, addedContent

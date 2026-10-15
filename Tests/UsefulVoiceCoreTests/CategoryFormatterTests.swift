@@ -37,7 +37,7 @@ import Foundation
 
     @Test func fixtureHasTheCasesItShould() throws {
         let all = try cases()
-        #expect(all.count == 257)
+        #expect(Set(all.map(\.id)).count == all.count, "duplicate case ids")
         let prefixes = Set(all.map { String($0.id.split(separator: "-")[0]) })
         for p in ["empty", "blank", "code", "nocode", "style", "cont", "email"] {
             #expect(prefixes.contains(p), "\(p)")
@@ -152,6 +152,11 @@ import Foundation
         #expect(!needs("say \"", "world"))
         #expect(needs("say \"hi\"", "world"))
         #expect(!needs("src/", "app"))
+        #expect(needs("foo.", "bar"))
+        for end in ["foo.", "foo_", "foo-", "foo:"] {
+            #expect(!CategoryContinuation.needsLeadingSpace(textBeforeCursor: end, dictation: "bar", code: true), "\(end)")
+        }
+        #expect(CategoryContinuation.needsLeadingSpace(textBeforeCursor: "foo", dictation: "bar", code: true))
     }
 
     @Test func lowercaseAndCapitalizeFirstWord() {
@@ -161,16 +166,19 @@ import Foundation
         func upper(_ t: String, _ words: [String] = []) -> String {
             CategoryContinuation.capitalizeFirstWord(t, dictionaryWords: words)
         }
-        #expect(lower("Hello") == "hello")
-        #expect(lower("  Hello") == "  hello")
+        #expect(lower("The") == "the")
+        #expect(lower("  The end") == "  the end")
+        #expect(lower("Hello") == "Hello")
+        #expect(lower("Sarah said") == "Sarah said")
+        #expect(lower("The.") == "the.")
         #expect(lower("") == "")
         #expect(lower("hello") == "hello")
         #expect(lower("I am") == "I am")
         #expect(lower("I\u{2019}d go") == "I\u{2019}d go")
         #expect(lower("NASA") == "NASA")
         #expect(lower("iPhone") == "iPhone")
-        #expect(lower("Sam", ["sam"]) == "Sam")
-        #expect(lower("Sam", [" "]) == "sam")
+        #expect(lower("So", ["so"]) == "So")
+        #expect(lower("So", [" "]) == "so")
         #expect(upper("thanks") == "Thanks")
         #expect(upper("iPhone") == "iPhone")
         #expect(upper("npm", ["npm"]) == "npm")
@@ -180,9 +188,10 @@ import Foundation
 
     @Test func continuationLeavesUnknownContextAloneAndCanSkipLowercasing() {
         #expect(CategoryContinuation.apply(textBeforeCursor: nil, dictation: "Hello", dictionaryWords: []) == "Hello")
-        #expect(CategoryContinuation.apply(textBeforeCursor: "and", dictation: "Hello", dictionaryWords: []) == " hello")
-        #expect(CategoryContinuation.apply(textBeforeCursor: "and", dictation: "Hello", dictionaryWords: [],
-                                           lowercase: false) == " Hello")
+        #expect(CategoryContinuation.apply(textBeforeCursor: "and", dictation: "The", dictionaryWords: []) == " the")
+        #expect(CategoryContinuation.apply(textBeforeCursor: "and", dictation: "The", dictionaryWords: [],
+                                           lowercase: false) == " The")
+        #expect(CategoryContinuation.apply(textBeforeCursor: "and", dictation: "Sarah", dictionaryWords: []) == " Sarah")
     }
 
     // MARK: style helpers
@@ -204,20 +213,34 @@ import Foundation
 
     // MARK: email layout
 
-    @Test func emailNeeds25WordsOrAGreeting() {
+    @Test func emailNeedsAGreetingASignOffOrALongDictation() {
         func body(_ n: Int) -> String {
             "Word " + Array(repeating: "word", count: n - 2).joined(separator: " ") + " word."
         }
-        let atLimit = body(23) + " Thanks, Sam"
-        #expect(atLimit.split(separator: " ").count == 25)
-        #expect(CategoryEmail.structure(atLimit, userName: nil) == body(23) + "\n\nThanks,\nSam")
-        let underLimit = body(22) + " Thanks, Sam"
-        #expect(underLimit.split(separator: " ").count == 24)
+        let long = CategoryEmail.longDictationWords
+        let atLimit = body(long - 3) + " New paragraph. Word."
+        #expect(atLimit.split(separator: " ").count == long)
+        #expect(CategoryEmail.structure(atLimit, userName: nil) == body(long - 3) + "\n\nWord.")
+        let underLimit = body(long - 4) + " New paragraph. Word."
+        #expect(underLimit.split(separator: " ").count == long - 1)
         #expect(CategoryEmail.structure(underLimit, userName: nil) == underLimit)
+        #expect(CategoryEmail.structure(body(2) + " Thanks, Sam", userName: nil) == "Word word.\n\nThanks,\nSam")
         #expect(CategoryEmail.structure("Hi Sam, " + body(2), userName: nil) == "Hi Sam,\n\nWord word.")
+        #expect(CategoryEmail.structure("Hi Sam how are you", userName: nil) == "Hi Sam how are you")
     }
 
     @Test func emailKeepsTextWithALineBreak() {
         #expect(CategoryEmail.structure("Hi Sam,\nthanks", userName: "Wasim") == "Hi Sam,\nthanks")
+    }
+
+    // MARK: long input
+
+    @Test func formatsALongDotChainInLinearTime() {
+        let chain = Array(repeating: "x dot", count: 2500).joined(separator: " ")
+        #expect(chain.split(separator: " ").count == 5000)
+        let start = Date()
+        let out = CategoryCoding.format(chain)
+        #expect(Date().timeIntervalSince(start) < 5)
+        #expect(!out.isEmpty)
     }
 }

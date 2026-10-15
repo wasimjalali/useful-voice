@@ -25,11 +25,26 @@ import Foundation
         let raw: String
         let expected: String
     }
+    private struct DecodeCase: Decodable {
+        let id: String
+        let settings: String
+        let expected: [String: String]
+    }
     private struct Fixture: Decodable {
         let apps: [AppCase]
         let urls: [URLCase]
         let parse: [ParseCase]
         let normalize: [NormalizeCase]
+        let overrideDecode: [DecodeCase]
+    }
+    /// Stands in for a settings file that may or may not hold overrides.
+    private struct SettingsHolder: Decodable {
+        let overrides: AppCategoryOverrides
+        enum CodingKeys: String, CodingKey { case categoryOverrides }
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            overrides = container.decodeAppCategoryOverrides(forKey: .categoryOverrides)
+        }
     }
 
     private func fixture() throws -> Fixture {
@@ -41,8 +56,22 @@ import Foundation
 
     @Test func fixtureHasTheCasesItShould() throws {
         let f = try fixture()
-        #expect(f.apps.count == 107)
-        #expect(f.urls.count == 82)
+        let ids = f.apps.map(\.id)
+        #expect(Set(ids).count == ids.count, "duplicate app case ids")
+        let urls = f.urls.map(\.url)
+        #expect(Set(urls).count == urls.count, "duplicate address cases")
+        #expect(Set(f.apps.map(\.expected)) == Set(AppCategory.allCases.map(\.rawValue)))
+        #expect(!f.parse.isEmpty && !f.normalize.isEmpty && !f.overrideDecode.isEmpty)
+    }
+
+    @Test func readsStoredOverridesLeniently() throws {
+        for c in try fixture().overrideDecode {
+            let holder = try JSONDecoder().decode(SettingsHolder.self, from: Data(c.settings.utf8))
+            #expect(holder.overrides.byApp.mapValues(\.rawValue) == c.expected, "\(c.id)")
+        }
+        let encoded = try JSONEncoder().encode(AppCategoryOverrides(["slack.exe": .coding]))
+        let back = try JSONDecoder().decode(AppCategoryOverrides.self, from: encoded)
+        #expect(back.byApp == ["slack.exe": .coding])
     }
 
     @Test func resolvesEverySharedAppCase() throws {
@@ -133,6 +162,14 @@ import Foundation
             #expect(AppCategoryRegistry.isBrowser(id), "\(id)")
         }
         #expect(AppCategoryRegistry.isBrowser("C:\\Program Files\\Google\\Chrome\\Application\\CHROME.EXE"))
+    }
+
+    @Test func listsEverySeedIDOnce() {
+        let ids = AppCategorySeeds.appSeeds.flatMap { $0.ids.map(AppCategoryRegistry.normalizeAppID) }
+        #expect(Set(ids).count == ids.count, "duplicate seed ids")
+        for seed in AppCategorySeeds.appSeeds {
+            for id in seed.ids { #expect(AppCategoryRegistry.seededCategory(for: id) == seed.category, "\(id)") }
+        }
     }
 
     @Test func seedsCoverEveryCategoryButOther() {

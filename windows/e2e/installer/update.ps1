@@ -77,6 +77,11 @@ try {
   Say "running after the update: $([bool]$running)"
   if (-not $running) { throw 'the app did not start again after the update' }
 
+  $updateLog = Join-Path $env:APPDATA 'Useful Voice\update.log'
+  $installLine = if (Test-Path $updateLog) { Get-Content $updateLog -Raw } else { '' }
+  Say "update.log: $installLine"
+  if ($installLine -notmatch "installer for $([regex]::Escape($version)) started, restart requested") { throw 'update.log does not record the installer starting' }
+
   $requests = Get-Content $serveLog -Raw
   if ($requests -notmatch 'GET /latest\.yml 200') { throw 'the updater never fetched latest.yml' }
   if ($requests -notmatch "GET /Useful-Voice-$([regex]::Escape($version))-x64\.exe 200") { throw 'the updater never fetched the installer' }
@@ -85,4 +90,6 @@ try {
   Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
   Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue | Stop-Process -Force
   if (Test-Path $diagnostics) { Copy-Item $diagnostics (Join-Path $Out 'diagnostics.log') }
+  $updateLog = Join-Path $env:APPDATA 'Useful Voice\update.log'
+  if (Test-Path $updateLog) { Copy-Item $updateLog (Join-Path $Out 'update.log') }
 }

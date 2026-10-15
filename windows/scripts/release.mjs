@@ -16,7 +16,7 @@
 // Run after `npx electron-builder --win --publish never` (CI's release-windows workflow
 // does both). It refuses, and writes nothing, when:
 //   - the version is not plain semver, or the base URL is not HTTPS (127.0.0.1 is allowed
-//     for the CI install test)
+//     for the CI install test, into its own --publish folder only)
 //   - the installer, its blockmap, the portable exe or latest.yml is missing
 //   - latest.yml names another version, another file, another hash or size than the
 //     installer on disk (an updater pointed at the wrong file fails on every machine)
@@ -60,8 +60,8 @@ if (!(baseUrl.startsWith('https://') || baseUrl.startsWith('http://127.0.0.1:'))
   fail(`base URL must be HTTPS: ${baseUrl}`);
 }
 // A loopback set is for tests only: it must never land where the real set goes.
-if (baseUrl.startsWith('http://') && values.publish === undefined) {
-  fail('a 127.0.0.1 base URL needs an explicit --publish folder');
+if (baseUrl.startsWith('http://') && (values.publish === undefined || publish === path.join(out, 'publish'))) {
+  fail('a 127.0.0.1 base URL needs its own --publish folder, not release/publish');
 }
 
 // electron-builder's names (package.json `artifactName`), and the names GitHub keeps.

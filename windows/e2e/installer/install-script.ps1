@@ -63,9 +63,12 @@ function Invoke-OneLiner([string]$shell) {
   if ($shell -eq 'powershell.exe') {
     $env:PSModulePath = "$env:USERPROFILE\Documents\WindowsPowerShell\Modules;$env:ProgramFiles\WindowsPowerShell\Modules;$env:SystemRoot\system32\WindowsPowerShell\v1.0\Modules"
   }
-  $proc = Start-Process -FilePath $shell -ArgumentList @('-NoProfile', '-NonInteractive', '-Command', "irm $Base/install.ps1 | iex") `
-    -RedirectStandardOutput $outFile -RedirectStandardError "$outFile.err" -PassThru -NoNewWindow
-  $env:PSModulePath = $savedModulePath
+  try {
+    $proc = Start-Process -FilePath $shell -ArgumentList @('-NoProfile', '-NonInteractive', '-Command', "irm $Base/install.ps1 | iex") `
+      -RedirectStandardOutput $outFile -RedirectStandardError "$outFile.err" -PassThru -NoNewWindow
+  } finally {
+    $env:PSModulePath = $savedModulePath
+  }
   if (-not $proc.WaitForExit(600000)) { Stop-Process -Id $proc.Id -Force; throw "$shell one-liner did not finish within 10 minutes" }
   $text = (Get-Content $outFile -Raw) + (Get-Content "$outFile.err" -Raw)
   [pscustomobject]@{ ExitCode = $proc.ExitCode; Output = $text }

@@ -90,7 +90,9 @@ the newest release of `wasimjalali/useful-voice-releases` a minute after launch 
 12 hours, downloads the installer in the background, checks its SHA-512 and installs it
 silently when the app quits, or at once from the tray's "Restart to update". The portable exe,
 development runs, `release/win-unpacked` (no uninstaller beside the exe) and `--e2e` runs never
-check. "Restart to update" waits while a dictation is running or held for retry. Log lines go to `diagnostics.log` under
+check. "Restart to update" is greyed out while a dictation is running or held for retry; the
+update still installs on the next Quit. Each install attempt is appended to `update.log` beside
+`diagnostics.log`, so it survives the restart. Log lines go to `diagnostics.log` under
 `[update]`.
 
 ### Code signing

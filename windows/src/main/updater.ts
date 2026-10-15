@@ -21,6 +21,12 @@ import electronUpdater from 'electron-updater';
 const FIRST_CHECK_DELAY_MS = 60_000;
 /** Then twice a day: the app sits in the tray for weeks. */
 const CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
+/**
+ * The installer is spawned asynchronously, so a failure to start (a quarantined or missing
+ * file, a refused elevation) arrives as an 'error' event after `install` has returned true.
+ * "Restart to update" waits this long for one before it lets the app exit.
+ */
+const INSTALL_ERROR_WAIT_MS = 1500;
 
 export interface UpdaterOptions {
   log: (message: string) => void;
@@ -48,6 +54,8 @@ export function updatesDisabledReason(input: {
 
 export class Updater {
   private readyVersion: string | null = null;
+  private downloadedFile: string | null = null;
+  private lastErrorAt = 0;
   private timer: NodeJS.Timeout | null = null;
   private checking = false;
 
@@ -73,7 +81,11 @@ export class Updater {
     // The library's own log lines, minus debug, so a failed update is diagnosable
     // from Settings. They carry versions, URLs and file paths, never user data.
     updater.logger = {
-      info: (message?: unknown) => this.options.log(String(message)),
+      // Minus the random ID the library writes to <userData>/.updaterId: it never leaves the
+      // machine (see requestHeaders below), and diagnostics.log may be shared in a bug report.
+      info: (message?: unknown) => {
+        if (!String(message).startsWith('Generated new staging user ID')) this.options.log(String(message));
+      },
       warn: (message?: unknown) => this.options.log(`warn: ${String(message)}`),
       error: (message?: unknown) => this.options.log(`error: ${String(message)}`),
       debug: () => undefined,
@@ -88,9 +100,13 @@ export class Updater {
     updater.requestHeaders = { 'x-user-staging-id': '00000000-0000-0000-0000-000000000000' };
     updater.on('update-downloaded', (info) => {
       this.readyVersion = info.version;
+      this.downloadedFile = info.downloadedFile;
       this.options.onReady(info.version);
     });
-    updater.on('error', (error) => this.options.log(`error: ${error.message}`));
+    updater.on('error', (error) => {
+      this.lastErrorAt = Date.now();
+      this.options.log(`error: ${error.message}`);
+    });
     const check = (): void => {
       if (this.checking || this.readyVersion) return;
       this.checking = true;
@@ -110,18 +126,31 @@ export class Updater {
 
   /**
    * Run the downloaded installer silently, if there is one. Called just before the app
-   * exits; the installer waits for this process to end. Returns whether it started.
+   * exits; the installer waits for this process to end. Returns whether it started, as far
+   * as can be known: with `relaunch` (the person is waiting for the app to come back) it
+   * also waits briefly for a late spawn failure.
    */
-  installOnExit(relaunch: boolean): boolean {
+  async installOnExit(relaunch: boolean): Promise<boolean> {
     if (!this.readyVersion) return false;
     if (this.timer) clearInterval(this.timer);
+    if (!this.downloadedFile || !existsSync(this.downloadedFile)) {
+      this.options.log('install skipped: the downloaded installer is gone');
+      return false;
+    }
     const updater = electronUpdater.autoUpdater;
     if (!(updater instanceof electronUpdater.BaseUpdater)) return false;
+    const startedAt = Date.now();
+    let started = false;
     try {
-      return updater.install(true, relaunch);
+      started = updater.install(true, relaunch);
     } catch (error) {
       this.options.log(`install failed: ${(error as Error).message}`);
       return false;
     }
+    if (started && relaunch) {
+      await new Promise((resolve) => setTimeout(resolve, INSTALL_ERROR_WAIT_MS));
+      if (this.lastErrorAt >= startedAt) return false;
+    }
+    return started;
   }
 }

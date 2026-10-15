@@ -955,11 +955,15 @@ class UsefulVoiceApp {
       // update is handed to its installer here, on every quit.
       const restart = options.restartToUpdate === true;
       const updateReady = this.updater?.ready;
-      const installing = this.updater?.installOnExit(restart) ?? false;
+      const installing = (await this.updater?.installOnExit(restart)) ?? false;
       if (updateReady) {
-        // Written synchronously: the diagnostics flush above has run, and nothing async survives `app.exit`.
+        // Its own file, appended synchronously: diagnostics.log is rewritten by the next
+        // launch, which is seconds away on both paths, and nothing async survives `app.exit`.
         try {
-          appendFileSync(this.diagnostics.path, `${new Date().toISOString()} [update] installer for ${updateReady} ${installing ? 'started' : 'did not start'}\n`);
+          appendFileSync(
+            path.join(app.getPath('userData'), 'update.log'),
+            `${new Date().toISOString()} installer for ${updateReady} ${installing ? 'started' : 'did not start'}${restart ? ', restart requested' : ''}\n`,
+          );
         } catch {
           // The log is a diagnostic aid only.
         }

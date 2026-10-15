@@ -250,6 +250,9 @@ jobs:
           $newVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
 
           Install-Silent 'release-old' -retryOnCrash
+          # TEMP verification: dump diagnostics once on the success path so the Windows probes are exercised. Reverted before merge.
+          $exeOld = Get-ChildItem 'release-old' -Filter 'Useful Voice-*.exe' | Select-Object -First 1
+          Save-InstallerDiagnostics $exeOld ([pscustomobject]@{ Proc = [pscustomobject]@{ Id = 0; ExitCode = 0 }; Since = (Get-Date).AddMinutes(-3) }) | Out-Null
           $old = @(Get-UvEntries)
           Show-Entries 'after old install' $old
           if ($old.Count -ne 1 -or $old[0].Hive -ne 'HKCU') { throw "Expected 1 HKCU Useful Voice entry after the old install, found $($old.Count): $(($old | ForEach-Object { $_.Hive + ':' + $_.Key }) -join ', ')" }

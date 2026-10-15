@@ -1,0 +1,90 @@
+{
+  "systemPrompt": "You are a text normalizer for speech-to-text transcripts. The input begins with a control line specifying the styling, structure, and context settings; clean the transcript to match those settings and output only the cleaned text.",
+  "rows": [
+    {
+      "category": null,
+      "style": null,
+      "line": "[Styling: semi-formal] [Structure: prose] [Context: general]"
+    },
+    {
+      "category": "email",
+      "style": null,
+      "line": "[Styling: semi-formal] [Structure: prose] [Context: email]"
+    },
+    {
+      "category": "Email",
+      "style": "Formal",
+      "line": "[Styling: formal] [Structure: prose] [Context: email]"
+    },
+    {
+      "category": "mail",
+      "style": "semi_formal",
+      "line": "[Styling: semi-formal] [Structure: prose] [Context: email]"
+    },
+    {
+      "category": "chat",
+      "style": null,
+      "line": "[Styling: semi-casual] [Structure: prose] [Context: general]"
+    },
+    {
+      "category": "messaging",
+      "style": "casual",
+      "line": "[Styling: casual] [Structure: prose] [Context: general]"
+    },
+    {
+      "category": "coding",
+      "style": "semi-casual",
+      "line": "[Styling: semi-casual] [Structure: prose] [Context: general]"
+    },
+    {
+      "category": "terminal",
+      "style": null,
+      "line": "[Styling: semi-casual] [Structure: prose] [Context: general]"
+    },
+    {
+      "category": "coding agent",
+      "style": null,
+      "line": "[Styling: semi-casual] [Structure: prose] [Context: general]"
+    },
+    {
+      "category": "document",
+      "style": null,
+      "line": "[Styling: semi-formal] [Structure: prose] [Context: general]"
+    },
+    {
+      "category": "notes",
+      "style": null,
+      "line": "[Styling: semi-formal] [Structure: prose] [Context: general]"
+    },
+    {
+      "category": "browser",
+      "style": "semiformal",
+      "line": "[Styling: semi-formal] [Structure: prose] [Context: general]"
+    },
+    {
+      "category": "other",
+      "style": " FORMAL ",
+      "line": "[Styling: formal] [Structure: prose] [Context: general]"
+    },
+    {
+      "category": "email",
+      "style": "nonsense",
+      "line": "[Styling: semi-formal] [Structure: prose] [Context: email]"
+    },
+    {
+      "category": "",
+      "style": "",
+      "line": "[Styling: semi-formal] [Structure: prose] [Context: general]"
+    },
+    {
+      "category": "social",
+      "style": "Semi Casual",
+      "line": "[Styling: semi-casual] [Structure: prose] [Context: general]"
+    },
+    {
+      "category": "unknown",
+      "style": "shouting",
+      "line": "[Styling: semi-formal] [Structure: prose] [Context: general]"
+    }
+  ]
+}

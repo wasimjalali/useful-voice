@@ -1,0 +1,269 @@
+[
+  {
+    "name": "identical text is accepted",
+    "rulesText": "Thanks for the update. I will review it tonight.",
+    "output": "Thanks for the update. I will review it tonight.",
+    "verdict": "accept",
+    "text": "Thanks for the update. I will review it tonight."
+  },
+  {
+    "name": "surrounding whitespace is trimmed",
+    "rulesText": "Thanks for the update.",
+    "output": "  Thanks for the update.\n",
+    "verdict": "accept",
+    "text": "Thanks for the update."
+  },
+  {
+    "name": "case and punctuation changes are accepted",
+    "rulesText": "so we should ship it on friday",
+    "output": "So we should ship it on Friday.",
+    "verdict": "accept",
+    "text": "So we should ship it on Friday."
+  },
+  {
+    "name": "empty output for text with words",
+    "rulesText": "Send the report by Friday.",
+    "output": "",
+    "verdict": "empty"
+  },
+  {
+    "name": "whitespace output for text with words",
+    "rulesText": "Send the report by Friday.",
+    "output": " \n ",
+    "verdict": "empty"
+  },
+  {
+    "name": "empty output for empty input",
+    "rulesText": "",
+    "output": "",
+    "verdict": "accept",
+    "text": ""
+  },
+  {
+    "name": "output for empty input",
+    "rulesText": "",
+    "output": "Hello there",
+    "verdict": "addedContent"
+  },
+  {
+    "name": "think tag",
+    "rulesText": "Send the report by Friday.",
+    "output": "<think>\n\n</think>\n\nSend the report by Friday.",
+    "verdict": "reasoning"
+  },
+  {
+    "name": "closing think tag only",
+    "rulesText": "Send the report by Friday.",
+    "output": "</think> Send the report by Friday.",
+    "verdict": "reasoning"
+  },
+  {
+    "name": "length blow up",
+    "rulesText": "Send the report.",
+    "output": "Send the report. I have sent the report to everyone on the team and added a friendly note at the end of it.",
+    "verdict": "tooLong"
+  },
+  {
+    "name": "short text length slack",
+    "rulesText": "Hi.",
+    "output": "Hi there.",
+    "verdict": "accept",
+    "text": "Hi there."
+  },
+  {
+    "name": "dropped sentence",
+    "rulesText": "The build failed on the staging server. The logs show a timeout in the database layer. We should restart it tomorrow.",
+    "output": "The build failed on the staging server.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "dropped single word in short text",
+    "rulesText": "Ship the release candidate tonight.",
+    "output": "Ship the release tonight.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "one dropped word in a long text is allowed",
+    "rulesText": "The report covers the third quarter revenue, the staffing plan, the new office lease and the hiring forecast for next year.",
+    "output": "The report covers the third quarter revenue, the staffing plan, the new office lease and the hiring forecast.",
+    "verdict": "accept",
+    "text": "The report covers the third quarter revenue, the staffing plan, the new office lease and the hiring forecast."
+  },
+  {
+    "name": "added word",
+    "rulesText": "Send the report by Friday.",
+    "output": "Send the final report by Friday.",
+    "verdict": "addedContent"
+  },
+  {
+    "name": "added sentence",
+    "rulesText": "Send the report by Friday.",
+    "output": "Send the report by Friday. Let me know if you have questions.",
+    "verdict": "tooLong"
+  },
+  {
+    "name": "replaced word",
+    "rulesText": "Please review the pull request.",
+    "output": "Please inspect the pull request.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "gonna expansion is rejected",
+    "rulesText": "I'm gonna send it tomorrow morning.",
+    "output": "I'm going to send it tomorrow morning.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "self correction drops the first value",
+    "rulesText": "Let's ship it Thursday, no, Friday.",
+    "output": "Let's ship it Friday.",
+    "verdict": "accept",
+    "text": "Let's ship it Friday."
+  },
+  {
+    "name": "self correction with wait",
+    "rulesText": "Meet at Monday no wait Tuesday at the cafe.",
+    "output": "Meet at Tuesday at the cafe.",
+    "verdict": "accept",
+    "text": "Meet at Tuesday at the cafe."
+  },
+  {
+    "name": "self correction cue words may be dropped",
+    "rulesText": "Send it to Bob, sorry, to Alice.",
+    "output": "Send it to Alice.",
+    "verdict": "accept",
+    "text": "Send it to Alice."
+  },
+  {
+    "name": "i mean correction",
+    "rulesText": "The meeting is at three, I mean four.",
+    "output": "The meeting is at 4.",
+    "verdict": "accept",
+    "text": "The meeting is at 4."
+  },
+  {
+    "name": "no without commas is not a cue",
+    "rulesText": "There was no time to review the second proposal.",
+    "output": "There was time to review the second proposal.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "self correction cannot drop everything",
+    "rulesText": "Let's ship it Thursday, no, Friday.",
+    "output": "Okay.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "spelled numbers become digits",
+    "rulesText": "The invoice is two thousand five hundred dollars.",
+    "output": "The invoice is $2,500.",
+    "verdict": "accept",
+    "text": "The invoice is $2,500."
+  },
+  {
+    "name": "digits become words are fine",
+    "rulesText": "We have 3 open tickets.",
+    "output": "We have three open tickets.",
+    "verdict": "accept",
+    "text": "We have three open tickets."
+  },
+  {
+    "name": "lost number",
+    "rulesText": "We have three open tickets for the release.",
+    "output": "We have open tickets for the release.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "invented number",
+    "rulesText": "We have open tickets for the release.",
+    "output": "We have 12 open tickets for the release.",
+    "verdict": "addedContent"
+  },
+  {
+    "name": "date formatting",
+    "rulesText": "The launch is on march third twenty twenty six.",
+    "output": "The launch is on March 3, 2026.",
+    "verdict": "accept",
+    "text": "The launch is on March 3, 2026."
+  },
+  {
+    "name": "email address",
+    "rulesText": "Send it to john at example dot com please.",
+    "output": "Send it to john@example.com please.",
+    "verdict": "accept",
+    "text": "Send it to john@example.com please."
+  },
+  {
+    "name": "email address dropped user",
+    "rulesText": "Send it to john at example dot com please.",
+    "output": "Send it to example.com please.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "file path spoken",
+    "rulesText": "Open src slash app dot ts and fix the parser.",
+    "output": "Open src/app.ts and fix the parser.",
+    "verdict": "accept",
+    "text": "Open src/app.ts and fix the parser."
+  },
+  {
+    "name": "contraction without apostrophe",
+    "rulesText": "i dont think that is right",
+    "output": "I don't think that is right.",
+    "verdict": "accept",
+    "text": "I don't think that is right."
+  },
+  {
+    "name": "bulleted list of the same words",
+    "rulesText": "pack sunscreen and a first aid kit and chargers",
+    "output": "Pack:\n- Sunscreen\n- A first aid kit\n- Chargers",
+    "verdict": "accept",
+    "text": "Pack:\n- Sunscreen\n- A first aid kit\n- Chargers"
+  },
+  {
+    "name": "email layout adds no words",
+    "rulesText": "hey sarah just wanted to follow up thanks john",
+    "output": "Hey Sarah,\n\nJust wanted to follow up.\n\nThanks,\nJohn",
+    "verdict": "accept",
+    "text": "Hey Sarah,\n\nJust wanted to follow up.\n\nThanks,\nJohn"
+  },
+  {
+    "name": "filler words in the input may go",
+    "rulesText": "so like you know I think we should go",
+    "output": "So I think we should go.",
+    "verdict": "accept",
+    "text": "So I think we should go."
+  },
+  {
+    "name": "repeated word collapsing",
+    "rulesText": "We are going going going to ship it.",
+    "output": "We are going to ship it.",
+    "verdict": "accept",
+    "text": "We are going to ship it."
+  },
+  {
+    "name": "translation is rejected",
+    "rulesText": "Please send the report tomorrow.",
+    "output": "Bitte senden Sie den Bericht morgen.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "answering a question is rejected",
+    "rulesText": "What is the capital of France?",
+    "output": "The capital of France is Paris.",
+    "verdict": "addedContent"
+  },
+  {
+    "name": "code identifier kept",
+    "rulesText": "Rename fooBar to bazQux in the config.",
+    "output": "Rename fooBar to bazQux in the config.",
+    "verdict": "accept",
+    "text": "Rename fooBar to bazQux in the config."
+  },
+  {
+    "name": "code identifier changed",
+    "rulesText": "Rename fooBar to bazQux in the config.",
+    "output": "Rename foo bar to baz qux in the config.",
+    "verdict": "droppedContent"
+  }
+]

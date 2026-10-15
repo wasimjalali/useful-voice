@@ -1,0 +1,417 @@
+[
+  {
+    "name": "filler mid sentence",
+    "input": "so um I need uh to go",
+    "expected": "so I need to go"
+  },
+  {
+    "name": "filler with commas keeps one comma",
+    "input": "Well, um, I think so.",
+    "expected": "Well, I think so."
+  },
+  {
+    "name": "filler bracketed by commas after a determiner drops both",
+    "input": "We went to the, um, store.",
+    "expected": "We went to the store."
+  },
+  {
+    "name": "filler after preposition drops comma",
+    "input": "I talked to, uh, Maria about it.",
+    "expected": "I talked to Maria about it."
+  },
+  {
+    "name": "filler after and drops comma",
+    "input": "We shipped it and, um, then left.",
+    "expected": "We shipped it and then left."
+  },
+  {
+    "name": "filler with trailing comma only",
+    "input": "We should, um, ship it.",
+    "expected": "We should, ship it."
+  },
+  {
+    "name": "sentence-initial capital filler hands capital over",
+    "input": "Um, so we should go.",
+    "expected": "So we should go."
+  },
+  {
+    "name": "sentence-initial capital filler no comma",
+    "input": "Uh so we should go.",
+    "expected": "So we should go."
+  },
+  {
+    "name": "sentence-initial lowercase filler hands nothing over",
+    "input": "um so we should go.",
+    "expected": "so we should go."
+  },
+  {
+    "name": "capital moves after a sentence end",
+    "input": "That works. Um, let's ship it.",
+    "expected": "That works. Let's ship it."
+  },
+  {
+    "name": "capital moves after a question",
+    "input": "Can you check? Er, the build is red.",
+    "expected": "Can you check? The build is red."
+  },
+  {
+    "name": "capital moves after a newline",
+    "input": "First line.\nUm, second line.",
+    "expected": "First line.\nSecond line."
+  },
+  {
+    "name": "newline is kept when the filler starts a line",
+    "input": "first line\num second line",
+    "expected": "first line\nsecond line"
+  },
+  {
+    "name": "two fillers in a row",
+    "input": "Um, uh, so I think we should go.",
+    "expected": "So I think we should go."
+  },
+  {
+    "name": "capitalised then lowercase filler",
+    "input": "Uh, um we should go.",
+    "expected": "We should go."
+  },
+  {
+    "name": "capital not moved onto a mixed-case word",
+    "input": "Um, iPhone support is missing.",
+    "expected": "iPhone support is missing."
+  },
+  {
+    "name": "capital not moved onto a file name",
+    "input": "Um, app.ts is the entry.",
+    "expected": "app.ts is the entry."
+  },
+  {
+    "name": "capital not moved onto a number",
+    "input": "Um, 3d printing is fun.",
+    "expected": "3d printing is fun."
+  },
+  {
+    "name": "capital moved onto a plain lowercase word",
+    "input": "Um, npm install fails.",
+    "expected": "Npm install fails."
+  },
+  {
+    "name": "capital moved onto a contraction",
+    "input": "Um, don't do that.",
+    "expected": "Don't do that."
+  },
+  {
+    "name": "capital not moved onto a quoted word",
+    "input": "Um, \"hello\" is a greeting.",
+    "expected": "\"hello\" is a greeting."
+  },
+  {
+    "name": "capitalised filler mid sentence after a comma hands nothing over",
+    "input": "Well, Um, so we left.",
+    "expected": "Well, so we left."
+  },
+  {
+    "name": "filler at the end with no punctuation",
+    "input": "I went home um",
+    "expected": "I went home"
+  },
+  {
+    "name": "filler at the end after a comma",
+    "input": "I went home, um",
+    "expected": "I went home"
+  },
+  {
+    "name": "filler at the end with a full stop",
+    "input": "I went home, um.",
+    "expected": "I went home."
+  },
+  {
+    "name": "filler full stop after a word",
+    "input": "I went home um.",
+    "expected": "I went home."
+  },
+  {
+    "name": "filler full stop after a sentence end is just removed",
+    "input": "I went home. Um.",
+    "expected": "I went home."
+  },
+  {
+    "name": "filler full stop mid text hands its stop back",
+    "input": "I went, um. Then we left.",
+    "expected": "I went. Then we left."
+  },
+  {
+    "name": "filler full stop first token",
+    "input": "Um. So we left.",
+    "expected": "So we left."
+  },
+  {
+    "name": "filler ellipsis at the end",
+    "input": "I don't know... hmm...",
+    "expected": "I don't know..."
+  },
+  {
+    "name": "filler ellipsis mid sentence",
+    "input": "Okay. Um... so then we left.",
+    "expected": "Okay. So then we left."
+  },
+  {
+    "name": "filler unicode ellipsis mid sentence",
+    "input": "Okay. Um… so then we left.",
+    "expected": "Okay. So then we left."
+  },
+  {
+    "name": "filler only",
+    "input": "Um.",
+    "expected": ""
+  },
+  {
+    "name": "fillers only",
+    "input": "Um, uh, hmm.",
+    "expected": ""
+  },
+  {
+    "name": "hmm is a filler",
+    "input": "Hmm, that's odd.",
+    "expected": "That's odd."
+  },
+  {
+    "name": "erm and er",
+    "input": "Erm, the thing is, er, broken.",
+    "expected": "The thing is broken."
+  },
+  {
+    "name": "unlisted spellings stay",
+    "input": "Ummm no wait. Uhh yes. Umm okay.",
+    "expected": "Ummm no wait. Yes. Okay."
+  },
+  {
+    "name": "uhm and hmmm",
+    "input": "Uhm so hmmm okay",
+    "expected": "So okay"
+  },
+  {
+    "name": "all caps filler untouched",
+    "input": "UM the ER is open. HMM.",
+    "expected": "UM the ER is open. HMM."
+  },
+  {
+    "name": "hyphenated filler untouched",
+    "input": "Uh-huh, that works. Uh-oh.",
+    "expected": "Uh-huh, that works. Uh-oh."
+  },
+  {
+    "name": "file name filler untouched",
+    "input": "Open um.txt and er.py.",
+    "expected": "Open um.txt and er.py."
+  },
+  {
+    "name": "bracketed filler untouched",
+    "input": "He said (um) and left.",
+    "expected": "He said (um) and left."
+  },
+  {
+    "name": "filler question mark untouched",
+    "input": "Hmm? What did you say?",
+    "expected": "Hmm? What did you say?"
+  },
+  {
+    "name": "filler exclamation untouched",
+    "input": "Um! That hurt.",
+    "expected": "Um! That hurt."
+  },
+  {
+    "name": "filler followed by a colon untouched",
+    "input": "Er: a name.",
+    "expected": "Er: a name."
+  },
+  {
+    "name": "like you know I mean stay",
+    "input": "It was, like, you know, I mean, sort of fine.",
+    "expected": "It was, like, you know, I mean, sort of fine."
+  },
+  {
+    "name": "ah and oh stay",
+    "input": "Ah, I see. Oh well.",
+    "expected": "Ah, I see. Oh well."
+  },
+  {
+    "name": "filler after quote end",
+    "input": "He said \"stop.\" Um, then he left.",
+    "expected": "He said \"stop.\" Then he left."
+  },
+  {
+    "name": "filler in the middle of a long sentence",
+    "input": "The report, uh, covers the third quarter and, um, the forecast for the next two.",
+    "expected": "The report, covers the third quarter and the forecast for the next two."
+  },
+  {
+    "name": "triple I",
+    "input": "I I I think the the plan is fine.",
+    "expected": "I think the plan is fine."
+  },
+  {
+    "name": "double function word",
+    "input": "We need to to ship the the build.",
+    "expected": "We need to ship the build."
+  },
+  {
+    "name": "double the at sentence start keeps capital",
+    "input": "The the plan is fine.",
+    "expected": "The plan is fine."
+  },
+  {
+    "name": "double I with comma",
+    "input": "I, I think so.",
+    "expected": "I think so."
+  },
+  {
+    "name": "triple with commas",
+    "input": "I, I, I think so.",
+    "expected": "I think so."
+  },
+  {
+    "name": "double contraction",
+    "input": "I'm I'm sure.",
+    "expected": "I'm sure."
+  },
+  {
+    "name": "double typographic apostrophe",
+    "input": "I’m I’m sure.",
+    "expected": "I’m sure."
+  },
+  {
+    "name": "had had stays",
+    "input": "He had had enough.",
+    "expected": "He had had enough."
+  },
+  {
+    "name": "that that stays",
+    "input": "I know that that is true.",
+    "expected": "I know that that is true."
+  },
+  {
+    "name": "no no stays",
+    "input": "No no, that is wrong.",
+    "expected": "No no, that is wrong."
+  },
+  {
+    "name": "is is stays",
+    "input": "What it is is clear.",
+    "expected": "What it is is clear."
+  },
+  {
+    "name": "no no no stays",
+    "input": "No no no, stop.",
+    "expected": "No no no, stop."
+  },
+  {
+    "name": "very very very stays",
+    "input": "It was very very very good.",
+    "expected": "It was very very very good."
+  },
+  {
+    "name": "triple content word collapses",
+    "input": "It is going going going to rain.",
+    "expected": "It is going to rain."
+  },
+  {
+    "name": "mixed case emphasis stays",
+    "input": "No NO no NO no way",
+    "expected": "No NO no NO no way"
+  },
+  {
+    "name": "double with full stop between stays",
+    "input": "Is it the. The end?",
+    "expected": "Is it the. The end?"
+  },
+  {
+    "name": "quote lead collapses on first",
+    "input": "\"The the plan\" is fine.",
+    "expected": "\"The plan\" is fine."
+  },
+  {
+    "name": "number repeats stay",
+    "input": "Call 1 1 1 now.",
+    "expected": "Call 1 1 1 now."
+  },
+  {
+    "name": "hyphen words stay",
+    "input": "A well-known well-known fact.",
+    "expected": "A well-known well-known fact."
+  },
+  {
+    "name": "trail punctuation moves to the kept word",
+    "input": "I think it is the the.",
+    "expected": "I think it is the."
+  },
+  {
+    "name": "stutter after filler removed",
+    "input": "I um I think we should go.",
+    "expected": "I think we should go."
+  },
+  {
+    "name": "stutter around a filler with commas",
+    "input": "I, um, I think we should go.",
+    "expected": "I think we should go."
+  },
+  {
+    "name": "unicode letters collapse",
+    "input": "Café café café is open.",
+    "expected": "Café is open."
+  },
+  {
+    "name": "stutter keeps first token spacing",
+    "input": "a  and and b",
+    "expected": "a  and b"
+  },
+  {
+    "name": "clean sentence",
+    "input": "Thanks for the update. I will review it tonight.",
+    "expected": "Thanks for the update. I will review it tonight."
+  },
+  {
+    "name": "empty",
+    "input": "",
+    "expected": ""
+  },
+  {
+    "name": "whitespace only",
+    "input": "   \n",
+    "expected": "   \n"
+  },
+  {
+    "name": "leading and trailing space kept",
+    "input": "  hello world \n",
+    "expected": "  hello world \n"
+  },
+  {
+    "name": "double spaces kept",
+    "input": "hello  world",
+    "expected": "hello  world"
+  },
+  {
+    "name": "tabs and newlines kept",
+    "input": "line one\n\nline two\tend",
+    "expected": "line one\n\nline two\tend"
+  },
+  {
+    "name": "filler leaves the other spacing alone",
+    "input": "alpha  um  beta",
+    "expected": "alpha  beta"
+  },
+  {
+    "name": "crlf newline carried",
+    "input": "done.\r\nUm, next",
+    "expected": "done.\r\nNext"
+  },
+  {
+    "name": "email and url untouched",
+    "input": "Write to sam@example.com or see https://example.com/a?b=1.",
+    "expected": "Write to sam@example.com or see https://example.com/a?b=1."
+  },
+  {
+    "name": "code identifiers untouched",
+    "input": "Rename fooBar to foo_bar in src/app.ts.",
+    "expected": "Rename fooBar to foo_bar in src/app.ts."
+  }
+]

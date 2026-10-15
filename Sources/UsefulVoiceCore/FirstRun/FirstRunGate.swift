@@ -42,6 +42,14 @@ public enum FirstRunGate {
         return .show
     }
 
+    /// Setup is done: Done, Finish, "Set up later", or a launch that found
+    /// everything in place. Clears the recheck too, so the flow never comes back
+    /// for the rename and the window banners take over for a missing grant.
+    public static func recordCompleted(in defaults: UserDefaults) {
+        defaults.set(true, forKey: completedKey)
+        defaults.removeObject(forKey: recheckGrantsKey)
+    }
+
     /// Whether the app has a way to dictate without any further setup: a Deepgram
     /// key is stored (presence only, so a key that cannot be read right now still
     /// counts) or a local model file is usable. Never reads a cache, so a slow or

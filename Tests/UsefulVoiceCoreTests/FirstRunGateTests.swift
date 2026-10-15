@@ -77,6 +77,36 @@ struct FirstRunGateTests {
         #expect(FirstRunGate.recheckGrantsKey == "uv.firstRunRecheckGrants")
     }
 
+    /// Done, Finish, "Set up later" and a silent mark all go through this. If the
+    /// recheck survived it, the flow would come back on the next launch.
+    @Test func completingSetupClearsTheRecheck() {
+        let suite = "first-run-gate-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: FirstRunGate.recheckGrantsKey)
+
+        FirstRunGate.recordCompleted(in: defaults)
+
+        #expect(defaults.bool(forKey: FirstRunGate.completedKey))
+        #expect(defaults.object(forKey: FirstRunGate.recheckGrantsKey) == nil)
+        // The next launch, grants still missing: a normal launch, no flow.
+        #expect(FirstRunGate.decide(
+            completed: defaults.bool(forKey: FirstRunGate.completedKey),
+            engineConfigured: true, microphoneAuthorized: false, accessibilityTrusted: false,
+            forced: false, grantsNeedRecheck: defaults.bool(forKey: FirstRunGate.recheckGrantsKey)) == .skip)
+    }
+
+    @Test func completingSetupWithoutARecheckOnlyMarksItDone() {
+        let suite = "first-run-gate-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        FirstRunGate.recordCompleted(in: defaults)
+
+        #expect(defaults.bool(forKey: FirstRunGate.completedKey))
+        #expect(defaults.object(forKey: FirstRunGate.recheckGrantsKey) == nil)
+    }
+
     @Test func upgradingUserWhoIsFullyConfiguredIsMarkedDoneSilently() {
         #expect(decide(engine: true, mic: true, ax: true) == .skipAndMarkCompleted)
     }

@@ -187,8 +187,7 @@ final class FirstRunModel: ObservableObject {
         // Accessibility-trusted, so the gate would otherwise always show setup.
         let offscreen = environment["UV_SNAPSHOT"] != nil
         if decision == .skipAndMarkCompleted, !offscreen {
-            defaults.set(true, forKey: FirstRunGate.completedKey)
-            defaults.removeObject(forKey: FirstRunGate.recheckGrantsKey)
+            FirstRunGate.recordCompleted(in: defaults)
         }
         self.active = decision == .show && (forced || !offscreen)
 
@@ -307,8 +306,7 @@ final class FirstRunModel: ObservableObject {
     /// Done or Finish: the setup counts as complete. Never written in a forced run.
     func markCompleted() {
         guard !forced else { return }
-        defaults.set(true, forKey: FirstRunGate.completedKey)
-        defaults.removeObject(forKey: FirstRunGate.recheckGrantsKey)
+        FirstRunGate.recordCompleted(in: defaults)
     }
 
     func finish() {

@@ -45,6 +45,10 @@ must carry them under exactly these names:
 | `install.ps1` | `irm .../install.ps1 \| iex` (Windows) |
 | `Useful-Voice-Windows-Setup.exe` | Download for Windows |
 
+The page and the privacy page say updates arrive in the app and that it checks GitHub for them.
+Don't flip the page until the release ships the in-app updaters (Sparkle on macOS, WAS-32; the
+Windows auto-updater, WAS-34), or change those lines in the same PR.
+
 On release day, after the first release with all four assets is public: remove
 `data-release="soon"` from `site/public/index.html`, add the DMG as `downloadUrl` in its JSON-LD (the
 comment above it has the line), run the checks, then deploy. The coming-soon checks skip themselves

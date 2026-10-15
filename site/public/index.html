@@ -127,7 +127,6 @@ h1 { max-width: 14em; margin: 0 auto; font-size: clamp(38px, 6.4vw, 88px); font-
 .tabs button:focus-visible { outline-color: var(--night-ink); outline-offset: 2px; }
 .panel { margin-top: 18px; text-align: left; }
 .panel[hidden] { display: none; }
-.panel:focus-visible { outline-color: var(--night-ink); outline-offset: 6px; border-radius: 6px; }
 .cmd-head { margin: 0; color: var(--night-ink); font-size: 15px; font-weight: 500; }
 .cmd { display: flex; align-items: center; gap: 4px; max-width: 100%; margin-top: 10px; padding: 6px 6px 6px 16px; border: 1px solid var(--cmd-bg); border-radius: 12px; background: var(--cmd-bg); }
 .cmd code { flex: 1; min-width: 0; overflow-x: auto; color: var(--cmd-ink); font-family: var(--font-mono); font-size: 13px; line-height: 1.5; white-space: nowrap; scrollbar-width: none; }
@@ -313,7 +312,7 @@ h1 { max-width: 14em; margin: 0 auto; font-size: clamp(38px, 6.4vw, 88px); font-
                   <button type="button" role="tab" id="tab-mac" aria-controls="panel-mac" aria-selected="true" tabindex="0">Mac</button>
                   <button type="button" role="tab" id="tab-windows" aria-controls="panel-windows" aria-selected="false" tabindex="-1">Windows</button>
                 </div>
-                <div class="panel" role="tabpanel" id="panel-mac" aria-labelledby="tab-mac" tabindex="0">
+                <div class="panel" role="tabpanel" id="panel-mac" aria-labelledby="tab-mac">
                   <p class="cmd-head">Install in one line</p>
                   <div class="cmd">
                     <code id="install-mac" tabindex="0"><span>$ </span>curl -fsSL https://github.com/wasimjalali/useful-voice-releases/releases/latest/download/install.sh | sh</code>
@@ -323,7 +322,7 @@ h1 { max-width: 14em; margin: 0 auto; font-size: clamp(38px, 6.4vw, 88px); font-
                   <a class="btn btn-ghost" href="https://github.com/wasimjalali/useful-voice-releases/releases/latest/download/Useful-Voice-macOS.dmg">Download for Mac</a>
                   <p class="cmd-note">The DMG needs a one-time OK in System Settings &rsaquo; Privacy &amp; Security &rsaquo; Open Anyway.</p>
                 </div>
-                <div class="panel" role="tabpanel" id="panel-windows" aria-labelledby="tab-windows" tabindex="0" hidden>
+                <div class="panel" role="tabpanel" id="panel-windows" aria-labelledby="tab-windows" hidden>
                   <p class="cmd-head">Install in one line</p>
                   <div class="cmd">
                     <code id="install-windows" tabindex="0"><span>&gt; </span>irm https://github.com/wasimjalali/useful-voice-releases/releases/latest/download/install.ps1 | iex</code>

@@ -122,7 +122,9 @@ test("no sideways scroll at 360px in either state, or on the other pages", async
 test("the release flip is complete", async () => {
   // Once data-release="soon" is gone, the JSON-LD must name the download.
   test.skip(shipsSoon, "still coming soon");
-  expect(indexHtml).toContain(`"downloadUrl":"${assets.dmg}"`);
+  const jsonLd = indexHtml.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+  expect(jsonLd, "JSON-LD block").not.toBeNull();
+  expect(JSON.parse(jsonLd[1]).downloadUrl).toBe(assets.dmg);
 });
 
 test("install links point at the release asset names", async ({ page }) => {
@@ -192,20 +194,28 @@ for (const visitor of visitors) {
 
 test("Copy puts the exact command on the clipboard", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  // Paused fake time, so the reset delays below are exact rather than racing real time.
+  await page.clock.install({ time: new Date("2026-10-16T07:59:00Z") });
   await page.goto("/");
+  await page.clock.pauseAt(new Date("2026-10-16T08:00:00Z"));
   await goLive(page);
   await page.getByRole("button", { name: "Copy the Mac install command" }).click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`curl -fsSL ${assets.macScript} | sh`);
   await expect(page.locator("#copy-status")).toHaveText("Install command copied.");
+  // A second copy 1 s later keeps its own label and message for its full 1.8 s,
+  // past the moment the first copy's reset would have fired.
+  await page.clock.runFor(1000);
   await page.getByRole("tab", { name: "Windows" }).click();
   const winButton = page.getByRole("button", { name: "Copy the Windows install command" });
   await winButton.click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`irm ${assets.winScript} | iex`);
-  // A second copy within the reset delay keeps its own label and message for the full delay.
-  await page.waitForTimeout(1200);
+  await page.clock.runFor(1200);
+  // The Mac panel is hidden now, so find its button by attribute rather than role.
+  await expect(page.locator('[data-copy="install-mac"]')).toHaveText("Copy");
   await expect(winButton).toHaveText("Copied");
   await expect(page.locator("#copy-status")).toHaveText("Install command copied.");
-  await expect(winButton).toHaveText("Copy", { timeout: 3000 });
+  await page.clock.runFor(700);
+  await expect(winButton).toHaveText("Copy");
   await expect(page.locator("#copy-status")).toHaveText("");
 });
 

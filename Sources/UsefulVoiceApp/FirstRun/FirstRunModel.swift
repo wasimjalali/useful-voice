@@ -24,11 +24,13 @@ import UsefulVoiceCore
 ///   flow opened (unless the committed model already works). Nothing switches
 ///   the engine after the flow ends, so a later Settings choice is never undone.
 /// - Microphone denied, then granted while the step is open: a one-second poll
-///   moves on by itself.
+///   moves on by itself. Never granted: "Set up later" finishes setup (here and
+///   on the Accessibility step) and the window banners take over.
 /// - Accessibility granted while the app is in the background: the same poll
 ///   runs on the main run loop in `.common` mode, and activation re-checks.
-/// - Window closed mid-flow: `completed` is only written on Done or Finish, so
-///   the flow opens again next launch. The meter stops when the window hides.
+/// - Window closed mid-flow: `completed` is only written on Done, Finish or
+///   "Set up later", so the flow opens again next launch. The meter stops when
+///   the window hides.
 /// - Practice dictation fails: the pipeline's own error text shows and Retry
 ///   re-runs the last audio.
 @MainActor
@@ -303,7 +305,8 @@ final class FirstRunModel: ObservableObject {
         enter(.welcome)
     }
 
-    /// Done or Finish: the setup counts as complete. Never written in a forced run.
+    /// Done, Finish or "Set up later": the setup counts as complete. Never written in
+    /// a forced run.
     func markCompleted() {
         guard !forced else { return }
         FirstRunGate.recordCompleted(in: defaults)

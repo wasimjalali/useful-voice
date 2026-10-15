@@ -15,7 +15,12 @@ if (!dir || !port) {
 const root = path.resolve(dir);
 
 createServer((req, res) => {
-  const name = decodeURIComponent(new URL(req.url ?? '/', 'http://127.0.0.1').pathname).replace(/^\/+/, '');
+  let name = '';
+  try {
+    name = decodeURIComponent(new URL(req.url ?? '/', 'http://127.0.0.1').pathname).replace(/^\/+/, '');
+  } catch {
+    // A malformed escape is a 404, not a crash.
+  }
   const file = path.join(root, name);
   const ok = name.length > 0 && !name.includes('/') && !name.includes('\\') && existsSync(file) && statSync(file).isFile();
   if (logFile) appendFileSync(logFile, `${new Date().toISOString()} ${req.method} /${name} ${ok ? 200 : 404}\n`);

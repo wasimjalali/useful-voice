@@ -37,9 +37,10 @@ function Get-UvEntry {
 Say "electron-updater end to end, 0.0.9 -> $version, $(Get-Date -Format o)"
 $server = Start-Process -FilePath 'node' -ArgumentList @((Join-Path $PSScriptRoot 'serve.mjs'), $Publish, $Port, $serveLog) -PassThru -NoNewWindow
 try {
-  $old = Get-ChildItem $Old -Filter '*-x64.exe' | Select-Object -First 1
-  if (-not $old) { throw "no old installer in $Old" }
-  $proc = Start-Process -FilePath $old.FullName -ArgumentList '/S' -PassThru
+  # Not $old: PowerShell names are case-insensitive, and that is the [string] parameter $Old.
+  $oldInstaller = Get-ChildItem $Old -Filter '*-x64.exe' | Select-Object -First 1
+  if (-not $oldInstaller) { throw "no old installer in $Old" }
+  $proc = Start-Process -FilePath $oldInstaller.FullName -ArgumentList '/S' -PassThru
   if (-not $proc.WaitForExit(300000) -or $proc.ExitCode -ne 0) { throw "old installer failed (exit $($proc.ExitCode))" }
   $before = Get-UvEntry
   Say "installed: $($before.Key) $($before.DisplayVersion) at $($before.InstallLocation)"

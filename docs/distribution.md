@@ -72,10 +72,11 @@ every PR and push to `main` that touches `windows/`, and proves them end to end 
 |---|---|
 | `Useful-Voice-X.Y.Z-x64.exe` | NSIS installer, per-user, no admin prompt |
 | `Useful-Voice-X.Y.Z-x64.exe.blockmap` | Lets the updater fetch only the blocks that changed |
+| `Useful-Voice-Windows-Setup.exe` | The same installer under a fixed name, for the site's `releases/latest/download/` link |
 | `Useful-Voice-X.Y.Z-portable.exe` | Portable build. It never updates itself |
 | `latest.yml` | The update feed: version, file name, SHA-512 and size of the installer |
 | `install.ps1` | The one-line installer, pinned to this installer's URL and SHA-256 |
-| `SHA256SUMS-windows.txt` | SHA-256 of the installer, the portable exe, `install.ps1` and `latest.yml` |
+| `SHA256SUMS-windows.txt` | SHA-256 of both installer names, the portable exe, `install.ps1` and `latest.yml` |
 
 `windows/scripts/release.mjs` makes this set from electron-builder's output. It renames the
 files with dashes (GitHub turns a space into a dot on upload, and `latest.yml` would then point
@@ -85,7 +86,9 @@ The tests: `install-script` serves a copy of the release on 127.0.0.1 the way Gi
 assets and runs `irm .../install.ps1 | iex`. A tampered installer is refused with nothing
 installed, the real one installs under Windows PowerShell 5.1, then again under PowerShell 7.
 `update` installs an older build (0.0.9, same code) whose feed points at that copy and checks
-it updates itself to the new version through `electron-updater` and starts again.
+it updates itself to the new version through `electron-updater` and starts again. That test
+uses electron-updater's generic provider, so the GitHub provider's lookup of the newest `v` release
+is first exercised live, once two releases exist.
 
 ### Publishing (owner only)
 

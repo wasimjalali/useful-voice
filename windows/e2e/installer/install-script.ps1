@@ -47,6 +47,8 @@ function Get-UvEntries {
 function Start-Server([string]$dir) {
   $proc = Start-Process -FilePath 'node' -ArgumentList @($serve, $dir, $Port, $serveLog) -PassThru -NoNewWindow
   for ($i = 0; $i -lt 50; $i++) {
+    # A server that died (port still held by the last one) must not pass for this one.
+    if ($proc.HasExited) { throw "the release server exited with $($proc.ExitCode)" }
     try { Invoke-WebRequest -Uri "$Base/install.ps1" -Method Head -UseBasicParsing | Out-Null; return $proc } catch { Start-Sleep -Milliseconds 200 }
   }
   throw "the release server did not start on $Base"
@@ -55,8 +57,15 @@ function Start-Server([string]$dir) {
 # Runs the one-liner in a fresh shell and returns its exit code and output.
 function Invoke-OneLiner([string]$shell) {
   $outFile = Join-Path $Out "oneliner-$shell-$([Guid]::NewGuid().ToString('N')).txt"
+  # A child Windows PowerShell inherits PowerShell 7's PSModulePath and then cannot load its
+  # own modules. A user's console starts with Windows PowerShell's default, so test with that.
+  $savedModulePath = $env:PSModulePath
+  if ($shell -eq 'powershell.exe') {
+    $env:PSModulePath = "$env:USERPROFILE\Documents\WindowsPowerShell\Modules;$env:ProgramFiles\WindowsPowerShell\Modules;$env:SystemRoot\system32\WindowsPowerShell\v1.0\Modules"
+  }
   $proc = Start-Process -FilePath $shell -ArgumentList @('-NoProfile', '-NonInteractive', '-Command', "irm $Base/install.ps1 | iex") `
     -RedirectStandardOutput $outFile -RedirectStandardError "$outFile.err" -PassThru -NoNewWindow
+  $env:PSModulePath = $savedModulePath
   if (-not $proc.WaitForExit(600000)) { Stop-Process -Id $proc.Id -Force; throw "$shell one-liner did not finish within 10 minutes" }
   $text = (Get-Content $outFile -Raw) + (Get-Content "$outFile.err" -Raw)
   [pscustomobject]@{ ExitCode = $proc.ExitCode; Output = $text }
@@ -76,7 +85,7 @@ $installerName = (Get-ChildItem $tampered -Filter 'Useful-Voice-*-x64.exe').Name
 $server = Start-Server $tampered
 try {
   $r = Invoke-OneLiner 'powershell.exe'
-} finally { Stop-Process -Id $server.Id -Force }
+} finally { Stop-Process -Id $server.Id -Force; $server.WaitForExit() }
 Say "== 1. tampered installer, Windows PowerShell 5.1: exit $($r.ExitCode)"
 Say $r.Output
 if ($r.ExitCode -eq 0) { throw 'install.ps1 exited 0 on a tampered installer' }

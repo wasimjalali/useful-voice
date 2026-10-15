@@ -4,6 +4,8 @@
 //   Useful-Voice-<v>-x64.exe            NSIS installer (what install.ps1 and the updater fetch)
 //   Useful-Voice-<v>-x64.exe.blockmap   lets electron-updater download only what changed
 //   Useful-Voice-<v>-portable.exe       portable build (no auto-update)
+//   Useful-Voice-Windows-Setup.exe      the same installer under a name that never changes, so
+//                                       the site can link releases/latest/download/<name>
 //   latest.yml                          electron-updater's feed, read from the newest release
 //   install.ps1                         the `irm ... | iex` installer, pinned to this installer's SHA-256
 //   SHA256SUMS-windows.txt              `sha256sum -c` format, for anyone checking by hand
@@ -57,6 +59,10 @@ const baseUrl = (values['base-url'] ?? `${RELEASES}/download/v${version}`).repla
 if (!(baseUrl.startsWith('https://') || baseUrl.startsWith('http://127.0.0.1:'))) {
   fail(`base URL must be HTTPS: ${baseUrl}`);
 }
+// A loopback set is for tests only: it must never land where the real set goes.
+if (baseUrl.startsWith('http://') && values.publish === undefined) {
+  fail('a 127.0.0.1 base URL needs an explicit --publish folder');
+}
 
 // electron-builder's names (package.json `artifactName`), and the names GitHub keeps.
 const built = {
@@ -68,6 +74,7 @@ const names = {
   installer: dashed(built.installer),
   blockmap: `${dashed(built.installer)}.blockmap`,
   portable: dashed(built.portable),
+  stableInstaller: 'Useful-Voice-Windows-Setup.exe',
 };
 for (const name of Object.values(names)) {
   if (!/^[A-Za-z0-9._-]+$/.test(name)) fail(`${name} has a character GitHub rewrites on upload`);
@@ -124,10 +131,11 @@ mkdirSync(publish, { recursive: true });
 copyFileSync(sources.installer, path.join(publish, names.installer));
 copyFileSync(sources.blockmap, path.join(publish, names.blockmap));
 copyFileSync(sources.portable, path.join(publish, names.portable));
+copyFileSync(sources.installer, path.join(publish, names.stableInstaller));
 copyFileSync(sources.latest, path.join(publish, 'latest.yml'));
 writeFileSync(path.join(publish, 'install.ps1'), installScript);
 
-const summed = [names.installer, names.portable, 'install.ps1', 'latest.yml'];
+const summed = [names.installer, names.stableInstaller, names.portable, 'install.ps1', 'latest.yml'];
 const sums = summed.map((name) => `${digest(path.join(publish, name), 'sha256', 'hex')}  ${name}`);
 writeFileSync(path.join(publish, 'SHA256SUMS-windows.txt'), `${sums.join('\n')}\n`);
 

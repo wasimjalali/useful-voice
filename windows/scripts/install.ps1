@@ -47,7 +47,13 @@
       Fail "the download did not complete ($($_.Exception.Message))."
     }
 
-    $got = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+    # .NET rather than Get-FileHash: a Windows PowerShell started from PowerShell 7 inherits a
+    # module path where Get-FileHash cannot load.
+    $stream = [IO.File]::OpenRead($installer)
+    try {
+      $sha = [Security.Cryptography.SHA256]::Create()
+      $got = (-join ($sha.ComputeHash($stream) | ForEach-Object { $_.ToString('x2') }))
+    } finally { $stream.Dispose() }
     if ($got -ne $Sha256) {
       Remove-Item -LiteralPath $installer -Force
       Fail "the download does not match this release (sha256 $got, expected $Sha256). Nothing was installed."

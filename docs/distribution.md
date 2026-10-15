@@ -61,3 +61,82 @@ It copies `git ls-files` only, minus the paths in `EXCLUDE` (old Sadaa audits an
 until screenshots with synthetic data are approved, and any media that could show real windows).
 
 A new file that shows real data or the owner's account belongs on `EXCLUDE` before it is committed.
+
+## Windows release
+
+The `Windows release` workflow (`.github/workflows/release-windows.yml`) builds the files on
+every PR and push to `main` that touches `windows/`, and proves them end to end on clean
+`windows-latest` runners. It never publishes.
+
+| File | What it is |
+|---|---|
+| `Useful-Voice-X.Y.Z-x64.exe` | NSIS installer, per-user, no admin prompt |
+| `Useful-Voice-X.Y.Z-x64.exe.blockmap` | Lets the updater fetch only the blocks that changed |
+| `Useful-Voice-X.Y.Z-portable.exe` | Portable build. It never updates itself |
+| `latest.yml` | The update feed: version, file name, SHA-512 and size of the installer |
+| `install.ps1` | The one-line installer, pinned to this installer's URL and SHA-256 |
+| `SHA256SUMS-windows.txt` | SHA-256 of the installer, the portable exe, `install.ps1` and `latest.yml` |
+
+`windows/scripts/release.mjs` makes this set from electron-builder's output. It renames the
+files with dashes (GitHub turns a space into a dot on upload, and `latest.yml` would then point
+at a file that doesn't exist) and refuses when `latest.yml` and the installer disagree.
+
+The tests: `install-script` serves a copy of the release on 127.0.0.1 the way GitHub serves
+assets and runs `irm .../install.ps1 | iex`. A tampered installer is refused with nothing
+installed, the real one installs under Windows PowerShell 5.1, then again under PowerShell 7.
+`update` installs an older build (0.0.9, same code) whose feed points at that copy and checks
+it updates itself to the new version through `electron-updater` and starts again.
+
+### Publishing (owner only)
+
+1. Bump `windows/package.json` `version` with the Mac version and merge to `main`.
+2. Download the release set from the `Windows release` run on that `main` commit:
+   `gh run download <run id> --repo wasimjalali/useful-voice --name useful-voice-windows-release --dir /tmp/uv-win`
+3. Check it: `cd /tmp/uv-win && sha256sum -c SHA256SUMS-windows.txt`.
+4. Attach every file to the `vX.Y.Z` release in `wasimjalali/useful-voice-releases`, next to
+   the Mac files, while it is still a draft:
+   `gh release upload vX.Y.Z /tmp/uv-win/* --repo wasimjalali/useful-voice-releases`
+5. Publish the release. Installed apps see it on their next check.
+
+Two rules keep Windows installs working:
+
+- **Every release carries the Windows files.** The updater reads `latest.yml` from the newest
+  published release, and the one-liner fetches `releases/latest/download/install.ps1`. A
+  Mac-only release would break both until the next one.
+- **Tags are `vX.Y.Z`.** The updater's GitHub provider expects the `v` prefix.
+
+The releases repo must stay public: the updater and the one-liner read it without a token.
+
+### Install commands for the site
+
+```powershell
+irm https://github.com/wasimjalali/useful-voice-releases/releases/latest/download/install.ps1 | iex
+```
+
+The installer is also on the Releases page. It is not Authenticode-signed (buying a certificate
+is the owner's call), so Windows warns about it:
+
+- **Downloaded installer.** Microsoft Defender SmartScreen says "Windows protected your PC".
+  Click **More info**, then **Run anyway**. Edge may first say the file "isn't commonly
+  downloaded": open the **...** menu on the download, then **Keep**.
+- **One-liner.** `install.ps1` checks the installer's SHA-256 against the release before it
+  runs it, so a changed file never runs. The CI report (`windows-install-script` artifact)
+  records whether a file fetched that way carries the mark of the web, which is what decides
+  whether SmartScreen shows its prompt.
+- On Windows 11 with Smart App Control turned on, Microsoft documents that unsigned apps without
+  a reputation are blocked, with no Run anyway. Signing is the only fix for those machines.
+
+Copy for the site should come from this section, and change when signing changes.
+
+### Signing later
+
+When a certificate exists: set `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` as CI secrets, then set
+`build.win.verifyUpdateCodeSignature` back to `true` in the same release (see
+`windows/README.md`, "Code signing"). Until then the update's integrity rests on the SHA-512 in
+`latest.yml`, fetched over HTTPS from the releases repo.
+
+### What the update check sends
+
+A GET for `latest.yml` (and the installer when there is one) to github.com. GitHub sees the IP
+address and the app's user agent, as it does for any download. Nothing about the user, their
+dictations or their settings is sent, and there is still no analytics.

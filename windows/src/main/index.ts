@@ -36,6 +36,7 @@ import {
 } from './theme.js';
 import { RecorderBridge, validateCapture } from './recorderBridge.js';
 import { TrayController } from './tray.js';
+import { Updater } from './updater.js';
 import { Announcer } from './announce.js';
 import {
   DictationService,
@@ -146,6 +147,7 @@ class UsefulVoiceApp {
   private settings!: SettingsStore;
   private data!: DataStore;
   private tray: TrayController | null = null;
+  private updater: Updater | null = null;
   private recorderWindow: BrowserWindow | null = null;
   private mainWindow: BrowserWindow | null = null;
   private hudWindow: BrowserWindow | null = null;
@@ -374,9 +376,19 @@ class UsefulVoiceApp {
       onCancel: () => void this.cancelDictation(),
       onSetLanguage: (code) => this.setLanguage(code),
       onSetFormatting: (enabled) => this.setFormatting(enabled),
+      onRestartToUpdate: () => void this.quit({ restartToUpdate: true }),
     });
     if (!E2E) this.tray.create();
     this.syncTray();
+    this.updater = new Updater({
+      log: (message) => this.diagnostics.log('update', message),
+      onReady: () => {
+        this.syncTray();
+        // CI's update test: install as soon as the download is verified, through the tray item's path.
+        if (process.env.UV_UPDATE_INSTALL_WHEN_READY === '1') void this.quit({ restartToUpdate: true });
+      },
+    });
+    this.updater.start(E2E);
 
     // IPC first: a hotkey problem must never stop the window from having handlers.
     this.registerIpc();
@@ -914,10 +926,11 @@ class UsefulVoiceApp {
       languagePin: this.settings.all.languagePin,
       formattingEnabled: this.settings.all.formattingEnabled,
       insertingInto: state === 'recording' ? this.recordingTarget : undefined,
+      updateReady: this.updater?.ready ?? undefined,
     });
   }
 
-  async quit(): Promise<void> {
+  async quit(options: { restartToUpdate?: boolean } = {}): Promise<void> {
     try {
       await this.service.cancel();
       // Always give the data a chance to reach disk before exiting: a debounced
@@ -928,6 +941,9 @@ class UsefulVoiceApp {
     } finally {
       globalShortcut.unregisterAll();
       this.tray?.destroy();
+      // `app.exit` skips the quit events electron-updater listens for, so a downloaded
+      // update is handed to its installer here, on every quit.
+      this.updater?.installOnExit(options.restartToUpdate === true);
       app.exit(0);
     }
   }

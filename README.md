@@ -29,7 +29,7 @@ Useful Voice is a fast, personal dictation app for macOS and Windows. Tap a hotk
 | Stays on your device | Your dictionary, notes, history, settings and, on macOS, the last 10 recordings. Your Deepgram key sits in the macOS Keychain (Windows: encrypted with DPAPI). With a local Whisper model, your audio never leaves your Mac |
 | Leaves your device | With Deepgram, each recording's audio goes to Deepgram, plus up to 400 tokens of your dictionary words, fix results and snippet triggers as keyterms. "Sounds like" forms stay on your Mac. Picking a local model downloads its weights from Hugging Face |
 | Tracking | None. No analytics, no crash reports, no ads |
-| Updates | Manual for now. The app doesn't check for updates yet |
+| Updates | Windows: the installed app asks GitHub for a newer release twice a day, downloads it and installs it when you quit or pick Restart to update in the tray. The Mac app doesn't check yet |
 
 ## Install
 

@@ -56,6 +56,14 @@
         "to": "tray"
       }
     ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "wasimjalali",
+        "repo": "useful-voice-releases",
+        "releaseType": "release"
+      }
+    ],
     "extraMetadata": {
       "main": "dist/main/index.js"
     },
@@ -79,7 +87,8 @@
       "signtoolOptions": {
         "publisherName": "Useful Build"
       },
-      "legalTrademarks": "Useful Voice"
+      "legalTrademarks": "Useful Voice",
+      "verifyUpdateCodeSignature": false
     },
     "nsis": {
       "guid": "cfa29547-fa82-5f74-b344-dfe1c5823243",
@@ -95,5 +104,8 @@
     "portable": {
       "artifactName": "${productName}-${version}-portable.${ext}"
     }
+  },
+  "dependencies": {
+    "electron-updater": "6.8.10"
   }
 }

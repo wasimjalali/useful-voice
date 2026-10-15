@@ -29,7 +29,9 @@ set to `true` (`Sources/UsefulVoiceCore/ReleaseLinks.swift` on macOS,
 voice.usefulbuild.com is the static site in `site/` (`site/public/`, deployed as the `useful-voice`
 Worker by `site/wrangler.jsonc`). It replaces `workers/public-hosts/voice` in useful-brain: the Worker
 keeps the same name, so the first deploy from here takes over the domain in place. Retire the
-useful-brain copy after that deploy.
+useful-brain copy after that deploy, in a useful-brain PR that also drops the checks for it in
+`src/lib/cf/wrangler-config.test.ts`. Until then, a `wrangler deploy` from useful-brain's copy
+would put the old page back.
 
 It ships in its coming-soon state: `data-release="soon"` on `<html>` hides the install sections.
 The install commands and buttons link to these assets on
@@ -45,12 +47,13 @@ must carry them under exactly these names:
 
 On release day, after the first release with all four assets is public: remove
 `data-release="soon"` from `site/public/index.html`, add the DMG as `downloadUrl` in its JSON-LD (the
-comment above it has the line), run the checks, then deploy.
+comment above it has the line), run the checks, then deploy. The coming-soon checks skip themselves
+once the attribute is gone, and a check fails if the `downloadUrl` is missing. From the repo root:
 
 ```sh
-cd site && npm ci && npx playwright test   # screenshots and the HTML report land in verify/site/
-npx wrangler whoami                        # must show the Karko AI account
-npx wrangler deploy --config site/wrangler.jsonc   # from the repo root
+(cd site && npm ci && npx playwright test)        # screenshots and the HTML report land in verify/site/
+npx wrangler whoami                               # must show the Karko AI account
+npx wrangler deploy --config site/wrangler.jsonc
 ```
 
 Where Playwright's own Chromium isn't installed, point it at another build with

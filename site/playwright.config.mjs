@@ -1,9 +1,10 @@
 import { defineConfig } from "@playwright/test";
+import { fileURLToPath } from "node:url";
 
 // Screenshots, the HTML report and traces go to E2E_OUT (default: the repo's gitignored
 // verify/site/). PLAYWRIGHT_CHROMIUM lets a machine with a different browser build point
 // at its own Chromium.
-const out = process.env.E2E_OUT || new URL("../verify/site/", import.meta.url).pathname;
+const out = process.env.E2E_OUT || fileURLToPath(new URL("../verify/site/", import.meta.url));
 const port = 4510;
 
 export default defineConfig({

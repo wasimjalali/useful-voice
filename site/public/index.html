@@ -32,7 +32,7 @@
   color-scheme: light;
   --surface: #f8f8f8; --paper-deep: #f0f0f0; --paper-bright: #ffffff;
   --ink: #171717; --ink-muted: #5c5c5c; --border: #ebebeb; --rule: #e0e0e0;
-  --btn-bg: #171717; --btn-ink: #fafafa;
+  --btn-bg: #171717; --btn-ink: #fafafa; --btn-shadow: rgb(23 23 23 / 0.65);
   /* The install box stays light on every section, so it has its own colors: .dark remaps --ink. */
   --cmd-bg: #fafafa; --cmd-ink: #171717; --cmd-muted: #666666; --cmd-hover: #333333;
   --night: #111111; --night-raise: #1b1b1b; --night-line: #2c2c2c; --night-ink: #f2f2f2; --night-muted: #a0a0a0;
@@ -46,7 +46,7 @@
     color-scheme: dark;
     --surface: #0c0c0c; --paper-deep: #1e1e1e; --paper-bright: #141414;
     --ink: #f2f2f2; --ink-muted: #a3a3a3; --border: #262626; --rule: #2c2c2c;
-    --btn-bg: #f2f2f2; --btn-ink: #111111;
+    --btn-bg: #f2f2f2; --btn-ink: #111111; --btn-shadow: rgb(0 0 0 / 0.9);
     --night: #141414; --sheet-edge: #262626; --close-bg: #111111;
   }
 }
@@ -68,7 +68,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
   font: 500 15px var(--font-sans); text-decoration: none; white-space: nowrap;
   transition: background-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out), transform 150ms var(--ease-out);
 }
-.btn:hover { box-shadow: 0 12px 24px -18px rgb(23 23 23 / 0.65); transform: translateY(-1px); }
+.btn:hover { box-shadow: 0 12px 24px -18px var(--btn-shadow); transform: translateY(-1px); }
 .btn:active { box-shadow: none; transform: scale(0.98); }
 .btn-light { color: var(--night); background: var(--night-ink); }
 .btn-light:hover { background: #fff; box-shadow: 0 10px 30px -14px rgb(0 0 0 / 0.8); }
@@ -310,13 +310,13 @@ h1 { max-width: 14em; margin: 0 auto; font-size: clamp(38px, 6.4vw, 88px); font-
             <div class="hero-row" data-rise style="--i:1">
               <div class="install when-live" id="install">
                 <div class="tabs" role="tablist" aria-label="Your computer">
-                  <button type="button" role="tab" id="tab-mac" aria-controls="panel-mac" aria-selected="true">Mac</button>
+                  <button type="button" role="tab" id="tab-mac" aria-controls="panel-mac" aria-selected="true" tabindex="0">Mac</button>
                   <button type="button" role="tab" id="tab-windows" aria-controls="panel-windows" aria-selected="false" tabindex="-1">Windows</button>
                 </div>
                 <div class="panel" role="tabpanel" id="panel-mac" aria-labelledby="tab-mac" tabindex="0">
                   <p class="cmd-head">Install in one line</p>
                   <div class="cmd">
-                    <code id="install-mac"><span>$ </span>curl -fsSL https://github.com/wasimjalali/useful-voice-releases/releases/latest/download/install.sh | sh</code>
+                    <code id="install-mac" tabindex="0"><span>$ </span>curl -fsSL https://github.com/wasimjalali/useful-voice-releases/releases/latest/download/install.sh | sh</code>
                     <button type="button" data-copy="install-mac" aria-label="Copy the Mac install command">Copy</button>
                   </div>
                   <p class="cmd-note">Paste it in Terminal. macOS 14 or later on Apple silicon. Updates arrive in the app.</p>
@@ -326,7 +326,7 @@ h1 { max-width: 14em; margin: 0 auto; font-size: clamp(38px, 6.4vw, 88px); font-
                 <div class="panel" role="tabpanel" id="panel-windows" aria-labelledby="tab-windows" tabindex="0" hidden>
                   <p class="cmd-head">Install in one line</p>
                   <div class="cmd">
-                    <code id="install-windows"><span>&gt; </span>irm https://github.com/wasimjalali/useful-voice-releases/releases/latest/download/install.ps1 | iex</code>
+                    <code id="install-windows" tabindex="0"><span>&gt; </span>irm https://github.com/wasimjalali/useful-voice-releases/releases/latest/download/install.ps1 | iex</code>
                     <button type="button" data-copy="install-windows" aria-label="Copy the Windows install command">Copy</button>
                   </div>
                   <p class="cmd-note">Paste it in PowerShell. Windows 10 or later, 64-bit. Updates arrive in the app.</p>
@@ -435,7 +435,7 @@ Let me know if the start date moves.</dd></div>
             </div>
             <ul class="spec">
               <li><span>Works on</span><strong>macOS 14 or later on Apple silicon. Windows 10 or later, 64-bit</strong></li>
-              <li><span>Engines</span><strong>Deepgram Nova-3 with your own key: new Deepgram accounts get $200 in free credit, no card needed. On a Mac, also Whisper large-v3-turbo or large-v3, running on your Mac</strong></li>
+              <li><span>Engines</span><strong>Deepgram Nova-3 with your own key: new Deepgram accounts get $200 in free credit, no card needed, which is 500+ hours of dictation. On a Mac, also Whisper large-v3-turbo or large-v3, running on your Mac</strong></li>
               <li><span>Languages</span><strong>Built and tested for English first. Both engines also detect and transcribe many other languages</strong></li>
               <li><span>Hotkey</span><strong>Right Command on a Mac, Ctrl+Alt+Space on Windows. Change it in Settings</strong></li>
               <li><span>Stays on your device</span><strong>Your dictionary, notes, dictation history and settings. Cleanup and formatting run locally. Your Deepgram key sits in the macOS Keychain (Windows: encrypted with DPAPI)</strong></li>
@@ -548,7 +548,11 @@ Let me know if the start date moves.</dd></div>
       const platform = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent;
       if (/^win|windows/i.test(platform)) select(document.getElementById("tab-windows"), false);
 
+      // One reset per button, and one for the shared status line, so a quick second copy
+      // isn't cleared early by the first one's timer.
+      let statusReset;
       for (const button of document.querySelectorAll("[data-copy]")) {
+        let buttonReset;
         button.addEventListener("click", async () => {
           const code = document.getElementById(button.dataset.copy);
           const status = document.getElementById("copy-status");
@@ -562,7 +566,10 @@ Let me know if the start date moves.</dd></div>
             button.textContent = "Selected";
             status.textContent = "Couldn't copy. The command is selected: copy it with your keyboard.";
           }
-          setTimeout(() => { button.textContent = "Copy"; status.textContent = ""; }, 1800);
+          clearTimeout(buttonReset);
+          clearTimeout(statusReset);
+          buttonReset = setTimeout(() => { button.textContent = "Copy"; }, 1800);
+          statusReset = setTimeout(() => { status.textContent = ""; }, 1800);
         });
       }
     </script>

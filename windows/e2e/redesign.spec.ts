@@ -55,7 +55,7 @@ async function mainWindow(electronApp: ElectronApplication): Promise<Page> {
   );
 }
 
-async function go(section: 'Stream' | 'Notes' | 'Vocabulary' | 'Insights' | 'Settings'): Promise<void> {
+async function go(section: 'Dictations' | 'Notes' | 'Vocabulary' | 'Insights' | 'Settings'): Promise<void> {
   await win.locator('.rail-item', { hasText: section }).click();
   await expect(win.locator('.rail-item[aria-current="page"]', { hasText: section })).toBeVisible();
 }
@@ -102,12 +102,12 @@ test.afterAll(async () => {
 
 test('filter, search and teach a fix, then switch to dark', async () => {
   // Stream lists the seeded dictations, newest at the bottom, grouped by day.
-  await expect(win.locator('.st-title')).toHaveText('Stream');
+  await expect(win.locator('.st-title')).toHaveText('Dictations');
   await expect(win.locator('.bubble')).toHaveCount(6);
   // One header (the page's own) and no popover left open over the dock.
   await expect(win.locator('.stage-header')).toBeHidden();
   await expect(win.locator('.status-popover')).toBeHidden();
-  await expect(win.getByRole('heading', { name: 'Stream', exact: true })).toHaveCount(1);
+  await expect(win.getByRole('heading', { name: 'Dictations', exact: true })).toHaveCount(1);
   await shot('01-stream-light');
 
   // Filter to Deutsch: only the two German dictations stay.
@@ -167,7 +167,7 @@ test('filter, search and teach a fix, then switch to dark', async () => {
   await shot('06-settings-dark');
 
   // Every page still renders in dark.
-  for (const section of ['Stream', 'Notes', 'Vocabulary', 'Insights', 'Settings'] as const) {
+  for (const section of ['Dictations', 'Notes', 'Vocabulary', 'Insights', 'Settings'] as const) {
     await go(section);
     await shot(`10-${section.toLowerCase()}-dark`);
   }
@@ -176,7 +176,7 @@ test('filter, search and teach a fix, then switch to dark', async () => {
   // And back to light: every page again.
   await win.locator('.segmented[aria-label="Theme"] button', { hasText: 'Light' }).click();
   await expect(win.locator('html')).toHaveAttribute('data-theme', 'light');
-  for (const section of ['Stream', 'Notes', 'Vocabulary', 'Insights', 'Settings'] as const) {
+  for (const section of ['Dictations', 'Notes', 'Vocabulary', 'Insights', 'Settings'] as const) {
     await go(section);
     await shot(`20-${section.toLowerCase()}-light`);
   }

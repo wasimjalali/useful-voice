@@ -57,4 +57,49 @@ struct HUDAnnouncementTests {
             #expect(display.accessibilityLabel == said(display)?.text)
         }
     }
+
+    // MARK: How long each state stays (UV-022)
+
+    /// Done, language and cancelled go on their own; an error and the Copied notice wait
+    /// for the user for 8 s; the dictation itself has no timer.
+    @Test func eachStateStaysForItsOwnTime() {
+        #expect(HUDDisplay.recording(seconds: 0, level: 0, stopsIn: nil).lifetime == nil)
+        #expect(HUDDisplay.transcribing(partial: nil, local: false).lifetime == nil)
+        #expect(HUDDisplay.delivering.lifetime == nil)
+        #expect(HUDDisplay.done(.inserted(words: 1)).lifetime == 1.2)
+        #expect(HUDDisplay.language(.de).lifetime == 1.0)
+        #expect(HUDDisplay.cancelled.lifetime == 1.5)
+        #expect(HUDDisplay.copiedNotPasted(fix: nil).lifetime == 8)
+        #expect(HUDDisplay.error(HUDError(message: "No connection")).lifetime == 8)
+    }
+
+    /// Only the two that wait for the user carry a close button.
+    @Test func onlyAnErrorAndTheCopiedNoticeArePersistent() {
+        #expect(HUDDisplay.copiedNotPasted(fix: nil).isPersistent)
+        #expect(HUDDisplay.error(HUDError(message: "x")).isPersistent)
+        #expect(!HUDDisplay.cancelled.isPersistent)
+        #expect(!HUDDisplay.done(.savedAndCopied(words: 2)).isPersistent)
+        #expect(!HUDDisplay.recording(seconds: 1, level: 0, stopsIn: nil).isPersistent)
+    }
+
+    /// A state that is still in flight is what a stray hide must not leave behind.
+    @Test func inFlightStatesAreProgress() {
+        #expect(HUDDisplay.recording(seconds: 1, level: 0, stopsIn: nil).isProgress)
+        #expect(HUDDisplay.transcribing(partial: nil, local: false).isProgress)
+        #expect(HUDDisplay.delivering.isProgress)
+        #expect(!HUDDisplay.error(HUDError(message: "x")).isProgress)
+        #expect(!HUDDisplay.done(.inserted(words: 1)).isProgress)
+    }
+
+    /// The pill carries one fix verb, and the HUD error carries the typed error's fix.
+    @Test func anErrorKeepsItsFixAndTheFixHasAVerb() {
+        let typed = DictationError(kind: .offline, message: "Could not reach Deepgram.", fix: .retry)
+        let error = HUDDisplay.error(HUDError(typed))
+        #expect(error.fix == .retry)
+        #expect(DictationFix.retry.hudTitle == "Retry last recording")
+        #expect(DictationFix.openMicrophoneSettings.hudTitle == "Open settings")
+        #expect(DictationFix.openEngineSettings.hudTitle == "Open settings")
+        #expect(HUDDisplay.copiedNotPasted(fix: .openAccessibilitySettings).fix == .openAccessibilitySettings)
+        #expect(HUDDisplay.copiedNotPasted(fix: nil).fix == nil)
+    }
 }

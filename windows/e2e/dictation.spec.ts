@@ -193,10 +193,7 @@ test('each error kind says what happened and offers its own fix, and the next di
   let events = await log(win);
   expect(events.states.filter((state) => state.state === 'error').at(-1)?.error).toMatchObject({ kind: 'keyRejected', fix: 'openEngineSettings' });
   await expect(dockStatus(win)).toContainText('rejected your API key');
-  await dockFix(win).click();
-  await expect(win.locator('.rail-item[aria-current="page"]', { hasText: 'Settings' })).toBeVisible();
-  await win.locator('.rail-item', { hasText: 'Stream' }).click();
-  await win.waitForSelector('.dock');
+  await expect(dockFix(win)).toBeVisible();
 
   // No key at all: the same fix.
   await win.evaluate(() => (window as unknown as { usefulVoice: { clearApiKey(): Promise<void> } }).usefulVoice.clearApiKey());
@@ -224,6 +221,29 @@ test('each error kind says what happened and offers its own fix, and the next di
   await win.waitForTimeout(1.5 * SECOND);
   await stopButton(win).click();
   await expect(dockStatus(win)).toContainText('Saved and copied', { timeout: 20 * SECOND });
+});
+
+test('the Open settings fix of an engine error opens Settings, and the first section brings the dock back', async () => {
+  const { win } = await start('open-settings', { emptyHistory: true, key: 'bad-e2e-key' });
+  await dictateIntoError(win);
+  await expect(dockStatus(win)).toContainText('rejected your API key');
+  await dockFix(win).click();
+  const current = win.locator('.rail-item[aria-current="page"]');
+  await expect(current).toHaveCount(1);
+  await expect(current).toContainText('Settings');
+  await expect(win.locator('.dock')).toHaveCount(0);
+
+  // The first rail item is the dictation page. A failure here dumps the page, so a run on a
+  // machine nobody can look at still says what was on screen.
+  const rail = win.locator('.rail-item');
+  try {
+    await rail.first().click({ timeout: 10 * SECOND });
+    await win.waitForSelector('.dock', { timeout: 10 * SECOND });
+  } catch (error) {
+    const dump = await win.evaluate(() => `${location.href}\n${document.body.innerText.slice(0, 1500)}\nrail items: ${document.querySelectorAll('.rail-item').length}`);
+    throw new Error(`${(error as Error).message}\n--- page ---\n${dump}`);
+  }
+  await expect(win.locator('.rail-item[aria-current="page"]')).not.toContainText('Settings');
 });
 
 test('"Copied. Press Ctrl+V to paste" outlasts the done line and ends on the next dictation, the x, or 8 s', async () => {

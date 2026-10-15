@@ -82,6 +82,17 @@ jobs:
           cp "$RUNNER_TEMP"/macos-15-*.txt "$RUNNER_TEMP/out/" 2>/dev/null || true
           cp "$RUNNER_TEMP"/cleanup/models/server-*.log "$RUNNER_TEMP/out/" 2>/dev/null || true
 
+      # The raw results also go to the log, gzip + base64 between markers, so a session that
+      # cannot reach the artifact store can still copy them into evals/results/raw.
+      - name: Print raw results
+        if: always()
+        run: |
+          for f in "$RUNNER_TEMP"/out/macos-15-*.json; do
+            echo "=== BEGIN $(basename "$f") ==="
+            gzip -c "$f" | base64 | fold -w 76
+            echo "=== END $(basename "$f") ==="
+          done
+
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4

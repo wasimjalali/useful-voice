@@ -236,13 +236,14 @@ jobs:
             if (-not $exe) { throw "No installer found in $dir" }
             $run = Start-Installer $exe
             if ($run.Proc.ExitCode -eq $accessViolation -and $retryOnCrash) {
-              $report = Save-InstallerDiagnostics $exe $run
-              Write-Host "::warning title=Legacy installer crashed (0xC0000005), retrying once::$($exe.Name) PID $($run.Proc.Id) crashed with an access violation. Diagnostics in the windows-upgrade-registry artifact ($(Split-Path $report -Leaf)). Retrying once."
+              try { $report = Save-InstallerDiagnostics $exe $run } catch { $report = "diagnostics failed: $($_.Exception.Message)" }
+              Write-Host "::warning title=Legacy installer crashed (0xC0000005) and is retried once::$($exe.Name) PID $($run.Proc.Id) crashed with an access violation. Diagnostics in the windows-upgrade-registry artifact ($(Split-Path $report -Leaf)). Retrying once."
               Write-Host "RETRYING $($exe.Name) ONCE AFTER 0xC0000005"
               $run = Start-Installer $exe
             }
             if ($run.Proc.ExitCode -ne 0) {
-              $report = Save-InstallerDiagnostics $exe $run
+              # A failing probe must never replace the installer's own error.
+              try { $report = Save-InstallerDiagnostics $exe $run } catch { $report = "diagnostics failed: $($_.Exception.Message)" }
               throw "Installer $($exe.Name) exited with $($run.Proc.ExitCode). Diagnostics: $report"
             }
           }

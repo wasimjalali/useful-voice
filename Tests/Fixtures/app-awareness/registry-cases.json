@@ -1,0 +1,980 @@
+{
+ "apps": [
+  {
+   "id": "none-at-all",
+   "expected": "other"
+  },
+  {
+   "id": "empty-id",
+   "appID": "",
+   "expected": "other"
+  },
+  {
+   "id": "blank-id",
+   "appID": "   ",
+   "expected": "other"
+  },
+  {
+   "id": "unknown-app",
+   "appID": "com.example.unknown",
+   "expected": "other"
+  },
+  {
+   "id": "mail",
+   "appID": "com.apple.mail",
+   "expected": "email"
+  },
+  {
+   "id": "mail-upper",
+   "appID": "COM.APPLE.MAIL",
+   "expected": "email"
+  },
+  {
+   "id": "mail-padded",
+   "appID": "  com.apple.mail  ",
+   "expected": "email"
+  },
+  {
+   "id": "outlook-mac",
+   "appID": "com.microsoft.Outlook",
+   "expected": "email"
+  },
+  {
+   "id": "outlook-win",
+   "appID": "outlook.exe",
+   "expected": "email"
+  },
+  {
+   "id": "outlook-win-upper",
+   "appID": "OUTLOOK.EXE",
+   "expected": "email"
+  },
+  {
+   "id": "outlook-win-path",
+   "appID": "C:\\Program Files\\Microsoft Office\\root\\Office16\\OUTLOOK.EXE",
+   "expected": "email"
+  },
+  {
+   "id": "outlook-new-win",
+   "appID": "olk.exe",
+   "expected": "email"
+  },
+  {
+   "id": "spark",
+   "appID": "com.readdle.smartemail-Mac",
+   "expected": "email"
+  },
+  {
+   "id": "superhuman",
+   "appID": "com.superhuman.electron",
+   "expected": "email"
+  },
+  {
+   "id": "thunderbird-mac",
+   "appID": "org.mozilla.thunderbird",
+   "expected": "email"
+  },
+  {
+   "id": "thunderbird-win",
+   "appID": "thunderbird.exe",
+   "expected": "email"
+  },
+  {
+   "id": "slack-mac",
+   "appID": "com.tinyspeck.slackmacgap",
+   "expected": "workChat"
+  },
+  {
+   "id": "slack-win",
+   "appID": "slack.exe",
+   "expected": "workChat"
+  },
+  {
+   "id": "teams-new-mac",
+   "appID": "com.microsoft.teams2",
+   "expected": "workChat"
+  },
+  {
+   "id": "teams-classic-mac",
+   "appID": "com.microsoft.teams",
+   "expected": "workChat"
+  },
+  {
+   "id": "teams-new-win",
+   "appID": "ms-teams.exe",
+   "expected": "workChat"
+  },
+  {
+   "id": "teams-classic-win",
+   "appID": "Teams.exe",
+   "expected": "workChat"
+  },
+  {
+   "id": "mattermost-mac",
+   "appID": "Mattermost.Desktop",
+   "expected": "workChat"
+  },
+  {
+   "id": "mattermost-win",
+   "appID": "mattermost.exe",
+   "expected": "workChat"
+  },
+  {
+   "id": "claude-desktop-mac",
+   "appID": "com.anthropic.claudefordesktop",
+   "expected": "workChat"
+  },
+  {
+   "id": "claude-desktop-win",
+   "appID": "claude.exe",
+   "expected": "workChat"
+  },
+  {
+   "id": "whatsapp-mac",
+   "appID": "net.whatsapp.WhatsApp",
+   "expected": "personalChat"
+  },
+  {
+   "id": "whatsapp-win",
+   "appID": "WhatsApp.exe",
+   "expected": "personalChat"
+  },
+  {
+   "id": "messages",
+   "appID": "com.apple.MobileSMS",
+   "expected": "personalChat"
+  },
+  {
+   "id": "telegram-mac",
+   "appID": "ru.keepcoder.Telegram",
+   "expected": "personalChat"
+  },
+  {
+   "id": "telegram-desktop",
+   "appID": "org.telegram.desktop",
+   "expected": "personalChat"
+  },
+  {
+   "id": "telegram-win",
+   "appID": "Telegram.exe",
+   "expected": "personalChat"
+  },
+  {
+   "id": "signal-mac",
+   "appID": "org.whispersystems.signal-desktop",
+   "expected": "personalChat"
+  },
+  {
+   "id": "signal-win",
+   "appID": "signal.exe",
+   "expected": "personalChat"
+  },
+  {
+   "id": "discord-mac",
+   "appID": "com.hnc.Discord",
+   "expected": "personalChat"
+  },
+  {
+   "id": "discord-win",
+   "appID": "Discord.exe",
+   "expected": "personalChat"
+  },
+  {
+   "id": "messenger-win",
+   "appID": "messenger.exe",
+   "expected": "personalChat"
+  },
+  {
+   "id": "terminal",
+   "appID": "com.apple.Terminal",
+   "expected": "coding"
+  },
+  {
+   "id": "iterm",
+   "appID": "com.googlecode.iterm2",
+   "expected": "coding"
+  },
+  {
+   "id": "warp",
+   "appID": "dev.warp.Warp-Stable",
+   "expected": "coding"
+  },
+  {
+   "id": "ghostty",
+   "appID": "com.mitchellh.ghostty",
+   "expected": "coding"
+  },
+  {
+   "id": "kitty",
+   "appID": "net.kovidgoyal.kitty",
+   "expected": "coding"
+  },
+  {
+   "id": "alacritty",
+   "appID": "org.alacritty",
+   "expected": "coding"
+  },
+  {
+   "id": "wezterm",
+   "appID": "com.github.wez.wezterm",
+   "expected": "coding"
+  },
+  {
+   "id": "windows-terminal",
+   "appID": "WindowsTerminal.exe",
+   "expected": "coding"
+  },
+  {
+   "id": "powershell",
+   "appID": "powershell.exe",
+   "expected": "coding"
+  },
+  {
+   "id": "pwsh",
+   "appID": "pwsh.exe",
+   "expected": "coding"
+  },
+  {
+   "id": "cmd",
+   "appID": "cmd.exe",
+   "expected": "coding"
+  },
+  {
+   "id": "vscode-mac",
+   "appID": "com.microsoft.VSCode",
+   "expected": "coding"
+  },
+  {
+   "id": "vscode-win",
+   "appID": "Code.exe",
+   "expected": "coding"
+  },
+  {
+   "id": "cursor-mac",
+   "appID": "com.todesktop.230313mzl4w4u92",
+   "expected": "coding"
+  },
+  {
+   "id": "cursor-win",
+   "appID": "Cursor.exe",
+   "expected": "coding"
+  },
+  {
+   "id": "windsurf",
+   "appID": "com.exafunction.windsurf",
+   "expected": "coding"
+  },
+  {
+   "id": "zed",
+   "appID": "dev.zed.Zed",
+   "expected": "coding"
+  },
+  {
+   "id": "xcode",
+   "appID": "com.apple.dt.Xcode",
+   "expected": "coding"
+  },
+  {
+   "id": "codex-mac",
+   "appID": "com.openai.codex",
+   "expected": "coding"
+  },
+  {
+   "id": "jetbrains-intellij",
+   "appID": "com.jetbrains.intellij",
+   "expected": "coding"
+  },
+  {
+   "id": "jetbrains-webstorm",
+   "appID": "com.jetbrains.WebStorm",
+   "expected": "coding"
+  },
+  {
+   "id": "jetbrains-pycharm-ce",
+   "appID": "com.jetbrains.pycharm.ce",
+   "expected": "coding"
+  },
+  {
+   "id": "jetbrains-win",
+   "appID": "idea64.exe",
+   "expected": "coding"
+  },
+  {
+   "id": "android-studio",
+   "appID": "com.google.android.studio",
+   "expected": "coding"
+  },
+  {
+   "id": "not-jetbrains-lookalike",
+   "appID": "com.jetbrainsfake.app",
+   "expected": "other"
+  },
+  {
+   "id": "notes",
+   "appID": "com.apple.Notes",
+   "expected": "docsNotes"
+  },
+  {
+   "id": "notion-mac",
+   "appID": "notion.id",
+   "expected": "docsNotes"
+  },
+  {
+   "id": "notion-win",
+   "appID": "Notion.exe",
+   "expected": "docsNotes"
+  },
+  {
+   "id": "obsidian",
+   "appID": "md.obsidian",
+   "expected": "docsNotes"
+  },
+  {
+   "id": "bear",
+   "appID": "net.shinyfrog.bear",
+   "expected": "docsNotes"
+  },
+  {
+   "id": "pages",
+   "appID": "com.apple.iWork.Pages",
+   "expected": "docsNotes"
+  },
+  {
+   "id": "word-mac",
+   "appID": "com.microsoft.Word",
+   "expected": "docsNotes"
+  },
+  {
+   "id": "word-win",
+   "appID": "WINWORD.EXE",
+   "expected": "docsNotes"
+  },
+  {
+   "id": "craft",
+   "appID": "com.lukilabs.lukiapp",
+   "expected": "docsNotes"
+  },
+  {
+   "id": "browser-alone-com.apple.Safari",
+   "appID": "com.apple.Safari",
+   "expected": "other"
+  },
+  {
+   "id": "browser-alone-com.google.Chrome",
+   "appID": "com.google.Chrome",
+   "expected": "other"
+  },
+  {
+   "id": "browser-alone-company.thebrowser.Browser",
+   "appID": "company.thebrowser.Browser",
+   "expected": "other"
+  },
+  {
+   "id": "browser-alone-com.microsoft.edgemac",
+   "appID": "com.microsoft.edgemac",
+   "expected": "other"
+  },
+  {
+   "id": "browser-alone-com.brave.Browser",
+   "appID": "com.brave.Browser",
+   "expected": "other"
+  },
+  {
+   "id": "browser-alone-org.mozilla.firefox",
+   "appID": "org.mozilla.firefox",
+   "expected": "other"
+  },
+  {
+   "id": "browser-alone-com.operasoftware.Opera",
+   "appID": "com.operasoftware.Opera",
+   "expected": "other"
+  },
+  {
+   "id": "browser-alone-com.vivaldi.Vivaldi",
+   "appID": "com.vivaldi.Vivaldi",
+   "expected": "other"
+  },
+  {
+   "id": "browser-alone-chrome.exe",
+   "appID": "chrome.exe",
+   "expected": "other"
+  },
+  {
+   "id": "browser-alone-msedge.exe",
+   "appID": "msedge.exe",
+   "expected": "other"
+  },
+  {
+   "id": "browser-alone-brave.exe",
+   "appID": "brave.exe",
+   "expected": "other"
+  },
+  {
+   "id": "browser-alone-firefox.exe",
+   "appID": "firefox.exe",
+   "expected": "other"
+  },
+  {
+   "id": "browser-alone-opera.exe",
+   "appID": "opera.exe",
+   "expected": "other"
+  },
+  {
+   "id": "browser-alone-vivaldi.exe",
+   "appID": "vivaldi.exe",
+   "expected": "other"
+  },
+  {
+   "id": "url-only-gmail",
+   "url": "https://mail.google.com/mail/u/0/#inbox",
+   "expected": "email"
+  },
+  {
+   "id": "chrome-gmail",
+   "appID": "com.google.Chrome",
+   "url": "https://mail.google.com/mail/u/0/#inbox",
+   "expected": "email"
+  },
+  {
+   "id": "chrome-github",
+   "appID": "com.google.Chrome",
+   "url": "https://github.com/wasimjalali",
+   "expected": "other"
+  },
+  {
+   "id": "safari-slack-web",
+   "appID": "com.apple.Safari",
+   "url": "https://app.slack.com/client/T1/C2",
+   "expected": "workChat"
+  },
+  {
+   "id": "edge-claude-code",
+   "appID": "msedge.exe",
+   "url": "https://claude.ai/code/session_1",
+   "expected": "coding"
+  },
+  {
+   "id": "firefox-chatgpt",
+   "appID": "firefox.exe",
+   "url": "https://chatgpt.com/c/abc",
+   "expected": "workChat"
+  },
+  {
+   "id": "arc-whatsapp-web",
+   "appID": "company.thebrowser.Browser",
+   "url": "https://web.whatsapp.com/",
+   "expected": "personalChat"
+  },
+  {
+   "id": "brave-google-doc",
+   "appID": "brave.exe",
+   "url": "https://docs.google.com/document/d/1/edit",
+   "expected": "docsNotes"
+  },
+  {
+   "id": "url-beats-app-seed",
+   "appID": "com.tinyspeck.slackmacgap",
+   "url": "https://docs.google.com/document/d/1/edit",
+   "expected": "docsNotes"
+  },
+  {
+   "id": "garbage-url-falls-back-to-seed",
+   "appID": "com.tinyspeck.slackmacgap",
+   "url": "not a url ::: %%%",
+   "expected": "workChat"
+  },
+  {
+   "id": "unmatched-url-falls-back-to-seed",
+   "appID": "com.apple.mail",
+   "url": "https://example.com/",
+   "expected": "email"
+  },
+  {
+   "id": "empty-url-falls-back-to-seed",
+   "appID": "com.apple.mail",
+   "url": "",
+   "expected": "email"
+  },
+  {
+   "id": "non-web-url-falls-back-to-seed",
+   "appID": "com.apple.Terminal",
+   "url": "file:///tmp/x",
+   "expected": "coding"
+  },
+  {
+   "id": "override-beats-seed",
+   "appID": "com.apple.mail",
+   "overrides": {
+    "com.apple.mail": "personalChat"
+   },
+   "expected": "personalChat"
+  },
+  {
+   "id": "override-beats-url",
+   "appID": "com.google.Chrome",
+   "url": "https://mail.google.com/",
+   "overrides": {
+    "com.google.chrome": "coding"
+   },
+   "expected": "coding"
+  },
+  {
+   "id": "override-key-case-insensitive",
+   "appID": "com.apple.mail",
+   "overrides": {
+    "Com.Apple.Mail": "personalChat"
+   },
+   "expected": "personalChat"
+  },
+  {
+   "id": "override-windows-path-and-case",
+   "appID": "C:\\Apps\\Slack\\Slack.exe",
+   "overrides": {
+    "SLACK.EXE": "docsNotes"
+   },
+   "expected": "docsNotes"
+  },
+  {
+   "id": "override-other-app-ignored",
+   "appID": "com.apple.mail",
+   "overrides": {
+    "com.tinyspeck.slackmacgap": "coding"
+   },
+   "expected": "email"
+  },
+  {
+   "id": "override-to-other",
+   "appID": "com.apple.mail",
+   "overrides": {
+    "com.apple.mail": "other"
+   },
+   "expected": "other"
+  },
+  {
+   "id": "override-needs-app-id",
+   "url": "https://mail.google.com/",
+   "overrides": {
+    "": "coding"
+   },
+   "expected": "email"
+  },
+  {
+   "id": "override-invalid-value-ignored",
+   "appID": "com.apple.mail",
+   "overrides": {
+    "com.apple.mail": "bogus"
+   },
+   "expected": "email"
+  },
+  {
+   "id": "override-empty-map",
+   "appID": "com.apple.mail",
+   "overrides": {},
+   "expected": "email"
+  }
+ ],
+ "urls": [
+  {
+   "url": "https://mail.google.com/mail/u/0/",
+   "expected": "email"
+  },
+  {
+   "url": "mail.google.com",
+   "expected": "email"
+  },
+  {
+   "url": "mail.google.com/mail",
+   "expected": "email"
+  },
+  {
+   "url": "HTTPS://MAIL.GOOGLE.COM/Mail",
+   "expected": "email"
+  },
+  {
+   "url": "  https://mail.google.com/mail/  ",
+   "expected": "email"
+  },
+  {
+   "url": "https://www.mail.google.com",
+   "expected": "email"
+  },
+  {
+   "url": "https://mail.google.com:443/mail",
+   "expected": "email"
+  },
+  {
+   "url": "https://user:pass@mail.google.com/",
+   "expected": "email"
+  },
+  {
+   "url": "https://mail.google.com./mail",
+   "expected": "email"
+  },
+  {
+   "url": "https://mail.google.com?x=1",
+   "expected": "email"
+  },
+  {
+   "url": "https://mail.google.com#inbox",
+   "expected": "email"
+  },
+  {
+   "url": "http://mail.google.com",
+   "expected": "email"
+  },
+  {
+   "url": "https://mail.google.com.evil.com/",
+   "expected": null
+  },
+  {
+   "url": "https://evil.com/mail.google.com",
+   "expected": null
+  },
+  {
+   "url": "https://notmail.google.com",
+   "expected": null
+  },
+  {
+   "url": "https://google.com",
+   "expected": null
+  },
+  {
+   "url": "https://example.com/?next=https://mail.google.com/",
+   "expected": null
+  },
+  {
+   "url": "https://outlook.live.com/mail/0/inbox",
+   "expected": "email"
+  },
+  {
+   "url": "https://outlook.office.com/mail/",
+   "expected": "email"
+  },
+  {
+   "url": "https://outlook.office365.com/owa/",
+   "expected": "email"
+  },
+  {
+   "url": "https://app.slack.com/client/T1/C2",
+   "expected": "workChat"
+  },
+  {
+   "url": "https://acme.slack.com/messages",
+   "expected": "workChat"
+  },
+  {
+   "url": "https://slack.com",
+   "expected": "workChat"
+  },
+  {
+   "url": "https://notslack.com",
+   "expected": null
+  },
+  {
+   "url": "https://slack.com.evil.io",
+   "expected": null
+  },
+  {
+   "url": "https://teams.microsoft.com/v2/",
+   "expected": "workChat"
+  },
+  {
+   "url": "https://teams.live.com/",
+   "expected": "workChat"
+  },
+  {
+   "url": "https://teams.cloud.microsoft/",
+   "expected": "workChat"
+  },
+  {
+   "url": "https://chat.google.com/room/abc",
+   "expected": "workChat"
+  },
+  {
+   "url": "https://claude.ai/new",
+   "expected": "workChat"
+  },
+  {
+   "url": "https://claude.ai/chat/123",
+   "expected": "workChat"
+  },
+  {
+   "url": "https://claude.ai",
+   "expected": "workChat"
+  },
+  {
+   "url": "https://claude.ai/code",
+   "expected": "coding"
+  },
+  {
+   "url": "https://claude.ai/code/",
+   "expected": "coding"
+  },
+  {
+   "url": "https://claude.ai/code/session_1",
+   "expected": "coding"
+  },
+  {
+   "url": "https://claude.ai/CODE/session_1",
+   "expected": "coding"
+  },
+  {
+   "url": "https://claude.ai/codex",
+   "expected": "workChat"
+  },
+  {
+   "url": "https://claude.ai/?x=/code",
+   "expected": "workChat"
+  },
+  {
+   "url": "https://claude.ai#/code",
+   "expected": "workChat"
+  },
+  {
+   "url": "https://chatgpt.com/",
+   "expected": "workChat"
+  },
+  {
+   "url": "https://chatgpt.com/c/123",
+   "expected": "workChat"
+  },
+  {
+   "url": "https://chatgpt.com/codex",
+   "expected": "coding"
+  },
+  {
+   "url": "https://chatgpt.com/codex/tasks/1",
+   "expected": "coding"
+  },
+  {
+   "url": "https://chatgpt.com/codexes",
+   "expected": "workChat"
+  },
+  {
+   "url": "https://web.whatsapp.com/",
+   "expected": "personalChat"
+  },
+  {
+   "url": "https://web.telegram.org/a/",
+   "expected": "personalChat"
+  },
+  {
+   "url": "https://discord.com/channels/@me",
+   "expected": "personalChat"
+  },
+  {
+   "url": "https://discord.com/channels",
+   "expected": "personalChat"
+  },
+  {
+   "url": "https://discord.com/app",
+   "expected": "personalChat"
+  },
+  {
+   "url": "https://discord.com/",
+   "expected": null
+  },
+  {
+   "url": "https://discord.com/channelsx",
+   "expected": null
+  },
+  {
+   "url": "https://discord.com/download",
+   "expected": null
+  },
+  {
+   "url": "https://messenger.com/t/1",
+   "expected": "personalChat"
+  },
+  {
+   "url": "https://www.messenger.com/",
+   "expected": "personalChat"
+  },
+  {
+   "url": "https://notion.so/Page-123",
+   "expected": "docsNotes"
+  },
+  {
+   "url": "https://www.notion.so/team/Page",
+   "expected": "docsNotes"
+  },
+  {
+   "url": "https://team.notion.so/Page",
+   "expected": "docsNotes"
+  },
+  {
+   "url": "https://team.notion.site/Page",
+   "expected": "docsNotes"
+  },
+  {
+   "url": "https://notion.site",
+   "expected": "docsNotes"
+  },
+  {
+   "url": "https://notionxso.com",
+   "expected": null
+  },
+  {
+   "url": "https://docs.google.com/document/d/1/edit",
+   "expected": "docsNotes"
+  },
+  {
+   "url": "https://docs.google.com/document",
+   "expected": "docsNotes"
+  },
+  {
+   "url": "https://docs.google.com/document?x=1",
+   "expected": "docsNotes"
+  },
+  {
+   "url": "https://docs.google.com/spreadsheets/d/1",
+   "expected": null
+  },
+  {
+   "url": "https://docs.google.com/documents",
+   "expected": null
+  },
+  {
+   "url": "https://github.com/wasimjalali/useful-voice",
+   "expected": null
+  },
+  {
+   "url": "",
+   "expected": null
+  },
+  {
+   "url": "   ",
+   "expected": null
+  },
+  {
+   "url": "chrome://settings",
+   "expected": null
+  },
+  {
+   "url": "about:blank",
+   "expected": null
+  },
+  {
+   "url": "file:///Users/x/mail.google.com",
+   "expected": null
+  },
+  {
+   "url": "javascript:alert(1)",
+   "expected": null
+  },
+  {
+   "url": "ftp://mail.google.com",
+   "expected": null
+  },
+  {
+   "url": "mail.google.com:abc",
+   "expected": null
+  },
+  {
+   "url": "https://",
+   "expected": null
+  },
+  {
+   "url": "https:///mail",
+   "expected": null
+  },
+  {
+   "url": "https://mail google.com",
+   "expected": null
+  },
+  {
+   "url": "%%%",
+   "expected": null
+  },
+  {
+   "url": "https://[::1]/",
+   "expected": null
+  },
+  {
+   "url": "https://mäil.google.com",
+   "expected": null
+  },
+  {
+   "url": "://",
+   "expected": null
+  },
+  {
+   "url": "http://localhost:3000/mail.google.com",
+   "expected": null
+  }
+ ],
+ "parse": [
+  {
+   "url": "https://www.Example.com:8080/A/B?q=1#x",
+   "host": "example.com",
+   "path": "/a/b"
+  },
+  {
+   "url": "example.com",
+   "host": "example.com",
+   "path": ""
+  },
+  {
+   "url": "example.com/",
+   "host": "example.com",
+   "path": "/"
+  },
+  {
+   "url": "https://example.com?x=1",
+   "host": "example.com",
+   "path": ""
+  },
+  {
+   "url": "https://a@b.com/c",
+   "host": "b.com",
+   "path": "/c"
+  },
+  {
+   "url": "https://x.org./p",
+   "host": "x.org",
+   "path": "/p"
+  },
+  {
+   "url": "ftp://example.com",
+   "host": null,
+   "path": null
+  },
+  {
+   "url": "",
+   "host": null,
+   "path": null
+  },
+  {
+   "url": "https://exa mple.com",
+   "host": null,
+   "path": null
+  },
+  {
+   "url": "http://host:port/",
+   "host": null,
+   "path": null
+  }
+ ],
+ "normalize": [
+  {
+   "raw": "  Com.Apple.Mail ",
+   "expected": "com.apple.mail"
+  },
+  {
+   "raw": "C:\\Program Files\\Slack\\slack.exe",
+   "expected": "slack.exe"
+  },
+  {
+   "raw": "/Applications/Slack.app/Contents/MacOS/Slack",
+   "expected": "slack"
+  },
+  {
+   "raw": "SLACK.EXE",
+   "expected": "slack.exe"
+  },
+  {
+   "raw": "",
+   "expected": ""
+  }
+ ]
+}

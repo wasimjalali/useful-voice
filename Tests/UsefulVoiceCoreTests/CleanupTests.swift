@@ -111,7 +111,7 @@ struct CleanupTests {
             if verdict != want { failures.append("\(row.name): got \(verdict), want \(want)") }
         }
         #expect(failures.isEmpty, "\(failures.joined(separator: "\n"))")
-        #expect(seen == ["accept", "reasoning", "empty", "tooLong", "droppedContent", "addedContent"])
+        #expect(seen == ["accept", "reasoning", "empty", "tooLong", "noWordChange", "droppedContent", "addedContent"])
     }
 
     @Test func guardHonoursCustomLimits() {
@@ -124,8 +124,17 @@ struct CleanupTests {
     }
 
     @Test func guardIsCaseAndFormatBlind() {
-        let verdict = CleanupGuard.evaluate(rulesText: "so we ship friday", modelOutput: "SO, WE SHIP: FRIDAY!!")
+        let verdict = CleanupGuard.evaluate(rulesText: "so um we ship friday", modelOutput: "SO, WE SHIP: FRIDAY!!")
         #expect(verdict == .accept("SO, WE SHIP: FRIDAY!!"))
+    }
+
+    @Test func guardCanAllowFormatOnlyEdits() {
+        let input = "Buy milk, eggs and bread."
+        let output = "Buy milk, eggs, and bread."
+        #expect(CleanupGuard.evaluate(rulesText: input, modelOutput: output) == .reject(.noWordChange))
+        var loose = CleanupGuard.Limits.standard
+        loose.requireWordChange = false
+        #expect(CleanupGuard.evaluate(rulesText: input, modelOutput: output, limits: loose) == .accept(output))
     }
 
     // MARK: Control line

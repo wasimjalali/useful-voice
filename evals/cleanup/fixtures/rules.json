@@ -146,8 +146,13 @@
   },
   {
     "name": "filler ellipsis at the end",
-    "input": "I don't know... hmm...",
+    "input": "I don't know... um...",
     "expected": "I don't know..."
+  },
+  {
+    "name": "hmm after an ellipsis starts a sentence and stays",
+    "input": "I don't know... hmm...",
+    "expected": "I don't know... hmm..."
   },
   {
     "name": "filler ellipsis mid sentence",
@@ -166,13 +171,23 @@
   },
   {
     "name": "fillers only",
-    "input": "Um, uh, hmm.",
+    "input": "Um, uh, er.",
     "expected": ""
   },
   {
-    "name": "hmm is a filler",
+    "name": "sentence-initial hmm stays",
     "input": "Hmm, that's odd.",
-    "expected": "That's odd."
+    "expected": "Hmm, that's odd."
+  },
+  {
+    "name": "mid-sentence hmm is a filler",
+    "input": "Okay, hmm, that makes sense.",
+    "expected": "Okay, that makes sense."
+  },
+  {
+    "name": "hmm after a newline stays",
+    "input": "Done.\nhmm what next",
+    "expected": "Done.\nhmm what next"
   },
   {
     "name": "erm and er",

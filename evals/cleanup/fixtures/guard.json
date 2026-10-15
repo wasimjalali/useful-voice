@@ -1,24 +1,35 @@
 [
   {
-    "name": "identical text is accepted",
+    "name": "identical text has no word change",
     "rulesText": "Thanks for the update. I will review it tonight.",
     "output": "Thanks for the update. I will review it tonight.",
-    "verdict": "accept",
-    "text": "Thanks for the update. I will review it tonight."
+    "verdict": "noWordChange"
   },
   {
     "name": "surrounding whitespace is trimmed",
-    "rulesText": "Thanks for the update.",
+    "rulesText": "Thanks for the update um.",
     "output": "  Thanks for the update.\n",
     "verdict": "accept",
     "text": "Thanks for the update."
   },
   {
-    "name": "case and punctuation changes are accepted",
+    "name": "case and punctuation changes alone are rejected",
     "rulesText": "so we should ship it on friday",
+    "output": "So we should ship it on Friday.",
+    "verdict": "noWordChange"
+  },
+  {
+    "name": "case and punctuation changes with a removed word are accepted",
+    "rulesText": "so um we should ship it on friday",
     "output": "So we should ship it on Friday.",
     "verdict": "accept",
     "text": "So we should ship it on Friday."
+  },
+  {
+    "name": "oxford comma alone is rejected",
+    "rulesText": "Buy milk, eggs and bread.",
+    "output": "Buy milk, eggs, and bread.",
+    "verdict": "noWordChange"
   },
   {
     "name": "empty output for text with words",
@@ -210,8 +221,7 @@
     "name": "contraction without apostrophe",
     "rulesText": "i dont think that is right",
     "output": "I don't think that is right.",
-    "verdict": "accept",
-    "text": "I don't think that is right."
+    "verdict": "noWordChange"
   },
   {
     "name": "bulleted list of the same words",
@@ -221,11 +231,10 @@
     "text": "Pack:\n- Sunscreen\n- A first aid kit\n- Chargers"
   },
   {
-    "name": "email layout adds no words",
+    "name": "email layout alone is rejected",
     "rulesText": "hey sarah just wanted to follow up thanks john",
     "output": "Hey Sarah,\n\nJust wanted to follow up.\n\nThanks,\nJohn",
-    "verdict": "accept",
-    "text": "Hey Sarah,\n\nJust wanted to follow up.\n\nThanks,\nJohn"
+    "verdict": "noWordChange"
   },
   {
     "name": "filler words in the input may go",
@@ -257,8 +266,7 @@
     "name": "code identifier kept",
     "rulesText": "Rename fooBar to bazQux in the config.",
     "output": "Rename fooBar to bazQux in the config.",
-    "verdict": "accept",
-    "text": "Rename fooBar to bazQux in the config."
+    "verdict": "noWordChange"
   },
   {
     "name": "code identifier changed",

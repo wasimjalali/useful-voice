@@ -24,7 +24,7 @@
     {
       "category": "chat",
       "style": null,
-      "line": "[Styling: semi-casual] [Structure: prose] [Context: general]"
+      "line": "[Styling: semi-formal] [Structure: prose] [Context: general]"
     },
     {
       "category": "messaging",
@@ -39,12 +39,12 @@
     {
       "category": "terminal",
       "style": null,
-      "line": "[Styling: semi-casual] [Structure: prose] [Context: general]"
+      "line": "[Styling: semi-formal] [Structure: prose] [Context: general]"
     },
     {
       "category": "coding agent",
       "style": null,
-      "line": "[Styling: semi-casual] [Structure: prose] [Context: general]"
+      "line": "[Styling: semi-formal] [Structure: prose] [Context: general]"
     },
     {
       "category": "document",

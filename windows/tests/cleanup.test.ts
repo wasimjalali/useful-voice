@@ -100,7 +100,7 @@ describe('evaluateCleanupOutput fixtures', () => {
 
   it('covers every rejection reason', () => {
     const reasons = new Set(guardRows.map((r) => r.verdict));
-    for (const reason of ['accept', 'reasoning', 'empty', 'tooLong', 'droppedContent', 'addedContent']) {
+    for (const reason of ['accept', 'reasoning', 'empty', 'tooLong', 'noWordChange', 'droppedContent', 'addedContent']) {
       expect(reasons.has(reason), reason).toBe(true);
     }
   });
@@ -113,8 +113,15 @@ describe('evaluateCleanupOutput fixtures', () => {
   });
 
   it('is case blind and format blind', () => {
-    const verdict = evaluateCleanupOutput('so we ship friday', 'SO, WE SHIP: FRIDAY!!');
+    const verdict = evaluateCleanupOutput('so um we ship friday', 'SO, WE SHIP: FRIDAY!!');
     expect(verdict.accepted).toBe(true);
+  });
+
+  it('can allow format-only edits', () => {
+    const input = 'Buy milk, eggs and bread.';
+    const output = 'Buy milk, eggs, and bread.';
+    expect(evaluateCleanupOutput(input, output)).toEqual({ accepted: false, reason: 'noWordChange' });
+    expect(evaluateCleanupOutput(input, output, { ...STANDARD_GUARD_LIMITS, requireWordChange: false }).accepted).toBe(true);
   });
 });
 

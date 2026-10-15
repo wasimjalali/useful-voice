@@ -29,15 +29,13 @@ import Foundation
 /// byte for byte. The category and style are raw strings, so this does not depend on the
 /// app-awareness `AppCategory` type; the caller passes its raw value.
 ///
-/// Mapping (the card calls semi-formal "a good default"; `casual` lowercases everything
-/// and strips apostrophes, which would undo Deepgram's formatting, so it is only used when
-/// the user's style asks for it by name):
-///   - style: "casual", "semi-casual", "semi-formal", "formal" (spaces, underscores and
-///     "semiformal" spellings accepted). Anything else falls back to the category default.
-///   - category default styling: chat, messaging, social, coding, coding-agent, code, ide,
-///     terminal -> semi-casual
-///     (keeps the speaker's phrasing, no "gonna" -> "going to"); every other category ->
-///     semi-formal.
+/// Mapping (the card calls semi-formal "a good default"):
+///   - styling: the user's style when it is one of "casual", "semi-casual", "semi-formal",
+///     "formal" (spaces, underscores and "semiformal" spellings accepted), otherwise
+///     semi-formal for every app category. The eval ran the category-specific alternative:
+///     semi-casual for chat and coding apps lowercased the first word and dropped the final
+///     full stop, and restraint on clean text fell from 76% to 42%. `casual` also strips
+///     apostrophes, so both stay opt-in by style.
 ///   - context: email -> email; everything else -> general.
 ///   - structure: always prose. The card says lists is "deliberately conservative", but
 ///     bullets are an edit the user did not ask for, so it is never chosen here.
@@ -72,9 +70,8 @@ public enum CleanupControlLine {
 
     public static func settings(category: String?, style: String?) -> Settings {
         let cat = normalise(category)
-        let fallback: Styling = semiCasualCategories.contains(cat) ? .semiCasual : .semiFormal
         return Settings(
-            styling: parseStyling(style) ?? fallback,
+            styling: parseStyling(style) ?? .semiFormal,
             structure: .prose,
             context: cat == "email" || cat == "mail" ? .email : .general)
     }
@@ -88,8 +85,6 @@ public enum CleanupControlLine {
     public static func userMessage(category: String?, style: String?, text: String) -> String {
         "\(line(category: category, style: style))\n\(text)"
     }
-
-    private static let semiCasualCategories: Set<String> = ["chat", "messaging", "social", "coding", "coding-agent", "code", "ide", "terminal"]
 
     private static func normalise(_ value: String?) -> String {
         (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

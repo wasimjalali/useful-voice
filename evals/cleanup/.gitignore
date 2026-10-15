@@ -1,0 +1,4 @@
+# Model weights and llama.cpp builds are downloaded by run_eval.py --fetch, never committed.
+*.gguf
+*.gguf.part
+work/

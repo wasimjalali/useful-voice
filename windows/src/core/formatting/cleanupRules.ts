@@ -14,7 +14,7 @@
  * Capitalised, never ALL CAPS: "ER" is the emergency room) with at most a comma, a full
  * stop or an ellipsis after it. "uh-huh", "um.txt", "(um)" and "Hmm?" are not touched.
  * "like", "you know", "I mean" and "sort of" are real words as often as fillers, so they
- * stay. Deleting a filler tidies only the punctuation it leaves behind:
+ * stay, and so does a sentence-initial "hmm" ("Hmm, interesting question."). Deleting a filler tidies only the punctuation it leaves behind:
  *   - its own trailing comma goes with it: "Well, um, I think" -> "Well, I think";
  *   - a comma before it goes when the filler ends the text or the sentence ("went home,
  *     um." -> "went home.") or when the word before is one that never takes a comma
@@ -150,6 +150,8 @@ function splitTokens(text: string): [Token[], string] {
 interface Filler {
   capitalised: boolean;
   trail: string;
+  /** Lowercase filler word. */
+  word: string;
 }
 
 function parseFiller(text: string): Filler | null {
@@ -167,7 +169,7 @@ function parseFiller(text: string): Filler | null {
   const casingOk = word === lower || word === upperAscii(lower.charAt(0)) + lower.slice(1);
   if (!casingOk) return null;
   if (trail !== '' && trail !== ',' && trail !== '.' && trail !== '...' && trail !== '\u2026') return null;
-  return { capitalised, trail };
+  return { capitalised, trail, word: lower };
 }
 
 /** The last character after any closing quote or bracket. */
@@ -208,7 +210,12 @@ function removeFillers(tokens: Token[]): Token[] {
   for (let i = 0; i < tokens.length; i += 1) {
     const tok = tokens[i];
     if (!tok) continue;
-    const filler = parseFiller(tok.text);
+    const prev = out[out.length - 1];
+    const atSentenceStart = prev === undefined || endsSentence(prev.text) || containsNewline(tok.space);
+    let filler = parseFiller(tok.text);
+    // "Hmm, interesting question." is as often a reaction as a hesitation, so a sentence-initial
+    // "hmm" stays. Mid-sentence ("Okay, hmm, that works") it is a filler.
+    if (filler && filler.word.startsWith('hm') && atSentenceStart) filler = null;
     if (!filler) {
       let kept: Token = tok;
       if (carriedSpace !== null) kept = { space: carriedSpace, text: kept.text };
@@ -220,8 +227,6 @@ function removeFillers(tokens: Token[]): Token[] {
     }
 
     const isLast = i === tokens.length - 1;
-    const prev = out[out.length - 1];
-    const atSentenceStart = prev === undefined || endsSentence(prev.text) || containsNewline(tok.space);
     const terminal =
       filler.trail === '.' || (isLast && (filler.trail === '...' || filler.trail === '\u2026'))
         ? filler.trail

@@ -8,8 +8,13 @@
  *   1. reasoning: the output holds a `<think>` tag (thinking was meant to be off);
  *   2. empty: nothing came back for text that has words in it;
  *   3. length: the output is far longer than the input;
- *   4. dropped content: too many of the input's content words are gone;
- *   5. added content: content words appear that the speaker never said.
+ *   4. no word change: the output has exactly the input's words, differing only in case,
+ *      punctuation, spacing or layout. Deepgram already formats, so a model earns its place by
+ *      changing words (a self-correction, a spoken number, email or file path). Format-only
+ *      edits ("Madrid and Berlin" -> "Madrid, and Berlin") are the restraint failures the
+ *      eval found, so the rules-only text is kept instead;
+ *   5. dropped content: too many of the input's content words are gone;
+ *   6. added content: content words appear that the speaker never said.
  *
  * "Content words" are the distinct lowercase words of the text minus function words,
  * filler-like words ("like", "you know"), self-correction cues ("no wait", "I mean") and
@@ -19,11 +24,12 @@
  * every number, is caught. A self-correction legitimately removes words ("Monday, no wait,
  * Tuesday"), so when the input contains a correction cue the allowed drop share is higher.
  *
- * The limits below were set on the dev half of `evals/cleanup/cases.json` and checked on
- * the test half; see `evals/results/2026-10-16-cleanup.md`.
+ * The limits below were set before the first eval run and not tuned; the no-word-change check
+ * was added after the first run showed the format-only edits (see
+ * `evals/results/2026-10-16-cleanup.md`).
  */
 
-export type GuardReason = 'reasoning' | 'empty' | 'tooLong' | 'droppedContent' | 'addedContent';
+export type GuardReason = 'reasoning' | 'empty' | 'tooLong' | 'noWordChange' | 'droppedContent' | 'addedContent';
 
 export type GuardVerdict = { accepted: true; text: string } | { accepted: false; reason: GuardReason };
 
@@ -37,6 +43,8 @@ export interface GuardLimits {
   /** Output length limit as a multiple of the input length, plus `lengthSlack` scalars. */
   maxLengthRatio: number;
   lengthSlack: number;
+  /** Reject an output whose words are the input's words, in order. */
+  requireWordChange: boolean;
 }
 
 export const STANDARD_GUARD_LIMITS: GuardLimits = {
@@ -45,6 +53,7 @@ export const STANDARD_GUARD_LIMITS: GuardLimits = {
   maxAddedShare: 0.1,
   maxLengthRatio: 1.5,
   lengthSlack: 16,
+  requireWordChange: true,
 };
 
 export function evaluateCleanupOutput(
@@ -64,8 +73,10 @@ export function evaluateCleanupOutput(
     return reject('tooLong');
   }
 
-  const inputAll = new Set(input.map((w) => w.text));
   const outputWords = words(output);
+  if (limits.requireWordChange && sameWords(input, outputWords)) return reject('noWordChange');
+
+  const inputAll = new Set(input.map((w) => w.text));
   const outputAll = new Set(outputWords.map((w) => w.text));
   const inputContent = contentSet(input);
   const outputContent = contentSet(outputWords);
@@ -85,6 +96,10 @@ export function evaluateCleanupOutput(
   if (added > Math.floor(limits.maxAddedShare * outputContent.size)) return reject('addedContent');
 
   return { accepted: true, text: output };
+}
+
+function sameWords(a: Word[], b: Word[]): boolean {
+  return a.length === b.length && a.every((word, i) => word.text === b[i]?.text);
 }
 
 function reject(reason: GuardReason): GuardVerdict {

@@ -15,7 +15,7 @@ import Foundation
 /// Capitalised, never ALL CAPS: "ER" is the emergency room) with at most a comma, a full
 /// stop or an ellipsis after it. "uh-huh", "um.txt", "(um)" and "Hmm?" are not touched.
 /// "like", "you know", "I mean" and "sort of" are real words as often as fillers, so they
-/// stay. Deleting a filler tidies only the punctuation it leaves behind:
+/// stay, and so does a sentence-initial "hmm" ("Hmm, interesting question."). Deleting a filler tidies only the punctuation it leaves behind:
 ///   - its own trailing comma goes with it: "Well, um, I think" -> "Well, I think";
 ///   - a comma before it goes when the filler ends the text or the sentence ("went home,
 ///     um." -> "went home.") or when the word before is one that never takes a comma
@@ -171,6 +171,8 @@ public enum CleanupRules {
     private struct Filler {
         var capitalised: Bool
         var trail: String
+        /// Lowercase filler word.
+        var word: String
     }
 
     private static func parseFiller(_ text: String) -> Filler? {
@@ -191,7 +193,7 @@ public enum CleanupRules {
         guard trail.isEmpty || trail == "," || trail == "." || trail == "..." || trail == "\u{2026}" else {
             return nil
         }
-        return Filler(capitalised: capitalised, trail: trail)
+        return Filler(capitalised: capitalised, trail: trail, word: lower)
     }
 
     /// The last character after any closing quote or bracket.
@@ -225,7 +227,14 @@ public enum CleanupRules {
         var pendingCapital = false
         var carriedSpace: String?
         for (i, tok) in tokens.enumerated() {
-            guard let filler = parseFiller(tok.text) else {
+            let hasPrev = !out.isEmpty
+            let prevIndex = out.count - 1
+            let atSentenceStart = !hasPrev || endsSentence(out[prevIndex].text) || containsNewline(tok.space)
+            var parsed = parseFiller(tok.text)
+            // "Hmm, interesting question." is as often a reaction as a hesitation, so a sentence-initial
+            // "hmm" stays. Mid-sentence ("Okay, hmm, that works") it is a filler.
+            if let f = parsed, f.word.hasPrefix("hm"), atSentenceStart { parsed = nil }
+            guard let filler = parsed else {
                 var kept = tok
                 if let carried = carriedSpace { kept.space = carried }
                 carriedSpace = nil
@@ -236,9 +245,6 @@ public enum CleanupRules {
             }
 
             let isLast = i == tokens.count - 1
-            let hasPrev = !out.isEmpty
-            let prevIndex = out.count - 1
-            let atSentenceStart = !hasPrev || endsSentence(out[prevIndex].text) || containsNewline(tok.space)
             var terminal = ""
             if filler.trail == "." || (isLast && (filler.trail == "..." || filler.trail == "\u{2026}")) {
                 terminal = filler.trail

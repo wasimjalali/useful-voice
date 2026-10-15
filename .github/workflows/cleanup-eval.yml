@@ -1,0 +1,90 @@
+name: Cleanup eval (macOS latency and memory)
+
+# Runs the local cleanup models (S1-mini and SpeakoFlow Mini, Q4_K_M) on a macos-15 runner
+# and records latency (median, p95) and peak RSS next to accuracy on a subset of
+# evals/cleanup/cases.json. Weights and the llama.cpp release are downloaded and checked
+# against the SHA-256 pinned in run_eval.py. Nothing here runs on ordinary PRs: only a
+# change under evals/cleanup/ or a manual dispatch starts it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      subset:
+        description: Number of cases to run (0 = all)
+        default: '60'
+  pull_request:
+    paths:
+      - 'evals/cleanup/**'
+      - '.github/workflows/cleanup-eval.yml'
+
+concurrency:
+  group: cleanup-eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-latency:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      SUBSET: ${{ github.event.inputs.subset || '60' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: windows/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # esbuild bundles the shipped TypeScript cleanup core for the runner.
+      - name: Install
+        working-directory: windows
+        run: npm ci
+
+      - name: Download llama.cpp and models (SHA-256 checked)
+        run: python3 evals/cleanup/run_eval.py --fetch-only --work "$RUNNER_TEMP/cleanup"
+
+      - name: Hardware
+        run: |
+          sysctl -n machdep.cpu.brand_string || true
+          sysctl -n hw.ncpu hw.memsize
+          sw_vers
+
+      - name: Run on the CPU (-ngl 0)
+        run: >
+          python3 evals/cleanup/run_eval.py --work "$RUNNER_TEMP/cleanup"
+          --llama-dir "$RUNNER_TEMP/cleanup/llama/llama-b11669" --models-dir "$RUNNER_TEMP/cleanup/models"
+          --subset "$SUBSET" --ngl 0 --variants rules+s1 rules+sf --label macos-15-cpu
+          --out "$RUNNER_TEMP/out/macos-15-cpu.json" | tee "$RUNNER_TEMP/macos-15-cpu.txt"
+
+      # The runner may not expose a GPU to the virtual machine. If Metal cannot start, this
+      # step fails and the artifact keeps the server log that says why.
+      - name: Run with Metal (-ngl 99)
+        continue-on-error: true
+        run: >
+          python3 evals/cleanup/run_eval.py --work "$RUNNER_TEMP/cleanup"
+          --llama-dir "$RUNNER_TEMP/cleanup/llama/llama-b11669" --models-dir "$RUNNER_TEMP/cleanup/models"
+          --subset "$SUBSET" --ngl 99 --port 8110 --variants rules+s1 rules+sf --label macos-15-metal
+          --out "$RUNNER_TEMP/out/macos-15-metal.json" | tee "$RUNNER_TEMP/macos-15-metal.txt"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '### macos-15 cleanup eval'
+            for f in "$RUNNER_TEMP"/macos-15-*.txt; do echo "#### $(basename "$f")"; echo '```'; cat "$f"; echo '```'; done
+          } >> "$GITHUB_STEP_SUMMARY"
+          cp "$RUNNER_TEMP"/macos-15-*.txt "$RUNNER_TEMP/out/" 2>/dev/null || true
+          cp "$RUNNER_TEMP"/cleanup/models/server-*.log "$RUNNER_TEMP/out/" 2>/dev/null || true
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleanup-eval-macos
+          path: ${{ runner.temp }}/out
+          if-no-files-found: warn

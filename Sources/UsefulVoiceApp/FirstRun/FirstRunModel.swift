@@ -179,13 +179,16 @@ final class FirstRunModel: ObservableObject {
                     of: viewModel.models.activeModel) == .usable),
             microphoneAuthorized: AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
             accessibilityTrusted: AXIsProcessTrusted(),
-            forced: forced)
+            forced: forced,
+            // Setup finished under the previous identity: its grants are gone.
+            grantsNeedRecheck: defaults.bool(forKey: FirstRunGate.recheckGrantsKey))
         // An offscreen render saves nothing, and unless the flow is forced it
         // renders the page it was asked for: a differently signed build is never
         // Accessibility-trusted, so the gate would otherwise always show setup.
         let offscreen = environment["UV_SNAPSHOT"] != nil
         if decision == .skipAndMarkCompleted, !offscreen {
             defaults.set(true, forKey: FirstRunGate.completedKey)
+            defaults.removeObject(forKey: FirstRunGate.recheckGrantsKey)
         }
         self.active = decision == .show && (forced || !offscreen)
 
@@ -305,6 +308,7 @@ final class FirstRunModel: ObservableObject {
     func markCompleted() {
         guard !forced else { return }
         defaults.set(true, forKey: FirstRunGate.completedKey)
+        defaults.removeObject(forKey: FirstRunGate.recheckGrantsKey)
     }
 
     func finish() {

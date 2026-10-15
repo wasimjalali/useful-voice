@@ -29,6 +29,54 @@ struct FirstRunGateTests {
         #expect(decide(completed: true, engine: true, mic: false, ax: false) == .skip)
     }
 
+    // MARK: After the identity rename (WAS-30, UV-003)
+    //
+    // The renamed app has a new bundle id, so macOS has no Accessibility or
+    // Microphone grant for it. The migration copies "setup finished" from the
+    // old identity and sets the recheck flag; the gate then treats the install
+    // as unfinished until the grants are back.
+
+    private func decideAfterRename(engine: Bool = true, mic: Bool = false, ax: Bool = false,
+                                   forced: Bool = false) -> FirstRunGate.Decision {
+        FirstRunGate.decide(completed: true, engineConfigured: engine,
+                            microphoneAuthorized: mic, accessibilityTrusted: ax,
+                            forced: forced, grantsNeedRecheck: true)
+    }
+
+    @Test func renamedInstallWithNoGrantsShowsTheFlow() {
+        #expect(decideAfterRename() == .show)
+    }
+
+    @Test func renamedInstallMissingOnlyOneGrantShowsTheFlow() {
+        #expect(decideAfterRename(mic: true, ax: false) == .show)
+        #expect(decideAfterRename(mic: false, ax: true) == .show)
+    }
+
+    @Test func renamedInstallWithoutAnEngineShowsTheFlowEvenWithGrants() {
+        #expect(decideAfterRename(engine: false, mic: true, ax: true) == .show)
+    }
+
+    /// Both grants came back by hand before the flow was ever seen: it stays out
+    /// of the way and the install is marked done, which also clears the recheck.
+    @Test func renamedInstallWithEverythingBackIsMarkedDoneSilently() {
+        #expect(decideAfterRename(mic: true, ax: true) == .skipAndMarkCompleted)
+    }
+
+    @Test func theRecheckNeverHidesAForcedRun() {
+        #expect(decideAfterRename(mic: true, ax: true, forced: true) == .show)
+    }
+
+    /// Without the recheck flag a completed install is left alone, grants or not.
+    @Test func withoutTheRecheckACompletedInstallStillSkips() {
+        #expect(FirstRunGate.decide(completed: true, engineConfigured: true,
+                                    microphoneAuthorized: false, accessibilityTrusted: false,
+                                    forced: false, grantsNeedRecheck: false) == .skip)
+    }
+
+    @Test func recheckFlagLivesUnderTheDocumentedKey() {
+        #expect(FirstRunGate.recheckGrantsKey == "uv.firstRunRecheckGrants")
+    }
+
     @Test func upgradingUserWhoIsFullyConfiguredIsMarkedDoneSilently() {
         #expect(decide(engine: true, mic: true, ax: true) == .skipAndMarkCompleted)
     }

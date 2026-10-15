@@ -5,6 +5,11 @@ import Foundation
 public enum FirstRunGate {
     /// `UserDefaults` key set once setup is finished (or was never needed).
     public static let completedKey = "uv.firstRunCompleted"
+    /// `UserDefaults` key the identity migration sets when the previous identity
+    /// had finished setup. macOS keys the Accessibility and Microphone grants to
+    /// the bundle id, so the renamed app starts with none: while this is set, a
+    /// finished setup is checked against the grants again instead of trusted.
+    public static let recheckGrantsKey = "uv.firstRunRecheckGrants"
     /// Environment variable that forces the flow open without saving anything.
     public static let forceVariable = "UV_FIRST_RUN"
 
@@ -18,13 +23,19 @@ public enum FirstRunGate {
         case skipAndMarkCompleted
     }
 
+    /// `grantsNeedRecheck`: setup was finished under the previous identity (see
+    /// `recheckGrantsKey`). It is treated as not finished yet, so the flow shows
+    /// while a grant or the engine is missing and is marked done silently once
+    /// everything is in place. A completed install without it is never walked
+    /// through setup again, even if a permission is revoked later.
     public static func decide(completed: Bool,
                               engineConfigured: Bool,
                               microphoneAuthorized: Bool,
                               accessibilityTrusted: Bool,
-                              forced: Bool) -> Decision {
+                              forced: Bool,
+                              grantsNeedRecheck: Bool = false) -> Decision {
         if forced { return .show }
-        if completed { return .skip }
+        if completed && !grantsNeedRecheck { return .skip }
         if engineConfigured && microphoneAuthorized && accessibilityTrusted {
             return .skipAndMarkCompleted
         }

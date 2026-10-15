@@ -70,6 +70,10 @@ import Testing
 //      only: nothing persisted, no flag, and an already migrated user is not
 //      shadowed by stale old values.
 //      -> previewRegistersLegacyDefaultsInMemoryOnly, previewDoesNothingOnceMigrated
+//  D10 A setup the old identity finished is checked against the grants again
+//      (the rename drops Accessibility and Microphone): the recheck flag is set
+//      only then, once.
+//      -> aSetupTheOldIdentityFinishedIsCheckedAgainAfterTheRename and its siblings
 //
 // KEYCHAIN (old service -> new service)
 //  K1  New item missing, old item present: copied, read back, old deleted.
@@ -565,6 +569,74 @@ struct IdentityMigrationDefaultsTests {
         // And the language default is not re-decided for a migrated install.
         settings.resolveLanguageDefault(hasPriorData: false)
         #expect(settings.languagePin == .de)
+    }
+
+    // The renamed app has no Accessibility or Microphone grant (macOS keys them to the
+    // bundle id), so a setup the old identity finished must be checked again (WAS-30).
+
+    @Test func aSetupTheOldIdentityFinishedIsCheckedAgainAfterTheRename() {
+        let h = Harness(legacyDefaults: [FirstRunGate.completedKey: true]); defer { h.cleanUp() }
+
+        let report = h.migration().run(diagnostics: h.silentDiagnostics())
+
+        #expect(h.defaults.bool(forKey: FirstRunGate.recheckGrantsKey))
+        // The flag is not a copied preference.
+        #expect(report.defaultsCopied == 1)
+        // What the first-run model then asks the gate: setup counts as unfinished while
+        // a grant is missing, and the flow shows.
+        let decision = FirstRunGate.decide(
+            completed: h.defaults.bool(forKey: FirstRunGate.completedKey),
+            engineConfigured: true, microphoneAuthorized: false, accessibilityTrusted: false,
+            forced: false, grantsNeedRecheck: h.defaults.bool(forKey: FirstRunGate.recheckGrantsKey))
+        #expect(decision == .show)
+    }
+
+    @Test func aMigratedInstallWithBothGrantsBackIsNotShownTheFlow() {
+        let h = Harness(legacyDefaults: [FirstRunGate.completedKey: true]); defer { h.cleanUp() }
+        _ = h.migration().run(diagnostics: h.silentDiagnostics())
+
+        let decision = FirstRunGate.decide(
+            completed: h.defaults.bool(forKey: FirstRunGate.completedKey),
+            engineConfigured: true, microphoneAuthorized: true, accessibilityTrusted: true,
+            forced: false, grantsNeedRecheck: h.defaults.bool(forKey: FirstRunGate.recheckGrantsKey))
+        #expect(decision == .skipAndMarkCompleted)
+    }
+
+    @Test func noRecheckWhenTheOldIdentityNeverFinishedSetup() {
+        let legacies: [[String: Any]] = [[FirstRunGate.completedKey: false], ["appearance": "dark"]]
+        for legacy in legacies {
+            let h = Harness(legacyDefaults: legacy); defer { h.cleanUp() }
+            _ = h.migration().run(diagnostics: h.silentDiagnostics())
+            #expect(!h.defaults.bool(forKey: FirstRunGate.recheckGrantsKey))
+        }
+    }
+
+    @Test func noRecheckForANewInstallWithNothingToMigrate() {
+        let h = Harness(legacyDefaults: nil); defer { h.cleanUp() }
+        _ = h.migration().run(diagnostics: h.silentDiagnostics())
+        #expect(!h.defaults.bool(forKey: FirstRunGate.recheckGrantsKey))
+    }
+
+    /// The new identity already ran its own setup: that answer wins, as every key in both does.
+    @Test func noRecheckWhenTheNewIdentityAlreadyAnsweredSetup() {
+        let h = Harness(legacyDefaults: [FirstRunGate.completedKey: true]); defer { h.cleanUp() }
+        h.defaults.set(true, forKey: FirstRunGate.completedKey)
+
+        _ = h.migration().run(diagnostics: h.silentDiagnostics())
+
+        #expect(!h.defaults.bool(forKey: FirstRunGate.recheckGrantsKey))
+    }
+
+    /// Once the user finishes setup the flag is cleared; a later launch must not bring it back.
+    @Test func theRecheckIsSetOnceAndNotAgainOnTheNextLaunch() {
+        let h = Harness(legacyDefaults: [FirstRunGate.completedKey: true]); defer { h.cleanUp() }
+        _ = h.migration().run(diagnostics: h.silentDiagnostics())
+        h.defaults.removeObject(forKey: FirstRunGate.recheckGrantsKey)   // setup finished
+
+        _ = h.migration().run(diagnostics: h.silentDiagnostics())
+
+        #expect(!h.defaults.bool(forKey: FirstRunGate.recheckGrantsKey))
+        #expect(h.defaults.bool(forKey: FirstRunGate.completedKey))
     }
 
     @Test func theLegacyDomainIsLeftUntouched() {

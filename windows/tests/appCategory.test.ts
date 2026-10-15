@@ -15,6 +15,7 @@ import {
   categoryForURL,
   isBrowser,
   normalizeAppID,
+  parseCategoryOverrides,
   parseWebURL,
   resolveCategory,
   seededCategory,
@@ -37,6 +38,7 @@ interface Fixture {
   urls: { url: string; expected: AppCategory | null }[];
   parse: { url: string; host: string | null; path: string | null }[];
   normalize: { raw: string; expected: string }[];
+  overrideDecode: { id: string; settings: string; expected: Record<string, string> }[];
 }
 const fixture: Fixture = JSON.parse(
   readFileSync(
@@ -47,8 +49,14 @@ const fixture: Fixture = JSON.parse(
 
 describe('resolveCategory on the shared cases', () => {
   it('has the cases it should', () => {
-    expect(fixture.apps).toHaveLength(107);
-    expect(fixture.urls).toHaveLength(82);
+    const ids = fixture.apps.map((c) => c.id);
+    expect(ids.filter((id, i) => ids.indexOf(id) !== i)).toEqual([]);
+    const urls = fixture.urls.map((c) => c.url);
+    expect(urls.filter((u, i) => urls.indexOf(u) !== i)).toEqual([]);
+    expect([...new Set(fixture.apps.map((c) => c.expected))].sort()).toEqual([...APP_CATEGORIES].sort());
+    for (const list of [fixture.urls, fixture.parse, fixture.normalize, fixture.overrideDecode]) {
+      expect(list.length).toBeGreaterThan(0);
+    }
   });
 
   it('resolves every app case', () => {
@@ -84,6 +92,14 @@ describe('resolveCategory on the shared cases', () => {
 
   it('normalizes app ids', () => {
     for (const c of fixture.normalize) expect(normalizeAppID(c.raw), c.raw).toBe(c.expected);
+  });
+
+  it('reads stored overrides leniently, including settings saved before overrides existed', () => {
+    for (const c of fixture.overrideDecode) {
+      const settings = JSON.parse(c.settings) as { categoryOverrides?: unknown };
+      const got = parseCategoryOverrides(settings.categoryOverrides);
+      expect(Object.entries(got).sort(), c.id).toEqual(Object.entries(c.expected).sort());
+    }
   });
 });
 
@@ -139,6 +155,14 @@ describe('seed tables', () => {
       expect(isBrowser(id), id).toBe(true);
     }
     expect(isBrowser('C:\\Program Files\\Google\\Chrome\\Application\\CHROME.EXE')).toBe(true);
+  });
+
+  it('lists every seed id once', () => {
+    const ids = APP_SEEDS.flatMap((s) => s.ids.map((id) => normalizeAppID(id)));
+    expect(ids.filter((id, i) => ids.indexOf(id) !== i)).toEqual([]);
+    for (const { category, ids: seeded } of APP_SEEDS) {
+      for (const id of seeded) expect(seededCategory(id), id).toBe(category);
+    }
   });
 
   it('covers every category', () => {

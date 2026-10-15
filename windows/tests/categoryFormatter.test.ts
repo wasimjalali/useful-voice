@@ -10,7 +10,7 @@ import {
   lowercaseFirstWord,
   needsLeadingSpace,
 } from '../src/core/formatting/categoryContinuation.js';
-import { structureEmail } from '../src/core/formatting/categoryEmail.js';
+import { EMAIL_LONG_DICTATION_WORDS, structureEmail } from '../src/core/formatting/categoryEmail.js';
 import { formatForCategory } from '../src/core/formatting/categoryFormatter.js';
 import { applyStyle, dropTrailingFullStop } from '../src/core/formatting/categoryStyle.js';
 
@@ -44,7 +44,8 @@ function run(c: Case): string {
 
 describe('formatForCategory on the shared cases', () => {
   it('has the cases it should', () => {
-    expect(cases).toHaveLength(257);
+    const ids = cases.map((c) => c.id);
+    expect(ids.filter((id, i) => ids.indexOf(id) !== i)).toEqual([]);
     const prefixes = new Set(cases.map((c) => c.id.split('-')[0]));
     for (const p of ['empty', 'blank', 'code', 'nocode', 'style', 'cont', 'email']) {
       expect(prefixes.has(p), p).toBe(true);
@@ -151,19 +152,27 @@ describe('continuation helpers', () => {
     expect(needsLeadingSpace('say "', 'world')).toBe(false);
     expect(needsLeadingSpace('say "hi"', 'world')).toBe(true);
     expect(needsLeadingSpace('src/', 'app')).toBe(false);
+    expect(needsLeadingSpace('foo.', 'bar')).toBe(true);
+    for (const end of ['foo.', 'foo_', 'foo-', 'foo:']) {
+      expect(needsLeadingSpace(end, 'bar', { code: true }), end).toBe(false);
+    }
+    expect(needsLeadingSpace('foo', 'bar', { code: true })).toBe(true);
   });
 
   it('lowercaseFirstWord and capitalizeFirstWord', () => {
-    expect(lowercaseFirstWord('Hello', [])).toBe('hello');
-    expect(lowercaseFirstWord('  Hello', [])).toBe('  hello');
+    expect(lowercaseFirstWord('The', [])).toBe('the');
+    expect(lowercaseFirstWord('  The end', [])).toBe('  the end');
+    expect(lowercaseFirstWord('Hello', [])).toBe('Hello');
+    expect(lowercaseFirstWord('Sarah said', [])).toBe('Sarah said');
+    expect(lowercaseFirstWord('The.', [])).toBe('the.');
     expect(lowercaseFirstWord('', [])).toBe('');
     expect(lowercaseFirstWord('hello', [])).toBe('hello');
     expect(lowercaseFirstWord('I am', [])).toBe('I am');
     expect(lowercaseFirstWord('I\u2019d go', [])).toBe('I\u2019d go');
     expect(lowercaseFirstWord('NASA', [])).toBe('NASA');
     expect(lowercaseFirstWord('iPhone', [])).toBe('iPhone');
-    expect(lowercaseFirstWord('Sam', ['sam'])).toBe('Sam');
-    expect(lowercaseFirstWord('Sam', [' '])).toBe('sam');
+    expect(lowercaseFirstWord('So', ['so'])).toBe('So');
+    expect(lowercaseFirstWord('So', [' '])).toBe('so');
     expect(capitalizeFirstWord('thanks', [])).toBe('Thanks');
     expect(capitalizeFirstWord('iPhone', [])).toBe('iPhone');
     expect(capitalizeFirstWord('npm', ['npm'])).toBe('npm');
@@ -174,8 +183,9 @@ describe('continuation helpers', () => {
   it('applyContinuation leaves unknown context alone and can skip lowercasing', () => {
     expect(applyContinuation(null, 'Hello', [])).toBe('Hello');
     expect(applyContinuation(undefined, 'Hello', [])).toBe('Hello');
-    expect(applyContinuation('and', 'Hello', [])).toBe(' hello');
-    expect(applyContinuation('and', 'Hello', [], { lowercase: false })).toBe(' Hello');
+    expect(applyContinuation('and', 'The', [])).toBe(' the');
+    expect(applyContinuation('and', 'The', [], { lowercase: false })).toBe(' The');
+    expect(applyContinuation('and', 'Sarah', [])).toBe(' Sarah');
   });
 });
 
@@ -197,18 +207,32 @@ describe('style helpers', () => {
 });
 
 describe('email layout', () => {
-  it('needs 25 words or a greeting', () => {
+  it('needs a greeting, a sign-off or a long dictation', () => {
     const body = (n: number) => `Word ${Array.from({ length: n - 2 }, () => 'word').join(' ')} word.`;
-    const atLimit = `${body(23)} Thanks, Sam`;
-    expect(atLimit.split(' ')).toHaveLength(25);
-    expect(structureEmail(atLimit, null)).toBe(`${body(23)}\n\nThanks,\nSam`);
-    const underLimit = `${body(22)} Thanks, Sam`;
-    expect(underLimit.split(' ')).toHaveLength(24);
+    const long = EMAIL_LONG_DICTATION_WORDS;
+    const atLimit = `${body(long - 3)} New paragraph. Word.`;
+    expect(atLimit.split(' ')).toHaveLength(long);
+    expect(structureEmail(atLimit, null)).toBe(`${body(long - 3)}\n\nWord.`);
+    const underLimit = `${body(long - 4)} New paragraph. Word.`;
+    expect(underLimit.split(' ')).toHaveLength(long - 1);
     expect(structureEmail(underLimit, null)).toBe(underLimit);
+    expect(structureEmail(`${body(2)} Thanks, Sam`, null)).toBe('Word word.\n\nThanks,\nSam');
     expect(structureEmail(`Hi Sam, ${body(2)}`, null)).toBe('Hi Sam,\n\nWord word.');
+    expect(structureEmail('Hi Sam how are you', null)).toBe('Hi Sam how are you');
   });
 
   it('keeps text unchanged when it has a line break', () => {
     expect(structureEmail('Hi Sam,\nthanks', 'Wasim')).toBe('Hi Sam,\nthanks');
+  });
+});
+
+describe('long input', () => {
+  it('formats a 5,000-word "x dot x dot" chain in linear time', () => {
+    const chain = Array.from({ length: 2500 }, () => 'x dot').join(' ');
+    expect(chain.split(' ')).toHaveLength(5000);
+    const start = performance.now();
+    const out = formatCoding(chain);
+    expect(performance.now() - start).toBeLessThan(2000);
+    expect(out.length).toBeGreaterThan(0);
   });
 });

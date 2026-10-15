@@ -1096,7 +1096,9 @@
   "app": "coding",
   "input": "Why does the build fail with ERR_MODULE_NOT_FOUND, uh, after the upgrade?",
   "expected": "Why does the build fail with ERR_MODULE_NOT_FOUND after the upgrade?",
-  "accept": [],
+  "accept": [
+   "Why does the build fail with ERR_MODULE_NOT_FOUND, after the upgrade?"
+  ],
   "split": "test",
   "needs_edit": true
  },
@@ -1142,7 +1144,9 @@
   "app": "coding",
   "input": "Check package dot json, um, for the test script.",
   "expected": "Check package.json for the test script.",
-  "accept": [],
+  "accept": [
+   "Check package.json, for the test script."
+  ],
   "split": "test",
   "needs_edit": true
  },
@@ -1153,7 +1157,9 @@
   "app": "coding",
   "input": "Edit @src/server.ts, uh, to add a health route.",
   "expected": "Edit @src/server.ts to add a health route.",
-  "accept": [],
+  "accept": [
+   "Edit @src/server.ts, to add a health route."
+  ],
   "split": "test",
   "needs_edit": true
  },

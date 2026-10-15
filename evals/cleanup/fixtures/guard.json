@@ -191,6 +191,20 @@
     "verdict": "addedContent"
   },
   {
+    "name": "spoken decimal",
+    "rulesText": "The file is two point five gigabytes.",
+    "output": "The file is 2.5 gigabytes.",
+    "verdict": "accept",
+    "text": "The file is 2.5 gigabytes."
+  },
+  {
+    "name": "spoken times",
+    "rulesText": "The event runs from nine a m to five p m.",
+    "output": "The event runs from 9am to 5pm.",
+    "verdict": "accept",
+    "text": "The event runs from 9am to 5pm."
+  },
+  {
     "name": "date formatting",
     "rulesText": "The launch is on march third twenty twenty six.",
     "output": "The launch is on March 3, 2026.",

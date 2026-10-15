@@ -18,14 +18,16 @@
  *
  * "Content words" are the distinct lowercase words of the text minus function words,
  * filler-like words ("like", "you know"), self-correction cues ("no wait", "I mean") and
- * spoken-symbol words ("at", "dot", "dollars"). Case, punctuation and spacing are ignored:
+ * spoken-symbol words ("at", "dot", "point", "dollars", the "p m" of a spoken time). Case, punctuation and spacing are ignored:
  * the guard judges content, not formatting. Numbers count as one content item ("#num"), so
  * "three" -> "3" is neither a drop nor an add, but a model that invents a number, or loses
  * every number, is caught. A self-correction legitimately removes words ("Monday, no wait,
  * Tuesday"), so when the input contains a correction cue the allowed drop share is higher.
  *
- * The limits below were set before the first eval run and not tuned; the no-word-change check
- * was added after the first run showed the format-only edits (see
+ * The limits below were set before the first eval run and not tuned. After it, the "point" and "p m"
+ * entries were added to the spoken-symbol words and the no-word-change check
+ * added, because the run showed spoken decimals and times being rejected and format-only edits
+ * getting through (see
  * `evals/results/2026-10-16-cleanup.md`).
  */
 
@@ -203,7 +205,7 @@ const CUES = w('wait sorry scratch oops whoops rather mean actually correction i
 
 const SYMBOLS = w(
   'at dot dash slash backslash underscore hash colon semicolon hyphen comma period percent dollar dollars ' +
-    'cent cents euro euros pound pounds oclock am pm',
+    'cent cents euro euros pound pounds oclock am pm point p m',
 );
 
 const NUMBER_WORDS = w(

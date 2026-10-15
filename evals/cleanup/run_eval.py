@@ -445,7 +445,12 @@ def rescore(cases, raw, bundle, limits=None):
         latency[name]["share_over_3s"] = pct(sum(r["latency_ms"] > 3000 for r in rows), len(rows))
         latency[name]["reasoning_outputs"] = sum(r["reasoning"] for r in rows)
         latency[name]["think_tag_outputs"] = sum("<think" in r["output"].lower() for r in rows)
-    return {"summary": summary, "latency": latency, "guard": guard_detail, "rules_ok_ids": [i for i, v in rules_ok.items() if v]}, finals
+    pooled = {}
+    for key in ("s1", "sf"):
+        ms = [r["latency_ms"] for name, rows in raw["runs"].items() if MODEL_RUNS[name][0] == key for r in rows]
+        if ms:
+            pooled[key] = lat_stats(ms)
+    return {"summary": summary, "latency": latency, "latency_pooled": pooled, "guard": guard_detail, "rules_ok_ids": [i for i, v in rules_ok.items() if v]}, finals
 
 
 def print_report(res, order=None):
@@ -457,6 +462,8 @@ def print_report(res, order=None):
               f"{a['edit_accuracy_model_needed']!s:>10} {a['content_loss']!s:>6} {a['content_add']!s:>6} {a.get('guard_reject', '')!s:>9}")
     for n, l in res["latency"].items():
         print(f"latency {n:20} median {l['median_ms']} ms  p95 {l['p95_ms']} ms  (n={l['n']})")
+    for k, l in res.get("latency_pooled", {}).items():
+        print(f"latency pooled {k:13} median {l['median_ms']} ms  p95 {l['p95_ms']} ms  (n={l['n']})")
 
 
 def main():

@@ -424,13 +424,6 @@ public struct IdentityMigration {
                 defaults.set(value, forKey: key)
                 report.defaultsCopied += 1
             }
-            // The renamed app has no Accessibility or Microphone grant yet (macOS
-            // keys them to the bundle id), so a setup the old identity finished is
-            // checked against the grants again at the next gate decision.
-            if (legacy[FirstRunGate.completedKey] as? Bool) == true,
-               existing[FirstRunGate.completedKey] == nil {
-                defaults.set(true, forKey: FirstRunGate.recheckGrantsKey)
-            }
         }
         defaults.set(true, forKey: Self.migratedFlag)
     }

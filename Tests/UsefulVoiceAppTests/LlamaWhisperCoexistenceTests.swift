@@ -136,14 +136,15 @@ struct LlamaWhisperCoexistenceTests {
             "can you open the file source slash app dot ts and rename the function get user to fetch user",
         ]
         print("MEASURE baseline \(memoryMB())")
-        for (label, layers) in [("cpu", Int32(0)), ("metal", Int32(-1))] {
+        for (placement, repeats) in [(LlamaRuntime.Placement.cpuOnly, 3), (.cpuWithDevices, 1), (.metal, 1)] {
+            let label = placement.rawValue
             do {
                 let t0 = ContinuousClock.now
-                let runtime = try LlamaRuntime(modelPath: s1, gpuLayers: layers)
+                let runtime = try LlamaRuntime(modelPath: s1, placement: placement)
                 let loadMs = ms(t0.duration(to: .now))
                 print("MEASURE \(label) load \(loadMs) ms threads \(runtime.threadCount) cores \(ProcessInfo.processInfo.activeProcessorCount) mem \(memoryMB())")
                 var times: [Double] = []
-                for s in sentences + sentences {
+                for s in Array(repeating: sentences, count: repeats).flatMap({ $0 }) {
                     let t = ContinuousClock.now
                     let r = try runtime.complete(prompt: prompt(s), deadline: .now.advanced(by: .seconds(120)))
                     let took = ms(t.duration(to: .now))
@@ -153,11 +154,11 @@ struct LlamaWhisperCoexistenceTests {
                 let sorted = times.sorted()
                 print("MEASURE \(label) median \(sorted[sorted.count / 2]) ms max \(sorted.last ?? 0) ms mem after \(memoryMB())")
                 let tw = ContinuousClock.now
-                let ok = WhisperRuntimeInfo.canLoad(modelAt: URL(fileURLWithPath: tiny), useGPU: label == "metal")
+                let ok = WhisperRuntimeInfo.canLoad(modelAt: URL(fileURLWithPath: tiny), useGPU: placement == .metal)
                 print("MEASURE \(label) with whisper tiny loadable=\(ok) in \(ms(tw.duration(to: .now))) ms mem \(memoryMB())")
             } catch {
                 print("MEASURE \(label) failed: \(error)")
-                if label == "cpu" { throw error }
+                if placement == .cpuOnly { throw error }
             }
             print("MEASURE after \(label) unload \(memoryMB())")
         }

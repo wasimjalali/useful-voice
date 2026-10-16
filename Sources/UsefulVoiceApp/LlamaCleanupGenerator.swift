@@ -8,17 +8,17 @@ import UsefulVoiceLlama
 ///
 /// The CPU runs the model: llama.cpp can only stop a running decode on the CPU, which is what
 /// makes the deadline strict, and for a 0.6B model the CPU was faster than Metal in the
-/// measurements (see the PR). Pass `gpuLayers: -1` to try Metal.
+/// measurements (see the PR). Pass `placement: .metal` to try Metal.
 public final class LlamaCleanupGenerator: CleanupTextGenerator, @unchecked Sendable {
-    private let gpuLayers: Int32
+    private let placement: LlamaRuntime.Placement
     private var runtime: LlamaRuntime?
 
-    public init(gpuLayers: Int32 = 0) {
-        self.gpuLayers = gpuLayers
+    public init(placement: LlamaRuntime.Placement = .cpuOnly) {
+        self.placement = placement
     }
 
     public func load(modelAt url: URL) throws {
-        runtime = try LlamaRuntime(modelPath: url.path, gpuLayers: gpuLayers)
+        runtime = try LlamaRuntime(modelPath: url.path, placement: placement)
     }
 
     public func generate(prompt: String, deadline: ContinuousClock.Instant) throws -> String {

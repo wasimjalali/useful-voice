@@ -67,21 +67,38 @@ public final class LlamaRuntime: @unchecked Sendable {
         String(cString: llama_version())
     }
 
+    /// Where the model runs.
+    public enum Placement: String, Sendable, CaseIterable {
+        /// Only the CPU backend (plus Accelerate for big matmuls): no device list, no GPU
+        /// offload of weights, cache or operations. The default for the cleanup model.
+        case cpuOnly
+        /// Weights on the CPU, but every device left in the list. llama.cpp may still send
+        /// large matmuls to the GPU ("op offload"). Kept for measurement.
+        case cpuWithDevices
+        /// Every layer on Metal.
+        case metal
+    }
+
     private let model: OpaquePointer
     private let vocab: OpaquePointer
     private let threads: Int32
     public var threadCount: Int32 { threads }
-    public let gpuLayers: Int32
+    public let placement: Placement
     public let modelPath: String
 
-    /// Loads the weights. `gpuLayers` is 0 for the CPU only; a negative number offloads every
-    /// layer to Metal. The CPU is the default for the cleanup model: see the PR notes for the
-    /// measurements, and note that llama.cpp can only stop a running decode on the CPU.
-    public init(modelPath: String, gpuLayers: Int32 = 0) throws {
+    /// Loads the weights. See `Placement`; the CPU is the default for the cleanup model, and
+    /// llama.cpp can only stop a running decode on the CPU. The PR notes have the numbers.
+    public init(modelPath: String, placement: Placement = .cpuOnly) throws {
         _ = Self.backendReady
         var params = llama_model_default_params()
-        params.n_gpu_layers = gpuLayers
-        guard let loaded = modelPath.withCString({ llama_model_load_from_file($0, params) }) else {
+        params.n_gpu_layers = placement == .metal ? -1 : 0
+        // A list that ends at once is "no devices"; NULL would mean "all of them".
+        var noDevices: [ggml_backend_dev_t?] = [nil]
+        let loadedModel: OpaquePointer? = noDevices.withUnsafeMutableBufferPointer { list in
+            if placement == .cpuOnly { params.devices = list.baseAddress }
+            return modelPath.withCString { llama_model_load_from_file($0, params) }
+        }
+        guard let loaded = loadedModel else {
             throw RuntimeError.modelLoadFailed("llama.cpp could not load \((modelPath as NSString).lastPathComponent)")
         }
         guard let vocab = llama_model_get_vocab(loaded) else {
@@ -90,7 +107,7 @@ public final class LlamaRuntime: @unchecked Sendable {
         }
         self.model = loaded
         self.vocab = vocab
-        self.gpuLayers = gpuLayers
+        self.placement = placement
         self.modelPath = modelPath
         self.threads = Self.defaultThreadCount()
     }
@@ -138,6 +155,10 @@ public final class LlamaRuntime: @unchecked Sendable {
         cparams.n_threads = threads
         cparams.n_threads_batch = threads
         cparams.no_perf = true
+        if placement == .cpuOnly {
+            cparams.offload_kqv = false
+            cparams.op_offload = false
+        }
         cparams.abort_callback = { data in
             guard let data else { return false }
             return ContinuousClock.now >= Unmanaged<AbortBox>.fromOpaque(data).takeUnretainedValue().deadline

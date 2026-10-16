@@ -8,6 +8,8 @@ import {
   pasteScript,
   reactivateScript,
   restoreForegroundScript,
+  sendKeyScript,
+  textBeforeCursorScript,
   typeScript,
 } from '../src/main/powershellScripts.js';
 
@@ -47,6 +49,10 @@ const deadline = Date.now() + 5000;
 const scripts: Record<string, string> = {
   'paste, guarded': pasteScript(0x1234, deadline),
   'type out': typeScript(0x1234, deadline),
+  'send key, Return': sendKeyScript(0x1234, deadline, '{ENTER}'),
+  'send key, Shift+Return': sendKeyScript(0x1234, deadline, '+{ENTER}'),
+  'send key, Ctrl+Return': sendKeyScript(0x1234, deadline, '^{ENTER}'),
+  'text before the cursor': textBeforeCursorScript(0x1234),
   foreground: foregroundScript(),
   reactivate: reactivateScript(0x1234, 0x99),
   'reactivate, no focus child': reactivateScript(0x1234, undefined),
@@ -78,6 +84,7 @@ describe('PowerShell script guards', () => {
     for (const script of [
       scripts['paste, guarded']!,
       scripts['type out']!,
+      scripts['send key, Return']!,
       scripts.reactivate!,
       scripts['restore foreground']!,
     ]) {
@@ -140,5 +147,40 @@ describe('PowerShell script guards', () => {
     expect(() => browserAddressScript(Number.NaN, 'chromium')).toThrow();
     expect(() => restoreForegroundScript(5, 0)).toThrow();
     expect(() => pasteScript(Number.MAX_SAFE_INTEGER + 2, deadline)).toThrow();
+  });
+});
+
+describe('send key and text read scripts', () => {
+  it('checks the foreground and the deadline before the send key, in the same script', () => {
+    const script = scripts['send key, Return']!;
+    const keystroke = script.indexOf('SendKeys');
+    expect(script.indexOf('GetForegroundWindow() -ne [IntPtr]4660')).toBeGreaterThan(-1);
+    expect(script.indexOf('GetForegroundWindow() -ne [IntPtr]4660')).toBeLessThan(keystroke);
+    expect(script.indexOf('[DateTime]::UtcNow -ge $deadline')).toBeLessThan(keystroke);
+    expect(script).toContain('SendKeys("{ENTER}")');
+    expect(scripts['send key, Shift+Return']).toContain('SendKeys("+{ENTER}")');
+    expect(scripts['send key, Ctrl+Return']).toContain('SendKeys("^{ENTER}")');
+  });
+
+  it('takes nothing but Return, Shift+Return or Ctrl+Return as the key', () => {
+    for (const bad of ['', 'x', '{ENTER}x', '%{ENTER}', '^v', '{ENTER}"; calc; "', '+^{ENTER}', '{ENTER}\n']) {
+      expect(() => sendKeyScript(0x1234, deadline, bad), bad).toThrow();
+    }
+    expect(() => sendKeyScript(0, deadline, '{ENTER}')).toThrow();
+  });
+
+  it('reads only while the target is in front, never a password field, and prints nothing on doubt', () => {
+    const script = scripts['text before the cursor']!;
+    expect(script).toContain("$ErrorActionPreference = 'Stop'");
+    expect(script.indexOf('GetForegroundWindow() -ne [IntPtr]4660')).toBeLessThan(script.indexOf('FocusedElement'));
+    expect(script.indexOf('IsPassword')).toBeLessThan(script.indexOf('GetSelection'));
+    expect(script).toMatch(/catch \{\s*exit 0/);
+    // 200 characters before the caret, in a bounded time.
+    expect(script).toContain('-200)');
+    expect(script).toContain('GetText(200)');
+    expect(script).toMatch(/ElapsedMilliseconds -ge 300/);
+    // Without a caret (ValuePattern only) only an empty field is known.
+    expect(script).toContain('Value.Length -eq 0');
+    expect(() => textBeforeCursorScript(0)).toThrow();
   });
 });

@@ -5,6 +5,7 @@
  */
 
 import type { HistoryEntryDTO } from '../../preload/types.js';
+import { APP_CATEGORY_NAMES, isAppCategory } from '../../core/apps/appCategory.js';
 import { el, icon } from './dom.js';
 import { STREAM_ICONS } from './dockIcons.js';
 import { openFloating } from './bubblePopover.js';
@@ -104,6 +105,9 @@ function metaParts(entry: HistoryEntryDTO): string[] {
   parts.push(pluralize(countWords(entry.text), 'word'));
   parts.push(formatDuration(entry.durationSeconds));
   parts.push(entry.appName !== '' ? `into ${entry.appName}` : 'saved and copied');
+  // The category it was written for, when it was a specific one: "Other" says nothing.
+  const category = entry.category;
+  if (isAppCategory(category) && category !== 'other') parts.push(APP_CATEGORY_NAMES[category]);
   return parts;
 }
 

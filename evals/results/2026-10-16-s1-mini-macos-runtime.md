@@ -33,7 +33,7 @@ average Mac? Which runtime and placement (CPU or Metal) should the hidden flag u
   4e1cc6b: native timers, threadpool), 38901063521 (605f07d: thread QoS, release build of the
   tests), 38902782660 (c88468b: CPU-only `llama-bench`, Metal in process), 38905410608
   (5f10093: one-context probe), 38915657883 (1afbf07: the coexistence checks below, CI green;
-  its lines are the last block of the raw log).
+  only its COEXIST and test-result lines are kept, as the last block of the raw log, so the ranges below stay computed from the first four runs).
 - Cost: CI minutes only.
 
 ## Numbers

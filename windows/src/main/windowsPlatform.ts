@@ -80,20 +80,21 @@ export async function pasteClipboard(
 
 /**
  * Press the auto-send key (Return, Shift+Return or Ctrl+Return), only while
- * `expectedForeground` is in front and before the deadline, in the same script as the
- * keystroke. `kill` stops the script outright when the delivery ran out of time.
+ * `expectedForeground` is in front (with `expectedFocus`, the child control captured at the
+ * press, still focused) and before the deadline, in the same script as the keystroke. `kill` stops the script outright when the delivery ran out of time.
  */
 export async function sendKey(
   expectedForeground: number,
   key: AutoSendKey,
   deadlineEpochMs: number,
   kill?: AbortSignal,
+  expectedFocus?: number,
 ): Promise<InsertAttempt> {
   const keys = sendKeysFor(key);
   if (!isHandle(expectedForeground) || keys === null) return { result: 'failed' };
   try {
     const { stdout } = await runPowerShell(
-      sendKeyScript(expectedForeground, deadlineEpochMs, keys),
+      sendKeyScript(expectedForeground, deadlineEpochMs, keys, expectedFocus),
       scriptTimeout(deadlineEpochMs),
       undefined,
       kill,

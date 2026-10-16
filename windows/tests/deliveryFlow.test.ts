@@ -51,6 +51,7 @@ function harness(script: Script) {
   const calls: string[] = [];
   const typed: number[][][] = [];
   const sent: string[] = [];
+  const sentTo: DeliveryTarget[] = [];
   let clipboard = 'what the user had copied';
   const step = async (name: 'readFocus' | 'reactivate' | 'paste' | 'typeOut' | 'sendKey'): Promise<void> => {
     calls.push(name);
@@ -89,9 +90,10 @@ function harness(script: Script) {
       typed.push(batches);
       return script.typeOut ?? { result: 'sent', typedUnits: batches.flat().length };
     },
-    sendKey: async (_target, key) => {
+    sendKey: async (target, key) => {
       await step('sendKey');
       sent.push(key);
+      sentTo.push(target);
       return script.sendKey ?? { result: 'sent' };
     },
     wait: async (ms) => {
@@ -99,7 +101,7 @@ function harness(script: Script) {
     },
     log: () => undefined,
   };
-  return { fx, calls, typed, sent, clipboard: () => clipboard };
+  return { fx, calls, typed, sent, sentTo, clipboard: () => clipboard };
 }
 
 function input(overrides: Partial<PasteDeliveryInput> = {}): PasteDeliveryInput {
@@ -467,6 +469,13 @@ describe('auto-send', () => {
     expect(h.calls.indexOf('paste')).toBeLessThan(h.calls.indexOf('sendKey'));
     // It looked at the foreground again before pressing.
     expect(h.calls.slice(h.calls.indexOf('paste')).includes('readFocus')).toBe(true);
+  });
+
+  it('hands the key step the field captured at the press, so the script can check it', async () => {
+    const h = harness({ focus: [chat] });
+    await deliverToTarget(input({ target: chat, autoSend: 'return' }), h.fx);
+    expect(h.sentTo).toEqual([chat]);
+    expect(h.sentTo[0]!.focusHandle).toBe(0x401);
   });
 
   it('presses it after a type-out that went in to the end', async () => {

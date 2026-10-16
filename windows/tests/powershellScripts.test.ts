@@ -52,6 +52,7 @@ const scripts: Record<string, string> = {
   'send key, Return': sendKeyScript(0x1234, deadline, '{ENTER}'),
   'send key, Shift+Return': sendKeyScript(0x1234, deadline, '+{ENTER}'),
   'send key, Ctrl+Return': sendKeyScript(0x1234, deadline, '^{ENTER}'),
+  'send key, guarded to a field': sendKeyScript(0x1234, deadline, '{ENTER}', 0x99),
   'text before the cursor': textBeforeCursorScript(0x1234),
   foreground: foregroundScript(),
   reactivate: reactivateScript(0x1234, 0x99),
@@ -160,6 +161,18 @@ describe('send key and text read scripts', () => {
     expect(script).toContain('SendKeys("{ENTER}")');
     expect(scripts['send key, Shift+Return']).toContain('SendKeys("+{ENTER}")');
     expect(scripts['send key, Ctrl+Return']).toContain('SendKeys("^{ENTER}")');
+  });
+
+  it('presses the key only while the captured field still has focus, checked just before the keystroke', () => {
+    const script = sendKeyScript(0x1234, deadline, '{ENTER}', 0x99);
+    const focusCheck = script.indexOf('[UvForeground]::Focus($thread) -ne 153');
+    expect(focusCheck).toBeGreaterThan(script.indexOf('GetForegroundWindow() -ne [IntPtr]4660'));
+    expect(focusCheck).toBeGreaterThan(script.indexOf('UtcNow -ge $deadline'));
+    expect(focusCheck).toBeLessThan(script.indexOf('SendKeys'));
+    expect(script.slice(focusCheck)).toMatch(/^[^\n]*Write-Output "moved"; exit 0/);
+    // Without a captured field there's nothing to compare, so the script doesn't read focus at all.
+    expect(sendKeyScript(0x1234, deadline, '{ENTER}')).not.toContain('UvForeground');
+    expect(sendKeyScript(0x1234, deadline, '{ENTER}', 0)).not.toContain('UvForeground');
   });
 
   it('takes nothing but Return, Shift+Return or Ctrl+Return as the key', () => {

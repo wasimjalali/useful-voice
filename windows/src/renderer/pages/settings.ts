@@ -1,6 +1,7 @@
 import { api } from '../api.js';
 import { el, icon, ICONS } from '../components/dom.js';
-import { dropdown, type DropdownHandle } from '../components/dropdown.js';
+import { dropdown } from '../components/dropdown.js';
+import type { DropdownHandle } from '../components/dropdown.js';
 import { previewFeatures } from '../components/flags.js';
 import { runSetupAgain } from '../components/firstRun.js';
 import { languagePicker } from '../components/languagePicker.js';

@@ -23,7 +23,7 @@ export interface FakeForegroundInput {
 export type FakeCall =
   | { kind: 'paste'; handle: number; inserted: string }
   | { kind: 'typeOut'; handle: number; typed: string }
-  | { kind: 'sendKey'; handle: number; key: string }
+  | { kind: 'sendKey'; handle: number; key: string; focusHandle?: number }
   | { kind: 'reactivate'; handle: number };
 
 export interface FakeDesktopPatch {
@@ -95,8 +95,8 @@ export class FakeDesktop implements Desktop {
     return { result: 'sent', typedUnits: batches.flat().length };
   }
 
-  async sendKey(handle: number, key: string): Promise<{ result: InsertResult }> {
-    this.recorded.push({ kind: 'sendKey', handle, key });
+  async sendKey(handle: number, key: string, _deadline?: number, _kill?: AbortSignal, focusHandle?: number): Promise<{ result: InsertResult }> {
+    this.recorded.push({ kind: 'sendKey', handle, key, focusHandle });
     return { result: 'sent' };
   }
 }

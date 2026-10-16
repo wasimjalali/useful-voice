@@ -18,7 +18,8 @@ export interface Desktop {
   reactivateWindow(handle: number, focusHandle: number | undefined, budgetMs: number): Promise<'ok' | 'gone' | 'refused'>;
   pasteClipboard(handle: number, deadlineEpochMs: number, kill?: AbortSignal): Promise<InsertAttempt>;
   typeText(batches: number[][], handle: number, deadlineEpochMs: number, kill?: AbortSignal): Promise<InsertAttempt>;
-  sendKey(handle: number, key: AutoSendKey, deadlineEpochMs: number, kill?: AbortSignal): Promise<InsertAttempt>;
+  /** `focusHandle` is the child control captured at the press: the key goes only while it still has focus. */
+  sendKey(handle: number, key: AutoSendKey, deadlineEpochMs: number, kill?: AbortSignal, focusHandle?: number): Promise<InsertAttempt>;
 }
 
 export const windowsDesktop: Desktop = {

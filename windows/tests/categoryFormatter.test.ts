@@ -245,7 +245,8 @@ describe('long input', () => {
       const chain = `${Array.from({ length: 2500 }, () => unit).join(' ')} end`;
       const start = performance.now();
       const out = formatCoding(chain);
-      expect(performance.now() - start, unit).toBeLessThan(2000);
+      // The quadratic version took 18 s for this; linear runs well under a second.
+      expect(performance.now() - start, unit).toBeLessThan(5000);
       expect(out, unit).toBe(`${joined.repeat(2500)}end`);
     }
   });

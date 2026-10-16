@@ -132,6 +132,7 @@ h1 { max-width: 14em; margin: 0 auto; font-size: clamp(38px, 6.4vw, 88px); font-
 .cmd code { flex: 1; min-width: 0; overflow-x: auto; color: var(--cmd-ink); font-family: var(--font-mono); font-size: 13px; line-height: 1.5; white-space: nowrap; scrollbar-width: none; }
 .cmd code::-webkit-scrollbar { display: none; }
 .cmd code span { color: var(--cmd-muted); user-select: none; }
+.cmd code .cmd-text { color: inherit; user-select: text; }
 .cmd code::selection { background: var(--cmd-ink); color: var(--cmd-bg); }
 .cmd code:focus-visible { outline-color: var(--cmd-ink); }
 .cmd button { flex: none; min-width: 72px; min-height: 40px; padding: 0 12px; border: 0; border-radius: 8px; color: var(--cmd-bg); background: var(--cmd-ink); font: 500 13px var(--font-sans); cursor: pointer; transition: background-color 150ms var(--ease-out); }
@@ -315,7 +316,7 @@ h1 { max-width: 14em; margin: 0 auto; font-size: clamp(38px, 6.4vw, 88px); font-
                 <div class="panel" role="tabpanel" id="panel-mac" aria-labelledby="tab-mac">
                   <p class="cmd-head">Install in one line</p>
                   <div class="cmd">
-                    <code id="install-mac" tabindex="0"><span>$ </span>curl -fsSL https://github.com/wasimjalali/useful-voice-releases/releases/latest/download/install.sh | sh</code>
+                    <code id="install-mac" tabindex="0"><span>$ </span><span class="cmd-text">curl -fsSL https://github.com/wasimjalali/useful-voice-releases/releases/latest/download/install.sh | sh</span></code>
                     <button type="button" data-copy="install-mac" aria-label="Copy the Mac install command">Copy</button>
                   </div>
                   <p class="cmd-note">Paste it in Terminal. macOS 14 or later on Apple silicon. Updates arrive in the app.</p>
@@ -325,7 +326,7 @@ h1 { max-width: 14em; margin: 0 auto; font-size: clamp(38px, 6.4vw, 88px); font-
                 <div class="panel" role="tabpanel" id="panel-windows" aria-labelledby="tab-windows" hidden>
                   <p class="cmd-head">Install in one line</p>
                   <div class="cmd">
-                    <code id="install-windows" tabindex="0"><span>&gt; </span>irm https://github.com/wasimjalali/useful-voice-releases/releases/latest/download/install.ps1 | iex</code>
+                    <code id="install-windows" tabindex="0"><span>&gt; </span><span class="cmd-text">irm https://github.com/wasimjalali/useful-voice-releases/releases/latest/download/install.ps1 | iex</span></code>
                     <button type="button" data-copy="install-windows" aria-label="Copy the Windows install command">Copy</button>
                   </div>
                   <p class="cmd-note">Paste it in PowerShell. Windows 10 or later, 64-bit. Updates arrive in the app.</p>
@@ -345,7 +346,7 @@ h1 { max-width: 14em; margin: 0 auto; font-size: clamp(38px, 6.4vw, 88px); font-
                   <section aria-labelledby="demo-email">
                     <h2 id="demo-email">Email <span>in Gmail</span></h2>
                     <dl>
-                      <div><dt>You say</dt><dd class="said">hi sam um thanks for sending the notes over I'll have the contract back to you by friday let me know if the start date moves</dd></div>
+                      <div><dt>You say</dt><dd class="said">Hi Sam, thanks for sending the notes over. I'll have the contract back to you by Friday. New paragraph. Let me know if the start date moves.</dd></div>
                       <div><dt>It lands</dt><dd class="landed">Hi Sam,
 
 Thanks for sending the notes over. I'll have the contract back to you by Friday.
@@ -356,8 +357,8 @@ Let me know if the start date moves.</dd></div>
                   <section aria-labelledby="demo-chat">
                     <h2 id="demo-chat">Work chat <span>in Slack</span></h2>
                     <dl>
-                      <div><dt>You say</dt><dd class="said">uh yeah yeah the build is green now so I'll merge it after lunch</dd></div>
-                      <div><dt>It lands</dt><dd class="landed">Yeah, the build is green now, so I'll merge it after lunch.</dd></div>
+                      <div><dt>You say</dt><dd class="said">Uh, so the the build is green now, so I'll merge it after lunch.</dd></div>
+                      <div><dt>It lands</dt><dd class="landed">So the build is green now, so I'll merge it after lunch.</dd></div>
                     </dl>
                   </section>
                   <section aria-labelledby="demo-code">
@@ -390,7 +391,7 @@ Let me know if the start date moves.</dd></div>
               <span class="n">02</span>
               <div>
                 <h3>Written for the app you're in.</h3>
-                <p>Email gets a greeting, paragraphs and a sign-off. Chat stays casual. Docs stay formal. It knows Gmail, Slack, Notion and more, in the browser too, and you can set any app's style in Settings.</p>
+                <p>Email gets paragraphs, and a greeting or sign-off you say goes on its own line. Chat stays casual. Docs stay formal. It knows Gmail, Slack, Notion and more, in the browser too, and you can set any app's style in Settings.</p>
               </div>
             </li>
             <li>
@@ -555,13 +556,14 @@ Let me know if the start date moves.</dd></div>
         button.addEventListener("click", async () => {
           const code = document.getElementById(button.dataset.copy);
           const status = document.getElementById("copy-status");
-          const text = code.textContent.replace(/^[$>] /, "");
+          const command = code.querySelector(".cmd-text");
+          const text = command.textContent;
           try {
             await navigator.clipboard.writeText(text);
             button.textContent = "Copied";
             status.textContent = "Install command copied.";
           } catch {
-            window.getSelection()?.selectAllChildren(code);
+            window.getSelection()?.selectAllChildren(command);
             button.textContent = "Selected";
             status.textContent = "Couldn't copy. The command is selected: copy it with your keyboard.";
           }

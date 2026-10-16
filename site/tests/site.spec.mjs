@@ -229,7 +229,8 @@ test("when the clipboard refuses, the command is selected instead", async ({ pag
   await button.click();
   await expect(button).toHaveText("Selected");
   await expect(page.locator("#copy-status")).toHaveText("Couldn't copy. The command is selected: copy it with your keyboard.");
-  expect(await page.evaluate(() => window.getSelection().toString().replace(/^\$ /, ""))).toBe(`curl -fsSL ${assets.macScript} | sh`);
+  // Range text ignores user-select, so this catches a prompt inside the selection too.
+  expect(await page.evaluate(() => window.getSelection().getRangeAt(0).toString())).toBe(`curl -fsSL ${assets.macScript} | sh`);
 });
 
 test("every local link and asset resolves, and the server behaves like Cloudflare", async ({ page, request }) => {

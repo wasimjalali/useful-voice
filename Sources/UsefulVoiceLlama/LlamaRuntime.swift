@@ -42,6 +42,10 @@ public final class LlamaRuntime: @unchecked Sendable {
         /// Context creation plus prompt processing, up to the first generated token.
         public var prefillSeconds: Double
         public var totalSeconds: Double
+        /// Of `prefillSeconds`: building the context (KV cache, compute buffers).
+        public var contextSeconds: Double
+        /// Of `prefillSeconds`: the decode of the whole prompt.
+        public var promptDecodeSeconds: Double
     }
 
     public struct Completion: Equatable, Sendable {
@@ -79,6 +83,9 @@ public final class LlamaRuntime: @unchecked Sendable {
         case metal
     }
 
+    /// Measurement only: run without the deadline abort callback to see what it costs.
+    public static var debugDisableAbortCallback = false
+
     private let model: OpaquePointer
     private let vocab: OpaquePointer
     private let threads: Int32
@@ -88,7 +95,7 @@ public final class LlamaRuntime: @unchecked Sendable {
 
     /// Loads the weights. See `Placement`; the CPU is the default for the cleanup model, and
     /// llama.cpp can only stop a running decode on the CPU. The PR notes have the numbers.
-    public init(modelPath: String, placement: Placement = .cpuOnly) throws {
+    public init(modelPath: String, placement: Placement = .cpuOnly, threads: Int32? = nil) throws {
         _ = Self.backendReady
         var params = llama_model_default_params()
         params.n_gpu_layers = placement == .metal ? -1 : 0
@@ -109,7 +116,7 @@ public final class LlamaRuntime: @unchecked Sendable {
         self.vocab = vocab
         self.placement = placement
         self.modelPath = modelPath
-        self.threads = Self.defaultThreadCount()
+        self.threads = threads ?? Self.defaultThreadCount()
     }
 
     deinit {
@@ -159,13 +166,18 @@ public final class LlamaRuntime: @unchecked Sendable {
             cparams.offload_kqv = false
             cparams.op_offload = false
         }
-        cparams.abort_callback = { data in
-            guard let data else { return false }
-            return ContinuousClock.now >= Unmanaged<AbortBox>.fromOpaque(data).takeUnretainedValue().deadline
+        if !Self.debugDisableAbortCallback {
+            cparams.abort_callback = { data in
+                guard let data else { return false }
+                return ContinuousClock.now >= Unmanaged<AbortBox>.fromOpaque(data).takeUnretainedValue().deadline
+            }
+            cparams.abort_callback_data = abortUnmanaged.toOpaque()
         }
-        cparams.abort_callback_data = abortUnmanaged.toOpaque()
+        let contextStart = ContinuousClock.now
         guard let ctx = llama_init_from_model(model, cparams) else { throw RuntimeError.contextFailed }
         defer { llama_free(ctx) }
+        let contextEnd = ContinuousClock.now
+        var promptDecodedAt: ContinuousClock.Instant?
 
         let sampler = llama_sampler_chain_init(llama_sampler_chain_default_params())
         defer { llama_sampler_free(sampler) }
@@ -185,6 +197,7 @@ public final class LlamaRuntime: @unchecked Sendable {
                 if ContinuousClock.now >= deadline { throw RuntimeError.deadlineExceeded }
                 throw RuntimeError.decodeFailed(status)
             }
+            if promptDecodedAt == nil { promptDecodedAt = ContinuousClock.now }
             let next = llama_sampler_sample(sampler, ctx, -1)
             if firstTokenAt == nil { firstTokenAt = ContinuousClock.now }
             if llama_vocab_is_eog(vocab, next) { finished = true; break }
@@ -202,7 +215,9 @@ public final class LlamaRuntime: @unchecked Sendable {
             stats: Stats(
                 promptTokens: promptTokens, outputTokens: produced, contextSize: contextSize,
                 prefillSeconds: Self.seconds(start.duration(to: firstTokenAt ?? end)),
-                totalSeconds: Self.seconds(start.duration(to: end))))
+                totalSeconds: Self.seconds(start.duration(to: end)),
+                contextSeconds: Self.seconds(contextStart.duration(to: contextEnd)),
+                promptDecodeSeconds: Self.seconds(contextEnd.duration(to: promptDecodedAt ?? end))))
     }
 
     private func tokenize(_ text: String) throws -> [llama_token] {

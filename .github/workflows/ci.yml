@@ -112,7 +112,7 @@ jobs:
           npx tsc --noEmit -p tsconfig.main.json
 
       - name: Unit tests
-        run: npx vitest run
+        run: npm test
 
       # The icon is a gitignored build artifact, so packaging fails on a fresh clone
       # without this. It also proves the generator still works from nothing.

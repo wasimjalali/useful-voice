@@ -35,8 +35,7 @@ public final class LlamaCleanupGenerator: CleanupTextGenerator, @unchecked Senda
 /// The hidden cleanup model the dictation controller is given. Nil while the hidden
 /// `UV_CLEANUP_MODEL` flag is off, so a normal launch builds nothing and loads nothing. The
 /// controller preloads it at the press, the pipeline runs it at the cleanup step, and it
-/// unloads itself after `CleanupModelPolicy.defaultIdleUnload`. Nothing runs at quit: the
-/// process exit frees the weights.
+/// unloads itself after `CleanupModelPolicy.defaultIdleUnload`.
 public enum HiddenCleanupModel {
     public static let shared: LocalCleanupModel? = {
         guard CleanupModelFlag.isOn else { return nil }
@@ -45,15 +44,40 @@ public enum HiddenCleanupModel {
             modelURL: store.fileURL(for: S1MiniModel.model), generator: LlamaCleanupGenerator())
     }()
 
-    private static let downloader = ModelDownloader(store: LocalModelStore())
+    /// Logs a failed download; the weights are hidden, so nothing else shows it.
+    private final class DownloadLog: ModelDownloadEvents {
+        func modelDownload(_ downloader: ModelDownloader, didUpdate state: ModelDownloadState, for model: WhisperModel) {
+            if case .failed(let message, let kind) = state {
+                Diagnostics.shared.error("cleanup-model", "download of \(model.fileName) failed (\(kind)): \(message)")
+            }
+        }
+    }
+
+    private static let downloadLog = DownloadLog()
+
+    private static let downloader: ModelDownloader = {
+        let downloader = ModelDownloader(store: LocalModelStore())
+        downloader.events = downloadLog
+        return downloader
+    }()
 
     /// With the hidden flag on, on a Mac with enough memory, fetches the pinned weights once
-    /// through the existing downloader (resumable, SHA-256 checked before it installs). With the
-    /// flag off, or the weights already there, it does nothing. Returns at once.
+    /// through the existing downloader (resumable, SHA-256 checked before it installs). A
+    /// complete `.partial` left by a quit during the verify step is installed instead of
+    /// downloaded again. With the flag off, or the weights already there, it does nothing.
+    /// Returns at once.
     public static func downloadIfNeeded() {
         guard shared != nil,
               CleanupModelPolicy.memoryAllowsModel(physicalMemoryBytes: ProcessInfo.processInfo.physicalMemory),
               LocalModelStore().availability(of: S1MiniModel.model) != .usable else { return }
+        downloader.recoverCompletePartial(for: S1MiniModel.model)
         downloader.start(model: S1MiniModel.model)
+    }
+
+    /// At quit: keeps the bytes of a download in flight (resume data, written within a bounded
+    /// moment). Does nothing, and builds nothing, with the flag off.
+    public static func pauseDownloads() {
+        guard shared != nil else { return }
+        downloader.pauseAll(timeout: 3)
     }
 }

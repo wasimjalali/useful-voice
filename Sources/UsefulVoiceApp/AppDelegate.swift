@@ -357,6 +357,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Keep the bytes of any model download in flight: pause it so URLSession
         // hands back resume data, and give the write a bounded moment to land.
         modelManager?.pauseAllDownloads()
+        HiddenCleanupModel.pauseDownloads()
     }
 
     /// Frees the loaded whisper context only when it is no longer the active,

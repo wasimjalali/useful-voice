@@ -986,6 +986,30 @@ class UsefulVoiceApp {
     void this.quit({ restartToUpdate: true });
   }
 
+  /**
+   * Asks the main window to save a note edit still inside its autosave delay, waiting at most
+   * a second. Windows are destroyed right after, which fires no `pagehide`. Never throws.
+   */
+  private async saveRendererDrafts(): Promise<void> {
+    const window = this.mainWindow;
+    if (!window || window.isDestroyed()) return;
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        window.webContents.executeJavaScript(
+          "typeof window.__uvFlushPending === 'function' ? window.__uvFlushPending() : true",
+        ) as Promise<unknown>,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, 1000);
+        }),
+      ]);
+    } catch (error) {
+      this.diagnostics.log('app', `could not save pending note edits: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   quit(options: { restartToUpdate?: boolean } = {}): Promise<void> {
     this.quitting ??= this.runQuit(options);
     return this.quitting;
@@ -996,6 +1020,7 @@ class UsefulVoiceApp {
       // Not awaited: it ends the model worker at once and must not wait behind a load.
       void this.cleanup.dispose();
       await this.service.cancel();
+      await this.saveRendererDrafts();
       // Always give the data a chance to reach disk before exiting: a debounced
       // save that never fires would lose the user's last dictionary edit.
       await this.data.flush();

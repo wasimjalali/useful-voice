@@ -73,7 +73,7 @@ LLAMA_FRAMEWORK = llama.framework
 
 # The license notices ship inside the app (before signing, so the seal covers them).
 define copy_notices
-	cp THIRD_PARTY_NOTICES.md $(APP)/Contents/Resources/
+	cp THIRD_PARTY_NOTICES.md LICENSE $(APP)/Contents/Resources/
 	cp -R licenses $(APP)/Contents/Resources/licenses
 endef
 

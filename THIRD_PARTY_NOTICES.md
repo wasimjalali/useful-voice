@@ -4,8 +4,8 @@ Useful Voice is MIT licensed ([LICENSE](LICENSE)). It includes or downloads the 
 Every license and notice file is kept verbatim under [licenses/](licenses).
 
 This root file and `licenses/` are what the macOS app ships (copied into `Contents/Resources` by
-`make bundle` and `make bundle-release`). The Windows installer ships
-[windows/THIRD_PARTY_NOTICES.md](windows/THIRD_PARTY_NOTICES.md) and `windows/licenses/` instead; the
+`make bundle` and `make bundle-release`). The Windows installer ships its
+own copy of the notices (`windows/THIRD_PARTY_NOTICES.md` and `windows/licenses/` in the repository) instead; the
 two overlap on purpose, so each package is complete on its own.
 
 ## S1-mini by Superwhisper
@@ -38,4 +38,4 @@ The ggml authors.
 
 - [licenses/llama.cpp/LICENSE](licenses/llama.cpp/LICENSE)
 
-The Windows runtime (node-llama-cpp and its dependencies) has its own notices in [windows/THIRD_PARTY_NOTICES.md](windows/THIRD_PARTY_NOTICES.md).
+The Windows runtime (node-llama-cpp and its dependencies) has its own notices in `windows/THIRD_PARTY_NOTICES.md` in the repository.

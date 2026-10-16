@@ -70,8 +70,8 @@ once-per-context cost.
 
 Load time of the weights: 610 to 1,699 ms in every process except the first one after a build,
 where the CPU placement took 18,445 to 24,650 ms (runs 38899709145, 38901063521, 38902782660,
-38905410608, step "fresh process"). The release CLI's own log shows its first start spending about
-21 s compiling the Metal shader library, and the runtime registers the Metal backend even for the
+38905410608, step "fresh process"). The release CLI's own log (kept in the raw log, `ggml_metal_library_compile_all`
+lines) shows single Metal libraries taking up to 23.3 s to compile at its first start, and the runtime registers the Metal backend even for the
 CPU placement, so the slow first load is most likely the same one-time compile, cached by macOS
 afterwards. That is an inference, not a measurement of its own.
 
@@ -103,7 +103,8 @@ Untested hypothesis for the gap: the XCFramework and the CLI are different build
 something in the XCFramework build (compiler flags, which CPU kernels are compiled in, how
 BLAS and Metal are wired) makes it 6 to 15 times slower. The XCFramework's own system-info line
 reports `NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | DOTPROD = 1 | ACCELERATE = 1 | REPACK = 1`, so
-the obvious feature flags are present and I have not found the cause. The slow Metal path is
+the obvious feature flags are present, and the runner itself reports `hw.optional.arm.FEAT_DotProd: 1`
+(runs 38902782660 and 38905410608), so the CPU is not missing dot-product support. I have not found the cause. The slow Metal path is
 unexplained too. Finding it needs a build of llama.cpp from source with known flags,
 compared against the XCFramework on the same runner.
 

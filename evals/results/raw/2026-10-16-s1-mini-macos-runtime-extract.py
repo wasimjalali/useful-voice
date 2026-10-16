@@ -9,7 +9,7 @@ import re
 import sys
 
 KEEP = re.compile(
-    r"MEASURE|COEXIST|\| (model|---|qwen3)|^build: |Apple M1|^7516192768$|hw\.optional\.arm\.FEAT_(DotProd|I8MM|BF16)|"
+    r"MEASURE|COEXIST|ggml_metal_(library_init|library_compile_all|device_init)|\| (model|---|qwen3)|^build: |Apple M1|^7516192768$|hw\.optional\.arm\.FEAT_(DotProd|I8MM|BF16)|"
     r"Test run with|Test (measure|bothFrameworksLoadInOneProcess|s1MiniRunsBetweenTwoWhisperContexts|"
     r"aPassedDeadlineStopsTheRun|pipelineWithTheRealModel)\(\) (passed|skipped)")
 

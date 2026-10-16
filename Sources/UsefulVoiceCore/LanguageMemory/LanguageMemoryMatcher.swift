@@ -87,49 +87,64 @@ public enum LanguageMemoryMatcher {
     /// on the main actor. Compiling each distinct phrase once removes that cost;
     /// `NSRegularExpression` is documented as thread-safe for matching, and the
     /// lock keeps the dictionary itself safe.
-    private static let cacheLock = NSLock()
-    /// Keyed on the phrase's UTF-8 bytes, not the `String`: `String` equality and hashing
-    /// treat canonically equivalent text (NFC "é" and NFD "e" + U+0301) as one key, so a
-    /// phrase typed one way was served the regex compiled for the other. The ICU matcher
-    /// compares code points and treats them as different, so what a phrase matched
-    /// depended on which spelling happened to be looked up first.
-    private static var cache: [[UInt8]: NSRegularExpression] = [:]
-    /// Bound on how many compiled phrases are retained — not on what works.
-    /// Once the cache is full, a new phrase still compiles and matches; it is
-    /// simply not stored. Clearing at the bound would evict a large
-    /// dictionary's own hot entries and recompile every one of them on the
-    /// next dictation, which is exactly the cost this cache exists to remove.
-    private static let cacheLimit = 4096
+    ///
+    /// A class of its own so a test can fill a private one: the shared cache is
+    /// process-wide, and tests that run side by side would otherwise fight over its room.
+    final class PhraseRegexCache: @unchecked Sendable {
+        private let lock = NSLock()
+        /// Keyed on the phrase's UTF-8 bytes, not the `String`: `String` equality and hashing
+        /// treat canonically equivalent text (NFC "é" and NFD "e" + U+0301) as one key, so a
+        /// phrase typed one way was served the regex compiled for the other. The ICU matcher
+        /// compares code points and treats them as different, so what a phrase matched
+        /// depended on which spelling happened to be looked up first.
+        private var storage: [[UInt8]: NSRegularExpression] = [:]
+        /// Bound on how many compiled phrases are retained — not on what works.
+        /// Once the cache is full, a new phrase still compiles and matches; it is
+        /// simply not stored. Clearing at the bound would evict a large
+        /// dictionary's own hot entries and recompile every one of them on the
+        /// next dictation, which is exactly the cost this cache exists to remove.
+        private let limit: Int
+
+        init(limit: Int) {
+            self.limit = limit
+        }
+
+        func regex(forTrimmed trimmed: String) -> NSRegularExpression? {
+            let key = Array(trimmed.utf8)
+            lock.lock()
+            if let cached = storage[key] {
+                lock.unlock()
+                return cached
+            }
+            lock.unlock()
+
+            let escaped = NSRegularExpression.escapedPattern(for: trimmed)
+            let pattern = #"(?<![\p{L}\p{N}_])"# + escaped + #"(?![\p{L}\p{N}_])"#
+            guard let regex = try? NSRegularExpression(pattern: pattern,
+                                                       options: [.caseInsensitive]) else {
+                return nil
+            }
+
+            lock.lock()
+            if storage.count < limit {
+                storage[key] = regex
+            }
+            lock.unlock()
+            return regex
+        }
+    }
+
+    static let sharedCache = PhraseRegexCache(limit: 4096)
 
     /// Compiles (or reuses) the word-boundary matcher for `phrase`.
     ///
     /// Returns `nil` rather than trapping when the phrase cannot be compiled
     /// (over-long input, or a pattern the ICU engine rejects). A dictionary
     /// entry is user data: it must never be able to crash the app.
-    static func wordBoundaryRegex(for phrase: String) -> NSRegularExpression? {
+    static func wordBoundaryRegex(for phrase: String,
+                                  cache: PhraseRegexCache = LanguageMemoryMatcher.sharedCache) -> NSRegularExpression? {
         let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count <= maxPhraseLength else { return nil }
-
-        let key = Array(trimmed.utf8)
-        cacheLock.lock()
-        if let cached = cache[key] {
-            cacheLock.unlock()
-            return cached
-        }
-        cacheLock.unlock()
-
-        let escaped = NSRegularExpression.escapedPattern(for: trimmed)
-        let pattern = #"(?<![\p{L}\p{N}_])"# + escaped + #"(?![\p{L}\p{N}_])"#
-        guard let regex = try? NSRegularExpression(pattern: pattern,
-                                                   options: [.caseInsensitive]) else {
-            return nil
-        }
-
-        cacheLock.lock()
-        if cache.count < cacheLimit {
-            cache[key] = regex
-        }
-        cacheLock.unlock()
-        return regex
+        return cache.regex(forTrimmed: trimmed)
     }
 }

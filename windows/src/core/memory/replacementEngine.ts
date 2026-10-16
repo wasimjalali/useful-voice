@@ -1,5 +1,6 @@
 import type { MatchMode, MemoryLanguage, ReplacementRule } from '../models.js';
 import { canonical, languageMatches, wordBoundaryPattern } from '../dictionary/termMatcher.js';
+import { INDEX_MIN_CANDIDATES, phraseSignature, TextIndex, type PhraseSignature } from './textIndex.js';
 
 export interface ReplacementOutcome {
   text: string;
@@ -85,6 +86,11 @@ interface CompiledRule {
   /** The literal phrase, used for the non-regex fallback path. */
   literal: string;
   replacement: string;
+  /**
+   * What the text index needs to rule this rule out, for word-boundary rules that
+   * compiled. Null for every other kind, which always run.
+   */
+  signature: PhraseSignature | null;
 }
 
 export class RuleSet {
@@ -99,11 +105,13 @@ export class RuleSet {
       const replacement = rule.replacement.trim();
       if (match.length === 0) continue;
 
+      const regex = compileRule(match, rule.matchMode);
       prepared.push({
         rule,
-        regex: compileRule(match, rule.matchMode),
+        regex,
         literal: match,
         replacement,
+        signature: regex && rule.matchMode === 'wordBoundaryPhrase' ? phraseSignature(match) : null,
       });
     }
     // Longest match first, so multi-word phrases win over their own fragments:
@@ -130,12 +138,19 @@ export class RuleSet {
     let output = text;
     const appliedRuleIds: string[] = [];
     const spans = new ProtectedSpans();
+    // Rules run one after another over the evolving text, so the index follows it: it is
+    // told about every rewrite before the next rule asks.
+    const index = this.compiled.length >= INDEX_MIN_CANDIDATES ? new TextIndex(text) : null;
 
     for (const entry of this.compiled) {
+      // A rule the index rules out would match nothing, and `applyOne` then returns the
+      // text as it is and leaves the protected spans alone, so skipping it changes nothing.
+      if (index && entry.signature && !index.mayContain(entry.signature)) continue;
       const next = applyOne(output, entry, spans);
       if (next !== output) {
         output = next;
         appliedRuleIds.push(entry.rule.id);
+        index?.absorb(output);
       }
     }
 

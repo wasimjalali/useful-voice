@@ -1,0 +1,226 @@
+/**
+ * A prefilter that says, cheaply, "this phrase cannot be in this text", so the word-boundary
+ * matcher can skip the regex for it. Mirrors `LanguageMemoryTextIndex.swift`.
+ *
+ * Why: a lived-in dictionary has thousands of rules and term candidates, and each one ran its
+ * own regular expression over the whole transcript on every dictation. Nearly all of them match
+ * nothing. This answers "could it match?" from a few hash lookups and a short scan.
+ *
+ * The contract is one-sided, which is what keeps the output identical to the unindexed matcher:
+ * `mayContain` may return true for a phrase that does not match (the caller then runs the real
+ * regex, as before), but never returns false for a phrase the regex would match.
+ *
+ * How it stays one-sided under a case-insensitive unicode regex: the regex compares simple
+ * case-folded code points. Both the phrase and the text are reduced to the same *skeleton*,
+ * one code point at a time: the full uppercase mapping, then the full lowercase mapping of
+ * that, repeated until it stops changing. The skeleton is coarser than simple case folding,
+ * never finer, so a regex match implies the phrase's skeleton is a substring of the text's.
+ *
+ * Two stages. The first looks the phrase's 1-, 2- or 3-code-point windows up in sets that only
+ * ever grow (`absorb`): rules rewrite the text as they go, so those sets cover every version of
+ * the text seen so far. The second looks for the phrase's skeleton in the skeleton of the
+ * *current* text and refuses an occurrence flanked by an ASCII letter, digit or underscore,
+ * which the regex's word boundaries would refuse too.
+ *
+ * The window sets key a window by a 32-bit hash. A collision can only make a window look
+ * present, which costs a needless second stage, never a wrong answer.
+ */
+export interface PhraseSignature {
+  readonly skeleton: Uint32Array;
+}
+
+const MAX_FIXPOINT_DEPTH = 4;
+
+function isASCIIWord(cp: number): boolean {
+  return (cp >= 0x30 && cp <= 0x39) || (cp >= 0x41 && cp <= 0x5a) || (cp >= 0x61 && cp <= 0x7a) || cp === 0x5f;
+}
+
+function appendSkeleton(cp: number, out: number[], depth: number): void {
+  const ch = String.fromCodePoint(cp);
+  const mapped = ch.toUpperCase().toLowerCase();
+  if (mapped === ch || depth >= MAX_FIXPOINT_DEPTH) {
+    out.push(cp);
+    return;
+  }
+  for (const next of mapped) {
+    const nextCp = next.codePointAt(0) as number;
+    if (nextCp === cp) out.push(nextCp);
+    else appendSkeleton(nextCp, out, depth + 1);
+  }
+}
+
+export interface Skeleton {
+  skeleton: Uint32Array;
+  ascii: Uint8Array;
+  /** For each UTF-16 index of the text (plus its length), where that code point's skeleton starts. */
+  starts: Uint32Array;
+}
+
+export function skeletonOf(text: string): Skeleton {
+  const out: number[] = [];
+  const flags: number[] = [];
+  const starts = new Uint32Array(text.length + 1);
+  let unit = 0;
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) as number;
+    const before = out.length;
+    if (cp < 0x80) {
+      out.push(cp >= 0x41 && cp <= 0x5a ? cp + 0x20 : cp);
+      flags.push(isASCIIWord(cp) ? 1 : 0);
+    } else {
+      appendSkeleton(cp, out, 0);
+      for (let i = before; i < out.length; i += 1) flags.push(0);
+    }
+    starts[unit] = before;
+    if (ch.length === 2) starts[unit + 1] = before;
+    unit += ch.length;
+  }
+  starts[text.length] = out.length;
+  return { skeleton: Uint32Array.from(out), ascii: Uint8Array.from(flags), starts };
+}
+
+function isHighSurrogate(unit: number): boolean {
+  return unit >= 0xd800 && unit <= 0xdbff;
+}
+
+function isLowSurrogate(unit: number): boolean {
+  return unit >= 0xdc00 && unit <= 0xdfff;
+}
+
+/** The signature of `phrase` as the matcher sees it (trimmed), or null for an empty phrase. */
+export function phraseSignature(phrase: string): PhraseSignature | null {
+  const trimmed = phrase.trim();
+  if (trimmed.length === 0) return null;
+  return { skeleton: skeletonOf(trimmed).skeleton };
+}
+
+function hash2(a: number, b: number): number {
+  return (Math.imul(a, 0x9e3779b1) ^ Math.imul(b + 0x7f4a7c15, 0x85ebca6b)) >>> 0;
+}
+
+function hash3(a: number, b: number, c: number): number {
+  return (Math.imul(a, 0x9e3779b1) ^ Math.imul(b + 0x7f4a7c15, 0x85ebca6b) ^ Math.imul(c + 0x1b873593, 0xc2b2ae35)) >>> 0;
+}
+
+export class TextIndex {
+  private readonly unigrams = new Set<number>();
+  private readonly bigrams = new Set<number>();
+  private readonly trigrams = new Set<number>();
+  private text = '';
+  private current: Uint32Array = new Uint32Array(0);
+  private currentASCII: Uint8Array = new Uint8Array(0);
+  private starts: Uint32Array = new Uint32Array(1);
+
+  constructor(text: string) {
+    this.absorb(text);
+  }
+
+  /**
+   * Makes `text` the current text and adds the windows of its skeleton to the index.
+   *
+   * Rules rewrite a few words of a long text, so only the stretch that changed is
+   * re-derived: the common prefix and suffix of the old and new text keep their skeleton,
+   * and only windows that touch the changed stretch are added. Every other window of the
+   * new text was already in the old one.
+   */
+  absorb(text: string): void {
+    if (text === this.text) return;
+    const old = this.text;
+    const oldLength = old.length;
+    const newLength = text.length;
+    const limit = Math.min(oldLength, newLength);
+
+    let prefix = 0;
+    while (prefix < limit && old.charCodeAt(prefix) === text.charCodeAt(prefix)) prefix += 1;
+    // Never split a surrogate pair: back up to its first half.
+    if (prefix > 0 && isHighSurrogate(text.charCodeAt(prefix - 1))) prefix -= 1;
+    let suffix = 0;
+    while (suffix < limit - prefix
+      && old.charCodeAt(oldLength - 1 - suffix) === text.charCodeAt(newLength - 1 - suffix)) suffix += 1;
+    if (suffix > 0 && isLowSurrogate(text.charCodeAt(newLength - suffix))) suffix -= 1;
+
+    const middle = skeletonOf(text.slice(prefix, newLength - suffix));
+    const keepHead = this.starts[prefix] as number;
+    const keepTailFrom = this.starts[oldLength - suffix] as number;
+    const tailLength = this.current.length - keepTailFrom;
+    const total = keepHead + middle.skeleton.length + tailLength;
+
+    const skeleton = new Uint32Array(total);
+    const ascii = new Uint8Array(total);
+    skeleton.set(this.current.subarray(0, keepHead), 0);
+    ascii.set(this.currentASCII.subarray(0, keepHead), 0);
+    skeleton.set(middle.skeleton, keepHead);
+    ascii.set(middle.ascii, keepHead);
+    skeleton.set(this.current.subarray(keepTailFrom), keepHead + middle.skeleton.length);
+    ascii.set(this.currentASCII.subarray(keepTailFrom), keepHead + middle.skeleton.length);
+
+    const starts = new Uint32Array(newLength + 1);
+    starts.set(this.starts.subarray(0, prefix), 0);
+    for (let i = 0; i < text.length - prefix - suffix; i += 1) {
+      starts[prefix + i] = (middle.starts[i] as number) + keepHead;
+    }
+    const shift = keepHead + middle.skeleton.length - keepTailFrom;
+    for (let i = 0; i <= suffix; i += 1) {
+      starts[newLength - suffix + i] = (this.starts[oldLength - suffix + i] as number) + shift;
+    }
+
+    this.text = text;
+    this.current = skeleton;
+    this.currentASCII = ascii;
+    this.starts = starts;
+
+    const from = Math.max(0, keepHead - 2);
+    const to = Math.min(total - 1, keepHead + middle.skeleton.length);
+    for (let i = from; i <= to; i += 1) {
+      const a = skeleton[i] as number;
+      this.unigrams.add(a);
+      if (i + 1 < total) {
+        const b = skeleton[i + 1] as number;
+        this.bigrams.add(hash2(a, b));
+        if (i + 2 < total) this.trigrams.add(hash3(a, b, skeleton[i + 2] as number));
+      }
+    }
+  }
+
+  /** The skeleton of the current text, for the tests that compare it with a fresh build. */
+  currentSkeleton(): { skeleton: Uint32Array; ascii: Uint8Array; starts: Uint32Array } {
+    return { skeleton: this.current, ascii: this.currentASCII, starts: this.starts };
+  }
+
+  /** False only when the regex for this phrase certainly finds nothing in the current text. */
+  mayContain(signature: PhraseSignature): boolean {
+    const p = signature.skeleton;
+    if (p.length === 0) return true;
+    return this.windowsPresent(p) && this.occursInCurrentText(p);
+  }
+
+  /** Stage one: every 1-, 2- or 3-window of `p` has been seen in some version of the text. */
+  windowsPresent(p: Uint32Array): boolean {
+    if (p.length === 1) return this.unigrams.has(p[0] as number);
+    if (p.length === 2) return this.bigrams.has(hash2(p[0] as number, p[1] as number));
+    for (let i = 0; i + 2 < p.length; i += 1) {
+      if (!this.trigrams.has(hash3(p[i] as number, p[i + 1] as number, p[i + 2] as number))) return false;
+    }
+    return true;
+  }
+
+  private occursInCurrentText(p: Uint32Array): boolean {
+    const n = this.current.length;
+    const m = p.length;
+    if (m > n) return false;
+    const first = p[0] as number;
+    for (let i = 0; i <= n - m; i += 1) {
+      if (this.current[i] !== first) continue;
+      let j = 1;
+      while (j < m && this.current[i + j] === p[j]) j += 1;
+      if (j !== m) continue;
+      const leftBlocked = i > 0 && this.currentASCII[i - 1] === 1;
+      const rightBlocked = i + m < n && this.currentASCII[i + m] === 1;
+      if (!leftBlocked && !rightBlocked) return true;
+    }
+    return false;
+  }
+}
+
+/** With fewer candidate phrases than this, building an index costs more than the scans it saves. */
+export const INDEX_MIN_CANDIDATES = 16;

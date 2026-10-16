@@ -26,11 +26,14 @@ import {
 //      send key for Email that must be ignored; then a chat message whose send key fires once
 //   2. copy-only deliveries (the window moved, a line-break text for a typing app) where the
 //      send key must NOT fire
-//   3. the hotkey pressed in Useful Voice itself: a window dictation, copied, never pasted
+//   3. the hotkey pressed in Useful Voice itself: with no field of ours focused a window
+//      dictation (copied, never pasted), with one focused a paste into it, never a send key
 //   4. a browser page decides the category, text before the caret continues the sentence,
 //      and an override beats the page
 //   5. Format for the app off leaves the text alone
 //   6. the Settings controls and the app list
+//   7. the window changes after a successful paste: no send key
+//   8. the Apps list updates in place (focus stays), follows History and leaves browsers out
 
 const SECOND = 1000;
 const shots = path.join(out, 'shots-app-aware');
@@ -173,22 +176,70 @@ test('the send key stays quiet after a copy-only delivery', async () => {
   expect(keys.slice(-2)).toEqual(['typeOut', 'sendKey']);
 });
 
-test('the hotkey pressed in Useful Voice itself is a window dictation: copied, saved, never pasted', async () => {
-  const r = await start('own-window', { settings: { autoSend: { other: 'return' } }, history: [] });
-  const own = (await hook(r.app, 'ownProcess')) as { name: string; pid: number };
-  await hook(r.app, 'useFakeDesktop', { foreground: { processName: own.name, processId: own.pid, title: 'Useful Voice' } });
+/** Put the focus in a field of the main window: the page's own focus, which the hidden E2E window still has. */
+async function focusOwn(win: Page, kind: 'text' | 'password' | 'textarea' | 'editable' | 'button' | 'none'): Promise<void> {
+  await win.evaluate((what) => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    if (what === 'none') return;
+    const node =
+      what === 'textarea' ? document.createElement('textarea')
+      : what === 'editable' ? document.createElement('div')
+      : what === 'button' ? document.createElement('button')
+      : document.createElement('input');
+    if (what === 'password') (node as HTMLInputElement).type = 'password';
+    if (what === 'editable') node.setAttribute('contenteditable', 'true');
+    node.id = 'e2e-own-field';
+    document.querySelector('#e2e-own-field')?.remove();
+    document.body.append(node);
+    node.focus();
+  }, kind);
+}
 
-  await hotkeyDictation(r, 'Notes to self, buy milk.');
-  // It started as a window dictation: every delivering status says copy, none says paste.
-  const delivering = (await log(r.win)).states.filter((state) => state.state === 'delivering');
-  expect(delivering.length).toBeGreaterThan(0);
-  expect(delivering.every((state) => state.delivery === 'copy')).toBe(true);
-  expect((await log(r.win)).outcomes.at(-1)).toMatchObject({ kind: 'delivered', result: 'copied' });
+async function ownFront(r: Running): Promise<void> {
+  const own = (await hook(r.app, 'ownProcess')) as { name: string; pid: number };
+  await hook(r.app, 'useFakeDesktop', { foreground: { processName: own.name, processId: own.pid, title: 'Useful Voice', handle: 0x700 } });
+}
+
+test('the hotkey pressed in Useful Voice with no field focused is a window dictation: copied, saved, never pasted', async () => {
+  const r = await start('own-window', { settings: { autoSend: { other: 'return' } }, history: [] });
+  await ownFront(r);
+
+  for (const [index, kind] of (['none', 'button', 'password'] as const).entries()) {
+    await focusOwn(r.win, kind);
+    await hotkeyDictation(r, `Notes to self ${kind}.`);
+    // Every delivering status says copy, none says paste.
+    const delivering = (await log(r.win)).states.filter((state) => state.state === 'delivering');
+    expect(delivering.length).toBeGreaterThan(index);
+    expect(delivering.every((state) => state.delivery === 'copy'), kind).toBe(true);
+    expect((await log(r.win)).outcomes.at(-1)).toMatchObject({ kind: 'delivered', result: 'copied' });
+    expect(await clipboardText(r.app)).toBe(`Notes to self ${kind}.`);
+  }
   expect(await calls(r.app)).toEqual([]);
-  expect(await clipboardText(r.app)).toBe('Notes to self, buy milk.');
-  const history = await historyWhere(r.userData, (rows) => rows.length === 1);
-  expect(history[0]).toMatchObject({ appName: '', category: 'other' });
-  expect(history[0]?.appID).toBeUndefined();
+  const history = await historyWhere(r.userData, (rows) => rows.length === 3);
+  // It was for no app: no appID, so no category either.
+  for (const row of history) {
+    expect(row.appID).toBeUndefined();
+    expect(row.category).toBeUndefined();
+  }
+});
+
+test('the hotkey pressed in Useful Voice with one of its fields focused types into that field, with no send key', async () => {
+  const r = await start('own-field', { settings: { autoSend: { other: 'return' } }, history: [] });
+  await ownFront(r);
+
+  for (const kind of ['text', 'textarea', 'editable'] as const) {
+    await focusOwn(r.win, kind);
+    await hotkeyDictation(r, `Notes to self ${kind}.`);
+    const last = (await calls(r.app)).filter((call) => call.kind === 'paste').at(-1);
+    expect(last, kind).toMatchObject({ kind: 'paste', inserted: `Notes to self ${kind}.` });
+    expect((await log(r.win)).outcomes.at(-1), kind).toMatchObject({ kind: 'delivered', result: 'pasted' });
+  }
+  // Pasted into our own window, and Return is never pressed there, whatever Other has.
+  expect((await calls(r.app)).filter((call) => call.kind === 'sendKey')).toEqual([]);
+  for (const row of await historyWhere(r.userData, (rows) => rows.length === 3)) {
+    expect(row.appID).toBeUndefined();
+    expect(row.category).toBeUndefined();
+  }
 });
 
 test('a browser page decides the category, the text before the caret continues the sentence, an override beats the page', async () => {
@@ -303,4 +354,100 @@ test('Settings: the switch, the name, a style and a send key per category, and t
   expect((await savedSettings(userData)).languagePin).toBe('de');
   await group.locator('.s-apps').scrollIntoViewIfNeeded();
   await shot(win, 'app-aware-04-settings-final');
+});
+
+test('the send key is not pressed when another window is in front after a successful paste', async () => {
+  const r = await start('moved-after-paste', { settings: { autoSend: { workChat: 'return' } }, history: [] });
+  await hook(r.app, 'useFakeDesktop', {
+    foreground: { processName: 'slack', title: 'general - Slack' },
+    // The paste goes in, then the user (or an app) puts another window in front.
+    foregroundAfterPaste: { processName: 'notepad', title: 'Untitled - Notepad' },
+  });
+  await hotkeyDictation(r, 'Sounds good, see you at five.');
+  expect((await calls(r.app)).map((call) => call.kind)).toEqual(['paste']);
+  expect((await log(r.win)).outcomes.at(-1)).toMatchObject({ kind: 'delivered', result: 'pasted' });
+  // The same dictation with nothing in the way does press it, so the test above proves the guard.
+  await hook(r.app, 'fakeDesktop', { foreground: { processName: 'slack', title: 'general - Slack' } });
+  await hotkeyDictation(r, 'Sounds good, see you at five.');
+  expect((await calls(r.app)).map((call) => call.kind)).toEqual(['paste', 'paste', 'sendKey']);
+});
+
+const historyRow = (id: string, appID: string | undefined, category: string | undefined, minutes: number) => ({
+  id, text: `text ${id}`, rawText: `text ${id}`, intermediateText: `text ${id}`, language: 'en', appName: appID ? appID.replace('.exe', '') : '',
+  ...(appID ? { appID } : {}), ...(category ? { category } : {}),
+  durationSeconds: 2, mode: 'formatted', createdAt: new Date(Date.now() - minutes * 60_000).toISOString(), replacementRuleIds: [], memoryHitIds: [], snippetIds: [],
+});
+
+test('picking the category an app has anyway clears the choice', async () => {
+  const r = await start('natural-category', {
+    settings: { appCategories: { 'slack.exe': 'coding' } },
+    history: [historyRow('a', 'slack.exe', 'coding', 5)],
+  });
+  const { win, userData } = r;
+  await win.locator('.rail-item', { hasText: 'Settings' }).click();
+  await win.locator('.s-index-item', { hasText: 'Apps' }).click();
+  const group = win.locator('#settings-apps');
+  await expect(group.getByRole('button', { name: 'slack category' })).toContainText('Coding');
+  await expect(group.getByRole('button', { name: 'Reset slack' })).toBeVisible();
+
+  // Slack is Work chat without a choice, so picking Work chat is no choice at all.
+  await group.getByRole('button', { name: 'slack category' }).click();
+  await win.getByRole('option', { name: 'Work chat' }).click();
+  await expect.poll(async () => (await savedSettings(userData)).appCategories).toEqual({});
+  await expect(group.getByRole('button', { name: 'slack category' })).toContainText('Work chat');
+  await expect(group.getByRole('button', { name: 'Reset slack' })).toBeHidden();
+});
+
+test('the Apps list updates in place, follows History, leaves browsers out and disables the styles with the switch off', async () => {
+  const r = await start('apps-in-place', {
+    settings: { appCategories: { 'notepad.exe': 'docsNotes' } },
+    history: [historyRow('a', 'slack.exe', 'workChat', 5), historyRow('b', 'chrome.exe', 'other', 10)],
+  });
+  const { win } = r;
+  await hook(r.app, 'useFakeDesktop', { foreground: { processName: 'olk', title: 'Inbox - Outlook' } });
+  await win.locator('.rail-item', { hasText: 'Settings' }).click();
+  await win.locator('.s-index-item', { hasText: 'Apps' }).click();
+  const group = win.locator('#settings-apps');
+  await expect(group.getByRole('button', { name: 'slack category' })).toBeVisible();
+  await expect(group.getByRole('button', { name: 'notepad category' })).toBeVisible();
+  // A browser's category comes from the page, so it isn't listed.
+  await expect(group.getByRole('button', { name: 'chrome category' })).toHaveCount(0);
+
+  // A pick keeps the same control, still focused; Reset hands the focus to the picker next to it.
+  const picker = group.getByRole('button', { name: 'slack category' });
+  const handle = await picker.elementHandle();
+  await picker.click();
+  await win.getByRole('option', { name: 'Personal chat' }).click();
+  await expect(group.getByRole('button', { name: 'Reset slack' })).toBeVisible();
+  expect(await handle!.evaluate((node) => node.isConnected && document.activeElement === node)).toBe(true);
+  await group.getByRole('button', { name: 'Reset slack' }).focus();
+  await group.getByRole('button', { name: 'Reset slack' }).press('Enter');
+  await expect(group.getByRole('button', { name: 'Reset slack' })).toBeHidden();
+  expect(await handle!.evaluate((node) => node.isConnected && document.activeElement === node)).toBe(true);
+  await expect(picker).toContainText('Work chat');
+
+  // The style pickers can't be used while Format for the app is off.
+  const style = group.getByRole('button', { name: 'Work chat style' });
+  await expect(style).toBeEnabled();
+  await group.getByRole('switch', { name: 'Format for the app' }).click();
+  await expect(style).toBeDisabled();
+  await group.getByRole('switch', { name: 'Format for the app' }).click();
+  await expect(style).toBeEnabled();
+
+  // A dictation made while Settings is open adds its app without a repaint: what is being typed stays.
+  const name = group.getByRole('textbox', { name: 'Your name' });
+  await name.fill('Was');
+  await hotkeyDictation(r, 'Thanks for the update.');
+  await expect(group.getByRole('button', { name: 'olk category' })).toContainText('Email');
+  await expect(name).toBeFocused();
+  await expect(name).toHaveValue('Was');
+  await name.fill('');
+  await name.press('Tab');
+
+  // Clearing History drops the apps only History kept; a choice of yours keeps its row.
+  await win.locator('#settings-data').getByRole('button', { name: 'Delete all dictations' }).click();
+  await win.getByRole('dialog').getByRole('button', { name: /^Delete \d+ dictation/ }).click();
+  await expect(group.getByRole('button', { name: 'olk category' })).toHaveCount(0);
+  await expect(group.getByRole('button', { name: 'slack category' })).toHaveCount(0);
+  await expect(group.getByRole('button', { name: 'notepad category' })).toBeVisible();
 });

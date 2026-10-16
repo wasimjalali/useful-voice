@@ -2424,5 +2424,14 @@ describe('app-aware formatting', () => {
         expect(autoSendOf(ctx), name).toBeUndefined();
       }
     });
+
+    it('never asks for a key without an app, even when Other has one (a field of our own window)', async () => {
+      const ctx = setup({ settings: { autoSend: { other: 'return' } } });
+      await dictate(ctx, 'See you at five.', { source: 'hotkey' });
+      expect(autoSendOf(ctx)).toBeUndefined();
+      const known = setup({ settings: { autoSend: { other: 'return' } } });
+      await dictate(known, 'See you at five.', { source: 'hotkey', context: capture('other') });
+      expect(autoSendOf(known)).toBe('return');
+    });
   });
 });

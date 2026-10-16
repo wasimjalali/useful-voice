@@ -813,7 +813,8 @@ export class DictationService {
     // window dictation, any retry) is saved and copied only.
     const deliveryMode = session.source === 'hotkey' ? 'paste' : 'copy';
     this.setState('delivering', undefined, session.targetApp);
-    const autoSend = autoSendKeyFor(press.autoSend, context.category);
+    // No app, no send key: our own window (a field of ours) and an unknown app never get one.
+    const autoSend = context.appID === null ? 'off' : autoSendKeyFor(press.autoSend, context.category);
     const delivered = await this.deliver(finalText, deliveryMode, session, autoSend);
     if (!current()) return;
     session.delivered = !delivered.cancelled && (delivered.delivered || delivered.clipboardFallback);

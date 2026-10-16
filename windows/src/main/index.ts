@@ -10,6 +10,7 @@ import { planLoginItem, wasAutoStarted } from '../core/settings/autostart.js';
 import { deliverToTarget } from '../core/delivery/deliveryFlow.js';
 import { appIdFor, isKnownBrowser, type DeliveryTarget } from '../core/delivery/deliveryTarget.js';
 import { captureContext, snapshotPress, type ContextCapture } from '../core/apps/appAwareness.js';
+import { FOCUSED_FIELD_PROBE, isEditableField, OWN_FIELD_TIMEOUT_MS } from '../core/apps/ownField.js';
 import { PendingAddress, focusReader, forgetPageDetails, killOnTimeout, toDeliveryTarget } from './deliveryGlue.js';
 import {
   normaliseMemoryLanguage,
@@ -1190,13 +1191,15 @@ class UsefulVoiceApp {
       // time the transcript is ready the user may have clicked elsewhere, and pasting
       // into the wrong window is worse than not pasting at all.
       const front = await this.desktop.foregroundWindow();
-      if (front && this.isOwnWindow(front)) {
-        // Useful Voice itself is in front: there is no other app to paste into, and a
-        // paste would land in our own window. It is a window dictation, saved and copied.
+      const own = front !== null && this.isOwnWindow(front);
+      if (own && !(await this.ownFieldIsEditable())) {
+        // Useful Voice is in front with no field of ours to type into: a paste would land
+        // nowhere. It is a window dictation, saved and copied.
         source = 'window';
         this.lastToggleSource = source;
-        this.diagnostics.log('dictation', 'hotkey pressed in Useful Voice itself; saving and copying only');
+        this.diagnostics.log('dictation', 'hotkey pressed in Useful Voice with no field focused; saving and copying only');
       } else {
+        // In front, with one of our own fields focused, Useful Voice is the target like any app.
         targetApp = front ? front.title || front.processName : undefined;
         targetHandle = front?.handle;
         this.recordingHandle = targetHandle;
@@ -1214,17 +1217,46 @@ class UsefulVoiceApp {
         }
         // The category and the text before the cursor belong to the same moment as the
         // target: read beside the recording, so the press never waits for them. The text
-        // is only read when it will be used, and only ever kept in memory.
-        const wantsText = press.appAwareFormatting && press.formattingEnabled;
-        const handle = front?.handle;
-        context = captureContext(target?.appId, press.appCategories, {
-          ...(address ? { address: () => address as Promise<string | null> } : {}),
-          ...(wantsText && handle !== undefined ? { textBeforeCursor: () => this.desktop.textBeforeCursor(handle) } : {}),
-        });
+        // is only read when it will be used, and only ever kept in memory. Our own window
+        // has no category: it isn't an app the user can set one for.
+        if (!own) {
+          const wantsText = press.appAwareFormatting && press.formattingEnabled;
+          const handle = front?.handle;
+          context = captureContext(target?.appId, press.appCategories, {
+            ...(address ? { address: () => address as Promise<string | null> } : {}),
+            ...(wantsText && handle !== undefined ? { textBeforeCursor: () => this.desktop.textBeforeCursor(handle) } : {}),
+          });
+        }
       }
     }
     await this.service.toggle({ source, targetApp, targetHandle, target, context, press });
     void this.data.flush();
+  }
+
+  /**
+   * Whether the field focused in our own window takes typed text (an input, a textarea or a
+   * contenteditable element, never a password). The page is asked with a short timeout:
+   * no answer, an error or an unfocused window is "no".
+   */
+  private async ownFieldIsEditable(): Promise<boolean> {
+    const window = this.mainWindow;
+    if (!window || window.isDestroyed()) return false;
+    // E2E windows are hidden, so they are never the focused window; the page's own focus still holds.
+    if (!E2E && !window.isFocused()) return false;
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const info = await Promise.race([
+        window.webContents.executeJavaScript(FOCUSED_FIELD_PROBE) as Promise<unknown>,
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), OWN_FIELD_TIMEOUT_MS);
+        }),
+      ]);
+      return isEditableField(info);
+    } catch {
+      return false;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   /** Whether the window in front is Useful Voice's own. */

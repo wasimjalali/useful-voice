@@ -32,6 +32,8 @@ export interface FakeDesktopPatch {
   textBefore?: string | null;
   pasteResult?: InsertResult;
   reactivate?: 'ok' | 'gone' | 'refused';
+  /** Who is in front once a paste has gone in: the window changed under the dictation. */
+  foregroundAfterPaste?: FakeForegroundInput | null;
 }
 
 export class FakeDesktop implements Desktop {
@@ -40,6 +42,7 @@ export class FakeDesktop implements Desktop {
   private before: string | null = null;
   private paste: InsertResult = 'sent';
   private reactivation: 'ok' | 'gone' | 'refused' = 'refused';
+  private afterPaste: FakeForegroundInput | null = null;
   private readonly recorded: FakeCall[] = [];
 
   constructor(private readonly readClipboard: () => string) {}
@@ -61,6 +64,7 @@ export class FakeDesktop implements Desktop {
     if (patch.textBefore !== undefined) this.before = patch.textBefore;
     if (patch.pasteResult !== undefined) this.paste = patch.pasteResult;
     if (patch.reactivate !== undefined) this.reactivation = patch.reactivate;
+    if (patch.foregroundAfterPaste !== undefined) this.afterPaste = patch.foregroundAfterPaste;
   }
 
   calls(): FakeCall[] {
@@ -87,6 +91,11 @@ export class FakeDesktop implements Desktop {
   async pasteClipboard(handle: number): Promise<{ result: InsertResult }> {
     if (this.paste !== 'sent') return { result: this.paste };
     this.recorded.push({ kind: 'paste', handle, inserted: this.readClipboard() });
+    if (this.afterPaste) {
+      const next = this.afterPaste;
+      this.afterPaste = null;
+      this.set({ foreground: next });
+    }
     return { result: 'sent' };
   }
 

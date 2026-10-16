@@ -619,7 +619,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             isSecureInputActive: { IsSecureEventInputEnabled() },
             focusTarget: { FocusTracker.shared.snapshot() },
             isTargetRunning: { FocusTracker.shared.isRunning($0) },
-            reactivate: { await FocusTracker.shared.reactivate($0) }
+            reactivate: { await FocusTracker.shared.reactivate($0) },
+            typeOutApps: { [settings] in settings.typeOutAppIDs }
         )
         controller.onStateChange = { [weak self] state in
             if state == .recording, let target = self?.controller?.deliveryTarget {

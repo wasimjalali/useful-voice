@@ -1702,6 +1702,8 @@ final class CapturingProvider: TranscriptionProvider {
     private var reactivationResult = true
     private var focusAfterReactivation: DeliveryTarget??
 
+    private var typeOutApps: [String] = []
+
     private func makeLockController(providers: [TranscriptionProvider]) -> DictationController {
         let controller = DictationController(
             recorder: recorder,
@@ -1720,7 +1722,8 @@ final class CapturingProvider: TranscriptionProvider {
                 #expect(self.controllerStateDuringReactivation() == .delivering)
                 if let next = self.focusAfterReactivation { self.focus = next }
                 return self.reactivationResult
-            })
+            },
+            typeOutApps: { [weak self] in self?.typeOutApps ?? [] })
         wire(controller)
         lockController = controller
         return controller
@@ -1935,6 +1938,27 @@ final class CapturingProvider: TranscriptionProvider {
         await controller.retryLastAndWait()
         #expect(reactivations.isEmpty)
         #expect(deliveredModes == [.copy])
+    }
+
+    @Test func testLineBreaksForATypeOutAppAreCopiedWithoutTheLockOrAReactivation() async throws {
+        typeOutApps = ["com.tinyspeck.slackmacgap"]
+        let controller = makeLockController(providers: [okProvider("git add .\ngit commit")])
+        controller.toggle()
+        focus = mailWindow                       // moved away: would reactivate
+        reactivationResult = false
+        await controller.toggleAndWait()
+        #expect(reactivations.isEmpty)
+        #expect(deliveredModes == [.copy])
+        #expect(outcomes.count == 1)
+        if case .delivered(_, let mode, _) = outcomes.first { #expect(mode == .copiedHasLineBreaks) }
+    }
+
+    @Test func testLineBreaksForAPasteAppStillLockAndPaste() async throws {
+        typeOutApps = ["com.apple.Terminal"]
+        let controller = makeLockController(providers: [okProvider("one\ntwo")])
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(deliveredModes == [.paste])
     }
 
     @Test func testCopiedPasteIsReportedOnceAndOnlyOneDeliveryRuns() async throws {

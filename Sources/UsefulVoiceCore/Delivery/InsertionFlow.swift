@@ -301,6 +301,13 @@ public enum InsertionFlow {
                     if PasteProof.landed(before: probeBefore, after: after, payloadLength: payloadLength) {
                         restore(true)
                         finish(.pasted)
+                    } else if method == .typeOut {
+                        // Every batch went out with the target in front. Apps the
+                        // user types into are the ones whose AX counts don't track
+                        // typed text, so an unmoved count is no miss: asking for a
+                        // manual paste would put it in twice. Typed, nothing
+                        // restored, the text stays on the clipboard (as on Windows).
+                        finish(.pasted)
                     } else {
                         runFallback(true, after)
                     }

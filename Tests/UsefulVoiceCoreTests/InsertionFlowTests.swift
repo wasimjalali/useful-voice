@@ -214,7 +214,7 @@ import Testing
         #expect(fake.typedText == long)
         #expect(fake.keyBatches.count > 1)
         #expect(!fake.calls.contains("paste"))
-        #expect(fake.outcome == .pasted || fake.outcome == .clipboardOnly)
+        #expect(fake.outcome == .pasted)
     }
 
     @Test func testBatchesAreScheduledNotSleptOn() {
@@ -231,6 +231,26 @@ import Testing
         fake.axInsertOK = true
         fake.run(long, appID: terminal)
         #expect(!fake.calls.contains("axInsert"))
+        #expect(!fake.calls.contains("restore"))
+    }
+
+    @Test func testAFullTypeOutWhoseCountDidNotMoveIsTypedNotAManualPaste() {
+        // Every batch went out; "Press Cmd-V" would put it in twice.
+        let fake = Fake()
+        fake.probes = [probe(10)]
+        fake.run(long, appID: terminal)
+        #expect(fake.typedText == long)
+        #expect(fake.outcome == .pasted)
+        #expect(!fake.calls.contains("restore"))
+    }
+
+    @Test func testAMeasurablePasteThatDidNotMoveStillAsksForAManualPaste() {
+        // Measured evidence of a miss (count unchanged, the AX insert didn't grow it).
+        let fake = Fake()
+        fake.probes = [probe(10)]
+        fake.axInsertOK = false
+        fake.run()
+        #expect(fake.calls.contains("axInsert"))
         #expect(fake.outcome == .clipboardOnly)
         #expect(!fake.calls.contains("restore"))
     }

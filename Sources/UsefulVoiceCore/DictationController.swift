@@ -65,6 +65,10 @@ public final class DictationController {
     /// whether the app reports it came forward; the controller then checks the
     /// focus again itself, so a reported success is never trusted on its own.
     private let reactivate: (DeliveryTarget) async -> Bool
+    /// The apps the user switched to typing. Read at delivery, so text with a line
+    /// break for one of them is copied without locking on (or reactivating) the
+    /// target first.
+    private let typeOutApps: () -> [String]
     private var pendingRawMode = false
     /// Where the dictation now in flight was started, and the app it will paste
     /// into. Written once, when recording starts, and never by the stop toggle,
@@ -118,7 +122,8 @@ public final class DictationController {
                 frontmostApp: @escaping () -> FrontmostApp? = { nil },
                 focusTarget: (() -> DeliveryTarget?)? = nil,
                 isTargetRunning: @escaping (DeliveryTarget) -> Bool = { _ in true },
-                reactivate: @escaping (DeliveryTarget) async -> Bool = { _ in false }) {
+                reactivate: @escaping (DeliveryTarget) async -> Bool = { _ in false },
+                typeOutApps: @escaping () -> [String] = { [] }) {
         self.recorder = recorder
         self.providers = providers
         self.store = store
@@ -138,6 +143,7 @@ public final class DictationController {
         self.focusTarget = focusTarget
         self.isTargetRunning = isTargetRunning
         self.reactivate = reactivate
+        self.typeOutApps = typeOutApps
         // The recorder calls this on the main thread and only for its live
         // session (see AudioRecording.onAutoStop), so it acts at once: no extra
         // hop in which a stale call could end the NEXT recording. The state check
@@ -475,7 +481,15 @@ public final class DictationController {
         // Useful Voice (a note) pastes.
         var deliverMode = deliveryMode
         var pasteRedirected = false
-        if deliverMode == .paste, !(await lockOnTarget(target)) {
+        var lineBreaksCopied = false
+        if deliverMode == .paste,
+           InsertionMethod.method(forAppID: target?.appID, typeOutApps: typeOutApps(),
+                                  text: finalText) == .copyOnly {
+            // An app that types, and text with a line break: copied only, decided
+            // before the lock so the target is never brought forward just to copy.
+            deliverMode = .copy
+            lineBreaksCopied = true
+        } else if deliverMode == .paste, !(await lockOnTarget(target)) {
             deliverMode = .copy
             pasteRedirected = true
         }
@@ -496,7 +510,8 @@ public final class DictationController {
             switch report {
             case .success(let result):
                 let reported: DeliveryResult =
-                    pasteRedirected && result == .copied ? .copiedAppChanged : result
+                    lineBreaksCopied && result == .copied ? .copiedHasLineBreaks
+                    : pasteRedirected && result == .copied ? .copiedAppChanged : result
                 self.onOutcome?(.delivered(words: words, mode: reported, appName: appName))
                 self.state = .idle
             case .failure:

@@ -295,7 +295,9 @@ final class UsefulVoiceViewModel: ObservableObject {
             intermediateText: record.text,
             memoryHitIDs: result.memoryHitIDs.isEmpty ? nil : result.memoryHitIDs,
             replacementRuleIDs: result.replacementRuleIDs.isEmpty ? nil : result.replacementRuleIDs,
-            snippetIDs: result.snippetIDs.isEmpty ? nil : result.snippetIDs
+            snippetIDs: result.snippetIDs.isEmpty ? nil : result.snippetIDs,
+            appID: record.appID,
+            category: record.category
         )
         history.append(next)
         languageMemory.recordUsage(

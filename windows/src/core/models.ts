@@ -7,6 +7,7 @@
  */
 
 import { DEEPGRAM_LANGUAGES, normaliseLanguageCode } from './transcription/languages.js';
+import type { AppCategory, AutoSendKey, FormattingStyle } from './apps/appCategory.js';
 
 /**
  * The language a setting, term or replacement is scoped to.
@@ -240,6 +241,14 @@ export interface DictationRecord {
    */
   language: MemoryLanguage;
   appName: string;
+  /**
+   * The app the dictation was captured for (its executable name, e.g. `slack.exe`). Absent
+   * on a window dictation and on history written before app-aware formatting, so an old
+   * file decodes unchanged. `category` is the category of that app, and is stored only with
+   * an `appID`; it is kept whether or not formatting was on, because it feeds the app list.
+   */
+  appID?: string;
+  category?: AppCategory;
   durationSeconds: number;
   mode: 'raw' | 'formatted';
   createdAt: string;
@@ -301,6 +310,16 @@ export interface AppSettings {
    * default, so every app pastes until the user turns typing on for it.
    */
   typeOutApps: string[];
+  /** Format each dictation for the app it goes into. On by default. */
+  appAwareFormatting: boolean;
+  /** The writing style the user picked per category. A category without one uses its default. */
+  categoryStyles: Partial<Record<AppCategory, FormattingStyle>>;
+  /** Used for email sign-offs only. Empty means no name is added. */
+  userName: string;
+  /** The key pressed after a delivery that landed, per category. Absent means off, and Email and Docs and notes never have one. */
+  autoSend: Partial<Record<AppCategory, AutoSendKey>>;
+  /** The user's per-app category choices, keyed by executable name (`slack.exe`). */
+  appCategories: Record<string, AppCategory>;
 }
 
 export type Appearance = 'system' | 'light' | 'dark';
@@ -336,4 +355,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dailyWordGoal: 2500,
   restorePreviousClipboard: true,
   typeOutApps: [],
+  appAwareFormatting: true,
+  categoryStyles: {},
+  userName: '',
+  autoSend: {},
+  appCategories: {},
 };

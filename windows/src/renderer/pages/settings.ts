@@ -5,6 +5,7 @@ import { previewFeatures } from '../components/flags.js';
 import { runSetupAgain } from '../components/firstRun.js';
 import { languagePicker } from '../components/languagePicker.js';
 import { releaseLinks } from '../../core/releaseLinks.js';
+import { serialTypeOutUpdater } from '../../core/delivery/typeOutList.js';
 import { state, refresh, renderChrome, activeLanguagePicker } from '../shell.js';
 import type { SettingsDTO } from '../../preload/types.js';
 
@@ -544,13 +545,15 @@ function formattingGroup(settings: SettingsDTO): HTMLElement {
 /** Apps listed under "Type instead of paste" this session, so a row switched off stays put. */
 const typeOutRows = new Set<string>();
 
+/** One app's type-out switch. Module-wide, so saves stay in order across repaints. */
+const setTypeOut = serialTypeOutUpdater(
+  () => state.settings?.typeOutApps ?? [],
+  (typeOutApps) => save({ typeOutApps }),
+);
+
 function pastingGroup(settings: SettingsDTO): HTMLElement {
   for (const app of [...settings.typeOutApps, ...(settings.recentTargetApps ?? [])]) typeOutRows.add(app);
   const enabled = (app: string): boolean => (state.settings?.typeOutApps ?? settings.typeOutApps).includes(app);
-  const setTypeOut = (app: string, on: boolean): Promise<boolean> => {
-    const current = (state.settings?.typeOutApps ?? settings.typeOutApps).filter((id) => id !== app);
-    return save({ typeOutApps: on ? [...current, app] : current });
-  };
   const restoreHint = (on: boolean): string => (on ? '' : 'Your dictation stays on the clipboard.');
   const hint = el('span', { class: 's-hint' }, restoreHint(settings.restorePreviousClipboard));
   const restoreRow = el(

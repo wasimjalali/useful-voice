@@ -65,10 +65,10 @@ SU_PUBLIC_ED_KEY ?=
 define embed_sparkle
 	rm -rf $(APP)/Contents/Frameworks/Sparkle.framework
 	ditto .build/release/Sparkle.framework $(APP)/Contents/Frameworks/Sparkle.framework
-	@if [ -n "$(SU_FEED_URL)$(SU_PUBLIC_ED_KEY)" ]; then \
-		[ -n "$(SU_FEED_URL)" ] && [ -n "$(SU_PUBLIC_ED_KEY)" ] || { echo "error: SU_FEED_URL and SU_PUBLIC_ED_KEY go together" >&2; exit 1; }; \
-		plutil -insert SUFeedURL -string "$(SU_FEED_URL)" $(APP)/Contents/Info.plist && \
-		plutil -insert SUPublicEDKey -string "$(SU_PUBLIC_ED_KEY)" $(APP)/Contents/Info.plist && \
+	@if [ -n '$(SU_FEED_URL)$(SU_PUBLIC_ED_KEY)' ]; then \
+		[ -n '$(SU_FEED_URL)' ] && [ -n '$(SU_PUBLIC_ED_KEY)' ] || { echo "error: SU_FEED_URL and SU_PUBLIC_ED_KEY go together" >&2; exit 1; }; \
+		plutil -insert SUFeedURL -string '$(SU_FEED_URL)' $(APP)/Contents/Info.plist && \
+		plutil -insert SUPublicEDKey -string '$(SU_PUBLIC_ED_KEY)' $(APP)/Contents/Info.plist && \
 		plutil -insert SUEnableAutomaticChecks -bool YES $(APP)/Contents/Info.plist; \
 	fi
 endef

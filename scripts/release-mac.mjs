@@ -74,6 +74,10 @@ if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
   process.stderr.write("usage: release-mac.mjs --version X.Y.Z [--feed-url URL] [--download-base URL] [--out DIR] [--allow-dirty] [--ad-hoc (--ed-account NAME | --ed-key-file FILE) --ed-public-key KEY]\n");
   process.exit(2);
 }
+// Both URLs go into the Makefile's shell recipe (single-quoted), the appcast and install.sh.
+for (const name of ["feed-url", "download-base"]) {
+  if (values[name] !== undefined && /['"`$\s]/.test(values[name])) fail(`--${name} may not contain a quote, a backtick, a $ or whitespace`);
+}
 const adHoc = values["ad-hoc"];
 const edAccount = values["ed-account"];
 const edKeyFile = values["ed-key-file"] && path.resolve(values["ed-key-file"]);

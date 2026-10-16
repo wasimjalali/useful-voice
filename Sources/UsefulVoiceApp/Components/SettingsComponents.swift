@@ -464,3 +464,14 @@ enum SettingsFormat {
 
     static func number(_ n: Int) -> String { InsightsFormat.grouped(n) }
 }
+
+extension FormattingStyle {
+    /// The label Settings shows.
+    var displayName: String {
+        switch self {
+        case .formal: return "Formal"
+        case .casual: return "Casual"
+        case .veryCasual: return "Very casual"
+        }
+    }
+}

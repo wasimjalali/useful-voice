@@ -27,6 +27,7 @@
 }
 
 .select-trigger:hover { background: var(--sunken); }
+.select-trigger:disabled { opacity: 0.5; cursor: default; background: var(--surface); }
 .select-trigger:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .select-picker.is-open .select-trigger { border-color: var(--ink); background: var(--sunken); }
 

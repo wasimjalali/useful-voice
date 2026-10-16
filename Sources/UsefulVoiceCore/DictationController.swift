@@ -128,11 +128,13 @@ public final class DictationController {
         let appID: String?
         /// "Auto-format transcript" at the press.
         let autoFormat: Bool
+        /// The dictation goes into one of this app's own fields: no app context at all.
+        let inOwnApp: Bool
         let cursorRead: Task<String?, Never>?
 
         func withoutCursorRead() -> PressCapture {
             PressCapture(settings: settings, category: category, appID: appID,
-                         autoFormat: autoFormat, cursorRead: nil)
+                         autoFormat: autoFormat, inOwnApp: inOwnApp, cursorRead: nil)
         }
     }
 
@@ -349,7 +351,8 @@ public final class DictationController {
             read = Task { await reader(target) }
         }
         return PressCapture(settings: settings, category: category,
-                            appID: inOwnApp ? nil : target?.appID, autoFormat: autoOn, cursorRead: read)
+                            appID: inOwnApp ? nil : target?.appID, autoFormat: autoOn, inOwnApp: inOwnApp,
+                            cursorRead: read)
     }
 
     private func isOwnApp(_ target: DeliveryTarget?) -> Bool {
@@ -538,7 +541,7 @@ public final class DictationController {
                 let cleaned = CleanupRules.apply(to: pipelineText, language: effectivePin.rawValue)
                 if !cleaned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { pipelineText = cleaned }
             }
-            if let press, press.autoFormat, press.settings.enabled {
+            if let press, press.autoFormat, press.settings.enabled, !press.inOwnApp {
                 let plan = AppFormattingPlan(
                     category: press.category,
                     style: press.settings.requestedStyle(for: press.category),

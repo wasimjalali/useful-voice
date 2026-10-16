@@ -463,6 +463,38 @@ import Foundation
         #expect(sentKeys.isEmpty)
     }
 
+    @Test func aDictationIntoOurOwnFieldGetsNoCategoryFormatting() async {
+        // The same Other style that trims the full stop in an unknown app does nothing in
+        // our own field: no app context at all.
+        appFormatting.setStyle(.casual, for: .other)
+        let unknown = DeliveryTarget(appID: "com.example.notes", appName: "Notes", processID: 77,
+                                     windowID: "win#3", elementID: "AXTextArea#4")
+        focus = unknown
+        let c = controller("Are you free tonight.", ownAppID: "ai.useful.voice")
+        await dictate(c)
+        #expect(delivered == ["Are you free tonight"])
+        #expect(records.first?.appID == "com.example.notes")
+
+        delivered = []
+        cursorReads = []
+        focus = ownWindow
+        ownFieldEditable = true
+        await dictate(c)
+        #expect(delivered == ["Are you free tonight."])
+        #expect(records.last?.appID == nil)
+        #expect(records.last?.category == nil)
+        #expect(cursorReads.isEmpty)
+    }
+
+    @Test func autoSendNeverFiresWithoutAnAppID() async {
+        appFormatting.setAutoSend(.return, for: .other)
+        focus = DeliveryTarget(appID: nil, appName: "Unknown", processID: 78,
+                               windowID: "win#4", elementID: "AXTextArea#5")
+        let c = controller("hello there", ownAppID: "ai.useful.voice")
+        await dictate(c)
+        #expect(sentKeys.isEmpty)
+    }
+
     @Test func theOwnAppIsMatchedWithoutRegardToCase() async {
         focus = DeliveryTarget(appID: "AI.Useful.Voice", appName: "Useful Voice", processID: 42)
         ownFieldEditable = false

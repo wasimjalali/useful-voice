@@ -96,8 +96,14 @@ public struct InsertionEffects {
     public var recoverClipboard: () -> Void
     /// Puts the saved clipboard back, unless something else was copied since.
     public var restoreClipboard: () -> Bool
-    /// The captured target still has focus.
+    /// The captured target still has focus and shows the same page. The last look
+    /// before anything is posted.
     public var onTarget: () -> Bool
+    /// The captured target still has focus, by identity alone (app, window,
+    /// element). Checked before every typed batch after the first: no page address
+    /// read, so a live search rewriting `?q=` doesn't stop typing and the check stays
+    /// cheap.
+    public var stillOnTarget: () -> Bool
     /// Posts Cmd-V. False when it could not be posted at all.
     public var postPaste: () -> Bool
     /// Posts one batch of UTF-16 units as Unicode key events. False when it could not.
@@ -118,6 +124,7 @@ public struct InsertionEffects {
                 recoverClipboard: @escaping () -> Void,
                 restoreClipboard: @escaping () -> Bool,
                 onTarget: @escaping () -> Bool,
+                stillOnTarget: @escaping () -> Bool,
                 postPaste: @escaping () -> Bool,
                 postKeys: @escaping ([UInt16]) -> Bool,
                 axInsert: @escaping (String) -> Bool,
@@ -131,6 +138,7 @@ public struct InsertionEffects {
         self.recoverClipboard = recoverClipboard
         self.restoreClipboard = restoreClipboard
         self.onTarget = onTarget
+        self.stillOnTarget = stillOnTarget
         self.postPaste = postPaste
         self.postKeys = postKeys
         self.axInsert = axInsert
@@ -314,13 +322,13 @@ public enum InsertionFlow {
                 finish(typedAny ? .partlyTyped : nothingTyped)
             }
             // One batch per step, scheduled on the queue rather than slept on, so the
-            // main thread stays free; the password field and the target are checked
-            // before every batch.
+            // main thread stays free; the password field and the target (by identity)
+            // are checked before every batch.
             func step(_ index: Int) {
                 let typedAny = index > 0
                 guard fx.now() < deadline else { return stop(typedAny, .clipboardOnly) }
                 guard !fx.isSecureInput() else { return stop(typedAny, .secureFieldCopied) }
-                if index > 0, !fx.onTarget() { return stop(typedAny, .targetLost) }
+                if index > 0, !fx.stillOnTarget() { return stop(typedAny, .targetLost) }
                 guard fx.postKeys(batches[index]) else {
                     // Nothing went out: the fallback decides (it never AX-inserts after
                     // type-out). Something went out: partly typed.

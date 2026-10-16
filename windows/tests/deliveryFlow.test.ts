@@ -281,6 +281,15 @@ describe('the target lock', () => {
     await deliverToTarget(input(), h.fx);
     expect(h.calls).not.toContain('address');
   });
+
+  it('reads the page once at the lock, never while or after typing (a live search may rewrite it)', async () => {
+    const edge: DeliveryTarget = { appId: 'msedge', processId: 50, windowHandle: 0x500, browserUrl: 'https://example.com/search?q=a' };
+    const h = harness({ focus: [edge, { ...edge, browserUrl: 'https://example.com/search?q=abc' }] });
+    const result = await deliverToTarget(input({ target: edge, typeOutApps: ['msedge'] }), h.fx);
+    expect(result).toMatchObject({ delivered: true, method: 'typeOut', reason: 'typed' });
+    expect(h.calls.filter((call) => call === 'address')).toHaveLength(1);
+    expect(h.calls.indexOf('address')).toBeLessThan(h.calls.indexOf('typeOut'));
+  });
 });
 
 describe('the last look before the keystroke', () => {

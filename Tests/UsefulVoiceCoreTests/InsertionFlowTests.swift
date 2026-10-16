@@ -48,6 +48,8 @@ import Testing
                 recoverClipboard: { [unowned self] in calls.append("recover") },
                 restoreClipboard: { [unowned self] in calls.append("restore"); return true },
                 onTarget: { [unowned self] in calls.append("onTarget?"); return next(onTarget, &targetCall) },
+                // The same answers as `onTarget`, in call order, under its own name.
+                stillOnTarget: { [unowned self] in calls.append("stillOnTarget?"); return next(onTarget, &targetCall) },
                 postPaste: { [unowned self] in calls.append("paste"); return pasteOK },
                 postKeys: { [unowned self] batch in
                     calls.append("keys")
@@ -301,6 +303,14 @@ import Testing
         fake.run(long, appID: terminal)
         #expect(fake.keyBatches.count == 2)
         #expect(fake.outcome == .partlyTyped)
+    }
+
+    @Test func testTheCheckBetweenBatchesIsIdentityOnly() {
+        // The full look (with the page) once before posting; identity only per batch.
+        let fake = Fake()
+        fake.run(long, appID: terminal)
+        #expect(fake.calls.filter { $0 == "onTarget?" }.count == 1)
+        #expect(fake.calls.filter { $0 == "stillOnTarget?" }.count == fake.keyBatches.count - 1)
     }
 
     @Test func testAKeyThatCannotBePostedMidwayIsPartlyTyped() {

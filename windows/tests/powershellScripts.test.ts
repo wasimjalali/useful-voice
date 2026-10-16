@@ -104,6 +104,8 @@ describe('PowerShell script guards', () => {
     expect(loop.indexOf('IsPassword')).toBeLessThan(send);
     // A UI Automation error counts as a password field.
     expect(loop).toMatch(/catch \{\s*\$secure = \$true/);
+    // Identity only per batch: the window, never the page address.
+    expect(script).not.toMatch(/OmniboxViewViews|urlbar-input|ValuePattern/);
   });
 
   it('reads only the real address bar', () => {

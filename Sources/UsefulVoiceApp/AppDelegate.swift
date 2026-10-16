@@ -521,6 +521,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         onTarget: {
                             guard let target else { return false }
                             return TargetLock.matches(target, FocusTracker.shared.snapshot())
+                        },
+                        stillOnTarget: {
+                            // Between typed batches: identity only, no page read.
+                            guard let target else { return false }
+                            return TargetLock.identityMatches(target, FocusTracker.shared.snapshot(includePage: false))
                         }
                     ) { outcome in
                         switch outcome {

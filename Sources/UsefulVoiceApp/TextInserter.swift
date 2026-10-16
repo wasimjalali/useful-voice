@@ -81,11 +81,14 @@ struct TextInserter {
     /// - Parameters:
     ///   - request: the text, the target's app (which picks paste or type-out) and
     ///     the user's clipboard setting.
-    ///   - onTarget: checked right before anything is posted, and before every typed
-    ///     batch. False means the target captured at the hotkey press is no longer
-    ///     focused: nothing (more) is posted and the dictation stays on the clipboard.
+    ///   - onTarget: checked right before anything is posted. False means the target
+    ///     captured at the hotkey press is no longer focused (or shows another page):
+    ///     nothing is posted and the dictation stays on the clipboard.
+    ///   - stillOnTarget: checked before every typed batch after the first, by
+    ///     identity only (no page read). False stops typing.
     func deliver(_ request: InsertionRequest,
                  onTarget: @escaping () -> Bool = { true },
+                 stillOnTarget: @escaping () -> Bool = { true },
                  completion: @escaping (DeliveryOutcome) -> Void = { _ in }) {
         let pb = pasteboard()
         // The user's clipboard, copied aside by `saveClipboard`, and the change count
@@ -112,6 +115,7 @@ struct TextInserter {
             },
             restoreClipboard: { self.restoreClipboard(saved.items, pb, saved.changeCount) },
             onTarget: onTarget,
+            stillOnTarget: stillOnTarget,
             postPaste: synthesizePaste,
             postKeys: postKeys,
             axInsert: axInsert,

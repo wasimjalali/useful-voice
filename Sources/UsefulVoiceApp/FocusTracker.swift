@@ -32,7 +32,10 @@ final class FocusTracker {
     private(set) var recentApps: [AppChoice] = []
 
     /// What has focus now. Nil only when no app is frontmost.
-    func snapshot() -> DeliveryTarget? {
+    ///
+    /// `includePage` false skips the window title and the page address (the
+    /// address walks up the AX tree): enough for an identity check.
+    func snapshot(includePage: Bool = true) -> DeliveryTarget? {
         guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
         let pid = app.processIdentifier
         let bundleID = app.bundleIdentifier
@@ -47,7 +50,7 @@ final class FocusTracker {
             if let window = Self.element(axApp, kAXFocusedWindowAttribute) {
                 let id = "win#\(CFHash(window))"
                 windowID = id
-                windowTitle = Self.string(window, kAXTitleAttribute)
+                if includePage { windowTitle = Self.string(window, kAXTitleAttribute) }
                 remember(window, id: id, in: \.windows)
             }
             if let focused = Self.element(axApp, kAXFocusedUIElementAttribute) {
@@ -55,7 +58,7 @@ final class FocusTracker {
                 let id = "\(role)#\(CFHash(focused))"
                 elementID = id
                 remember(focused, id: id, in: \.elements)
-                if KnownBrowsers.isBrowser(bundleID: bundleID) {
+                if includePage, KnownBrowsers.isBrowser(bundleID: bundleID) {
                     url = Self.browserURL(from: focused, window: windowID.flatMap { windows[$0] })
                 }
             }

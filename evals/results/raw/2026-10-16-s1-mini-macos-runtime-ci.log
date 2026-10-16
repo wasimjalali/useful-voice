@@ -1,0 +1,841 @@
+=== run 38899709145, head 4e1cc6b, log macos.log ===
+run 38899709145 | Run tests | ✘ Test bothFrameworksLoadInOneProcess() skipped.
+run 38899709145 | Run tests | ✘ Test s1MiniRunsBetweenTwoWhisperContexts() skipped.
+run 38899709145 | Run tests | ✘ Test pipelineWithTheRealModel() skipped.
+run 38899709145 | Run tests | ✘ Test measure() skipped.
+run 38899709145 | Run tests | ✘ Test aPassedDeadlineStopsTheRun() skipped.
+run 38899709145 | Run tests | ✔ Test run with 919 tests passed after 7.717 seconds.
+run 38899709145 | llama-bench baseline (same runner, same weights) | Apple M1 (Virtual)
+run 38899709145 | llama-bench baseline (same runner, same weights) | 7516192768
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_init: using embedded metal library
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_aux' library in 0.537 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_f16' library in 1.496 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_f32' library in 2.621 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q4_0' library in 4.017 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q4_1' library in 1.941 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q5_0' library in 3.207 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q5_1' library in 5.301 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q8_0' library in 6.712 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_tensor' library in 3.215 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_f16' library in 6.716 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_f32' library in 7.284 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q4_0' library in 10.489 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q4_1' library in 14.451 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q5_0' library in 10.956 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q5_1' library in 14.545 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q8_0' library in 18.054 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mv' library in 15.878 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mv_mma' library in 19.837 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mm' library in 17.888 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'quantize' library in 20.254 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'softmax' library in 17.926 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'norm' library in 20.321 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'unary' library in 18.017 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'binbcast' library in 20.370 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'reduce' library in 18.040 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'tri' library in 20.390 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'ssm' library in 18.111 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'wkv' library in 20.411 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'gated_delta_net' library in 18.151 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'solve_tri' library in 20.426 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'rope' library in 18.202 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'conv' library in 20.503 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'upscale' library in 18.231 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'argsort' library in 20.558 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'pool' library in 20.580 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'misc' library in 18.358 sec
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: loaded 36 libraries from embedded data in 20.618 sec (max single = 20.580 sec)
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: simdgroup reduction   = false
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has unified memory    = true
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has bfloat            = false
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has tensor            = false
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: use residency sets    = true
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: use shared buffers    = true
+run 38899709145 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38899709145 | llama-bench baseline (same runner, same weights) | | model                          |       size |     params | backend    | threads |            test |                  t/s |
+run 38899709145 | llama-bench baseline (same runner, same weights) | | ------------------------------ | ---------: | ---------: | ---------- | ------: | --------------: | -------------------: |
+run 38899709145 | llama-bench baseline (same runner, same weights) | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       3 |           pp100 |       244.51 ± 53.01 |
+run 38899709145 | llama-bench baseline (same runner, same weights) | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       3 |            tg16 |         86.82 ± 9.48 |
+run 38899709145 | llama-bench baseline (same runner, same weights) | build: 620d2225c (11669)
+run 38899709145 | S1-mini latency in a fresh process | MEASURE baseline (resident: 24.671875, footprint: 8.04815673828125)
+run 38899709145 | S1-mini latency in a fresh process | MEASURE cpuOnly load 24650.383375 ms threads 3 cores 3 mem (resident: 851.734375, footprint: 432.19061279296875)
+run 38899709145 | S1-mini latency in a fresh process | MEASURE cpuOnly run 10195.793625 ms prompt 97 out 10 ctx 512 prefill 8393.696542000002 ms (context 74.582792 ms, prompt decode 8312.514666000001 ms, native prompt 8310.185 ms, native generate 1795.851 ms) -> "So I need to send the report by Thursday."
+run 38899709145 | S1-mini latency in a fresh process | MEASURE cpuOnly run 10194.174291 ms prompt 92 out 15 ctx 512 prefill 7981.948791 ms (context 15.299667 ms, prompt decode 7962.589708 ms, native prompt 7962.551 ms, native generate 2206.779 ms) -> "Send it to john.smith@example.com by Friday the 3rd."
+run 38899709145 | S1-mini latency in a fresh process | MEASURE cpuOnly run 10332.592917 ms prompt 95 out 16 ctx 512 prefill 7978.425208 ms (context 11.557167 ms, prompt decode 7963.369125 ms, native prompt 7963.338 ms, native generate 2348.705 ms) -> "The meeting is at 2:30pm on March 16."
+run 38899709145 | S1-mini latency in a fresh process | MEASURE cpuOnly run 11688.880208 ms prompt 99 out 20 ctx 512 prefill 8487.201292 ms (context 13.208292 ms, prompt decode 8466.182625 ms, native prompt 8466.047 ms, native generate 3195.4230000000002 ms) -> "So the budget is $45,000, and we need to confirm with Sarah."
+run 38899709145 | S1-mini latency in a fresh process | MEASURE cpuOnly run 11773.920417 ms prompt 97 out 18 ctx 512 prefill 9115.598041 ms (context 23.964624999999998 ms, prompt decode 9075.556541999998 ms, native prompt 9075.432 ms, native generate 2652.799 ms) -> "Can you open the file source/app.ts and rename the function get user to fetch user?"
+run 38899709145 | S1-mini latency in a fresh process | MEASURE cpuOnly median 10332.592917 ms max 11773.920417 ms mem after (resident: 852.0, footprint: 433.003173828125)
+run 38899709145 | S1-mini latency in a fresh process | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38899709145 | S1-mini latency in a fresh process | ggml_metal_library_init: using embedded metal library
+run 38899709145 | S1-mini latency in a fresh process | ggml_metal_library_init: loaded in 15.221 sec
+run 38899709145 | S1-mini latency in a fresh process | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38899709145 | S1-mini latency in a fresh process | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38899709145 | S1-mini latency in a fresh process | ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+run 38899709145 | S1-mini latency in a fresh process | ggml_metal_device_init: simdgroup reduction   = false
+run 38899709145 | S1-mini latency in a fresh process | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38899709145 | S1-mini latency in a fresh process | ggml_metal_device_init: has unified memory    = true
+run 38899709145 | S1-mini latency in a fresh process | ggml_metal_device_init: has bfloat            = false
+run 38899709145 | S1-mini latency in a fresh process | ggml_metal_device_init: has tensor            = false
+run 38899709145 | S1-mini latency in a fresh process | ggml_metal_device_init: use residency sets    = true
+run 38899709145 | S1-mini latency in a fresh process | ggml_metal_device_init: use shared buffers    = true
+run 38899709145 | S1-mini latency in a fresh process | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38899709145 | S1-mini latency in a fresh process | MEASURE cpuOnly with whisper tiny loadable=true in 15417.920583 ms mem (resident: 870.59375, footprint: 459.0032958984375)
+run 38899709145 | S1-mini latency in a fresh process | MEASURE after cpuOnly unload (resident: 173.15625, footprint: 52.83001708984375)
+run 38899709145 | S1-mini latency in a fresh process | MEASURE pool true threads 3 run 9826.558834 ms (prompt decode 8625.539584 ms, native prompt 8625.478000000001 ms, native generate 1173.439 ms, out 10)
+run 38899709145 | S1-mini latency in a fresh process | MEASURE pool true threads 3 run 9633.193333 ms (prompt decode 8473.214083 ms, native prompt 8473.112000000001 ms, native generate 1141.593 ms, out 10)
+run 38899709145 | S1-mini latency in a fresh process | MEASURE pool false threads 3 run 9744.194 ms (prompt decode 8553.935167000001 ms, native prompt 8553.891 ms, native generate 1171.971 ms, out 10)
+run 38899709145 | S1-mini latency in a fresh process | MEASURE pool false threads 3 run 9502.180375 ms (prompt decode 8344.226458 ms, native prompt 8344.199 ms, native generate 1146.897 ms, out 10)
+run 38899709145 | S1-mini latency in a fresh process | MEASURE pool true threads 2 run 14236.566709 ms (prompt decode 12502.460875 ms, native prompt 12502.424 ms, native generate 1720.0430000000001 ms, out 10)
+run 38899709145 | S1-mini latency in a fresh process | MEASURE pool true threads 2 run 14169.946291 ms (prompt decode 12302.007708 ms, native prompt 12301.961000000001 ms, native generate 1844.035 ms, out 10)
+run 38899709145 | S1-mini latency in a fresh process | ✔ Test measure() passed after 164.408 seconds.
+run 38899709145 | S1-mini latency in a fresh process | ✔ Test run with 1 test passed after 164.409 seconds.
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_library_init: using embedded metal library
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_library_init: loaded in 0.024 sec
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: simdgroup reduction   = false
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: has unified memory    = true
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: has bfloat            = false
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: has tensor            = false
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: use residency sets    = true
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: use shared buffers    = true
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | COEXIST whisper system info: WHISPER : COREML = 1 | OPENVINO = 0 | MTL : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | DOTPROD = 1 | ACCELERATE = 1 | REPACK = 1 | 
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | COEXIST llama 0.7.0-dev system info: MTL : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | DOTPROD = 1 | LLAMAFILE = 1 | ACCELERATE = 1 | REPACK = 1 | 
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | COEXIST images: ["/Users/runner/work/useful-voice/useful-voice/.build/arm64-apple-macosx/debug/whisper.framework/Versions/A/whisper"] ["/Users/runner/work/useful-voice/useful-voice/.build/arm64-apple-macosx/debug/llama.framework/Versions/A/llama"]
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test bothFrameworksLoadInOneProcess() passed after 0.094 seconds.
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | COEXIST model card example -> "So I need to send the report by Thursday." Stats(promptTokens: 97, outputTokens: 10, contextSize: 512, prefillSeconds: 6.610361291, totalSeconds: 7.539588166, contextSeconds: 0.030697792, promptDecodeSeconds: 6.576947291, nativePromptMs: 6576.527, nativeGenerateMs: 927.446)
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test s1MiniRunsBetweenTwoWhisperContexts() passed after 16.901 seconds.
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | COEXIST 5 ms deadline stopped the run after 7.89925 ms
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test aPassedDeadlineStopsTheRun() passed after 8.556 seconds.
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | COEXIST pipeline -> Result(text: "So I need to send the report by Thursday.", source: UsefulVoiceCore.CleanupPipeline.Source.model, model: Optional(UsefulVoiceCore.CleanupPipeline.ModelOutcome.accepted))
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test pipelineWithTheRealModel() passed after 9.455 seconds.
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | MEASURE baseline (resident: 254.765625, footprint: 49.90850830078125)
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly load 899.829667 ms threads 3 cores 3 mem (resident: 960.078125, footprint: 422.83184814453125)
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 9727.0 ms prompt 97 out 10 ctx 512 prefill 8231.479334 ms (context 11.77575 ms, prompt decode 8218.431 ms, native prompt 8218.376 ms, native generate 1490.477 ms) -> "So I need to send the report by Thursday."
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 9906.358667 ms prompt 92 out 15 ctx 512 prefill 8456.650459 ms (context 49.946084 ms, prompt decode 8402.289250000002 ms, native prompt 8402.210000000001 ms, native generate 1444.79 ms) -> "Send it to john.smith@example.com by Friday the 3rd."
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 8686.117208 ms prompt 95 out 16 ctx 512 prefill 6859.11975 ms (context 14.679667 ms, prompt decode 6839.127417000001 ms, native prompt 6839.085 ms, native generate 1823.199 ms) -> "The meeting is at 2:30pm on March 16."
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 10133.907708 ms prompt 99 out 20 ctx 512 prefill 7361.530917 ms (context 10.020375 ms, prompt decode 7349.708625 ms, native prompt 7349.666 ms, native generate 2765.446 ms) -> "So the budget is $45,000, and we need to confirm with Sarah."
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 10042.302208 ms prompt 97 out 18 ctx 512 prefill 7871.162083 ms (context 15.186625000000001 ms, prompt decode 7847.189083 ms, native prompt 7847.157 ms, native generate 2165.98 ms) -> "Can you open the file source/app.ts and rename the function get user to fetch user?"
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly median 9906.358667 ms max 10133.907708 ms mem after (resident: 960.0625, footprint: 422.80059814453125)
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly with whisper tiny loadable=true in 216.977584 ms mem (resident: 965.46875, footprint: 422.80059814453125)
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | MEASURE after cpuOnly unload (resident: 260.1875, footprint: 49.87725830078125)
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | MEASURE pool true threads 3 run 8500.7035 ms (prompt decode 7423.4935000000005 ms, native prompt 7423.46 ms, native generate 1060.137 ms, out 10)
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | MEASURE pool true threads 3 run 7694.935166 ms (prompt decode 6701.219667 ms, native prompt 6701.184 ms, native generate 964.788 ms, out 10)
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | MEASURE pool false threads 3 run 8221.093292 ms (prompt decode 7294.142208 ms, native prompt 7294.104 ms, native generate 909.408 ms, out 10)
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | MEASURE pool false threads 3 run 8445.051542 ms (prompt decode 7551.940958 ms, native prompt 7551.895 ms, native generate 877.561 ms, out 10)
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | MEASURE pool true threads 2 run 12035.328791 ms (prompt decode 10500.267042000001 ms, native prompt 10500.234 ms, native generate 1520.8410000000001 ms, out 10)
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | MEASURE pool true threads 2 run 11571.389417 ms (prompt decode 10246.207957999999 ms, native prompt 10246.172 ms, native generate 1308.91 ms, out 10)
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test measure() passed after 108.891 seconds.
+run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test run with 5 tests passed after 143.900 seconds.
+=== run 38901063521, head 605f07d, log macos3.log ===
+run 38901063521 | Run tests | ✘ Test aPassedDeadlineStopsTheRun() skipped.
+run 38901063521 | Run tests | ✘ Test pipelineWithTheRealModel() skipped.
+run 38901063521 | Run tests | ✘ Test bothFrameworksLoadInOneProcess() skipped.
+run 38901063521 | Run tests | ✘ Test measure() skipped.
+run 38901063521 | Run tests | ✘ Test s1MiniRunsBetweenTwoWhisperContexts() skipped.
+run 38901063521 | Run tests | ✔ Test run with 919 tests passed after 7.799 seconds.
+run 38901063521 | llama-bench baseline (same runner, same weights) | Apple M1 (Virtual)
+run 38901063521 | llama-bench baseline (same runner, same weights) | 7516192768
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_init: using embedded metal library
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_aux' library in 0.772 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_f16' library in 2.306 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_f32' library in 1.869 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q4_0' library in 3.518 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q4_1' library in 3.835 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q5_0' library in 4.910 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q5_1' library in 5.218 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q8_0' library in 6.203 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_tensor' library in 5.224 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_f16' library in 9.671 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_f32' library in 5.779 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q4_0' library in 9.459 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q4_1' library in 13.056 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q5_0' library in 15.941 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q5_1' library in 12.664 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q8_0' library in 19.408 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mv' library in 13.775 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mv_mma' library in 21.305 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mm' library in 23.207 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'quantize' library in 14.076 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'softmax' library in 14.082 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'norm' library in 14.134 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'unary' library in 23.249 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'binbcast' library in 14.129 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'reduce' library in 23.220 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'tri' library in 23.242 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'ssm' library in 14.123 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'wkv' library in 23.211 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'gated_delta_net' library in 14.156 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'solve_tri' library in 23.175 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'rope' library in 23.226 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'conv' library in 14.183 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'upscale' library in 14.206 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'argsort' library in 23.225 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'pool' library in 14.173 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'misc' library in 23.327 sec
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: loaded 36 libraries from embedded data in 23.599 sec (max single = 23.327 sec)
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: simdgroup reduction   = false
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has unified memory    = true
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has bfloat            = false
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has tensor            = false
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: use residency sets    = true
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: use shared buffers    = true
+run 38901063521 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38901063521 | llama-bench baseline (same runner, same weights) | | model                          |       size |     params | backend    | threads |            test |                  t/s |
+run 38901063521 | llama-bench baseline (same runner, same weights) | | ------------------------------ | ---------: | ---------: | ---------- | ------: | --------------: | -------------------: |
+run 38901063521 | llama-bench baseline (same runner, same weights) | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       3 |           pp100 |       299.02 ± 70.16 |
+run 38901063521 | llama-bench baseline (same runner, same weights) | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       3 |            tg16 |        104.04 ± 2.96 |
+run 38901063521 | llama-bench baseline (same runner, same weights) | build: 620d2225c (11669)
+run 38901063521 | S1-mini latency in a fresh process | MEASURE baseline (resident: 24.21875, footprint: 7.59503173828125)
+run 38901063521 | S1-mini latency in a fresh process | MEASURE cpuOnly load 18444.7845 ms threads 3 cores 3 mem (resident: 845.59375, footprint: 435.37823486328125)
+run 38901063521 | S1-mini latency in a fresh process | MEASURE cpuOnly run 7880.022166 ms prompt 97 out 10 ctx 512 prefill 7058.161916999999 ms (context 52.21875 ms, prompt decode 7004.011083 ms, native prompt 7002.787 ms, native generate 816.259 ms) -> "So I need to send the report by Thursday."
+run 38901063521 | S1-mini latency in a fresh process | MEASURE cpuOnly run 8171.098166 ms prompt 92 out 15 ctx 512 prefill 6731.595958 ms (context 11.83825 ms, prompt decode 6713.156458 ms, native prompt 6713.122 ms, native generate 1435.673 ms) -> "Send it to john.smith@example.com by Friday the 3rd."
+run 38901063521 | S1-mini latency in a fresh process | MEASURE cpuOnly run 8611.893292 ms prompt 95 out 16 ctx 512 prefill 7144.575167 ms (context 13.446958 ms, prompt decode 7128.749042 ms, native prompt 7128.7080000000005 ms, native generate 1463.53 ms) -> "The meeting is at 2:30pm on March 16."
+run 38901063521 | S1-mini latency in a fresh process | MEASURE cpuOnly run 8913.158708 ms prompt 99 out 20 ctx 512 prefill 6552.580083000001 ms (context 10.418875 ms, prompt decode 6533.1122080000005 ms, native prompt 6533.06 ms, native generate 2355.7870000000003 ms) -> "So the budget is $45,000, and we need to confirm with Sarah."
+run 38901063521 | S1-mini latency in a fresh process | MEASURE cpuOnly run 7768.700209 ms prompt 97 out 18 ctx 512 prefill 6218.751709 ms (context 7.151625 ms, prompt decode 6210.188125000001 ms, native prompt 6210.148 ms, native generate 1545.558 ms) -> "Can you open the file source/app.ts and rename the function get user to fetch user?"
+run 38901063521 | S1-mini latency in a fresh process | MEASURE cpuOnly median 8171.098166 ms max 8913.158708 ms mem after (resident: 845.1875, footprint: 440.73760986328125)
+run 38901063521 | S1-mini latency in a fresh process | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38901063521 | S1-mini latency in a fresh process | ggml_metal_library_init: using embedded metal library
+run 38901063521 | S1-mini latency in a fresh process | ggml_metal_library_init: loaded in 14.205 sec
+run 38901063521 | S1-mini latency in a fresh process | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38901063521 | S1-mini latency in a fresh process | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38901063521 | S1-mini latency in a fresh process | ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+run 38901063521 | S1-mini latency in a fresh process | ggml_metal_device_init: simdgroup reduction   = false
+run 38901063521 | S1-mini latency in a fresh process | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38901063521 | S1-mini latency in a fresh process | ggml_metal_device_init: has unified memory    = true
+run 38901063521 | S1-mini latency in a fresh process | ggml_metal_device_init: has bfloat            = false
+run 38901063521 | S1-mini latency in a fresh process | ggml_metal_device_init: has tensor            = false
+run 38901063521 | S1-mini latency in a fresh process | ggml_metal_device_init: use residency sets    = true
+run 38901063521 | S1-mini latency in a fresh process | ggml_metal_device_init: use shared buffers    = true
+run 38901063521 | S1-mini latency in a fresh process | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38901063521 | S1-mini latency in a fresh process | MEASURE cpuOnly with whisper tiny loadable=true in 14493.858666 ms mem (resident: 862.078125, footprint: 457.2532958984375)
+run 38901063521 | S1-mini latency in a fresh process | MEASURE after cpuOnly unload (resident: 172.53125, footprint: 54.3924560546875)
+run 38901063521 | S1-mini latency in a fresh process | MEASURE qos test thread (class 21) run 7507.410541 ms (native prompt 6674.613 ms, native generate 818.754 ms, out 10)
+run 38901063521 | S1-mini latency in a fresh process | MEASURE qos test thread (class 21) run 7098.026 ms (native prompt 6270.531 ms, native generate 816.198 ms, out 10)
+run 38901063521 | S1-mini latency in a fresh process | MEASURE qos userInteractive (class 33) run 7563.719666 ms (native prompt 6684.9220000000005 ms, native generate 865.684 ms, out 10)
+run 38901063521 | S1-mini latency in a fresh process | MEASURE qos userInteractive (class 33) run 7527.260125 ms (native prompt 6565.381 ms, native generate 946.061 ms, out 10)
+run 38901063521 | S1-mini latency in a fresh process | MEASURE qos userInitiated (class 25) run 7535.266416 ms (native prompt 6619.472 ms, native generate 889.755 ms, out 10)
+run 38901063521 | S1-mini latency in a fresh process | MEASURE qos userInitiated (class 25) run 7664.632833 ms (native prompt 6700.233 ms, native generate 948.866 ms, out 10)
+run 38901063521 | S1-mini latency in a fresh process | ✔ Test measure() passed after 120.256 seconds.
+run 38901063521 | S1-mini latency in a fresh process | ✔ Test run with 1 test passed after 120.256 seconds.
+run 38901063521 | S1-mini latency, release build of the tests | MEASURE baseline (resident: 20.984375, footprint: 8.219970703125)
+run 38901063521 | S1-mini latency, release build of the tests | MEASURE cpuOnly load 1698.521334 ms threads 3 cores 3 mem (resident: 836.46875, footprint: 436.61260986328125)
+run 38901063521 | S1-mini latency, release build of the tests | MEASURE cpuOnly run 8640.697415999999 ms prompt 97 out 10 ctx 512 prefill 7717.80575 ms (context 31.675124999999998 ms, prompt decode 7682.981583 ms, native prompt 7682.8330000000005 ms, native generate 919.813 ms) -> "So I need to send the report by Thursday."
+run 38901063521 | S1-mini latency, release build of the tests | MEASURE cpuOnly run 9136.242959 ms prompt 92 out 15 ctx 512 prefill 7488.637541 ms (context 62.21575 ms, prompt decode 7401.0365 ms, native prompt 7400.99 ms, native generate 1643.546 ms) -> "Send it to john.smith@example.com by Friday the 3rd."
+run 38901063521 | S1-mini latency, release build of the tests | MEASURE cpuOnly run 9480.3445 ms prompt 95 out 16 ctx 512 prefill 7442.571416 ms (context 70.75833300000001 ms, prompt decode 7365.552541999999 ms, native prompt 7365.514 ms, native generate 2033.847 ms) -> "The meeting is at 2:30pm on March 16."
+run 38901063521 | S1-mini latency, release build of the tests | MEASURE cpuOnly run 8937.725542 ms prompt 99 out 20 ctx 512 prefill 7185.686334 ms (context 57.525792 ms, prompt decode 7124.894875 ms, native prompt 7124.837 ms, native generate 1747.8890000000001 ms) -> "So the budget is $45,000, and we need to confirm with Sarah."
+run 38901063521 | S1-mini latency, release build of the tests | MEASURE cpuOnly run 8656.528583 ms prompt 97 out 18 ctx 512 prefill 6752.014958 ms (context 42.691666000000005 ms, prompt decode 6708.034917 ms, native prompt 6708.009 ms, native generate 1894.951 ms) -> "Can you open the file source/app.ts and rename the function get user to fetch user?"
+run 38901063521 | S1-mini latency, release build of the tests | MEASURE cpuOnly median 8937.725542 ms max 9480.3445 ms mem after (resident: 844.1875, footprint: 435.4720458984375)
+run 38901063521 | S1-mini latency, release build of the tests | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38901063521 | S1-mini latency, release build of the tests | ggml_metal_library_init: using embedded metal library
+run 38901063521 | S1-mini latency, release build of the tests | ggml_metal_library_init: loaded in 0.066 sec
+run 38901063521 | S1-mini latency, release build of the tests | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38901063521 | S1-mini latency, release build of the tests | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38901063521 | S1-mini latency, release build of the tests | ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+run 38901063521 | S1-mini latency, release build of the tests | ggml_metal_device_init: simdgroup reduction   = false
+run 38901063521 | S1-mini latency, release build of the tests | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38901063521 | S1-mini latency, release build of the tests | ggml_metal_device_init: has unified memory    = true
+run 38901063521 | S1-mini latency, release build of the tests | ggml_metal_device_init: has bfloat            = false
+run 38901063521 | S1-mini latency, release build of the tests | ggml_metal_device_init: has tensor            = false
+run 38901063521 | S1-mini latency, release build of the tests | ggml_metal_device_init: use residency sets    = true
+run 38901063521 | S1-mini latency, release build of the tests | ggml_metal_device_init: use shared buffers    = true
+run 38901063521 | S1-mini latency, release build of the tests | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38901063521 | S1-mini latency, release build of the tests | MEASURE cpuOnly with whisper tiny loadable=true in 328.268709 ms mem (resident: 889.21875, footprint: 446.4564208984375)
+run 38901063521 | S1-mini latency, release build of the tests | MEASURE after cpuOnly unload (resident: 185.21875, footprint: 51.3455810546875)
+run 38901063521 | S1-mini latency, release build of the tests | MEASURE qos test thread (class 21) run 8136.3585 ms (native prompt 7121.968 ms, native generate 981.501 ms, out 10)
+run 38901063521 | S1-mini latency, release build of the tests | MEASURE qos test thread (class 21) run 8578.623041 ms (native prompt 7527.353 ms, native generate 1036.432 ms, out 10)
+run 38901063521 | S1-mini latency, release build of the tests | MEASURE qos userInteractive (class 33) run 8072.879459 ms (native prompt 7187.541 ms, native generate 832.69 ms, out 10)
+run 38901063521 | S1-mini latency, release build of the tests | MEASURE qos userInteractive (class 33) run 8695.499 ms (native prompt 7591.301 ms, native generate 1048.448 ms, out 10)
+run 38901063521 | S1-mini latency, release build of the tests | MEASURE qos userInitiated (class 25) run 10065.132834 ms (native prompt 8801.622 ms, native generate 1222.683 ms, out 10)
+run 38901063521 | S1-mini latency, release build of the tests | MEASURE qos userInitiated (class 25) run 9764.604958 ms (native prompt 8407.587 ms, native generate 1284.153 ms, out 10)
+run 38901063521 | S1-mini latency, release build of the tests | ✔ Test measure() passed after 101.440 seconds.
+run 38901063521 | S1-mini latency, release build of the tests | ✔ Test run with 1 test passed after 101.441 seconds.
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_library_init: using embedded metal library
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_library_init: loaded in 0.060 sec
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: simdgroup reduction   = false
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: has unified memory    = true
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: has bfloat            = false
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: has tensor            = false
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: use residency sets    = true
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: use shared buffers    = true
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | COEXIST whisper system info: WHISPER : COREML = 1 | OPENVINO = 0 | MTL : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | DOTPROD = 1 | ACCELERATE = 1 | REPACK = 1 | 
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | COEXIST llama 0.7.0-dev system info: MTL : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | DOTPROD = 1 | LLAMAFILE = 1 | ACCELERATE = 1 | REPACK = 1 | 
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | COEXIST images: ["/Users/runner/work/useful-voice/useful-voice/.build/arm64-apple-macosx/debug/whisper.framework/Versions/A/whisper"] ["/Users/runner/work/useful-voice/useful-voice/.build/arm64-apple-macosx/debug/llama.framework/Versions/A/llama"]
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test bothFrameworksLoadInOneProcess() passed after 0.271 seconds.
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | COEXIST model card example -> "So I need to send the report by Thursday." Stats(promptTokens: 97, outputTokens: 10, contextSize: 512, prefillSeconds: 8.098237042, totalSeconds: 9.219469209, contextSeconds: 0.013813625, promptDecodeSeconds: 8.082131458, nativePromptMs: 8080.343, nativeGenerateMs: 1118.907)
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test s1MiniRunsBetweenTwoWhisperContexts() passed after 21.756 seconds.
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | COEXIST 5 ms deadline stopped the run after 15.814125 ms
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test aPassedDeadlineStopsTheRun() passed after 10.901 seconds.
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | COEXIST pipeline -> Result(text: "So I need to send the report by Thursday.", source: UsefulVoiceCore.CleanupPipeline.Source.model, model: Optional(UsefulVoiceCore.CleanupPipeline.ModelOutcome.accepted))
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test pipelineWithTheRealModel() passed after 10.522 seconds.
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | MEASURE baseline (resident: 257.921875, footprint: 50.158447265625)
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly load 886.456 ms threads 3 cores 3 mem (resident: 963.234375, footprint: 423.05047607421875)
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 9422.4075 ms prompt 97 out 10 ctx 512 prefill 8227.168959 ms (context 13.772375 ms, prompt decode 8212.412125 ms, native prompt 8212.389000000001 ms, native generate 1190.119 ms) -> "So I need to send the report by Thursday."
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 9815.5725 ms prompt 92 out 15 ctx 512 prefill 8331.274000000001 ms (context 47.046042 ms, prompt decode 8279.700208 ms, native prompt 8279.654 ms, native generate 1478.71 ms) -> "Send it to john.smith@example.com by Friday the 3rd."
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 10147.388792 ms prompt 95 out 16 ctx 512 prefill 8107.168833 ms (context 36.438291 ms, prompt decode 8060.556999999999 ms, native prompt 8060.508 ms, native generate 2034.978 ms) -> "The meeting is at 2:30pm on March 16."
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 10779.613125 ms prompt 99 out 20 ctx 512 prefill 8444.527542 ms (context 7.845875 ms, prompt decode 8435.125542 ms, native prompt 8435.083 ms, native generate 2328.934 ms) -> "So the budget is $45,000, and we need to confirm with Sarah."
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 9875.385625 ms prompt 97 out 18 ctx 512 prefill 8357.305999999999 ms (context 22.403875 ms, prompt decode 8326.003166 ms, native prompt 8325.949 ms, native generate 1512.948 ms) -> "Can you open the file source/app.ts and rename the function get user to fetch user?"
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly median 9875.385625 ms max 10779.613125 ms mem after (resident: 963.203125, footprint: 423.00360107421875)
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly with whisper tiny loadable=true in 108.05475 ms mem (resident: 963.234375, footprint: 423.01922607421875)
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | MEASURE after cpuOnly unload (resident: 257.953125, footprint: 50.127197265625)
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | MEASURE qos test thread (class 21) run 9798.08225 ms (native prompt 8508.001 ms, native generate 1262.8600000000001 ms, out 10)
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | MEASURE qos test thread (class 21) run 11332.457875 ms (native prompt 9824.169 ms, native generate 1488.669 ms, out 10)
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | MEASURE qos userInteractive (class 33) run 11317.50325 ms (native prompt 9792.756 ms, native generate 1485.607 ms, out 10)
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | MEASURE qos userInteractive (class 33) run 8572.9145 ms (native prompt 7564.052000000001 ms, native generate 983.5070000000001 ms, out 10)
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | MEASURE qos userInitiated (class 25) run 7827.919833 ms (native prompt 6851.112 ms, native generate 959.292 ms, out 10)
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | MEASURE qos userInitiated (class 25) run 7413.279167 ms (native prompt 6603.667 ms, native generate 795.016 ms, out 10)
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test measure() passed after 108.265 seconds.
+run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test run with 5 tests passed after 151.720 seconds.
+=== run 38902782660, head c88468b, log macos4.log ===
+run 38902782660 | Run tests | ✘ Test measure() skipped.
+run 38902782660 | Run tests | ✘ Test pipelineWithTheRealModel() skipped.
+run 38902782660 | Run tests | ✘ Test s1MiniRunsBetweenTwoWhisperContexts() skipped.
+run 38902782660 | Run tests | ✘ Test bothFrameworksLoadInOneProcess() skipped.
+run 38902782660 | Run tests | ✘ Test aPassedDeadlineStopsTheRun() skipped.
+run 38902782660 | Run tests | ✔ Test run with 919 tests passed after 8.022 seconds.
+run 38902782660 | llama-bench baseline (same runner, same weights) | Apple M1 (Virtual)
+run 38902782660 | llama-bench baseline (same runner, same weights) | 7516192768
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_init: using embedded metal library
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_aux' library in 0.552 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_f16' library in 1.494 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_f32' library in 1.754 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q4_0' library in 3.088 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q4_1' library in 3.343 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q5_0' library in 4.519 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q5_1' library in 5.767 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q8_0' library in 7.147 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_tensor' library in 3.357 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_f16' library in 6.928 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_f32' library in 7.549 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q4_0' library in 11.505 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q4_1' library in 11.197 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q5_0' library in 14.784 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q5_1' library in 15.152 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q8_0' library in 18.454 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mv' library in 16.463 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mv_mma' library in 20.401 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mm' library in 18.638 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'quantize' library in 20.869 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'softmax' library in 18.680 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'norm' library in 20.939 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'unary' library in 18.817 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'binbcast' library in 18.748 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'reduce' library in 20.974 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'tri' library in 21.001 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'ssm' library in 18.884 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'wkv' library in 21.023 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'gated_delta_net' library in 21.058 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'solve_tri' library in 18.902 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'rope' library in 18.959 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'conv' library in 21.148 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'upscale' library in 18.987 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'argsort' library in 19.048 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'pool' library in 21.180 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'misc' library in 21.326 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: loaded 36 libraries from embedded data in 21.395 sec (max single = 21.326 sec)
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: simdgroup reduction   = false
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has unified memory    = true
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has bfloat            = false
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has tensor            = false
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: use residency sets    = true
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: use shared buffers    = true
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38902782660 | llama-bench baseline (same runner, same weights) | | model                          |       size |     params | backend    | threads |            test |                  t/s |
+run 38902782660 | llama-bench baseline (same runner, same weights) | | ------------------------------ | ---------: | ---------: | ---------- | ------: | --------------: | -------------------: |
+run 38902782660 | llama-bench baseline (same runner, same weights) | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       3 |           pp100 |       304.80 ± 18.12 |
+run 38902782660 | llama-bench baseline (same runner, same weights) | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       3 |            tg16 |         76.79 ± 3.73 |
+run 38902782660 | llama-bench baseline (same runner, same weights) | build: 620d2225c (11669)
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_init: using embedded metal library
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_aux' library in 0.001 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_f16' library in 0.002 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_f32' library in 0.002 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q4_0' library in 0.003 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q4_1' library in 0.002 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q5_0' library in 0.002 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q5_1' library in 0.010 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q8_0' library in 0.009 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_tensor' library in 0.028 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_f16' library in 0.003 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_f32' library in 0.001 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q4_0' library in 0.025 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q4_1' library in 0.021 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q5_0' library in 0.003 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q5_1' library in 0.008 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q8_0' library in 0.006 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mv' library in 0.022 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mv_mma' library in 0.010 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mm' library in 0.022 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'quantize' library in 0.012 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'softmax' library in 0.018 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'norm' library in 0.018 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'unary' library in 0.014 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'binbcast' library in 0.009 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'reduce' library in 0.008 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'tri' library in 0.000 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'ssm' library in 0.000 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'wkv' library in 0.000 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'gated_delta_net' library in 0.005 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'solve_tri' library in 0.000 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'rope' library in 0.003 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'conv' library in 0.004 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'upscale' library in 0.002 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'argsort' library in 0.002 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'pool' library in 0.000 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'misc' library in 0.000 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: loaded 36 libraries from embedded data in 0.035 sec (max single = 0.028 sec)
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: simdgroup reduction   = false
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has unified memory    = true
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has bfloat            = false
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has tensor            = false
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: use residency sets    = true
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: use shared buffers    = true
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38902782660 | llama-bench baseline (same runner, same weights) | | model                          |       size |     params | backend    | threads | dev          |            test |                  t/s |
+run 38902782660 | llama-bench baseline (same runner, same weights) | | ------------------------------ | ---------: | ---------: | ---------- | ------: | ------------ | --------------: | -------------------: |
+run 38902782660 | llama-bench baseline (same runner, same weights) | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       3 | none         |           pp100 |       255.69 ± 12.53 |
+run 38902782660 | llama-bench baseline (same runner, same weights) | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       3 | none         |            tg16 |         78.51 ± 6.92 |
+run 38902782660 | llama-bench baseline (same runner, same weights) | build: 620d2225c (11669)
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_init: using embedded metal library
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_aux' library in 0.001 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_f16' library in 0.005 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_f32' library in 0.003 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q4_0' library in 0.001 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q4_1' library in 0.003 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q5_0' library in 0.002 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q5_1' library in 0.020 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q8_0' library in 0.003 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_tensor' library in 0.002 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_f16' library in 0.018 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_f32' library in 0.001 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q4_0' library in 0.015 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q4_1' library in 0.008 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q5_0' library in 0.004 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q5_1' library in 0.009 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q8_0' library in 0.011 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mv' library in 0.019 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mv_mma' library in 0.023 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mm' library in 0.014 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'quantize' library in 0.010 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'softmax' library in 0.006 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'norm' library in 0.006 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'unary' library in 0.011 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'binbcast' library in 0.003 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'reduce' library in 0.006 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'tri' library in 0.001 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'ssm' library in 0.001 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'wkv' library in 0.000 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'gated_delta_net' library in 0.005 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'solve_tri' library in 0.006 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'rope' library in 0.000 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'conv' library in 0.000 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'upscale' library in 0.005 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'argsort' library in 0.005 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'pool' library in 0.005 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'misc' library in 0.004 sec
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: loaded 36 libraries from embedded data in 0.032 sec (max single = 0.023 sec)
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: simdgroup reduction   = false
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has unified memory    = true
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has bfloat            = false
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has tensor            = false
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: use residency sets    = true
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: use shared buffers    = true
+run 38902782660 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38902782660 | llama-bench baseline (same runner, same weights) | | model                          |       size |     params | backend    | threads | dev          |            test |                  t/s |
+run 38902782660 | llama-bench baseline (same runner, same weights) | | ------------------------------ | ---------: | ---------: | ---------- | ------: | ------------ | --------------: | -------------------: |
+run 38902782660 | llama-bench baseline (same runner, same weights) | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       1 | none         |           pp100 |        113.66 ± 0.98 |
+run 38902782660 | llama-bench baseline (same runner, same weights) | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       1 | none         |            tg16 |         38.97 ± 6.00 |
+run 38902782660 | llama-bench baseline (same runner, same weights) | build: 620d2225c (11669)
+run 38902782660 | llama-bench baseline (same runner, same weights) | hw.optional.arm.FEAT_DotProd: 1
+run 38902782660 | llama-bench baseline (same runner, same weights) | hw.optional.arm.FEAT_BF16: 0
+run 38902782660 | S1-mini latency in a fresh process | MEASURE baseline (resident: 24.296875, footprint: 7.4700927734375)
+run 38902782660 | S1-mini latency in a fresh process | MEASURE cpuOnly load 23605.923334 ms threads 3 cores 3 mem (resident: 848.109375, footprint: 430.72198486328125)
+run 38902782660 | S1-mini latency in a fresh process | MEASURE cpuOnly run 10614.311375 ms prompt 97 out 10 ctx 512 prefill 8807.061208000001 ms (context 112.378292 ms, prompt decode 8674.6325 ms, native prompt 8674.802 ms, native generate 1784.529 ms) -> "So I need to send the report by Thursday."
+run 38902782660 | S1-mini latency in a fresh process | MEASURE cpuOnly run 8853.684875 ms prompt 92 out 15 ctx 512 prefill 7409.09775 ms (context 16.188917 ms, prompt decode 7383.4580829999995 ms, native prompt 7386.997 ms, native generate 1441.57 ms) -> "Send it to john.smith@example.com by Friday the 3rd."
+run 38902782660 | S1-mini latency in a fresh process | MEASURE cpuOnly run 11087.998083 ms prompt 95 out 16 ctx 512 prefill 8727.226958 ms (context 9.259375 ms, prompt decode 8716.551375 ms, native prompt 8720.867 ms, native generate 2343.599 ms) -> "The meeting is at 2:30pm on March 16."
+run 38902782660 | S1-mini latency in a fresh process | MEASURE cpuOnly run 13952.792625 ms prompt 99 out 20 ctx 512 prefill 10780.637667 ms (context 21.373791999999998 ms, prompt decode 10753.090416 ms, native prompt 10758.428 ms, native generate 3163.838 ms) -> "So the budget is $45,000, and we need to confirm with Sarah."
+run 38902782660 | S1-mini latency in a fresh process | MEASURE cpuOnly run 12134.250208 ms prompt 97 out 18 ctx 512 prefill 10163.635959000001 ms (context 62.734417 ms, prompt decode 10088.478958 ms, native prompt 10093.474 ms, native generate 1964.969 ms) -> "Can you open the file source/app.ts and rename the function get user to fetch user?"
+run 38902782660 | S1-mini latency in a fresh process | MEASURE cpuOnly median 11087.998083 ms max 13952.792625 ms mem after (resident: 850.359375, footprint: 433.6907958984375)
+run 38902782660 | S1-mini latency in a fresh process | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38902782660 | S1-mini latency in a fresh process | ggml_metal_library_init: using embedded metal library
+run 38902782660 | S1-mini latency in a fresh process | ggml_metal_library_init: loaded in 17.860 sec
+run 38902782660 | S1-mini latency in a fresh process | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38902782660 | S1-mini latency in a fresh process | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38902782660 | S1-mini latency in a fresh process | ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+run 38902782660 | S1-mini latency in a fresh process | ggml_metal_device_init: simdgroup reduction   = false
+run 38902782660 | S1-mini latency in a fresh process | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38902782660 | S1-mini latency in a fresh process | ggml_metal_device_init: has unified memory    = true
+run 38902782660 | S1-mini latency in a fresh process | ggml_metal_device_init: has bfloat            = false
+run 38902782660 | S1-mini latency in a fresh process | ggml_metal_device_init: has tensor            = false
+run 38902782660 | S1-mini latency in a fresh process | ggml_metal_device_init: use residency sets    = true
+run 38902782660 | S1-mini latency in a fresh process | ggml_metal_device_init: use shared buffers    = true
+run 38902782660 | S1-mini latency in a fresh process | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38902782660 | S1-mini latency in a fresh process | MEASURE cpuOnly with whisper tiny loadable=true in 18089.165708 ms mem (resident: 872.390625, footprint: 460.39404296875)
+run 38902782660 | S1-mini latency in a fresh process | MEASURE after cpuOnly unload (resident: 172.078125, footprint: 58.455078125)
+run 38902782660 | S1-mini latency in a fresh process | MEASURE metal load 1324.300416 ms mem (resident: 891.515625, footprint: 433.69091796875)
+run 38902782660 | S1-mini latency in a fresh process | MEASURE metal run 10240.134208 ms (context 25.226834 ms, prompt decode 7552.684375 ms, native prompt 7556.362 ms, native generate 2658.746 ms, out 10)
+run 38902782660 | S1-mini latency in a fresh process | MEASURE metal run 10478.543542 ms (context 13.276042 ms, prompt decode 7231.029708 ms, native prompt 7234.604 ms, native generate 3230.7090000000003 ms, out 10)
+run 38902782660 | S1-mini latency in a fresh process | MEASURE metal run 9511.4955 ms (context 12.749542000000002 ms, prompt decode 6243.671792 ms, native prompt 6246.761 ms, native generate 3252.106 ms, out 10)
+run 38902782660 | S1-mini latency in a fresh process | ✔ Test measure() passed after 130.008 seconds.
+run 38902782660 | S1-mini latency in a fresh process | ✔ Test run with 1 test passed after 130.008 seconds.
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_library_init: using embedded metal library
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_library_init: loaded in 0.019 sec
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: simdgroup reduction   = false
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: has unified memory    = true
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: has bfloat            = false
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: has tensor            = false
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: use residency sets    = true
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: use shared buffers    = true
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | COEXIST whisper system info: WHISPER : COREML = 1 | OPENVINO = 0 | MTL : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | DOTPROD = 1 | ACCELERATE = 1 | REPACK = 1 | 
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | COEXIST llama 0.7.0-dev system info: MTL : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | DOTPROD = 1 | LLAMAFILE = 1 | ACCELERATE = 1 | REPACK = 1 | 
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | COEXIST images: ["/Users/runner/work/useful-voice/useful-voice/.build/arm64-apple-macosx/debug/whisper.framework/Versions/A/whisper"] ["/Users/runner/work/useful-voice/useful-voice/.build/arm64-apple-macosx/debug/llama.framework/Versions/A/llama"]
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test bothFrameworksLoadInOneProcess() passed after 0.106 seconds.
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | COEXIST model card example -> "So I need to send the report by Thursday." Stats(promptTokens: 97, outputTokens: 10, contextSize: 512, prefillSeconds: 6.540789417, totalSeconds: 7.441482292, contextSeconds: 0.01271925, promptDecodeSeconds: 6.527236333, nativePromptMs: 6530.394, nativeGenerateMs: 899.57)
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test s1MiniRunsBetweenTwoWhisperContexts() passed after 15.673 seconds.
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | COEXIST 5 ms deadline stopped the run after 9.266291 ms
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test aPassedDeadlineStopsTheRun() passed after 8.053 seconds.
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | COEXIST pipeline -> Result(text: "So I need to send the report by Thursday.", source: UsefulVoiceCore.CleanupPipeline.Source.model, model: Optional(UsefulVoiceCore.CleanupPipeline.ModelOutcome.accepted))
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test pipelineWithTheRealModel() passed after 8.194 seconds.
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | MEASURE baseline (resident: 261.203125, footprint: 52.7210693359375)
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly load 610.365791 ms threads 3 cores 3 mem (resident: 966.53125, footprint: 425.67572021484375)
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 7602.580791 ms prompt 97 out 10 ctx 512 prefill 6772.396458 ms (context 8.912082999999999 ms, prompt decode 6762.752791999999 ms, native prompt 6766.094 ms, native generate 827.528 ms) -> "So I need to send the report by Thursday."
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 7748.781416 ms prompt 92 out 15 ctx 512 prefill 6383.126625 ms (context 7.146583 ms, prompt decode 6373.52625 ms, native prompt 6376.673 ms, native generate 1361.3310000000001 ms) -> "Send it to john.smith@example.com by Friday the 3rd."
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 7559.866917 ms prompt 95 out 16 ctx 512 prefill 6179.165 ms (context 11.118167 ms, prompt decode 6166.015708 ms, native prompt 6169.069 ms, native generate 1377.4660000000001 ms) -> "The meeting is at 2:30pm on March 16."
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 8258.549167 ms prompt 99 out 20 ctx 512 prefill 6569.066417 ms (context 14.425792 ms, prompt decode 6552.516041 ms, native prompt 6555.725 ms, native generate 1685.724 ms) -> "So the budget is $45,000, and we need to confirm with Sarah."
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 7984.173 ms prompt 97 out 18 ctx 512 prefill 6077.443208 ms (context 8.865833 ms, prompt decode 6066.743417 ms, native prompt 6069.737 ms, native generate 1903.289 ms) -> "Can you open the file source/app.ts and rename the function get user to fetch user?"
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly median 7748.781416 ms max 8258.549167 ms mem after (resident: 966.515625, footprint: 425.62884521484375)
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly with whisper tiny loadable=true in 110.437208 ms mem (resident: 968.046875, footprint: 427.17578125)
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | MEASURE after cpuOnly unload (resident: 262.765625, footprint: 52.65863037109375)
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | MEASURE metal load 902.033041 ms mem (resident: 968.09375, footprint: 425.62890625)
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | MEASURE metal run 9446.657667 ms (context 13.742291999999999 ms, prompt decode 6511.980167 ms, native prompt 6515.2080000000005 ms, native generate 2917.701 ms, out 10)
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | MEASURE metal run 8898.408667 ms (context 10.185875000000001 ms, prompt decode 6652.137125 ms, native prompt 6655.4310000000005 ms, native generate 2222.1 ms, out 10)
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | MEASURE metal run 9587.873625 ms (context 11.459166999999999 ms, prompt decode 6779.0920830000005 ms, native prompt 6782.451 ms, native generate 2790.108 ms, out 10)
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test measure() passed after 68.789 seconds.
+run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test run with 5 tests passed after 100.817 seconds.
+=== run 38905410608, head 5f10093, log macos6.log ===
+run 38905410608 | Run tests | ✘ Test bothFrameworksLoadInOneProcess() skipped.
+run 38905410608 | Run tests | ✘ Test pipelineWithTheRealModel() skipped.
+run 38905410608 | Run tests | ✘ Test measure() skipped.
+run 38905410608 | Run tests | ✘ Test s1MiniRunsBetweenTwoWhisperContexts() skipped.
+run 38905410608 | Run tests | ✘ Test aPassedDeadlineStopsTheRun() skipped.
+run 38905410608 | Run tests | ✔ Test run with 923 tests passed after 7.082 seconds.
+run 38905410608 | llama-bench baseline (same runner, same weights) | Apple M1 (Virtual)
+run 38905410608 | llama-bench baseline (same runner, same weights) | 7516192768
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_init: using embedded metal library
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_aux' library in 0.426 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_f16' library in 1.357 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_f32' library in 1.147 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q4_0' library in 2.299 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q4_1' library in 2.539 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q5_0' library in 3.433 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q5_1' library in 3.735 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q8_0' library in 5.041 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_tensor' library in 3.439 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_f16' library in 6.608 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_f32' library in 5.584 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q4_0' library in 10.137 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q4_1' library in 9.118 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q5_0' library in 13.183 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q5_1' library in 12.305 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q8_0' library in 16.057 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mv' library in 18.690 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mv_mma' library in 13.802 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mm' library in 17.581 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'quantize' library in 14.133 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'softmax' library in 14.162 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'norm' library in 18.740 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'unary' library in 14.228 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'binbcast' library in 18.791 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'reduce' library in 14.250 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'tri' library in 18.811 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'ssm' library in 14.301 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'wkv' library in 18.831 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'gated_delta_net' library in 14.334 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'solve_tri' library in 18.848 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'rope' library in 14.384 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'conv' library in 18.927 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'upscale' library in 14.409 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'argsort' library in 18.978 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'pool' library in 14.430 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'misc' library in 19.082 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: loaded 36 libraries from embedded data in 19.101 sec (max single = 19.082 sec)
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: simdgroup reduction   = false
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has unified memory    = true
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has bfloat            = false
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has tensor            = false
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: use residency sets    = true
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: use shared buffers    = true
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38905410608 | llama-bench baseline (same runner, same weights) | | model                          |       size |     params | backend    | threads |            test |                  t/s |
+run 38905410608 | llama-bench baseline (same runner, same weights) | | ------------------------------ | ---------: | ---------: | ---------- | ------: | --------------: | -------------------: |
+run 38905410608 | llama-bench baseline (same runner, same weights) | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       3 |           pp100 |       398.44 ± 15.91 |
+run 38905410608 | llama-bench baseline (same runner, same weights) | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       3 |            tg16 |        113.41 ± 1.20 |
+run 38905410608 | llama-bench baseline (same runner, same weights) | build: 620d2225c (11669)
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_init: using embedded metal library
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_aux' library in 0.001 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_f16' library in 0.002 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_f32' library in 0.002 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q4_0' library in 0.003 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q4_1' library in 0.006 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q5_0' library in 0.002 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q5_1' library in 0.001 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q8_0' library in 0.004 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_tensor' library in 0.001 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_f16' library in 0.002 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_f32' library in 0.005 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q4_0' library in 0.005 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q4_1' library in 0.012 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q5_0' library in 0.011 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q5_1' library in 0.016 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q8_0' library in 0.008 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mv' library in 0.012 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mv_mma' library in 0.005 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mm' library in 0.002 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'quantize' library in 0.006 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'softmax' library in 0.008 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'norm' library in 0.006 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'unary' library in 0.004 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'binbcast' library in 0.003 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'reduce' library in 0.006 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'tri' library in 0.006 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'ssm' library in 0.006 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'wkv' library in 0.004 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'gated_delta_net' library in 0.004 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'solve_tri' library in 0.004 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'rope' library in 0.004 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'conv' library in 0.003 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'upscale' library in 0.002 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'argsort' library in 0.000 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'pool' library in 0.000 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'misc' library in 0.000 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: loaded 36 libraries from embedded data in 0.023 sec (max single = 0.016 sec)
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: simdgroup reduction   = false
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has unified memory    = true
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has bfloat            = false
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has tensor            = false
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: use residency sets    = true
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: use shared buffers    = true
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38905410608 | llama-bench baseline (same runner, same weights) | | model                          |       size |     params | backend    | threads | dev          |            test |                  t/s |
+run 38905410608 | llama-bench baseline (same runner, same weights) | | ------------------------------ | ---------: | ---------: | ---------- | ------: | ------------ | --------------: | -------------------: |
+run 38905410608 | llama-bench baseline (same runner, same weights) | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       3 | none         |           pp100 |       361.57 ± 16.94 |
+run 38905410608 | llama-bench baseline (same runner, same weights) | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       3 | none         |            tg16 |        104.84 ± 5.13 |
+run 38905410608 | llama-bench baseline (same runner, same weights) | build: 620d2225c (11669)
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_init: using embedded metal library
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_aux' library in 0.001 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_f16' library in 0.002 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_f32' library in 0.002 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q4_0' library in 0.003 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q4_1' library in 0.002 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q5_0' library in 0.001 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q5_1' library in 0.001 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_q8_0' library in 0.019 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_tensor' library in 0.008 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_f16' library in 0.003 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_f32' library in 0.017 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q4_0' library in 0.005 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q4_1' library in 0.002 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q5_0' library in 0.005 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q5_1' library in 0.015 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'fa_vec_q8_0' library in 0.011 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mv' library in 0.008 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mv_mma' library in 0.006 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'mul_mm' library in 0.002 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'quantize' library in 0.005 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'softmax' library in 0.010 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'norm' library in 0.009 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'unary' library in 0.006 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'binbcast' library in 0.006 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'reduce' library in 0.007 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'tri' library in 0.005 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'ssm' library in 0.004 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'wkv' library in 0.005 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'gated_delta_net' library in 0.005 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'solve_tri' library in 0.004 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'rope' library in 0.001 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'conv' library in 0.000 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'upscale' library in 0.002 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'argsort' library in 0.001 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'pool' library in 0.001 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: compiled 'misc' library in 0.001 sec
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_library_compile_all: loaded 36 libraries from embedded data in 0.023 sec (max single = 0.019 sec)
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: simdgroup reduction   = false
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has unified memory    = true
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has bfloat            = false
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: has tensor            = false
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: use residency sets    = true
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: use shared buffers    = true
+run 38905410608 | llama-bench baseline (same runner, same weights) | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38905410608 | llama-bench baseline (same runner, same weights) | | model                          |       size |     params | backend    | threads | dev          |            test |                  t/s |
+run 38905410608 | llama-bench baseline (same runner, same weights) | | ------------------------------ | ---------: | ---------: | ---------- | ------: | ------------ | --------------: | -------------------: |
+run 38905410608 | llama-bench baseline (same runner, same weights) | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       1 | none         |           pp100 |        139.45 ± 1.68 |
+run 38905410608 | llama-bench baseline (same runner, same weights) | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       1 | none         |            tg16 |         58.67 ± 0.36 |
+run 38905410608 | llama-bench baseline (same runner, same weights) | build: 620d2225c (11669)
+run 38905410608 | llama-bench baseline (same runner, same weights) | hw.optional.arm.FEAT_DotProd: 1
+run 38905410608 | llama-bench baseline (same runner, same weights) | hw.optional.arm.FEAT_BF16: 0
+run 38905410608 | S1-mini latency in a fresh process | MEASURE baseline (resident: 25.078125, footprint: 8.22015380859375)
+run 38905410608 | S1-mini latency in a fresh process | MEASURE cpuOnly load 18770.565583 ms threads 3 cores 3 mem (resident: 854.484375, footprint: 431.5814208984375)
+run 38905410608 | S1-mini latency in a fresh process | MEASURE cpuOnly run 7344.085458 ms prompt 97 out 10 ctx 512 prefill 6127.323665999999 ms (context 39.085958 ms, prompt decode 6085.768583 ms, native prompt 6088.041 ms, native generate 1213.078 ms) -> "So I need to send the report by Thursday."
+run 38905410608 | S1-mini latency in a fresh process | MEASURE cpuOnly run 7528.664 ms prompt 92 out 15 ctx 512 prefill 6318.960416000001 ms (context 13.161916 ms, prompt decode 6304.192542 ms, native prompt 6307.3 ms, native generate 1206.647 ms) -> "Send it to john.smith@example.com by Friday the 3rd."
+run 38905410608 | S1-mini latency in a fresh process | MEASURE cpuOnly run 7741.184209 ms prompt 95 out 16 ctx 512 prefill 6294.8735830000005 ms (context 15.43925 ms, prompt decode 6276.794167 ms, native prompt 6279.8910000000005 ms, native generate 1442.439 ms) -> "The meeting is at 2:30pm on March 16."
+run 38905410608 | S1-mini latency in a fresh process | MEASURE cpuOnly run 7957.592458 ms prompt 99 out 20 ctx 512 prefill 6334.052374999999 ms (context 14.599208 ms, prompt decode 6309.0210830000005 ms, native prompt 6312.112 ms, native generate 1619.794 ms) -> "So the budget is $45,000, and we need to confirm with Sarah."
+run 38905410608 | S1-mini latency in a fresh process | MEASURE cpuOnly run 7842.430875 ms prompt 97 out 18 ctx 512 prefill 6302.444792 ms (context 16.053416000000002 ms, prompt decode 6282.969459 ms, native prompt 6286.015 ms, native generate 1536.213 ms) -> "Can you open the file source/app.ts and rename the function get user to fetch user?"
+run 38905410608 | S1-mini latency in a fresh process | MEASURE cpuOnly median 7741.184209 ms max 7957.592458 ms mem after (resident: 859.0625, footprint: 434.2220458984375)
+run 38905410608 | S1-mini latency in a fresh process | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38905410608 | S1-mini latency in a fresh process | ggml_metal_library_init: using embedded metal library
+run 38905410608 | S1-mini latency in a fresh process | ggml_metal_library_init: loaded in 12.737 sec
+run 38905410608 | S1-mini latency in a fresh process | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38905410608 | S1-mini latency in a fresh process | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38905410608 | S1-mini latency in a fresh process | ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+run 38905410608 | S1-mini latency in a fresh process | ggml_metal_device_init: simdgroup reduction   = false
+run 38905410608 | S1-mini latency in a fresh process | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38905410608 | S1-mini latency in a fresh process | ggml_metal_device_init: has unified memory    = true
+run 38905410608 | S1-mini latency in a fresh process | ggml_metal_device_init: has bfloat            = false
+run 38905410608 | S1-mini latency in a fresh process | ggml_metal_device_init: has tensor            = false
+run 38905410608 | S1-mini latency in a fresh process | ggml_metal_device_init: use residency sets    = true
+run 38905410608 | S1-mini latency in a fresh process | ggml_metal_device_init: use shared buffers    = true
+run 38905410608 | S1-mini latency in a fresh process | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38905410608 | S1-mini latency in a fresh process | MEASURE cpuOnly with whisper tiny loadable=true in 12882.55475 ms mem (resident: 850.921875, footprint: 459.6597900390625)
+run 38905410608 | S1-mini latency in a fresh process | MEASURE after cpuOnly unload (resident: 164.9375, footprint: 53.37713623046875)
+run 38905410608 | S1-mini latency in a fresh process | MEASURE probe cpuOnly context 16.773833 ms, prompt 97 tokens
+run 38905410608 | S1-mini latency in a fresh process | MEASURE probe cpuOnly prompt decode #0 status 0 5900.916875 ms
+run 38905410608 | S1-mini latency in a fresh process | MEASURE probe cpuOnly prompt decode #1 status 0 6158.371375 ms
+run 38905410608 | S1-mini latency in a fresh process | MEASURE probe cpuOnly prompt decode #2 status 0 5880.408333 ms
+run 38905410608 | S1-mini latency in a fresh process | MEASURE probe cpuOnly prompt decode #3 status 0 5919.001375 ms
+run 38905410608 | S1-mini latency in a fresh process | MEASURE probe cpuOnly single-token decodes ms 86 90 80 78 78 79 80 78 78 80
+run 38905410608 | S1-mini latency in a fresh process | MEASURE probe metal context 17.055667 ms, prompt 97 tokens
+run 38905410608 | S1-mini latency in a fresh process | MEASURE probe metal prompt decode #0 status 0 6785.748333 ms
+run 38905410608 | S1-mini latency in a fresh process | MEASURE probe metal prompt decode #1 status 0 6921.71525 ms
+run 38905410608 | S1-mini latency in a fresh process | MEASURE probe metal prompt decode #2 status 0 6309.189084 ms
+run 38905410608 | S1-mini latency in a fresh process | MEASURE probe metal prompt decode #3 status 0 7132.457667 ms
+run 38905410608 | S1-mini latency in a fresh process | MEASURE probe metal single-token decodes ms 278 294 269 251 276 235 265 266 332 297
+run 38905410608 | S1-mini latency in a fresh process | MEASURE metal load 906.03275 ms mem (resident: 897.171875, footprint: 427.37860107421875)
+run 38905410608 | S1-mini latency in a fresh process | MEASURE metal run 9237.066125 ms (context 15.599625000000001 ms, prompt decode 6774.1065 ms, native prompt 6777.437 ms, native generate 2444.596 ms, out 10)
+run 38905410608 | S1-mini latency in a fresh process | MEASURE metal run 8881.911167 ms (context 12.18375 ms, prompt decode 6535.0437919999995 ms, native prompt 6538.285 ms, native generate 2330.632 ms, out 10)
+run 38905410608 | S1-mini latency in a fresh process | MEASURE metal run 9410.294791 ms (context 14.092375 ms, prompt decode 6365.09275 ms, native prompt 6368.216 ms, native generate 3016.867 ms, out 10)
+run 38905410608 | S1-mini latency in a fresh process | ✔ Test measure() passed after 155.472 seconds.
+run 38905410608 | S1-mini latency in a fresh process | ✔ Test run with 1 test passed after 155.472 seconds.
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_library_init: using embedded metal library
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_library_init: loaded in 0.021 sec
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: simdgroup reduction   = false
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: has unified memory    = true
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: has bfloat            = false
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: has tensor            = false
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: use residency sets    = true
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: use shared buffers    = true
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | COEXIST whisper system info: WHISPER : COREML = 1 | OPENVINO = 0 | MTL : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | DOTPROD = 1 | ACCELERATE = 1 | REPACK = 1 | 
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | COEXIST llama 0.7.0-dev system info: MTL : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | DOTPROD = 1 | LLAMAFILE = 1 | ACCELERATE = 1 | REPACK = 1 | 
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | COEXIST images: ["/Users/runner/work/useful-voice/useful-voice/.build/arm64-apple-macosx/debug/whisper.framework/Versions/A/whisper"] ["/Users/runner/work/useful-voice/useful-voice/.build/arm64-apple-macosx/debug/llama.framework/Versions/A/llama"]
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test bothFrameworksLoadInOneProcess() passed after 0.081 seconds.
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | COEXIST model card example -> "So I need to send the report by Thursday." Stats(promptTokens: 97, outputTokens: 10, contextSize: 512, prefillSeconds: 6.021606583, totalSeconds: 7.228255666, contextSeconds: 0.008458042, promptDecodeSeconds: 6.012334041, nativePromptMs: 6015.291, nativeGenerateMs: 1205.43)
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test s1MiniRunsBetweenTwoWhisperContexts() passed after 15.549 seconds.
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | COEXIST 5 ms deadline stopped the run after 12.165375 ms
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test aPassedDeadlineStopsTheRun() passed after 7.682 seconds.
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | COEXIST pipeline -> Result(text: "So I need to send the report by Thursday.", source: UsefulVoiceCore.CleanupPipeline.Source.model, model: Optional(UsefulVoiceCore.CleanupPipeline.ModelOutcome.accepted))
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test pipelineWithTheRealModel() passed after 7.589 seconds.
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE baseline (resident: 244.71875, footprint: 53.23663330078125)
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly load 680.264375 ms threads 3 cores 3 mem (resident: 960.015625, footprint: 436.12872314453125)
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 7252.545666 ms prompt 97 out 10 ctx 512 prefill 6467.145542 ms (context 14.295499999999999 ms, prompt decode 6452.23225 ms, native prompt 6455.423 ms, native generate 782.854 ms) -> "So I need to send the report by Thursday."
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 6842.9557079999995 ms prompt 92 out 15 ctx 512 prefill 5665.3427919999995 ms (context 7.686 ms, prompt decode 5656.951542 ms, native prompt 5659.734 ms, native generate 1174.796 ms) -> "Send it to john.smith@example.com by Friday the 3rd."
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 7494.772417 ms prompt 95 out 16 ctx 512 prefill 6207.875542 ms (context 7.8647089999999995 ms, prompt decode 6198.932708 ms, native prompt 6201.997 ms, native generate 1283.659 ms) -> "The meeting is at 2:30pm on March 16."
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 7727.3934580000005 ms prompt 99 out 20 ctx 512 prefill 6005.18525 ms (context 11.551832999999998 ms, prompt decode 5990.779124999999 ms, native prompt 5993.733 ms, native generate 1718.093 ms) -> "So the budget is $45,000, and we need to confirm with Sarah."
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly run 7617.918833 ms prompt 97 out 18 ctx 512 prefill 6175.462750000001 ms (context 22.423417 ms, prompt decode 6152.0767909999995 ms, native prompt 6155.111 ms, native generate 1439.229 ms) -> "Can you open the file source/app.ts and rename the function get user to fetch user?"
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly median 7494.772417 ms max 7727.3934580000005 ms mem after (resident: 959.9375, footprint: 436.01934814453125)
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE cpuOnly with whisper tiny loadable=true in 132.678041 ms mem (resident: 959.953125, footprint: 436.03497314453125)
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE after cpuOnly unload (resident: 254.671875, footprint: 53.17413330078125)
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE probe cpuOnly context 18.672416000000002 ms, prompt 97 tokens
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE probe cpuOnly prompt decode #0 status 0 6089.662375 ms
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE probe cpuOnly prompt decode #1 status 0 5834.951792 ms
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE probe cpuOnly prompt decode #2 status 0 5991.561375 ms
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE probe cpuOnly prompt decode #3 status 0 6013.592125 ms
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE probe cpuOnly single-token decodes ms 82 78 77 77 77 77 77 156 77 83
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE probe metal context 112.93029200000001 ms, prompt 97 tokens
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE probe metal prompt decode #0 status 0 6442.841708 ms
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE probe metal prompt decode #1 status 0 7173.23975 ms
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE probe metal prompt decode #2 status 0 6586.389167 ms
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE probe metal prompt decode #3 status 0 6103.595209 ms
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE probe metal single-token decodes ms 319 217 335 276 234 248 328 338 342 246
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE metal load 1006.358125 ms mem (resident: 960.96875, footprint: 427.44122314453125)
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE metal run 9499.0865 ms (context 12.891 ms, prompt decode 6512.500083 ms, native prompt 6512.447 ms, native generate 2968.284 ms, out 10)
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE metal run 9055.470083 ms (context 20.995375 ms, prompt decode 6804.1005 ms, native prompt 6804.042 ms, native generate 2223.19 ms, out 10)
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE metal run 9649.614083 ms (context 14.973500000000001 ms, prompt decode 6743.699291999999 ms, native prompt 6743.671 ms, native generate 2885.723 ms, out 10)
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test measure() passed after 123.026 seconds.
+run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test run with 5 tests passed after 153.932 seconds.
+=== run 38915657883, head 1afbf07, log run38915657883-macos.log ===
+run 38915657883 | UNKNOWN STEP | ✘ Test whisperTranscribesARealClipAfterS1MiniRan() skipped.
+run 38915657883 | UNKNOWN STEP | ✘ Test bothFrameworksLoadInOneProcess() skipped.
+run 38915657883 | UNKNOWN STEP | ✘ Test s1MiniRunsBetweenTwoWhisperContexts() skipped.
+run 38915657883 | UNKNOWN STEP | ✘ Test pipelineWithTheRealModel() skipped.
+run 38915657883 | UNKNOWN STEP | ✘ Test controlTokensInTheTranscriptStayLiteral() skipped.
+run 38915657883 | UNKNOWN STEP | ✘ Test aPassedDeadlineStopsTheRun() skipped.
+run 38915657883 | UNKNOWN STEP | ✘ Test measure() skipped.
+run 38915657883 | UNKNOWN STEP | ✔ Test run with 935 tests passed after 8.663 seconds.
+run 38915657883 | UNKNOWN STEP | ✔ Test measure() passed after 200.517 seconds.
+run 38915657883 | UNKNOWN STEP | ✔ Test run with 1 test passed after 200.517 seconds.
+run 38915657883 | UNKNOWN STEP | COEXIST whisper system info: WHISPER : COREML = 1 | OPENVINO = 0 | MTL : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | DOTPROD = 1 | ACCELERATE = 1 | REPACK = 1 | 
+run 38915657883 | UNKNOWN STEP | COEXIST llama 0.7.0-dev system info: MTL : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | DOTPROD = 1 | LLAMAFILE = 1 | ACCELERATE = 1 | REPACK = 1 | 
+run 38915657883 | UNKNOWN STEP | COEXIST images: ["/Users/runner/work/useful-voice/useful-voice/.build/arm64-apple-macosx/debug/whisper.framework/Versions/A/whisper"] ["/Users/runner/work/useful-voice/useful-voice/.build/arm64-apple-macosx/debug/llama.framework/Versions/A/llama"]
+run 38915657883 | UNKNOWN STEP | ✔ Test bothFrameworksLoadInOneProcess() passed after 0.157 seconds.
+run 38915657883 | UNKNOWN STEP | COEXIST model card example -> "So I need to send the report by Thursday." Stats(promptTokens: 97, outputTokens: 10, contextSize: 512, prefillSeconds: 9.920898875, totalSeconds: 11.304036667, contextSeconds: 0.020973958, promptDecodeSeconds: 9.897238042, nativePromptMs: 9897.092, nativeGenerateMs: 1378.508)
+run 38915657883 | UNKNOWN STEP | ✔ Test s1MiniRunsBetweenTwoWhisperContexts() passed after 24.079 seconds.
+run 38915657883 | UNKNOWN STEP | COEXIST whisper after S1-mini -> "Hello, this is a test of local dictation on this Mac."
+run 38915657883 | UNKNOWN STEP | ✔ Test whisperTranscribesARealClipAfterS1MiniRan() passed after 21.097 seconds.
+run 38915657883 | UNKNOWN STEP | ✔ Test controlTokensInTheTranscriptStayLiteral() passed after 0.951 seconds.
+run 38915657883 | UNKNOWN STEP | COEXIST 5 ms deadline stopped the run after 13.035791 ms
+run 38915657883 | UNKNOWN STEP | ✔ Test aPassedDeadlineStopsTheRun() passed after 7.857 seconds.
+run 38915657883 | UNKNOWN STEP | COEXIST pipeline -> Result(text: "So I need to send the report by Thursday.", source: UsefulVoiceCore.CleanupPipeline.Source.model, model: Optional(UsefulVoiceCore.CleanupPipeline.ModelOutcome.accepted))
+run 38915657883 | UNKNOWN STEP | ✔ Test pipelineWithTheRealModel() passed after 8.234 seconds.
+run 38915657883 | UNKNOWN STEP | ✔ Test run with 6 tests passed after 62.377 seconds.

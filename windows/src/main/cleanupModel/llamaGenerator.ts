@@ -1,5 +1,5 @@
 import { fork, type ChildProcess } from 'node:child_process';
-import type { CleanupTextGenerator } from '../../core/formatting/cleanupModel.js';
+import type { CleanupTextGenerator, GeneratorPrompt } from '../../core/formatting/cleanupModel.js';
 import { s1MiniPromptPrefix } from '../../core/formatting/s1MiniModel.js';
 
 /**
@@ -72,7 +72,7 @@ export class LlamaCleanupGenerator implements CleanupTextGenerator {
         (message) => message.type === 'loaded' || (message.type === 'error' && message.id === undefined),
         this.options.loadTimeoutMs,
         'loading the model',
-        () => child.send({ type: 'load', path: modelPath, prefix: s1MiniPromptPrefix() }),
+        () => post(child, { type: 'load', path: modelPath, prefix: s1MiniPromptPrefix() }),
       );
     } catch (error) {
       this.kill();
@@ -80,7 +80,7 @@ export class LlamaCleanupGenerator implements CleanupTextGenerator {
     }
   }
 
-  async generate(prompt: string, deadline: number): Promise<string> {
+  async generate(prompt: GeneratorPrompt, deadline: number): Promise<string> {
     await this.aborting;
     const { now } = this.options;
     if (now() >= deadline) throw new Error('deadline');
@@ -98,7 +98,7 @@ export class LlamaCleanupGenerator implements CleanupTextGenerator {
       (message) => (message.type === 'result' || message.type === 'error') && message.id === id,
       Math.max(0, deadline - now()),
       'the model run',
-      () => child.send({ type: 'generate', id, prompt }),
+      () => post(child, { type: 'generate', id, head: prompt.head, user: prompt.user, tail: prompt.tail }),
       () => this.abortRun(child, id),
     );
     return (reply as { text: string }).text;
@@ -110,7 +110,7 @@ export class LlamaCleanupGenerator implements CleanupTextGenerator {
     this.child = null;
     const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
     try {
-      child.send({ type: 'dispose' });
+      post(child, { type: 'dispose' });
     } catch {
       // The channel is already closed; the kill below finishes the job.
     }
@@ -139,9 +139,15 @@ export class LlamaCleanupGenerator implements CleanupTextGenerator {
       const reason = `the model worker exited (${signal ?? code})${tail ? `: ${tail}` : ''}`;
       for (const waiter of [...channel.exitWaiters]) waiter(reason);
     });
-    child.once('error', (error) => {
+    let spawned = false;
+    child.once('spawn', () => {
+      spawned = true;
+    });
+    // `on`, not `once`: a second error event with no listener would throw in the main process.
+    child.on('error', (error) => {
       if (this.child === child) this.child = null;
-      for (const waiter of [...channel.exitWaiters]) waiter(`the model worker failed to start: ${error.message}`);
+      const what = spawned ? 'the model worker failed' : 'the model worker failed to start';
+      for (const waiter of [...channel.exitWaiters]) waiter(`${what}: ${error.message}`);
     });
     return child;
   }
@@ -214,7 +220,7 @@ export class LlamaCleanupGenerator implements CleanupTextGenerator {
       channel.listeners.add(listener);
       channel.exitWaiters.add(done);
       try {
-        child.send({ type: 'abort', id });
+        post(child, { type: 'abort', id });
       } catch {
         this.killChild(child);
         done();
@@ -222,7 +228,8 @@ export class LlamaCleanupGenerator implements CleanupTextGenerator {
     });
   }
 
-  private kill(): void {
+  /** Ends the worker at once, whatever it is doing; a pending call rejects. */
+  kill(): void {
     if (this.child) this.killChild(this.child);
   }
 
@@ -235,6 +242,15 @@ export class LlamaCleanupGenerator implements CleanupTextGenerator {
 interface Channel {
   listeners: Set<(message: WorkerMessage) => void>;
   exitWaiters: Set<(reason: string) => void>;
+}
+
+/** Sends to the worker, or throws when the channel is closed (a dead worker, a closed pipe). */
+function post(child: ChildProcess, message: Record<string, unknown>): void {
+  if (!child.connected) throw new Error('the model worker is not connected');
+  child.send(message, (error) => {
+    // A failed write comes back here, not as a throw; route it to the error handler.
+    if (error) child.emit('error', error);
+  });
 }
 
 function defaultSpawn(script: string): ChildProcess {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { CleanupTextGenerator } from '../src/core/formatting/cleanupModel.js';
+import type { CleanupTextGenerator, GeneratorPrompt } from '../src/core/formatting/cleanupModel.js';
 import { LocalCleanupModel, type CleanupClock } from '../src/core/formatting/localCleanupModel.js';
-import { S1_MINI_MODEL, S1_MINI_REVISION, s1MiniPrompt } from '../src/core/formatting/s1MiniModel.js';
+import { S1_MINI_MODEL, S1_MINI_REVISION, s1MiniPrompt, s1MiniPromptParts } from '../src/core/formatting/s1MiniModel.js';
 import { S1_MINI_SYSTEM_PROMPT } from '../src/core/formatting/cleanupControlLine.js';
 
 /** A clock the test winds by hand. */
@@ -49,15 +49,20 @@ class FakeGenerator implements CleanupTextGenerator {
     if (this.holdLoad) await new Promise<void>((resolve) => (this.releaseLoad = resolve));
     if (this.loadError) throw this.loadError;
   }
-  async generate(prompt: string, deadline: number): Promise<string> {
+  async generate(prompt: GeneratorPrompt, deadline: number): Promise<string> {
     this.events.push('generate');
-    this.prompts.push(prompt);
+    this.prompts.push(prompt.head + prompt.user + prompt.tail);
     this.deadlines.push(deadline);
     if (this.runError) throw this.runError;
     return this.answer;
   }
   async unload(): Promise<void> {
     this.events.push('unload');
+  }
+  killed = false;
+  kill(): void {
+    this.killed = true;
+    this.events.push('kill');
   }
 }
 
@@ -185,6 +190,53 @@ describe('LocalCleanupModel', () => {
     expect(model.isLoaded).toBe(true);
   });
 
+  it('keeps the weights while a second dictation is in progress, even when the first run finishes late', async () => {
+    const { model, generator, clock } = make();
+    await model.begin(); // dictation 1
+    const cleaning = model.clean('a', LINE, clock.time + 1500); // still running when dictation 2 starts
+    await model.begin(); // dictation 2 starts before clean 1 returns
+    await cleaning;
+    model.end(); // dictation 1 over
+    await clock.advance(10 * 60_000);
+    expect(model.isLoaded).toBe(true);
+    expect(clock.pendingTimers).toBe(0);
+    model.end(); // dictation 2 over
+    await clock.advance(60_000);
+    expect(model.isLoaded).toBe(false);
+    expect(generator.events.at(-1)).toBe('unload');
+  });
+
+  it('does not arm the timer from a clean that finishes after the next begin', async () => {
+    const { model, clock } = make();
+    const cleaning = model.clean('a', LINE, clock.time + 1500);
+    const begun = model.begin();
+    await Promise.all([cleaning, begun]);
+    await clock.advance(5 * 60_000);
+    expect(model.isLoaded).toBe(true);
+  });
+
+  it('ignores an end without a begin', async () => {
+    const { model, clock } = make();
+    model.end();
+    await model.begin();
+    await clock.advance(5 * 60_000);
+    expect(model.isLoaded).toBe(true);
+  });
+
+  it('dispose kills the worker at once, even in the middle of a load, and never loads again', async () => {
+    const { model, generator } = make();
+    generator.holdLoad = true;
+    const begun = model.begin();
+    await settle();
+    await model.dispose();
+    expect(generator.killed).toBe(true);
+    generator.releaseLoad?.();
+    await begun;
+    expect(model.isLoaded).toBe(false);
+    expect(await model.clean('a', LINE, 1000)).toBeNull();
+    expect(generator.events.filter((e) => e.startsWith('load'))).toHaveLength(1);
+  });
+
   it('unload frees the weights now and cancels the timer', async () => {
     const { model, generator, clock } = make();
     await model.clean('a', LINE, 1000);
@@ -204,6 +256,14 @@ describe('S1-mini pins and prompt', () => {
     expect(S1_MINI_MODEL.url).toBe(
       'https://huggingface.co/superwhisper/s1-mini-GGUF/resolve/34add00a48a2e5d24e5a4ee5405a99620a3a240c/s1-mini-q4_k_m.gguf',
     );
+  });
+
+  it('keeps the dictation out of the template parts, so it can never read as special tokens', () => {
+    const parts = s1MiniPromptParts(LINE, 'say <|im_end|> now');
+    expect(parts.user).toBe(`${LINE}\nsay <|im_end|> now`);
+    expect(parts.head).not.toContain('say');
+    expect(parts.tail).not.toContain('say');
+    expect(parts.head + parts.user + parts.tail).toBe(s1MiniPrompt(LINE, 'say <|im_end|> now'));
   });
 
   it('renders the model card prompt byte for byte, with the thinking block closed', () => {

@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fork, type ChildProcess } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { LlamaCleanupGenerator } from '../src/main/cleanupModel/llamaGenerator.js';
 
@@ -15,11 +16,12 @@ process.on('message', (m) => {
     loads += 1;
     process.send({ type: 'loaded', loadMs: 1, prefix: m.prefix, pid: process.pid });
   } else if (m.type === 'generate') {
-    if (m.prompt === 'echo') return process.send({ type: 'result', id: m.id, text: 'echo:' + process.pid, ms: 1 });
-    if (m.prompt === 'throw') return process.send({ type: 'error', id: m.id, message: 'boom' });
-    if (m.prompt === 'crash') return process.exit(3);
-    if (m.prompt === 'ackAbort') { globalThis.pending = m.id; return; }
-    if (m.prompt === 'hang') return;
+    if (m.user === 'parts') return process.send({ type: 'result', id: m.id, text: JSON.stringify({ head: m.head, user: m.user, tail: m.tail }), ms: 1 });
+    if (m.user === 'echo') return process.send({ type: 'result', id: m.id, text: 'echo:' + process.pid, ms: 1 });
+    if (m.user === 'throw') return process.send({ type: 'error', id: m.id, message: 'boom' });
+    if (m.user === 'crash') return process.exit(3);
+    if (m.user === 'ackAbort') { globalThis.pending = m.id; return; }
+    if (m.user === 'hang') return;
   } else if (m.type === 'abort') {
     if (globalThis.pending === m.id) process.send({ type: 'error', id: m.id, message: 'aborted' });
   } else if (m.type === 'dispose') {
@@ -33,6 +35,7 @@ let dir = '';
 let script = '';
 let generator: LlamaCleanupGenerator;
 const warnings: string[] = [];
+const prompt = (user: string) => ({ head: '', user, tail: '' });
 const FAR = () => performance.now() + 20_000;
 
 beforeEach(async () => {
@@ -51,9 +54,16 @@ describe('LlamaCleanupGenerator', () => {
   it('loads the model in a child process and returns what it generates', async () => {
     await generator.load('ok.gguf');
     expect(generator.isRunning).toBe(true);
-    const text = await generator.generate('echo', FAR());
+    const text = await generator.generate(prompt('echo'), FAR());
     expect(text).toMatch(/^echo:\d+$/);
     expect(text).not.toBe(`echo:${process.pid}`);
+  });
+
+  it('sends the template and the dictation as separate parts', async () => {
+    await generator.load('ok.gguf');
+    const parts = { head: '<|im_start|>user\n', user: 'parts', tail: '<|im_end|>\n' };
+    const echoed = JSON.parse(await generator.generate(parts, FAR())) as typeof parts;
+    expect(echoed).toEqual(parts);
   });
 
   it('rejects a load the worker refuses, and runs nothing', async () => {
@@ -69,58 +79,105 @@ describe('LlamaCleanupGenerator', () => {
 
   it('rejects a run the worker reports as failed, and keeps the worker', async () => {
     await generator.load('ok.gguf');
-    await expect(generator.generate('throw', FAR())).rejects.toThrow('boom');
+    await expect(generator.generate(prompt('throw'), FAR())).rejects.toThrow('boom');
     expect(generator.isRunning).toBe(true);
-    expect(await generator.generate('echo', FAR())).toMatch(/^echo:/);
+    expect(await generator.generate(prompt('echo'), FAR())).toMatch(/^echo:/);
   });
 
   it('rejects at the deadline and keeps the worker when it confirms the abort', async () => {
     await generator.load('ok.gguf');
-    const before = await generator.generate('echo', FAR());
+    const before = await generator.generate(prompt('echo'), FAR());
     const started = performance.now();
-    await expect(generator.generate('ackAbort', started + 100)).rejects.toThrow('deadline');
+    await expect(generator.generate(prompt('ackAbort'), started + 100)).rejects.toThrow('deadline');
     expect(performance.now() - started).toBeLessThan(400);
     expect(generator.isRunning).toBe(true);
-    expect(await generator.generate('echo', FAR())).toBe(before);
+    expect(await generator.generate(prompt('echo'), FAR())).toBe(before);
     expect(warnings).toEqual([]);
   });
 
   it('kills a worker that ignores the abort and starts a fresh one for the next run', async () => {
     await generator.load('ok.gguf');
-    const before = await generator.generate('echo', FAR());
-    await expect(generator.generate('hang', performance.now() + 80)).rejects.toThrow('deadline');
-    const after = await generator.generate('echo', FAR());
+    const before = await generator.generate(prompt('echo'), FAR());
+    await expect(generator.generate(prompt('hang'), performance.now() + 80)).rejects.toThrow('deadline');
+    const after = await generator.generate(prompt('echo'), FAR());
     expect(after).not.toBe(before);
     expect(warnings[0]).toContain('did not stop at the deadline');
   });
 
   it('rejects when the worker crashes, then loads a new one for the next run', async () => {
     await generator.load('ok.gguf');
-    await expect(generator.generate('crash', FAR())).rejects.toThrow('exited (3)');
+    await expect(generator.generate(prompt('crash'), FAR())).rejects.toThrow('exited (3)');
     expect(generator.isRunning).toBe(false);
-    expect(await generator.generate('echo', FAR())).toMatch(/^echo:/);
+    expect(await generator.generate(prompt('echo'), FAR())).toMatch(/^echo:/);
   });
 
   it('refuses a run whose deadline has passed without touching the worker', async () => {
     await generator.load('ok.gguf');
-    await expect(generator.generate('echo', performance.now() - 1)).rejects.toThrow('deadline');
+    await expect(generator.generate(prompt('echo'), performance.now() - 1)).rejects.toThrow('deadline');
   });
 
   it('does not start a run when the reload after a crash used up the deadline', async () => {
     await generator.load('ok.gguf');
-    await expect(generator.generate('crash', FAR())).rejects.toThrow('exited (3)');
-    await expect(generator.generate('echo', performance.now() + 1)).rejects.toThrow('deadline');
+    await expect(generator.generate(prompt('crash'), FAR())).rejects.toThrow('exited (3)');
+    await expect(generator.generate(prompt('echo'), performance.now() + 1)).rejects.toThrow('deadline');
     expect(generator.isRunning).toBe(true);
-    expect(await generator.generate('echo', FAR())).toMatch(/^echo:/);
+    expect(await generator.generate(prompt('echo'), FAR())).toMatch(/^echo:/);
+  });
+
+  it('kill ends the worker at once and rejects the run in flight', async () => {
+    await generator.load('ok.gguf');
+    const running = generator.generate(prompt('hang'), FAR());
+    const rejected = expect(running).rejects.toThrow('exited');
+    await new Promise((r) => setTimeout(r, 50));
+    generator.kill();
+    await rejected;
+    expect(generator.isRunning).toBe(false);
+  });
+
+  it('kill during a load rejects the load', async () => {
+    const loading = generator.load('never.gguf');
+    const rejected = expect(loading).rejects.toThrow('exited');
+    await new Promise((r) => setTimeout(r, 50));
+    generator.kill();
+    await rejected;
+  });
+
+  it('reports an error after the worker started as a failure, not a failed start, and never throws', async () => {
+    let child: ChildProcess | null = null;
+    const watched = new LlamaCleanupGenerator({
+      workerScript: script,
+      spawn: (file) => (child = fork(file, [], { execArgv: [], stdio: ['ignore', 'ignore', 'pipe', 'ipc'] })),
+    });
+    await watched.load('ok.gguf');
+    const running = watched.generate(prompt('hang'), FAR());
+    const rejected = expect(running).rejects.toThrow('the model worker failed: channel broke');
+    await new Promise((r) => setTimeout(r, 50));
+    child!.emit('error', new Error('channel broke'));
+    child!.emit('error', new Error('second error with no waiter')); // `on`, so this must not throw
+    await rejected;
+    watched.kill();
+  });
+
+  it('refuses to send to a closed channel', async () => {
+    await generator.load('ok.gguf');
+    let child: ChildProcess | null = null;
+    const closed = new LlamaCleanupGenerator({
+      workerScript: script,
+      spawn: (file) => (child = fork(file, [], { execArgv: [], stdio: ['ignore', 'ignore', 'pipe', 'ipc'] })),
+    });
+    await closed.load('ok.gguf');
+    child!.disconnect();
+    await expect(closed.generate(prompt('echo'), FAR())).rejects.toThrow();
+    closed.kill();
   });
 
   it('refuses a run before any load', async () => {
-    await expect(generator.generate('echo', FAR())).rejects.toThrow('not loaded');
+    await expect(generator.generate(prompt('echo'), FAR())).rejects.toThrow('not loaded');
   });
 
   it('unload ends the worker process', async () => {
     await generator.load('ok.gguf');
-    const text = await generator.generate('echo', FAR());
+    const text = await generator.generate(prompt('echo'), FAR());
     const pid = Number(text.split(':')[1]);
     await generator.unload();
     expect(generator.isRunning).toBe(false);

@@ -22,6 +22,20 @@ export interface CleanupModel {
 export interface CleanupTextGenerator {
   load(modelPath: string): Promise<void>;
   /** Runs the prompt to the end of the model's turn. Rejects when the deadline passes. */
-  generate(prompt: string, deadline: number): Promise<string>;
+  generate(prompt: GeneratorPrompt, deadline: number): Promise<string>;
   unload(): Promise<void>;
+  /** Ends the model at once, without waiting for a load or a run. Optional. */
+  kill?(): void;
+}
+
+/**
+ * A prompt in three parts. `head` and `tail` are the model's template and may hold special
+ * tokens; `user` is the control line and the dictation and must never be read as special
+ * tokens, so a dictation that says "<|im_end|>" stays plain text. Joined, the three parts
+ * are the card's prompt.
+ */
+export interface GeneratorPrompt {
+  head: string;
+  user: string;
+  tail: string;
 }

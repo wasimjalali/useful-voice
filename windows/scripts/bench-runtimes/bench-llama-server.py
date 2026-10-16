@@ -1,4 +1,5 @@
 # Runtime comparison, llama-server side (llama.cpp release b11669, the build the cleanup eval used).
+# Writes the raw latencies to $OUT. Median and p95 are sorted[n//2] and sorted[int(0.95*n)].
 # LLAMA_DIR=<unpacked release> MODEL=<s1-mini-q4_k_m.gguf> CASES=<evals/cleanup/cases.json> python3 bench-llama-server.py
 import json,subprocess,time,urllib.request,sys,os,signal
 SYS='You are a text normalizer for speech-to-text transcripts. The input begins with a control line specifying the styling, structure, and context settings; clean the transcript to match those settings and output only the cleaned text.'
@@ -22,6 +23,9 @@ for i in range(len(cases)+3):
     urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:18099/v1/chat/completions',body,{'Content-Type':'application/json'})).read()
     d=(time.time()-t)*1000
     if i>=3: lat.append(d)
+raw=list(lat)
 lat.sort()
-print('load ms',round(load),'rss after',rss(),'n',len(lat),'median',round(lat[len(lat)//2]),'p95',round(lat[int(.95*len(lat))]),'max',round(lat[-1]))
+out=dict(load_ms=round(load),rss_after_mb=rss(),n=len(lat),median=round(lat[len(lat)//2]),p95=round(lat[int(.95*len(lat))]),max=round(lat[-1]),latencies_ms=[round(x) for x in raw],ctx=2048,loadavg_start=os.environ.get('LOADAVG'))
+print(json.dumps({k:v for k,v in out.items() if k!='latencies_ms'}))
+if os.environ.get('OUT'): json.dump(out,open(os.environ['OUT'],'w'),indent=1)
 p.send_signal(signal.SIGTERM)

@@ -48,25 +48,25 @@ export type ModelAvailability = 'missing' | 'usable' | 'invalid';
 
 /**
  * Cheap check run on every dictation: the file has the pinned size and starts with the GGUF
- * magic. The SHA-256 was checked once, when the file was downloaded; hashing 484 MB per
+ * magic. It never throws: any I/O error means the model is not usable. The SHA-256 was checked once, when the file was downloaded; hashing 484 MB per
  * dictation would defeat the point. `verifyModelFile` does the full check.
  */
 export async function modelAvailability(directory: string, model: PinnedModelFile): Promise<ModelAvailability> {
   const file = modelFilePath(directory, model);
-  let size: number;
   try {
-    size = (await stat(file)).size;
-  } catch {
-    return 'missing';
-  }
-  if (size !== model.bytes) return 'invalid';
-  const handle = await open(file, 'r');
-  try {
-    const head = Buffer.alloc(4);
-    await handle.read(head, 0, 4, 0);
-    return head.equals(GGUF_MAGIC) ? 'usable' : 'invalid';
-  } finally {
-    await handle.close();
+    if ((await stat(file)).size !== model.bytes) return 'invalid';
+    // The file can vanish or be locked between the stat and the open: that is "not usable",
+    // never an error for the caller (it runs on every dictation).
+    const handle = await open(file, 'r');
+    try {
+      const head = Buffer.alloc(4);
+      await handle.read(head, 0, 4, 0);
+      return head.equals(GGUF_MAGIC) ? 'usable' : 'invalid';
+    } finally {
+      await handle.close().catch(() => undefined);
+    }
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'missing' : 'invalid';
   }
 }
 
@@ -94,8 +94,23 @@ export async function verifyModelFile(directory: string, model: PinnedModelFile)
   }
 }
 
-/** Downloads the model into `directory` and returns its path. A model already in place is kept. */
-export async function downloadModel(directory: string, model: PinnedModelFile, options: DownloadOptions = {}): Promise<string> {
+const inFlight = new Map<string, Promise<string>>();
+
+/**
+ * Downloads the model into `directory` and returns its path. A model already in place is
+ * kept. A second call for the same file while one is running joins it (its `onProgress` and
+ * `signal` are not used), so two partial writers never share one `.partial`.
+ */
+export function downloadModel(directory: string, model: PinnedModelFile, options: DownloadOptions = {}): Promise<string> {
+  const key = modelFilePath(directory, model);
+  const running = inFlight.get(key);
+  if (running) return running;
+  const started = downloadOnce(directory, model, options).finally(() => inFlight.delete(key));
+  inFlight.set(key, started);
+  return started;
+}
+
+async function downloadOnce(directory: string, model: PinnedModelFile, options: DownloadOptions): Promise<string> {
   const fetchImpl: DownloadFetch = options.fetchImpl ?? ((url, init) => fetch(url, init));
   const finalPath = modelFilePath(directory, model);
   const partialPath = `${finalPath}.partial`;
@@ -117,19 +132,32 @@ export async function downloadModel(directory: string, model: PinnedModelFile, o
   const digest = createHash('sha256');
 
   if (have < model.bytes) {
-    let response: Response;
-    try {
-      const headers: Record<string, string> = have > 0 ? { Range: `bytes=${have}-` } : {};
-      response = await fetchImpl(model.url, options.signal ? { headers, signal: options.signal } : { headers });
-    } catch (error) {
-      throw new ModelDownloadError(`Could not reach the download server: ${message(error)}`, 'network');
+    let response: Response | null = null;
+    for (let attempt = 0; attempt < 2 && !response; attempt++) {
+      let candidate: Response;
+      try {
+        const headers: Record<string, string> = have > 0 ? { Range: `bytes=${have}-` } : {};
+        candidate = await fetchImpl(model.url, options.signal ? { headers, signal: options.signal } : { headers });
+      } catch (error) {
+        throw new ModelDownloadError(`Could not reach the download server: ${message(error)}`, 'network');
+      }
+      if (candidate.status !== 200 && candidate.status !== 206) {
+        throw new ModelDownloadError(`The download server answered ${candidate.status}`, 'http');
+      }
+      if (!candidate.body) throw new ModelDownloadError('The download server sent no data', 'network');
+      if (have > 0 && candidate.status === 200) {
+        // A server that ignores the range sends the whole file: start it again.
+        have = 0;
+      } else if (candidate.status === 206 && contentRangeStart(candidate) !== have) {
+        // It answered with a range, but not the one asked for: appending would corrupt the file.
+        await candidate.body.cancel().catch(() => undefined);
+        await rm(partialPath, { force: true });
+        have = 0;
+        continue;
+      }
+      response = candidate;
     }
-    if (response.status !== 200 && response.status !== 206) {
-      throw new ModelDownloadError(`The download server answered ${response.status}`, 'http');
-    }
-    if (!response.body) throw new ModelDownloadError('The download server sent no data', 'network');
-    // A server that ignores the range answers 200 with the whole file: start it again.
-    if (have > 0 && response.status === 200) have = 0;
+    if (!response?.body) throw new ModelDownloadError('The download server answered with the wrong range', 'http');
     received = have;
     await hashPrefix(partialPath, have, digest);
 
@@ -144,14 +172,24 @@ export async function downloadModel(directory: string, model: PinnedModelFile, o
           throw new ModelDownloadError(`The download was interrupted: ${message(error)}`, 'network');
         }
         if (step.done) break;
+        if (received + step.value.length > model.bytes) {
+          await reader.cancel().catch(() => undefined);
+          await handle.close().catch(() => undefined);
+          await rm(partialPath, { force: true });
+          throw new ModelDownloadError(`The download is longer than the ${model.bytes} bytes expected`, 'validation');
+        }
         const chunk = Buffer.from(step.value);
-        await guard('disk', () => handle.write(chunk));
+        let written = 0;
+        while (written < chunk.length) {
+          const { bytesWritten } = await guard('disk', () => handle.write(chunk, written, chunk.length - written));
+          written += bytesWritten;
+        }
         digest.update(chunk);
         received += chunk.length;
         options.onProgress?.(received, model.bytes);
       }
     } finally {
-      await handle.close();
+      await handle.close().catch(() => undefined);
     }
   } else {
     await hashPrefix(partialPath, have, digest);
@@ -165,8 +203,19 @@ export async function downloadModel(directory: string, model: PinnedModelFile, o
     await rm(partialPath, { force: true });
     throw new ModelDownloadError('The downloaded file does not match its checksum', 'validation');
   }
+  // The hash covers the bytes we counted; this checks the file really holds them.
+  if ((await guard('install', () => stat(partialPath))).size !== model.bytes) {
+    await rm(partialPath, { force: true });
+    throw new ModelDownloadError('The downloaded file is not the size that was written', 'validation');
+  }
   await guard('install', () => rename(partialPath, finalPath));
   return finalPath;
+}
+
+/** The first byte of a 206 response's `Content-Range: bytes <start>-<end>/<total>`, or null. */
+function contentRangeStart(response: Response): number | null {
+  const match = /^bytes (\d+)-/.exec(response.headers.get('content-range') ?? '');
+  return match ? Number(match[1]) : null;
 }
 
 async function guard<T>(kind: ModelDownloadFailureKind, work: () => Promise<T>): Promise<T> {

@@ -1,4 +1,6 @@
 // Runtime comparison, node-llama-cpp side. node bench-node-llama-cpp.mjs <model.gguf> <ctx> <cases.json> <n> <out.json>
+// CLEAR=1 clears the context before every request (no kept system prompt); THREADS=n sets the threads.
+// Writes {config, loadMs, rssAfterLoadMb, rssEndMb, latenciesMs, outputs} to <out.json>.
 // Needs node-llama-cpp installed (windows/node_modules). CPU only, greedy, the model card raw prompt.
 import {getLlama, LlamaCompletion} from 'node-llama-cpp';
 import fs from 'node:fs';
@@ -14,6 +16,7 @@ const ctx=await model.createContext({contextSize:ctxSize, flashAttention:false, 
 const tLoad=performance.now()-t0;
 console.log('load ms',Math.round(tLoad),'rss MB after load',rss());
 const seq=ctx.getSequence();
+const loadRss=rss();
 const comp=new LlamaCompletion({contextSequence:seq});
 const lat=[];const outs=[];
 for(let i=0;i<cases.length+3;i++){
@@ -21,12 +24,15 @@ for(let i=0;i<cases.length+3;i++){
   const prompt=`<|im_start|>system\n${SYS}<|im_end|>\n<|im_start|>user\n[Styling: semi-formal] [Structure: prose] [Context: general]\n${c.input}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n`;
   const t=performance.now();
   const out=await comp.generateCompletion(prompt,{temperature:0, seed:0, maxTokens:undefined, customStopTriggers:undefined});
-  const d=performance.now()-t; 
+  const d=performance.now()-t;
+  if(process.env.CLEAR) await seq.clearHistory(); 
   
   if(i>=3){lat.push(d);outs.push({in:c.input,out})}
 }
+const raw=[...lat];
 lat.sort((a,b)=>a-b);
 const q=p=>Math.round(lat[Math.min(lat.length-1,Math.floor(p*lat.length))]);
-console.log('n',lat.length,'median',q(.5),'p95',q(.95),'max',q(1),'rss MB end',rss());
-fs.writeFileSync(process.argv[6]||'/dev/null',JSON.stringify(outs,null,1));
-await model.dispose&&0;
+const summary={config:{ctxSize,clear:!!process.env.CLEAR,threads:Number(process.env.THREADS||0),cases:cases.length,loadavgStart:process.env.LOADAVG||null},loadMs:Math.round(tLoad),rssAfterLoadMb:loadRss,rssEndMb:rss(),median:q(.5),p95:q(.95),max:q(1),latenciesMs:raw.map(Math.round),outputs:outs};
+console.log(JSON.stringify({...summary,latenciesMs:undefined,outputs:undefined}));
+fs.writeFileSync(process.argv[6]||'/dev/null',JSON.stringify(summary,null,1));
+process.exit(0);

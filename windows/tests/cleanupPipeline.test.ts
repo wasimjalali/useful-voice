@@ -117,6 +117,19 @@ describe('runCleanupPipeline', () => {
     });
   });
 
+  it('keeps the rules text when the model throws synchronously', async () => {
+    const model: CleanupModel = {
+      clean() {
+        throw new Error('sync boom');
+      },
+    };
+    expect(await runCleanupPipeline(input({ model }))).toEqual({
+      text: RULES_TEXT,
+      source: 'rules',
+      model: { kind: 'failed' },
+    });
+  });
+
   it('keeps the rules text when the model returns nothing', async () => {
     const { model } = fakeModel(() => null);
     expect((await runCleanupPipeline(input({ model }))).model).toEqual({ kind: 'failed' });
@@ -163,10 +176,14 @@ describe('runCleanupPipeline', () => {
 });
 
 describe('cleanup model policy', () => {
-  it('turns the model off below 8 GB and on at 8 GB', () => {
-    expect(MINIMUM_CLEANUP_MEMORY_BYTES).toBe(8 * GiB);
-    expect(memoryAllowsCleanupModel(8 * GiB - 1)).toBe(false);
+  it('turns the model off below 7 GiB reported and on from there, so 8 GB machines pass', () => {
+    expect(MINIMUM_CLEANUP_MEMORY_BYTES).toBe(7 * GiB);
+    expect(memoryAllowsCleanupModel(6.9 * GiB)).toBe(false);
+    expect(memoryAllowsCleanupModel(7 * GiB - 1)).toBe(false);
+    expect(memoryAllowsCleanupModel(7 * GiB)).toBe(true);
+    expect(memoryAllowsCleanupModel(7.8 * GiB)).toBe(true);
     expect(memoryAllowsCleanupModel(8 * GiB)).toBe(true);
+    expect(memoryAllowsCleanupModel(5.9 * GiB)).toBe(false);
     expect(memoryAllowsCleanupModel(0)).toBe(false);
   });
 

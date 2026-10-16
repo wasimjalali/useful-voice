@@ -1,4 +1,5 @@
 import { S1_MINI_SYSTEM_PROMPT } from './cleanupControlLine.js';
+import type { GeneratorPrompt } from './cleanupModel.js';
 
 /**
  * S1-mini by Superwhisper (Apache 2.0 plus one term: it must always be credited as
@@ -37,11 +38,17 @@ export const S1_MINI_MODEL: PinnedModelFile = {
  * control line, a newline and the transcript.
  */
 export function s1MiniPrompt(controlLine: string, text: string): string {
-  return (
-    s1MiniPromptPrefix() +
-    `${controlLine}\n${text}<|im_end|>\n` +
-    '<|im_start|>assistant\n<think>\n\n</think>\n\n'
-  );
+  const { head, user, tail } = s1MiniPromptParts(controlLine, text);
+  return head + user + tail;
+}
+
+/** The same prompt in the three parts a runtime tokenises differently (see `GeneratorPrompt`). */
+export function s1MiniPromptParts(controlLine: string, text: string): GeneratorPrompt {
+  return {
+    head: s1MiniPromptPrefix(),
+    user: `${controlLine}\n${text}`,
+    tail: '<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n',
+  };
 }
 
 /** The start every prompt shares: the system turn and the opening of the user turn. */

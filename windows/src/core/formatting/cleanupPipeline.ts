@@ -20,7 +20,8 @@ import { applyCleanupRules } from './cleanupRules.js';
  *   1. `applyCleanupRules` runs on the raw text (English only).
  *   2. Rules left nothing (the whole dictation was fillers): the raw text is the result, so
  *      History and the clipboard never get an empty entry. The model is not asked.
- *   3. `decideCleanupModel` (flag, model downloaded, 8 GB of RAM, English): when it says
+ *   3. `decideCleanupModel` (flag, model downloaded, at least 7 GiB reported, which is an
+ *      8 GB machine, English): when it says
  *      skip, the rules text is the result.
  *   4. The model gets the rules text and the control line, up to the deadline. A timeout,
  *      null (error, nothing returned) or an answer the guard rejects (too many words
@@ -71,8 +72,7 @@ export async function runCleanupPipeline(input: CleanupPipelineInput): Promise<C
   const controlLine = s1ControlLine(input.category, input.style);
   const limit = start + (input.deadlineMs ?? DEFAULT_CLEANUP_DEADLINE_MS);
   const answer = await withDeadline(
-    // A model that throws instead of resolving null is a failed model, not a failed dictation.
-    input.model.clean(rulesText, controlLine, limit).catch(() => null),
+    askModel(input.model, rulesText, controlLine, limit),
     Math.max(0, limit - now()),
   );
   if (answer === TIMED_OUT) return rulesResult({ kind: 'timedOut' });
@@ -84,6 +84,15 @@ export async function runCleanupPipeline(input: CleanupPipelineInput): Promise<C
 }
 
 const TIMED_OUT = Symbol('timedOut');
+
+/** A model that throws, synchronously or not, is a failed model, not a failed dictation. */
+async function askModel(model: CleanupModel, text: string, controlLine: string, deadline: number): Promise<string | null> {
+  try {
+    return await model.clean(text, controlLine, deadline);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The work's value, or `TIMED_OUT` after `ms`, whichever comes first. The work is not

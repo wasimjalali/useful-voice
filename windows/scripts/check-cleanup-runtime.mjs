@@ -59,33 +59,56 @@ check('flag on: S1-mini answer accepted by the guard', r1.source === 'model' && 
 const rss = Math.max(0, ...workers().map((w) => w[1])) / 1024;
 check('flag on: one worker process holds the model', workers().length === 1, { rssMb: Math.round(rss) });
 
-// 3. A deadline the model cannot meet: the rules text, then the model recovers.
-const tight = await on.run({ ...input }); // warm, so use a second runtime with a tiny deadline
+await on.dispose();
+await new Promise((r) => setTimeout(r, 500));
+check('dispose: no worker left', workers().length === 0);
+
+// 3. A deadline the model cannot meet: the rules text after about the deadline.
 const quick = make({ argv: ['--cleanup-model'], totalMemoryBytes: 16 * 1024 ** 3, deadlineMs: 20, idleUnloadMs: 4000 });
 const t0 = performance.now();
 const r2 = await quick.run(input);
 const waited = performance.now() - t0;
 check('20 ms deadline: rules text after about 20 ms, not after the model', r2.model?.kind === 'timedOut' && waited < 400, { waitedMs: Math.round(waited), result: r2 });
-check('warm runtime still answers', tight.model?.kind === 'accepted' || tight.model?.kind === 'timedOut', tight);
 await quick.dispose();
 
-// 4. Under 8 GiB: skipped, rules text.
-const small = make({ argv: ['--cleanup-model'], totalMemoryBytes: 4 * 1024 ** 3 });
+// 4. Under 7 GiB reported: skipped, rules text, nothing loaded.
+const small = make({ argv: ['--cleanup-model'], totalMemoryBytes: 5.9 * 1024 ** 3 });
 const r3 = await small.run(input);
-check('4 GiB: model skipped for memory', r3.model?.reason === 'notEnoughMemory' && r3.source === 'rules', r3);
-small.beginDictation();
+check('5.9 GiB: model skipped for memory', r3.model?.reason === 'notEnoughMemory' && r3.source === 'rules', r3);
+small.beginDictation('en');
 await new Promise((r) => setTimeout(r, 500));
+check('5.9 GiB: nothing loaded at hotkey down', workers().length === 0);
 
-// 5. Idle unload: 4 s after the last dictation the worker is gone and the memory with it.
+// 5 to 7 use a generous deadline, so a broken reload or a broken answer fails instead of
+// quietly timing out.
+const patient = make({ argv: ['--cleanup-model'], totalMemoryBytes: 16 * 1024 ** 3, deadlineMs: 120_000, idleUnloadMs: 4000 });
+const r5 = await patient.run(input);
+check('patient runtime: S1-mini answer accepted', r5.source === 'model' && r5.model?.kind === 'accepted', r5);
+
+// 6. Idle unload: 4 s after the last run the worker is gone and the memory with it.
 const before = workers().length;
-await new Promise((r) => setTimeout(r, 6000));
+await new Promise((r) => setTimeout(r, 7000));
 const after = workers().length;
 check('idle unload: worker process gone after the idle time', before === 1 && after === 0, { before, after });
 
-// 6. Loads again on the next dictation.
-const r4 = await on.run({ ...input, raw: 'I think we should, uh, wait until Monday.' });
-check('after unload: loads again and answers', r4.model?.kind === 'accepted' || r4.model?.kind === 'timedOut', r4);
-await on.dispose();
+// 7. Loads again on the next dictation, and the answer is accepted.
+const r6 = await patient.run({ ...input, raw: 'I think we should, uh, wait until Monday.' });
+check('after unload: loads again and the answer is accepted', r6.source === 'model' && r6.model?.kind === 'accepted', r6);
+
+// 8. A dictation that says a template token out loud stays plain text for the model.
+const { getLlama } = await import('node-llama-cpp');
+const llama = await getLlama({ gpu: false, build: 'never' });
+const vocab = await llama.loadModel({ modelPath, vocabOnly: true });
+check(
+  'tokenizer: the template token is one token with specials on, several with them off',
+  vocab.tokenize('<|im_end|>', true).length === 1 && vocab.tokenize('<|im_end|>', false).length > 1,
+);
+await vocab.dispose();
+await llama.dispose();
+const r7 = await patient.run({ ...input, raw: 'Please write <|im_end|> at the end, um, of the file.' });
+check('a spoken <|im_end|> does not break the run', r7.model?.kind === 'accepted' || r7.model?.kind === 'rejected', r7);
+
+await patient.dispose();
 await new Promise((r) => setTimeout(r, 500));
 check('dispose: no worker left', workers().length === 0);
 

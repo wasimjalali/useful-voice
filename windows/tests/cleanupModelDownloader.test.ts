@@ -20,7 +20,7 @@ const body = Buffer.concat([Buffer.from('GGUF'), Buffer.alloc(3 * 1024 * 1024 - 
 for (let i = 4; i < body.length; i += 97) body[i] = i % 251;
 const sha = createHash('sha256').update(body).digest('hex');
 
-type Mode = 'range' | 'ignoreRange' | 'truncate' | 'status404' | 'corrupt';
+type Mode = 'range' | 'ignoreRange' | 'truncate' | 'status404' | 'corrupt' | 'wrongRange' | 'tooLong';
 let mode: Mode = 'range';
 let requests: { range: string | undefined }[] = [];
 let server: http.Server;
@@ -35,6 +35,18 @@ beforeAll(async () => {
     }
     const source = mode === 'corrupt' ? Buffer.concat([body.subarray(0, 100), Buffer.from('X'), body.subarray(101)]) : body;
     const match = /bytes=(\d+)-/.exec(req.headers.range ?? '');
+    if (mode === 'tooLong') {
+      const longer = Buffer.concat([body, Buffer.from('EXTRA')]);
+      res.writeHead(200, { 'Content-Length': longer.length });
+      res.end(longer);
+      return;
+    }
+    if (match && mode === 'wrongRange') {
+      // Says it starts at byte 0 and sends everything: appending that would corrupt the file.
+      res.writeHead(206, { 'Content-Length': body.length, 'Content-Range': `bytes 0-${body.length - 1}/${body.length}` });
+      res.end(body);
+      return;
+    }
     if (match && mode !== 'ignoreRange') {
       const from = Number(match[1]);
       res.writeHead(206, { 'Content-Length': source.length - from, 'Content-Range': `bytes ${from}-${source.length - 1}/${source.length}` });
@@ -132,6 +144,36 @@ describe('downloadModel', () => {
     const file = await downloadModel(dir, pin());
     expect(requests[0]?.range).toBe(`bytes=${partial}-`);
     expect((await readFile(file)).equals(body)).toBe(true);
+  });
+
+  it('starts again when a 206 does not begin where the partial ends', async () => {
+    mode = 'wrongRange';
+    await writeFile(`${modelFilePath(dir, pin())}.partial`, body.subarray(0, 1_200_000));
+    const file = await downloadModel(dir, pin());
+    expect(requests.map((r) => r.range)).toEqual(['bytes=1200000-', undefined]);
+    expect((await readFile(file)).equals(body)).toBe(true);
+  });
+
+  it('stops with an error as soon as more bytes arrive than expected', async () => {
+    mode = 'tooLong';
+    const error = await downloadModel(dir, pin()).catch((e: unknown) => e);
+    expect((error as ModelDownloadError).kind).toBe('validation');
+    expect(await stat(`${modelFilePath(dir, pin())}.partial`).catch(() => null)).toBeNull();
+    expect(await stat(modelFilePath(dir, pin())).catch(() => null)).toBeNull();
+  });
+
+  it('lets a second call for the same file join the first', async () => {
+    const [a, b] = await Promise.all([downloadModel(dir, pin()), downloadModel(dir, pin())]);
+    expect(a).toBe(b);
+    expect(requests).toHaveLength(1);
+    expect((await readFile(a)).equals(body)).toBe(true);
+  });
+
+  it('can download again after a failure', async () => {
+    mode = 'status404';
+    await downloadModel(dir, pin()).catch(() => undefined);
+    mode = 'range';
+    expect((await readFile(await downloadModel(dir, pin()))).equals(body)).toBe(true);
   });
 
   it('reports an http error and a dead server', async () => {

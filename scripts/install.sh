@@ -26,7 +26,9 @@ die() { printf 'Useful Voice install failed: %s\n' "$*" >&2; exit 1; }
 [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ] || die "Useful Voice needs a Mac with Apple silicon (M1 or later)."
 major="$(sw_vers -productVersion | cut -d. -f1)"
 [ "$major" -ge 14 ] || die "Useful Voice needs macOS 14 or later (this Mac has $(sw_vers -productVersion))."
-[ -w "$DEST" ] || die "$DEST is not writable. Run with UV_INSTALL_DIR=\"\$HOME/Applications\" to install for this user only."
+# A folder of the user's own that is not there yet (~/Applications) is made.
+case "$DEST" in "$HOME"/*) [ -d "$DEST" ] || mkdir -p "$DEST" 2>/dev/null || true ;; esac
+[ -d "$DEST" ] && [ -w "$DEST" ] || die "$DEST is not a writable folder. Run with UV_INSTALL_DIR=\"\$HOME/Applications\" to install for this user only (it is created if it is missing)."
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT

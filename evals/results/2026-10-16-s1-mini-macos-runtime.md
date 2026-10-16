@@ -1,5 +1,7 @@
 # S1-mini on macOS: runtime choice, memory and latency (2026-10-16)
 
+The same harness on a real Apple M4: `2026-10-16-s1-mini-macos-m4-local.md` (CPU still about 2x over the deadline, Metal about 20x faster).
+
 ## Question
 
 Can llama.cpp run S1-mini (Qwen3-0.6B fine-tune, Q4_K_M, 462 MB) inside the app next to the

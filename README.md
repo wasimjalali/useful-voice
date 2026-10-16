@@ -16,6 +16,8 @@ Useful Voice is a fast, personal dictation app for macOS and Windows. Tap a hotk
 
 **It lands where you started.** The app, window and text field you were in when you pressed the key are locked in. If you click elsewhere while it transcribes, Useful Voice brings that field back before it pastes. If it can't (the app quit, say), it pastes nowhere else: the text stays on your clipboard. Settings > Pasting chooses whether your old clipboard comes back after a paste, and which apps get the text typed out as keystrokes instead (for terminals and apps that block paste).
 
+**It writes for the app you're in.** Useful Voice knows which app, or which web page in a browser, you're dictating into and formats for it: an email gets a greeting, paragraphs and your name under the sign-off, a chat message loses its closing full stop, code stays code. Fillers like "um" and "uh" go (English only). Settings > Apps sets a style per category, your name and an optional send key for chat apps and terminals, and which category an app counts as. It never adds words you didn't say.
+
 **Teach it your words.** Add names and specialist spellings to your dictionary. They help recognition and fix casing on your Mac. Add a "sounds like" form and misheard variants are rewritten after transcription. Fix a recurring mistake once and it stays fixed.
 
 **Keep what you said.** Notes are local and searchable, with pins, tags and Markdown copy. Your dictation history keeps every transcript, and Insights shows words, time saved and your streak.
@@ -28,7 +30,7 @@ Useful Voice is a fast, personal dictation app for macOS and Windows. Tap a hotk
 |---|---|
 | Works on | macOS 14 or later on Apple silicon. Windows 10 or later (see [windows/README.md](windows/README.md) for what's verified there) |
 | Engines | Deepgram Nova-3 (cloud). On macOS also local Whisper large-v3-turbo and large-v3. The Windows app uses Deepgram |
-| Stays on your device | Your dictionary, notes, history, settings and, on macOS, the last 10 recordings. Your Deepgram key sits in the macOS Keychain (Windows: encrypted with DPAPI). With a local Whisper model, your audio never leaves your Mac |
+| Stays on your device | Your dictionary, notes, history, settings and, on macOS, the last 10 recordings. Up to 200 characters before your cursor are read only to continue your sentence, and never saved or logged. Your Deepgram key sits in the macOS Keychain (Windows: encrypted with DPAPI). With a local Whisper model, your audio never leaves your Mac |
 | Leaves your device | With Deepgram, each recording's audio goes to Deepgram, plus up to 400 tokens of your dictionary words, fix results and snippet triggers as keyterms. "Sounds like" forms stay on your Mac. Picking a local model downloads its weights from Hugging Face |
 | Tracking | None. No analytics, no crash reports, no ads |
 | Updates | Manual for now. The app doesn't check for updates yet |

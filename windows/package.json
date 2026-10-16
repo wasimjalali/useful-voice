@@ -106,6 +106,7 @@
       "guid": "cfa29547-fa82-5f74-b344-dfe1c5823243",
       "oneClick": false,
       "perMachine": false,
+      "allowElevation": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,

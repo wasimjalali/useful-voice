@@ -417,7 +417,7 @@ class UsefulVoiceApp {
       onToggleDictation: () => void this.toggleDictation('window'),
       onOpenWindow: (page) => this.openWindow(page),
       onQuit: () => void this.quit(),
-      onRetry: () => void this.service.retryLast(),
+      onRetry: () => void this.retryLast(),
       onCopyLast: () => this.copyLastTranscript(),
       onCancel: () => void this.cancelDictation(),
       onSetLanguage: (code) => this.setLanguage(code),
@@ -790,7 +790,7 @@ class UsefulVoiceApp {
         return;
       case 'retry':
         this.hudModel.dismiss();
-        await this.service.retryLast();
+        await this.retryLast();
         return;
       case 'openMicrophoneSettings':
         this.hudModel.dismiss();
@@ -996,14 +996,16 @@ class UsefulVoiceApp {
     if (!window || window.isDestroyed()) return;
     let timer: NodeJS.Timeout | undefined;
     try {
-      await Promise.race([
+      const outcome = await Promise.race([
         window.webContents.executeJavaScript(
           "typeof window.__uvFlushPending === 'function' ? window.__uvFlushPending() : true",
         ) as Promise<unknown>,
-        new Promise<void>((resolve) => {
-          timer = setTimeout(resolve, 1000);
+        new Promise<'timeout'>((resolve) => {
+          timer = setTimeout(() => resolve('timeout'), 1000);
         }),
       ]);
+      if (outcome === 'timeout') this.diagnostics.log('app', 'quit: note draft not saved (timed out after 1 s)');
+      else if (outcome === false) this.diagnostics.log('app', 'quit: note draft not saved (the save was refused)');
     } catch (error) {
       this.diagnostics.log('app', `could not save pending note edits: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
@@ -1282,6 +1284,16 @@ class UsefulVoiceApp {
       this.diagnostics.log('dictation', status.message ?? 'error');
       void playCue('error').catch(() => undefined);
     }
+  }
+
+  /**
+   * Retry the last failed recording. Like a new dictation, it must not start once the quit has
+   * begun: the flush and the window teardown would race it. The service call is the first thing
+   * that waits, so this one check at entry covers it.
+   */
+  private async retryLast(): Promise<void> {
+    if (this.quitting) return;
+    await this.service.retryLast();
   }
 
   /**
@@ -1628,7 +1640,7 @@ class UsefulVoiceApp {
     // dictation. The renderer cannot ask for a paste: only the hotkey does that.
     ipcMain.handle('dictation:toggle', () => this.toggleDictation('window'));
     ipcMain.handle('dictation:cancel', () => this.cancelDictation());
-    ipcMain.handle('dictation:retry', () => this.service.retryLast());
+    ipcMain.handle('dictation:retry', () => this.retryLast());
     ipcMain.handle('dictation:copyLast', () => this.copyLastTranscript());
 
     // The HUD window ignores the mouse except over the capsule.
@@ -2139,7 +2151,7 @@ class UsefulVoiceApp {
         submenu: [
           { label: 'Start / stop', click: () => void this.toggleDictation('window') },
           { label: 'Cancel', click: () => void this.cancelDictation() },
-          { label: 'Retry last', click: () => void this.service.retryLast() },
+          { label: 'Retry last', click: () => void this.retryLast() },
           { label: 'Copy last transcript', click: () => this.copyLastTranscript() },
         ],
       },

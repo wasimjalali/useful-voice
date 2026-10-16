@@ -72,3 +72,5 @@ The design notes and audit reports are in [docs/audit](docs/audit), starting wit
 ## License
 
 [MIT](LICENSE). Contributions are welcome as pull requests, and there's no CLA to sign.
+
+Third-party licenses and credits are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The optional local cleanup model is S1-mini by Superwhisper (Apache 2.0 with a naming term), run with llama.cpp (MIT).

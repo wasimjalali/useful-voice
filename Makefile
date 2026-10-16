@@ -68,6 +68,8 @@ test:
 # framework. The app bundle must embed it under Contents/Frameworks, with an
 # rpath so @rpath/whisper.framework resolves there.
 FRAMEWORK = whisper.framework
+# llama.cpp (the hidden S1-mini cleanup) is linked too, so it ships the same way.
+LLAMA_FRAMEWORK = llama.framework
 
 bundle: build
 	rm -rf $(APP)
@@ -77,6 +79,7 @@ bundle: build
 	$(call compile_icon)
 	cp assets/branding/useful-voice-mark-dark.png $(APP)/Contents/Resources/UsefulVoiceLogo.png
 	cp -R .build/release/$(FRAMEWORK) $(APP)/Contents/Frameworks/
+	cp -R .build/release/$(LLAMA_FRAMEWORK) $(APP)/Contents/Frameworks/
 	@# The binary's own rpaths point at SPM's build/artifact dirs; inside the
 	@# bundle the framework lives at ../Frameworks relative to the executable.
 	install_name_tool -add_rpath "@executable_path/../Frameworks" \
@@ -89,6 +92,7 @@ bundle: build
 	@# Nested code is signed inside-out: the framework gets its own signature
 	@# (the upstream XCFramework is only ad-hoc signed), then the bundle.
 	codesign --force --sign "$(SIGN_IDENTITY)" $(APP)/Contents/Frameworks/$(FRAMEWORK)
+	codesign --force --sign "$(SIGN_IDENTITY)" $(APP)/Contents/Frameworks/$(LLAMA_FRAMEWORK)
 	codesign --force --sign "$(SIGN_IDENTITY)" $(APP)
 	@codesign -dv $(APP) 2>&1 | sed -n 's/^/    /p'
 
@@ -131,6 +135,7 @@ endif
 	$(call compile_icon)
 	cp assets/branding/useful-voice-mark-dark.png $(APP)/Contents/Resources/UsefulVoiceLogo.png
 	cp -R .build/release/$(FRAMEWORK) $(APP)/Contents/Frameworks/
+	cp -R .build/release/$(LLAMA_FRAMEWORK) $(APP)/Contents/Frameworks/
 	install_name_tool -add_rpath "@executable_path/../Frameworks" \
 		$(APP)/Contents/MacOS/UsefulVoice 2>/dev/null || true
 	plutil -replace CFBundleShortVersionString -string "$(MARKETING_VERSION)" $(APP)/Contents/Info.plist
@@ -141,6 +146,9 @@ endif
 	codesign --force --options runtime --timestamp \
 		--sign "$(DEVID_IDENTITY)" \
 		$(APP)/Contents/Frameworks/$(FRAMEWORK)
+	codesign --force --options runtime --timestamp \
+		--sign "$(DEVID_IDENTITY)" \
+		$(APP)/Contents/Frameworks/$(LLAMA_FRAMEWORK)
 	codesign --force --options runtime --timestamp \
 		--entitlements $(ENTITLEMENTS) \
 		--sign "$(DEVID_IDENTITY)" $(APP)

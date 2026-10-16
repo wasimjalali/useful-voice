@@ -33,8 +33,8 @@ jobs:
         working-directory: windows
         shell: pwsh
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -69,13 +69,13 @@ jobs:
           Get-Content release/publish/SHA256SUMS-windows.txt
           Get-Content release/publish/latest.yml
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: useful-voice-windows-release
           path: windows/release/publish
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: useful-voice-windows-release-localtest
           path: windows/release/publish-local
@@ -93,8 +93,8 @@ jobs:
         working-directory: windows
         shell: pwsh
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: useful-voice-windows-release-localtest
           path: windows/publish-local
@@ -104,7 +104,7 @@ jobs:
 
       - name: Report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-install-script
           path: windows/e2e-installer-results
@@ -121,8 +121,8 @@ jobs:
         working-directory: windows
         shell: pwsh
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -148,7 +148,7 @@ jobs:
           npx electron-builder --win nsis --publish never --config old-builder.json
           if ($LASTEXITCODE -ne 0) { throw "electron-builder failed: $LASTEXITCODE" }
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: useful-voice-windows-release
           path: windows/publish
@@ -158,7 +158,7 @@ jobs:
 
       - name: Report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-update
           path: windows/e2e-installer-results

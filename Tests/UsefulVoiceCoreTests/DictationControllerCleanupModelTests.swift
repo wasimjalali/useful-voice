@@ -178,18 +178,26 @@ import Foundation
 
     @Test func aGuardRejectKeepsTheRulesText() async {
         generator.answer = "I need to send."   // drops most of the speaker's words
-        let controller = makeController(text: spoken, model: makeModel())
+        let model = makeModel()
+        let controller = makeController(text: spoken, model: model)
         controller.toggle()
+        #expect(await waitUntil { await model.isLoaded })   // the loaded path is the point: the guard rejects the answer
         await controller.toggleAndWait()
+        #expect(generator.prompts.count == 1)
         #expect(delivered == [rulesText])
     }
 
     @Test func aModelThatFailsToLoadStillDeliversTheRulesText() async {
         generator.failLoad = true
-        let controller = makeController(text: spoken, model: makeModel())
+        let model = makeModel()
+        let controller = makeController(text: spoken, model: model)
         controller.toggle()
+        await controller.awaitCleanupLifecycle()
+        await model.waitForLoad()                 // the load has failed before the dictation stops
+        #expect(await !model.isLoaded)
         await controller.toggleAndWait()
         #expect(delivered == [rulesText])
+        #expect(generator.loads == 0)
     }
 
     @Test func aSlowModelNeverHoldsTheDictationPastTheDeadline() async {
@@ -282,8 +290,10 @@ import Foundation
 
     @Test func nonEnglishSkipsTheModelButStillPreloadedAtThePress() async {
         generator.answer = "x"
-        let controller = makeController(text: "also ähm das ist gut", language: "de", model: makeModel())
+        let model = makeModel()
+        let controller = makeController(text: "also ähm das ist gut", language: "de", model: model)
         controller.toggle()
+        #expect(await waitUntil { await model.isLoaded })   // preloaded at the press, then skipped for the language
         await controller.toggleAndWait()
         #expect(delivered == ["also ähm das ist gut"])
         #expect(generator.prompts.isEmpty)

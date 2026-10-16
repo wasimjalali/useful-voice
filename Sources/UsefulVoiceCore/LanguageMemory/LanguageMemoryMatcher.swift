@@ -23,22 +23,54 @@ public enum LanguageMemoryMatcher {
     public static func matchingTermIDs(_ terms: [MemoryTerm],
                                        in text: String,
                                        language: MemoryLanguage = .auto) -> [UUID] {
+        matchingTermIDs(terms, inTexts: [text], language: language)[0]
+    }
+
+    /// With fewer candidate phrases than this, building a text index costs more than the
+    /// handful of regex scans it would save, so the matcher scans directly.
+    static let indexMinCandidates = 16
+
+    /// `matchingTermIDs` for several texts at once: element `i` is exactly what
+    /// `matchingTermIDs(terms, in: texts[i], language:)` returns.
+    ///
+    /// For a large dictionary each text gets a `LanguageMemoryTextIndex`, and a phrase only
+    /// reaches its regex when the index says the text could contain it. The phrases'
+    /// signatures are computed once and shared by every text.
+    static func matchingTermIDs(_ terms: [MemoryTerm],
+                                inTexts texts: [String],
+                                language: MemoryLanguage = .auto,
+                                indexMinCandidates: Int = LanguageMemoryMatcher.indexMinCandidates) -> [[UUID]] {
         let filtered = terms.filter { term in
             term.language == .auto || language == .auto || term.language == language
         }
-        var result: [UUID] = []
+        let candidates: [[String]] = filtered.map { [$0.phrase] + $0.aliases + $0.pronunciations }
+        let candidateCount = candidates.reduce(0) { $0 + $1.count }
+        let useIndex = candidateCount >= indexMinCandidates
 
-        for term in filtered {
-            let candidates = [term.phrase] + term.aliases + term.pronunciations
-            guard candidates.contains(where: { containsWordBoundaryPhrase($0, in: text) }) else {
-                continue
+        let signatures: [[LanguageMemoryTextIndex.Signature?]] = useIndex
+            ? candidates.map { $0.map(LanguageMemoryTextIndex.signature(for:)) }
+            : []
+
+        return texts.map { text in
+            let index = useIndex ? LanguageMemoryTextIndex(text: text) : nil
+            var result: [UUID] = []
+            var seen = Set<UUID>()
+
+            for (t, term) in filtered.enumerated() {
+                let hit = candidates[t].indices.contains { c in
+                    if let index, let signature = signatures[t][c], !index.mayContain(signature) {
+                        return false
+                    }
+                    return containsWordBoundaryPhrase(candidates[t][c], in: text)
+                }
+                guard hit else { continue }
+                if seen.insert(term.id).inserted {
+                    result.append(term.id)
+                }
             }
-            if !result.contains(term.id) {
-                result.append(term.id)
-            }
+
+            return result
         }
-
-        return result
     }
 
     /// Longest phrase we will compile a matcher for. A dictionary term or
@@ -56,7 +88,12 @@ public enum LanguageMemoryMatcher {
     /// `NSRegularExpression` is documented as thread-safe for matching, and the
     /// lock keeps the dictionary itself safe.
     private static let cacheLock = NSLock()
-    private static var cache: [String: NSRegularExpression] = [:]
+    /// Keyed on the phrase's UTF-8 bytes, not the `String`: `String` equality and hashing
+    /// treat canonically equivalent text (NFC "é" and NFD "e" + U+0301) as one key, so a
+    /// phrase typed one way was served the regex compiled for the other. The ICU matcher
+    /// compares code points and treats them as different, so what a phrase matched
+    /// depended on which spelling happened to be looked up first.
+    private static var cache: [[UInt8]: NSRegularExpression] = [:]
     /// Bound on how many compiled phrases are retained — not on what works.
     /// Once the cache is full, a new phrase still compiles and matches; it is
     /// simply not stored. Clearing at the bound would evict a large
@@ -73,8 +110,9 @@ public enum LanguageMemoryMatcher {
         let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count <= maxPhraseLength else { return nil }
 
+        let key = Array(trimmed.utf8)
         cacheLock.lock()
-        if let cached = cache[trimmed] {
+        if let cached = cache[key] {
             cacheLock.unlock()
             return cached
         }
@@ -89,7 +127,7 @@ public enum LanguageMemoryMatcher {
 
         cacheLock.lock()
         if cache.count < cacheLimit {
-            cache[trimmed] = regex
+            cache[key] = regex
         }
         cacheLock.unlock()
         return regex

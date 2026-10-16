@@ -5,16 +5,41 @@ import Foundation
 /// every rule runs its regex over the whole text, every term candidate likewise.
 ///
 /// Kept verbatim as the oracle for the differential tests, and as the "before" side of
-/// the benchmark. Only the names changed. It still uses the production
-/// `LanguageMemoryMatcher.wordBoundaryRegex(for:)`, which the index does not alter, so
-/// both sides compile the very same regex for a phrase. Do not "improve" this file: its
-/// value is that it is the old behaviour.
+/// the benchmark. Only the names changed, plus its own regex cache (see
+/// `wordBoundaryRegex(for:)`). Do not "improve" this file: its value is that it is the
+/// old behaviour.
 enum LegacyLanguageMemory {
+    /// The old `wordBoundaryRegex(for:)`, with its own cache keyed on the phrase's bytes.
+    /// (The production cache used to be keyed on the `String`, which treats NFC and NFD
+    /// spellings of a phrase as one key; see `LanguageMemoryMatcher.cache`. The oracle must
+    /// not depend on which spelling reached the cache first, so it compiles by bytes.)
+    private final class RegexCache: @unchecked Sendable {
+        let lock = NSLock()
+        var regexes: [[UInt8]: NSRegularExpression] = [:]
+    }
+    private static let regexCache = RegexCache()
+
+    static func wordBoundaryRegex(for phrase: String) -> NSRegularExpression? {
+        let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= LanguageMemoryMatcher.maxPhraseLength else { return nil }
+        let key = Array(trimmed.utf8)
+        regexCache.lock.lock()
+        defer { regexCache.lock.unlock() }
+        if let cached = regexCache.regexes[key] { return cached }
+        let escaped = NSRegularExpression.escapedPattern(for: trimmed)
+        let pattern = #"(?<![\p{L}\p{N}_])"# + escaped + #"(?![\p{L}\p{N}_])"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        regexCache.regexes[key] = regex
+        return regex
+    }
+
     static func containsWordBoundaryPhrase(_ phrase: String, in text: String) -> Bool {
         guard !phrase.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return false
         }
-        guard let regex = LanguageMemoryMatcher.wordBoundaryRegex(for: phrase) else { return false }
+        guard let regex = wordBoundaryRegex(for: phrase) else { return false }
         return regex.firstMatch(
             in: text,
             range: NSRange(text.startIndex..<text.endIndex, in: text)
@@ -63,7 +88,7 @@ enum LegacyLanguageMemory {
                     options: [.caseInsensitive]
                 )
             case .wordBoundaryPhrase:
-                guard let regex = LanguageMemoryMatcher.wordBoundaryRegex(for: match) else { continue }
+                guard let regex = wordBoundaryRegex(for: match) else { continue }
                 let range = NSRange(output.startIndex..<output.endIndex, in: output)
                 output = regex.stringByReplacingMatches(
                     in: output,
@@ -92,7 +117,7 @@ enum LegacyLanguageMemory {
             guard !trigger.isEmpty, !expansion.isEmpty else { continue }
 
             let before = output
-            guard let regex = LanguageMemoryMatcher.wordBoundaryRegex(for: trigger) else { continue }
+            guard let regex = wordBoundaryRegex(for: trigger) else { continue }
             let range = NSRange(output.startIndex..<output.endIndex, in: output)
             output = regex.stringByReplacingMatches(
                 in: output,

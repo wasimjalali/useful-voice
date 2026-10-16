@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 
 import { DataStore } from '../core/settings/dataStore.js';
+import { removeStaleTempFiles, writeJsonAtomic } from '../core/settings/jsonStore.js';
 import { planLoginItem, wasAutoStarted } from '../core/settings/autostart.js';
 import { deliverToTarget } from '../core/delivery/deliveryFlow.js';
 import { appIdFor, isKnownBrowser, type DeliveryTarget } from '../core/delivery/deliveryTarget.js';
@@ -168,6 +169,7 @@ class UsefulVoiceApp {
   private hudHideTimer: NodeJS.Timeout | null = null;
   /** Where the user left the HUD, per display, as an offset from its default spot. */
   private hudOffsets: Record<string, { dx: number; dy: number }> = {};
+  private hudPositionWrite: Promise<void> = Promise.resolve();
   private hudDrag: {
     bounds: Electron.Rectangle;
     x: number;
@@ -365,6 +367,10 @@ class UsefulVoiceApp {
     if (this.settings.saveError) {
       this.diagnostics.log('settings', this.settings.saveError.message);
     }
+    // A write that still failed after its retries (a file held open for long) leaves a trace.
+    this.settings.onSaveStatus((status) => {
+      if (!status.ok) this.diagnostics.log('settings', `save failed: ${this.settings.saveError?.message}`);
+    });
 
     // Before any window exists, so the first paint is already in the right theme.
     applyAppearance(this.settings.all.appearance);
@@ -389,6 +395,13 @@ class UsefulVoiceApp {
     this.firstRun.sandbox = launch.forced && decision === 'show';
     this.settings.setFrozen(this.firstRun.sandbox);
     this.data.setFrozen(this.firstRun.sandbox);
+    // A write whose temp file was locked too can leave it behind; a forced first run touches nothing.
+    if (!this.firstRun.sandbox) {
+      const userData = app.getPath('userData');
+      for (const name of ['settings.json', 'data.json', 'hud-position.json']) {
+        await removeStaleTempFiles(path.join(userData, name), (message) => this.diagnostics.log('settings', message));
+      }
+    }
     this.diagnostics.log('data', `load outcome: ${this.data.outcome.status}`);
     this.data.onSaveFailure((error) => {
       this.diagnostics.log('data', `save failed: ${error.message}`);
@@ -698,11 +711,13 @@ class UsefulVoiceApp {
     };
     // A forced first-run session saves nothing.
     if (this.firstRun.sandbox) return;
-    try {
-      writeFileSync(this.hudPositionFile(), JSON.stringify(this.hudOffsets), 'utf8');
-    } catch (error) {
-      this.diagnostics.log('hud', `could not save the HUD position: ${(error as Error).message}`);
-    }
+    // One write at a time, each taking the offsets when its turn comes, so a quick second drag
+    // can never be overwritten by the first one's older snapshot.
+    this.hudPositionWrite = this.hudPositionWrite
+      .then(() => writeJsonAtomic(this.hudPositionFile(), this.hudOffsets))
+      .catch((error: Error) => {
+        this.diagnostics.log('hud', `could not save the HUD position: ${error.message}`);
+      });
   }
 
   private hudPositionFile(): string {
@@ -1028,6 +1043,8 @@ class UsefulVoiceApp {
       // save that never fires would lose the user's last dictionary edit.
       await this.data.flush();
       await this.settings.save();
+      // Never rejects (the chain catches), so a HUD drag just before Quit still lands.
+      await this.hudPositionWrite;
       await this.diagnostics.flush();
     } finally {
       globalShortcut.unregisterAll();

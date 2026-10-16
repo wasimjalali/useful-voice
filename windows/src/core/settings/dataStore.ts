@@ -67,7 +67,8 @@ export class DataStore {
   private writable = true;
   private loadOutcome: LoadOutcome = { status: 'fresh' };
   private writeTimer: NodeJS.Timeout | null = null;
-  private writeInFlight: Promise<void> | null = null;
+  /** Every write, one after another; each takes its snapshot when its turn comes. */
+  private writeChain: Promise<unknown> = Promise.resolve();
   private readonly failureListeners = new Set<SaveFailureListener>();
   /** Set when the last write attempt failed, cleared on the next success. */
   private lastError: Error | null = null;
@@ -514,33 +515,31 @@ export class DataStore {
     // A frozen store (a forced first-run session) writes nothing, so the file stays
     // byte-identical to what the install had.
     if (this.frozen) return true;
-    // Serialise writes so a debounced save and an explicit flush cannot interleave
-    // and produce a partially written file.
-    if (this.writeInFlight) await this.writeInFlight;
-
-    const run = (async () => {
-      try {
-        await writeJsonAtomic(this.filePath, this.exportPayload());
-        this.lastError = null;
-        return true;
-      } catch (error) {
-        const wrapped = error instanceof Error ? error : new Error(String(error));
-        this.lastError = wrapped;
-        for (const listener of this.failureListeners) {
-          try {
-            listener(wrapped);
-          } catch {
-            // A failing listener must not break persistence.
-          }
-        }
-        return false;
-      } finally {
-        this.writeInFlight = null;
-      }
-    })();
-
-    this.writeInFlight = run.then(() => undefined, () => undefined);
+    // Serialise writes so a debounced save and an explicit flush cannot interleave.
+    // Each queued write waits for the one before it, then snapshots the payload: an
+    // older write still retrying a locked file can never rename over a newer one.
+    const run = this.writeChain.then(() => this.write());
+    this.writeChain = run.catch(() => undefined);
     return run;
+  }
+
+  private async write(): Promise<boolean> {
+    try {
+      await writeJsonAtomic(this.filePath, this.exportPayload());
+      this.lastError = null;
+      return true;
+    } catch (error) {
+      const wrapped = error instanceof Error ? error : new Error(String(error));
+      this.lastError = wrapped;
+      for (const listener of this.failureListeners) {
+        try {
+          listener(wrapped);
+        } catch {
+          // A failing listener must not break persistence.
+        }
+      }
+      return false;
+    }
   }
 
   /** Field path for tests and diagnostics. */

@@ -46,7 +46,8 @@ const BUILT_APP = path.join(ROOT, "dist/UsefulVoice.app");
 const SPARKLE_BIN = path.join(ROOT, ".build/artifacts/sparkle/Sparkle/bin");
 // dmgbuild writes the DMG window's .DS_Store itself, so no Finder scripting.
 // It lives in a venv under .build, never in the system Python.
-const DMG_PACKAGES = ["dmgbuild==1.6.7", "ds_store==1.3.3", "mac_alias==2.2.3"];
+// bundle/dmg/requirements.txt pins all three with their sha256 hashes.
+const DMG_REQUIREMENTS = path.join(ROOT, "bundle/dmg/requirements.txt");
 const VOLUME = "Useful Voice";
 const DMG_VENV = path.join(ROOT, ".build/dmg-venv");
 
@@ -189,8 +190,8 @@ if (!existsSync(path.join(DMG_VENV, "bin/python"))) {
   if (!pyOk(system)) fail(`the DMG needs Python 3.10 or later for dmgbuild; python3 on PATH is ${system} (brew install python)`);
   execFileSync("python3", ["-m", "venv", DMG_VENV], { stdio: TO_STDERR });
 }
-// All three pinned: dmgbuild's own dependencies write the .DS_Store and alias.
-execFileSync(path.join(DMG_VENV, "bin/pip"), ["install", "--quiet", "--disable-pip-version-check", ...DMG_PACKAGES], { stdio: TO_STDERR });
+// All three pinned, with hashes: dmgbuild's own dependencies write the .DS_Store and alias.
+execFileSync(path.join(DMG_VENV, "bin/pip"), ["install", "--quiet", "--disable-pip-version-check", "--only-binary=:all:", "--require-hashes", "-r", DMG_REQUIREMENTS], { stdio: TO_STDERR });
 // dmgbuild mounts its working image by volume name. With a "Useful Voice"
 // volume already mounted, its copy becomes "Useful Voice 1" and the window's
 // background alias would point at that name.

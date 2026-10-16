@@ -149,7 +149,7 @@ struct LlamaWhisperCoexistenceTests {
                     let r = try runtime.complete(prompt: prompt(s), deadline: .now.advanced(by: .seconds(120)))
                     let took = ms(t.duration(to: .now))
                     times.append(took)
-                    print("MEASURE \(label) run \(took) ms prompt \(r.stats.promptTokens) out \(r.stats.outputTokens) ctx \(r.stats.contextSize) prefill \(r.stats.prefillSeconds * 1000) ms (context \(r.stats.contextSeconds * 1000) ms, prompt decode \(r.stats.promptDecodeSeconds * 1000) ms) -> \(r.text.debugDescription)")
+                    print("MEASURE \(label) run \(took) ms prompt \(r.stats.promptTokens) out \(r.stats.outputTokens) ctx \(r.stats.contextSize) prefill \(r.stats.prefillSeconds * 1000) ms (context \(r.stats.contextSeconds * 1000) ms, prompt decode \(r.stats.promptDecodeSeconds * 1000) ms, native prompt \(r.stats.nativePromptMs) ms, native generate \(r.stats.nativeGenerateMs) ms) -> \(r.text.debugDescription)")
                 }
                 let sorted = times.sorted()
                 print("MEASURE \(label) median \(sorted[sorted.count / 2]) ms max \(sorted.last ?? 0) ms mem after \(memoryMB())")
@@ -162,16 +162,17 @@ struct LlamaWhisperCoexistenceTests {
             }
             print("MEASURE after \(label) unload \(memoryMB())")
         }
-        // Micro-batch size on the CPU: ggml routes matmuls with 32 or more rows to the BLAS
-        // (Accelerate) backend, which dequantizes the weights first. Compare 16 and 31 with 512.
-        for (ubatch, threads) in [(UInt32(31), Int32(3)), (512, 3)] {
+        // The same prompt with a ggml thread pool attached (the llama.cpp CLI always has one).
+        for (pool, threads) in [(true, Int32(3)), (false, 3), (true, 2)] {
             do {
-                let runtime = try LlamaRuntime(modelPath: s1, placement: .cpuOnly, threads: threads, microBatch: ubatch)
-                let t = ContinuousClock.now
-                let r = try runtime.complete(prompt: prompt(cardInput), deadline: .now.advanced(by: .seconds(120)))
-                print("MEASURE ubatch \(ubatch) threads \(threads) run \(ms(t.duration(to: .now))) ms (context \(r.stats.contextSeconds * 1000) ms, prompt decode \(r.stats.promptDecodeSeconds * 1000) ms, total \(r.stats.totalSeconds * 1000) ms, out \(r.stats.outputTokens)) -> \(r.text.debugDescription)")
+                let runtime = try LlamaRuntime(modelPath: s1, placement: .cpuOnly, threads: threads, threadpool: pool)
+                for _ in 0..<2 {
+                    let t = ContinuousClock.now
+                    let r = try runtime.complete(prompt: prompt(cardInput), deadline: .now.advanced(by: .seconds(120)))
+                    print("MEASURE pool \(pool) threads \(threads) run \(ms(t.duration(to: .now))) ms (prompt decode \(r.stats.promptDecodeSeconds * 1000) ms, native prompt \(r.stats.nativePromptMs) ms, native generate \(r.stats.nativeGenerateMs) ms, out \(r.stats.outputTokens))")
+                }
             } catch {
-                print("MEASURE ubatch \(ubatch) failed: \(error)")
+                print("MEASURE pool \(pool) failed: \(error)")
             }
         }
     }

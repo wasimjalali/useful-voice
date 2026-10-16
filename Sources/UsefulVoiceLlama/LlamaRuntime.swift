@@ -46,6 +46,9 @@ public final class LlamaRuntime: @unchecked Sendable {
         public var contextSeconds: Double
         /// Of `prefillSeconds`: the decode of the whole prompt.
         public var promptDecodeSeconds: Double
+        /// llama.cpp's own timers for the prompt and for the generated tokens, in ms.
+        public var nativePromptMs: Double
+        public var nativeGenerateMs: Double
     }
 
     public struct Completion: Equatable, Sendable {
@@ -90,13 +93,14 @@ public final class LlamaRuntime: @unchecked Sendable {
     private let vocab: OpaquePointer
     private let threads: Int32
     private let microBatch: UInt32?
+    private let usesThreadpool: Bool
     public var threadCount: Int32 { threads }
     public let placement: Placement
     public let modelPath: String
 
     /// Loads the weights. See `Placement`; the CPU is the default for the cleanup model, and
     /// llama.cpp can only stop a running decode on the CPU. The PR notes have the numbers.
-    public init(modelPath: String, placement: Placement = .cpuOnly, threads: Int32? = nil, microBatch: UInt32? = nil) throws {
+    public init(modelPath: String, placement: Placement = .cpuOnly, threads: Int32? = nil, microBatch: UInt32? = nil, threadpool: Bool = false) throws {
         _ = Self.backendReady
         var params = llama_model_default_params()
         params.n_gpu_layers = placement == .metal ? -1 : 0
@@ -119,6 +123,7 @@ public final class LlamaRuntime: @unchecked Sendable {
         self.modelPath = modelPath
         self.threads = threads ?? Self.defaultThreadCount()
         self.microBatch = microBatch
+        self.usesThreadpool = threadpool
     }
 
     deinit {
@@ -164,7 +169,7 @@ public final class LlamaRuntime: @unchecked Sendable {
         if let microBatch { cparams.n_ubatch = microBatch }
         cparams.n_threads = threads
         cparams.n_threads_batch = threads
-        cparams.no_perf = true
+        cparams.no_perf = false
         if placement == .cpuOnly {
             cparams.offload_kqv = false
             cparams.op_offload = false
@@ -179,6 +184,13 @@ public final class LlamaRuntime: @unchecked Sendable {
         let contextStart = ContinuousClock.now
         guard let ctx = llama_init_from_model(model, cparams) else { throw RuntimeError.contextFailed }
         defer { llama_free(ctx) }
+        var pool: OpaquePointer?
+        if usesThreadpool {
+            var tp = ggml_threadpool_params_default(Int32(threads))
+            pool = ggml_threadpool_new(&tp)
+            if let pool { llama_attach_threadpool(ctx, pool, nil) }
+        }
+        defer { if let pool { llama_detach_threadpool(ctx); ggml_threadpool_free(pool) } }
         let contextEnd = ContinuousClock.now
         var promptDecodedAt: ContinuousClock.Instant?
 
@@ -213,6 +225,7 @@ public final class LlamaRuntime: @unchecked Sendable {
         tokens.removeAll()
 
         let end = ContinuousClock.now
+        let perf = llama_perf_context(ctx)
         return Completion(
             text: String(decoding: output, as: UTF8.self),
             stats: Stats(
@@ -220,7 +233,9 @@ public final class LlamaRuntime: @unchecked Sendable {
                 prefillSeconds: Self.seconds(start.duration(to: firstTokenAt ?? end)),
                 totalSeconds: Self.seconds(start.duration(to: end)),
                 contextSeconds: Self.seconds(contextStart.duration(to: contextEnd)),
-                promptDecodeSeconds: Self.seconds(contextEnd.duration(to: promptDecodedAt ?? end))))
+                promptDecodeSeconds: Self.seconds(contextEnd.duration(to: promptDecodedAt ?? end)),
+                nativePromptMs: perf.t_p_eval_ms,
+                nativeGenerateMs: perf.t_eval_ms))
     }
 
     private func tokenize(_ text: String) throws -> [llama_token] {

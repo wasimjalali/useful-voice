@@ -36,9 +36,10 @@ app to Metal on real hardware hold up, and what does it cost?
 - Harness: `Tests/UsefulVoiceAppTests/LlamaWhisperCoexistenceTests.swift`. `measure` now runs
   the five dictations on both placements, prints the placement the app picks, and adds a Metal
   abort check (a prompt of 888 tokens, deadline at a quarter of its time to the first token).
-  The Metal dictations and abort checks run only where the app picks Metal: on CI's virtual Mac
-  they took the step from 231 s to 501 s of its 600 s limit (run 38972015930), so they were
-  gated after these runs. `aPassedDeadlineStopsTheRun` runs on the CPU and on the app's placement.
+  The new Metal dictations and abort checks run only where the app picks Metal: on CI's virtual
+  Mac they took the step from 231 s to 501 s of its 600 s limit (run 38972015930), so they were
+  gated after these runs. The Metal probe and the three Metal runs that #54 added still run
+  everywhere, as before. `aPassedDeadlineStopsTheRun` runs on the CPU and on the app's placement.
 - Commands, from the repo root, `<scratch>` holding the two files:
   - `UV_S1_MINI_PATH=<scratch>/uv-models/s1-mini-q4_k_m.gguf UV_WHISPER_TINY_PATH=<scratch>/uv-models/ggml-tiny.en.bin swift test --skip-build --filter 'LlamaWhisperCoexistenceTests/measure'`,
     four times. Run 1's abort check failed with `output truncated` (a repeated sentence made the

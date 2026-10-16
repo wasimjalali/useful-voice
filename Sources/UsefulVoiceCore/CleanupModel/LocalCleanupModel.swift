@@ -102,9 +102,19 @@ public actor LocalCleanupModel: CleanupModel {
         unloadWhenLoaded = false
         let generator = self.generator
         let url = modelURL
-        loadTask = Task.detached(priority: .userInitiated) { [weak self] in
-            var failure: (any Error)?
-            do { try generator.load(modelAt: url) } catch { failure = error }
+        // The load blocks (disk, weights, a GPU library), so it runs on a dispatch thread and
+        // never on Swift's small cooperative pool, which a blocked load would starve.
+        loadTask = Task { [weak self] in
+            let failure: (any Error)? = await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        try generator.load(modelAt: url)
+                        continuation.resume(returning: nil)
+                    } catch {
+                        continuation.resume(returning: error)
+                    }
+                }
+            }
             await self?.finishLoad(failure)
         }
     }

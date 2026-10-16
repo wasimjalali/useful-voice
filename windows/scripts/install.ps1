@@ -59,8 +59,37 @@
       Fail "the download does not match this release (sha256 $got, expected $Sha256). Nothing was installed."
     }
 
+    # Where a per-user copy lives: the registry entry of an earlier install, else the default.
+    function Get-InstalledExe {
+      $exe = Join-Path $env:LOCALAPPDATA 'Programs\Useful Voice\Useful Voice.exe'
+      $entry = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
+        ForEach-Object { Get-ItemProperty $_.PSPath } |
+        Where-Object { $_.DisplayName -like 'Useful Voice*' } |
+        Select-Object -First 1
+      # electron-builder's per-user entry may leave InstallLocation empty; its UninstallString
+      # always names the uninstaller beside the exe.
+      if ($entry -and $entry.InstallLocation) {
+        $exe = Join-Path $entry.InstallLocation 'Useful Voice.exe'
+      } elseif ($entry -and $entry.UninstallString -match '^"([^"]+)"') {
+        $exe = Join-Path (Split-Path -Parent $Matches[1]) 'Useful Voice.exe'
+      }
+      return $exe
+    }
+
+    # Re-running this one-liner while the app is running: close that copy (matched by its
+    # install path, so another program with the same name is left alone) before installing.
+    $running = Get-InstalledExe
+    $copies = @(Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $running })
+    if ($copies.Count -gt 0) {
+      Write-Host 'Closing the running Useful Voice...'
+      $copies | Stop-Process -Force -ErrorAction SilentlyContinue
+      foreach ($p in $copies) { [void]$p.WaitForExit(10000) }
+      $left = @(Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $running })
+      if ($left.Count -gt 0) { Fail 'Useful Voice is still running and could not be closed. Quit it from the tray and run this again.' }
+    }
+
     Write-Host 'Installing...'
-    # Per-user install, no administrator prompt. A running copy is closed by the installer.
+    # Per-user install, no administrator prompt.
     $proc = Start-Process -FilePath $installer -ArgumentList '/S' -PassThru
     if (-not $proc.WaitForExit(300000)) {
       Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
@@ -68,22 +97,17 @@
     }
     if ($proc.ExitCode -ne 0) { Fail "the installer exited with code $($proc.ExitCode)." }
 
-    $exe = Join-Path $env:LOCALAPPDATA 'Programs\Useful Voice\Useful Voice.exe'
-    $entry = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
-      ForEach-Object { Get-ItemProperty $_.PSPath } |
-      Where-Object { $_.DisplayName -like 'Useful Voice*' } |
-      Select-Object -First 1
-    # electron-builder's per-user entry may leave InstallLocation empty; its UninstallString
-    # always names the uninstaller beside the exe.
-    if ($entry -and $entry.InstallLocation) {
-      $exe = Join-Path $entry.InstallLocation 'Useful Voice.exe'
-    } elseif ($entry -and $entry.UninstallString -match '^"([^"]+)"') {
-      $exe = Join-Path (Split-Path -Parent $Matches[1]) 'Useful Voice.exe'
-    }
+    $exe = Get-InstalledExe
     if (-not (Test-Path -LiteralPath $exe)) { Fail "the installer finished but $exe is missing." }
 
-    Write-Host "Installed Useful Voice $Version. Starting it..."
-    Start-Process -FilePath $exe
+    # An app started from an elevated window runs elevated, and then cannot paste into normal windows.
+    $elevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if ($elevated) {
+      Write-Host "Installed Useful Voice $Version. This window is running as administrator, so it was not started. Start it from the Start menu."
+    } else {
+      Write-Host "Installed Useful Voice $Version. Starting it..."
+      Start-Process -FilePath $exe
+    }
   } finally {
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
   }

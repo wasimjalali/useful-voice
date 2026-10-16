@@ -151,6 +151,8 @@ export interface StoredRecord {
   text: string;
   appName: string;
   language: string;
+  appID?: string;
+  category?: string;
 }
 
 /** The history as saved on disk. Main writes a moment after the change, so poll until `ok` accepts it. */

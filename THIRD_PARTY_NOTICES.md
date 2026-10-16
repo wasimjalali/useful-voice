@@ -24,3 +24,5 @@ Runs S1-mini on macOS (`llama.xcframework`, release b11669, from
 The ggml authors.
 
 - [licenses/llama.cpp/LICENSE](licenses/llama.cpp/LICENSE)
+
+The Windows runtime (node-llama-cpp and its dependencies) has its own notices in [windows/THIRD_PARTY_NOTICES.md](windows/THIRD_PARTY_NOTICES.md).

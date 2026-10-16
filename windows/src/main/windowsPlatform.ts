@@ -18,8 +18,12 @@ import {
   pasteScript,
   reactivateScript,
   restoreForegroundScript,
+  sendKeyScript,
+  textBeforeCursorScript,
   typeScript,
 } from './powershellScripts.js';
+import { sendKeysFor } from '../core/apps/appAwareness.js';
+import type { AutoSendKey } from '../core/apps/appCategory.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -63,6 +67,34 @@ export async function pasteClipboard(
   try {
     const { stdout } = await runPowerShell(
       pasteScript(expectedForeground, deadlineEpochMs),
+      scriptTimeout(deadlineEpochMs),
+      undefined,
+      kill,
+    );
+    const word = lastLine(stdout);
+    return { result: word === 'sent' || word === 'moved' || word === 'timeout' ? word : 'failed' };
+  } catch {
+    return { result: kill?.aborted || Date.now() >= deadlineEpochMs ? 'timeout' : 'failed' };
+  }
+}
+
+/**
+ * Press the auto-send key (Return, Shift+Return or Ctrl+Return), only while
+ * `expectedForeground` is in front (with `expectedFocus`, the child control captured at the
+ * press, still focused) and before the deadline, in the same script as the keystroke. `kill` stops the script outright when the delivery ran out of time.
+ */
+export async function sendKey(
+  expectedForeground: number,
+  key: AutoSendKey,
+  deadlineEpochMs: number,
+  kill?: AbortSignal,
+  expectedFocus?: number,
+): Promise<InsertAttempt> {
+  const keys = sendKeysFor(key);
+  if (!isHandle(expectedForeground) || keys === null) return { result: 'failed' };
+  try {
+    const { stdout } = await runPowerShell(
+      sendKeyScript(expectedForeground, deadlineEpochMs, keys, expectedFocus),
       scriptTimeout(deadlineEpochMs),
       undefined,
       kill,
@@ -484,4 +516,31 @@ async function runPowerShell(
   pending.child.stdin?.end(input ?? '');
   const result = await pending;
   return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+}
+
+/**
+ * The longest a text-before-cursor read may live, start of PowerShell and UI Automation
+ * included. The read itself has `TEXT_READ_BUDGET_MS`; this only stops a stuck process.
+ * It runs beside the recording, so it never delays the hotkey press.
+ */
+const TEXT_READ_KILL_MS = 3000;
+
+/**
+ * Up to 200 characters before the caret in the focused field of the window captured at
+ * the press, or null when that can't be known: a password field, no caret, the window no
+ * longer in front, a timeout or any failure. Memory only: the caller must never log or
+ * store it.
+ */
+export async function textBeforeCursor(handle: number): Promise<string | null> {
+  if (!isHandle(handle)) return null;
+  try {
+    const { stdout } = await runPowerShell(textBeforeCursorScript(handle), TEXT_READ_KILL_MS);
+    const line = lastLine(stdout);
+    if (!line.startsWith('ok:')) return null;
+    const encoded = line.slice(3);
+    if (!/^[A-Za-z0-9+/=]*$/.test(encoded)) return null;
+    return Buffer.from(encoded, 'base64').toString('utf8');
+  } catch {
+    return null;
+  }
 }

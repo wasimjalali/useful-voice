@@ -1,0 +1,741 @@
+[
+  {
+    "name": "identical text has no word change",
+    "rulesText": "Thanks for the update. I will review it tonight.",
+    "output": "Thanks for the update. I will review it tonight.",
+    "verdict": "noWordChange"
+  },
+  {
+    "name": "surrounding whitespace is trimmed",
+    "rulesText": "Thanks for the update um.",
+    "output": "  Thanks for the update.\n",
+    "verdict": "accept",
+    "text": "Thanks for the update."
+  },
+  {
+    "name": "case and punctuation changes alone are rejected",
+    "rulesText": "so we should ship it on friday",
+    "output": "So we should ship it on Friday.",
+    "verdict": "noWordChange"
+  },
+  {
+    "name": "case and punctuation changes with a removed word are accepted",
+    "rulesText": "so um we should ship it on friday",
+    "output": "So we should ship it on Friday.",
+    "verdict": "accept",
+    "text": "So we should ship it on Friday."
+  },
+  {
+    "name": "oxford comma alone is rejected",
+    "rulesText": "Buy milk, eggs and bread.",
+    "output": "Buy milk, eggs, and bread.",
+    "verdict": "noWordChange"
+  },
+  {
+    "name": "empty output for text with words",
+    "rulesText": "Send the report by Friday.",
+    "output": "",
+    "verdict": "empty"
+  },
+  {
+    "name": "whitespace output for text with words",
+    "rulesText": "Send the report by Friday.",
+    "output": " \n ",
+    "verdict": "empty"
+  },
+  {
+    "name": "empty output for empty input",
+    "rulesText": "",
+    "output": "",
+    "verdict": "accept",
+    "text": ""
+  },
+  {
+    "name": "output for empty input",
+    "rulesText": "",
+    "output": "Hello there",
+    "verdict": "addedContent"
+  },
+  {
+    "name": "think tag",
+    "rulesText": "Send the report by Friday.",
+    "output": "<think>\n\n</think>\n\nSend the report by Friday.",
+    "verdict": "reasoning"
+  },
+  {
+    "name": "closing think tag only",
+    "rulesText": "Send the report by Friday.",
+    "output": "</think> Send the report by Friday.",
+    "verdict": "reasoning"
+  },
+  {
+    "name": "length blow up",
+    "rulesText": "Send the report.",
+    "output": "Send the report. I have sent the report to everyone on the team and added a friendly note at the end of it.",
+    "verdict": "tooLong"
+  },
+  {
+    "name": "short text length slack",
+    "rulesText": "Hi.",
+    "output": "Hi there.",
+    "verdict": "accept",
+    "text": "Hi there."
+  },
+  {
+    "name": "dropped sentence",
+    "rulesText": "The build failed on the staging server. The logs show a timeout in the database layer. We should restart it tomorrow.",
+    "output": "The build failed on the staging server.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "dropped single word in short text",
+    "rulesText": "Ship the release candidate tonight.",
+    "output": "Ship the release tonight.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "one dropped word in a long text is allowed",
+    "rulesText": "The report covers the third quarter revenue, the staffing plan, the new office lease and the hiring forecast for next year.",
+    "output": "The report covers the third quarter revenue, the staffing plan, the office lease and the hiring forecast for next year.",
+    "verdict": "accept",
+    "text": "The report covers the third quarter revenue, the staffing plan, the office lease and the hiring forecast for next year."
+  },
+  {
+    "name": "added word",
+    "rulesText": "Send the report by Friday.",
+    "output": "Send the final report by Friday.",
+    "verdict": "addedContent"
+  },
+  {
+    "name": "added sentence",
+    "rulesText": "Send the report by Friday.",
+    "output": "Send the report by Friday. Let me know if you have questions.",
+    "verdict": "tooLong"
+  },
+  {
+    "name": "replaced word",
+    "rulesText": "Please review the pull request.",
+    "output": "Please inspect the pull request.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "gonna expansion is rejected",
+    "rulesText": "I'm gonna send it tomorrow morning.",
+    "output": "I'm going to send it tomorrow morning.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "self correction drops the first value",
+    "rulesText": "Let's ship it Thursday, no, Friday.",
+    "output": "Let's ship it Friday.",
+    "verdict": "accept",
+    "text": "Let's ship it Friday."
+  },
+  {
+    "name": "no wait without commas is not a correction pattern",
+    "rulesText": "Meet at Monday no wait Tuesday at the cafe.",
+    "output": "Meet at Tuesday at the cafe.",
+    "verdict": "negation"
+  },
+  {
+    "name": "self correction cue words may be dropped",
+    "rulesText": "Send it to Bob, sorry, to Alice.",
+    "output": "Send it to Alice.",
+    "verdict": "accept",
+    "text": "Send it to Alice."
+  },
+  {
+    "name": "i mean correction",
+    "rulesText": "The meeting is at three, I mean four.",
+    "output": "The meeting is at 4.",
+    "verdict": "accept",
+    "text": "The meeting is at 4."
+  },
+  {
+    "name": "dropped no without commas",
+    "rulesText": "There was no time to review the second proposal.",
+    "output": "There was time to review the second proposal.",
+    "verdict": "negation"
+  },
+  {
+    "name": "self correction cannot drop everything",
+    "rulesText": "Let's ship it Thursday, no, Friday.",
+    "output": "Okay.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "spelled numbers become digits",
+    "rulesText": "The invoice is two thousand five hundred dollars.",
+    "output": "The invoice is $2,500.",
+    "verdict": "accept",
+    "text": "The invoice is $2,500."
+  },
+  {
+    "name": "digits become words are fine",
+    "rulesText": "We have 3 open tickets.",
+    "output": "We have three open tickets.",
+    "verdict": "accept",
+    "text": "We have three open tickets."
+  },
+  {
+    "name": "lost number",
+    "rulesText": "We have three open tickets for the release.",
+    "output": "We have open tickets for the release.",
+    "verdict": "changedNumber"
+  },
+  {
+    "name": "invented number",
+    "rulesText": "We have open tickets for the release.",
+    "output": "We have 12 open tickets for the release.",
+    "verdict": "changedNumber"
+  },
+  {
+    "name": "spoken decimal",
+    "rulesText": "The file is two point five gigabytes.",
+    "output": "The file is 2.5 gigabytes.",
+    "verdict": "accept",
+    "text": "The file is 2.5 gigabytes."
+  },
+  {
+    "name": "spoken times",
+    "rulesText": "The event runs from nine a m to five p m.",
+    "output": "The event runs from 9am to 5pm.",
+    "verdict": "accept",
+    "text": "The event runs from 9am to 5pm."
+  },
+  {
+    "name": "date formatting",
+    "rulesText": "The launch is on march third twenty twenty six.",
+    "output": "The launch is on March 3, 2026.",
+    "verdict": "accept",
+    "text": "The launch is on March 3, 2026."
+  },
+  {
+    "name": "email address",
+    "rulesText": "Send it to john at example dot com please.",
+    "output": "Send it to john@example.com please.",
+    "verdict": "accept",
+    "text": "Send it to john@example.com please."
+  },
+  {
+    "name": "email address dropped user",
+    "rulesText": "Send it to john at example dot com please.",
+    "output": "Send it to example.com please.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "file path spoken",
+    "rulesText": "Open src slash app dot ts and fix the parser.",
+    "output": "Open src/app.ts and fix the parser.",
+    "verdict": "accept",
+    "text": "Open src/app.ts and fix the parser."
+  },
+  {
+    "name": "contraction without apostrophe",
+    "rulesText": "i dont think that is right",
+    "output": "I don't think that is right.",
+    "verdict": "noWordChange"
+  },
+  {
+    "name": "bulleted list of the same words",
+    "rulesText": "pack sunscreen and a first aid kit and chargers",
+    "output": "Pack:\n- Sunscreen\n- A first aid kit\n- Chargers",
+    "verdict": "accept",
+    "text": "Pack:\n- Sunscreen\n- A first aid kit\n- Chargers"
+  },
+  {
+    "name": "email layout alone is rejected",
+    "rulesText": "hey sarah just wanted to follow up thanks john",
+    "output": "Hey Sarah,\n\nJust wanted to follow up.\n\nThanks,\nJohn",
+    "verdict": "noWordChange"
+  },
+  {
+    "name": "filler words in the input may go",
+    "rulesText": "so like you know I think we should go",
+    "output": "So I think we should go.",
+    "verdict": "accept",
+    "text": "So I think we should go."
+  },
+  {
+    "name": "repeated content word removed by the model is a drop",
+    "rulesText": "We are going going going to ship it.",
+    "output": "We are going to ship it.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "translation is rejected",
+    "rulesText": "Please send the report tomorrow.",
+    "output": "Bitte senden Sie den Bericht morgen.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "answering a question is rejected",
+    "rulesText": "What is the capital of France?",
+    "output": "The capital of France is Paris.",
+    "verdict": "addedContent"
+  },
+  {
+    "name": "code identifier kept",
+    "rulesText": "Rename fooBar to bazQux in the config.",
+    "output": "Rename fooBar to bazQux in the config.",
+    "verdict": "noWordChange"
+  },
+  {
+    "name": "code identifier changed",
+    "rulesText": "Rename fooBar to bazQux in the config.",
+    "output": "Rename foo bar to baz qux in the config.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "dropped not",
+    "rulesText": "I will not sign the contract today.",
+    "output": "I will sign the contract today.",
+    "verdict": "negation"
+  },
+  {
+    "name": "dropped n't with apostrophe",
+    "rulesText": "We don't ship on Fridays anymore.",
+    "output": "We ship on Fridays anymore.",
+    "verdict": "negation"
+  },
+  {
+    "name": "dropped nt without apostrophe",
+    "rulesText": "We dont ship on Fridays anymore.",
+    "output": "We ship on Fridays anymore.",
+    "verdict": "negation"
+  },
+  {
+    "name": "dropped typographic n't",
+    "rulesText": "We don’t ship on Fridays anymore.",
+    "output": "We do ship on Fridays anymore.",
+    "verdict": "negation"
+  },
+  {
+    "name": "dropped cannot",
+    "rulesText": "You cannot merge this branch yet.",
+    "output": "You can merge this branch yet.",
+    "verdict": "negation"
+  },
+  {
+    "name": "dropped never",
+    "rulesText": "I never approved that budget request.",
+    "output": "I approved that budget request.",
+    "verdict": "negation"
+  },
+  {
+    "name": "dropped nor",
+    "rulesText": "Neither the client nor the vendor signed the change order.",
+    "output": "Neither the client and the vendor signed the change order.",
+    "verdict": "negation"
+  },
+  {
+    "name": "dropped no",
+    "rulesText": "There is no reason to delay the launch.",
+    "output": "There is reason to delay the launch.",
+    "verdict": "negation"
+  },
+  {
+    "name": "dropped nothing",
+    "rulesText": "Nothing in the logs explains the crash.",
+    "output": "In the logs explains the crash.",
+    "verdict": "negation"
+  },
+  {
+    "name": "invented not",
+    "rulesText": "Please send the invoice to the client today.",
+    "output": "Please do not send the invoice to the client today.",
+    "verdict": "negation"
+  },
+  {
+    "name": "doubled no is a negation drop",
+    "rulesText": "No, no, I did not say that.",
+    "output": "No, I did not say that.",
+    "verdict": "negation"
+  },
+  {
+    "name": "do not becoming don't keeps the negation",
+    "rulesText": "Please do not, um, merge it yet.",
+    "output": "Please don't merge it yet.",
+    "verdict": "accept",
+    "text": "Please don't merge it yet."
+  },
+  {
+    "name": "n't becoming not keeps the negation",
+    "rulesText": "We can't ship it, uh, before Friday.",
+    "output": "We cannot ship it before Friday.",
+    "verdict": "accept",
+    "text": "We cannot ship it before Friday."
+  },
+  {
+    "name": "changed number",
+    "rulesText": "Order 12 boxes of paper for the office.",
+    "output": "Order 13 boxes of paper for the office.",
+    "verdict": "changedNumber"
+  },
+  {
+    "name": "changed spoken number",
+    "rulesText": "Order twelve boxes of paper for the office.",
+    "output": "Order 13 boxes of paper for the office.",
+    "verdict": "changedNumber"
+  },
+  {
+    "name": "changed dose",
+    "rulesText": "Take two hundred fifty milligrams twice a day.",
+    "output": "Take 25 mg twice a day.",
+    "verdict": "changedNumber"
+  },
+  {
+    "name": "phone digits changed",
+    "rulesText": "Call five five five, zero one two three.",
+    "output": "Call 555-0132.",
+    "verdict": "changedNumber"
+  },
+  {
+    "name": "phone digits regrouped",
+    "rulesText": "Call five five five, zero one two three, um, today.",
+    "output": "Call 555-0123 today.",
+    "verdict": "accept",
+    "text": "Call 555-0123 today."
+  },
+  {
+    "name": "phone format change keeps the digit sequence",
+    "rulesText": "Call 555-0123 today, uh, please.",
+    "output": "Call 5550123 today please.",
+    "verdict": "accept",
+    "text": "Call 5550123 today please."
+  },
+  {
+    "name": "swapped digit groups",
+    "rulesText": "The code is 12 3 for the door, um, upstairs.",
+    "output": "The code is 1 23 for the door upstairs.",
+    "verdict": "changedNumber"
+  },
+  {
+    "name": "a dozen becomes 12",
+    "rulesText": "I need a dozen eggs, uh, for the cake.",
+    "output": "I need 12 eggs for the cake.",
+    "verdict": "accept",
+    "text": "I need 12 eggs for the cake."
+  },
+  {
+    "name": "thousands separator",
+    "rulesText": "The budget is forty thousand dollars, um, total.",
+    "output": "The budget is $40,000 total.",
+    "verdict": "accept",
+    "text": "The budget is $40,000 total."
+  },
+  {
+    "name": "ordinal digits",
+    "rulesText": "She finished, um, twenty first in the race.",
+    "output": "She finished 21st in the race.",
+    "verdict": "accept",
+    "text": "She finished 21st in the race."
+  },
+  {
+    "name": "ordinal up to thousandth",
+    "rulesText": "It is the, uh, thousandth order this month.",
+    "output": "It is the 1000th order this month.",
+    "verdict": "accept",
+    "text": "It is the 1000th order this month."
+  },
+  {
+    "name": "spoken decimal with point",
+    "rulesText": "The file is two point five gigabytes, um, in total.",
+    "output": "The file is 2.5 gigabytes in total.",
+    "verdict": "accept",
+    "text": "The file is 2.5 gigabytes in total."
+  },
+  {
+    "name": "decimal point moved",
+    "rulesText": "The file is two point five gigabytes, um, in total.",
+    "output": "The file is 25 gigabytes in total.",
+    "verdict": "changedNumber"
+  },
+  {
+    "name": "hour with zero minutes",
+    "rulesText": "The call is at five, um, in the afternoon.",
+    "output": "The call is at 5:00 in the afternoon.",
+    "verdict": "accept",
+    "text": "The call is at 5:00 in the afternoon."
+  },
+  {
+    "name": "number order swapped",
+    "rulesText": "Send 5 boxes to Berlin and 3 boxes to Paris, um, today.",
+    "output": "Send 3 boxes to Berlin and 5 boxes to Paris today.",
+    "verdict": "reordered"
+  },
+  {
+    "name": "punctuation only output",
+    "rulesText": "Ship it on Friday.",
+    "output": ".",
+    "verdict": "empty"
+  },
+  {
+    "name": "zero width space output",
+    "rulesText": "Ship it on Friday.",
+    "output": "​",
+    "verdict": "empty"
+  },
+  {
+    "name": "ideographic space output",
+    "rulesText": "Ship it on Friday.",
+    "output": "　",
+    "verdict": "empty"
+  },
+  {
+    "name": "short pure self correction",
+    "rulesText": "Thursday, no, Friday.",
+    "output": "Friday.",
+    "verdict": "accept",
+    "text": "Friday."
+  },
+  {
+    "name": "make that",
+    "rulesText": "Order two pizzas, make that three pizzas.",
+    "output": "Order three pizzas.",
+    "verdict": "accept",
+    "text": "Order three pizzas."
+  },
+  {
+    "name": "no wait with commas",
+    "rulesText": "Meet at Monday, no wait, Tuesday at the cafe.",
+    "output": "Meet at Tuesday at the cafe.",
+    "verdict": "accept",
+    "text": "Meet at Tuesday at the cafe."
+  },
+  {
+    "name": "scratch that",
+    "rulesText": "Room twelve, scratch that, room fourteen, um, please.",
+    "output": "Room 14, please.",
+    "verdict": "accept",
+    "text": "Room 14, please."
+  },
+  {
+    "name": "or rather",
+    "rulesText": "Ship it Monday, or rather Tuesday morning.",
+    "output": "Ship it Tuesday morning.",
+    "verdict": "accept",
+    "text": "Ship it Tuesday morning."
+  },
+  {
+    "name": "correction across a sentence end",
+    "rulesText": "Can you meet Friday? Sorry, Saturday?",
+    "output": "Can you meet Saturday?",
+    "verdict": "accept",
+    "text": "Can you meet Saturday?"
+  },
+  {
+    "name": "correction allowance is capped to the corrected span",
+    "rulesText": "Send the deck and the budget to Maria, sorry, to Tom.",
+    "output": "Send it to Tom.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "sorry at sentence start is not a correction",
+    "rulesText": "Sorry, I missed the planning meeting and the review.",
+    "output": "I missed the meeting.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "i mean at sentence start is not a correction",
+    "rulesText": "I mean what I said: the plan needs a second review.",
+    "output": "The plan needs a second review.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "actually without commas is not a correction",
+    "rulesText": "We actually shipped the mobile release last night.",
+    "output": "We shipped last night.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "correction cannot drop the repair",
+    "rulesText": "Let's meet Monday, no wait, Tuesday.",
+    "output": "Let's meet Monday.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "newline starts a sentence for a correction cue",
+    "rulesText": "Ship the build Monday.\nWait, Tuesday.",
+    "output": "Ship the build Tuesday.",
+    "verdict": "accept",
+    "text": "Ship the build Tuesday."
+  },
+  {
+    "name": "swapped order",
+    "rulesText": "Send the report to Alice, um, not to Bob.",
+    "output": "Send the report to Bob, not to Alice.",
+    "verdict": "reordered"
+  },
+  {
+    "name": "duplicated output",
+    "rulesText": "Ship the release on Friday, um, morning.",
+    "output": "Ship the release on Friday morning. Ship the release on Friday morning.",
+    "verdict": "duplicated"
+  },
+  {
+    "name": "one word repeated beyond what was said",
+    "rulesText": "We tested the login, uh, flow.",
+    "output": "We tested the login login flow.",
+    "verdict": "duplicated"
+  },
+  {
+    "name": "words said twice may stay twice",
+    "rulesText": "Check the report and, um, the report summary.",
+    "output": "Check the report and the report summary.",
+    "verdict": "accept",
+    "text": "Check the report and the report summary."
+  },
+  {
+    "name": "preamble with colon",
+    "rulesText": "Ship it on Friday, um, please.",
+    "output": "Here is the cleaned text: Ship it on Friday, please.",
+    "verdict": "wrapper"
+  },
+  {
+    "name": "short preamble",
+    "rulesText": "Ship it on Friday, um, please.",
+    "output": "Cleaned: Ship it on Friday, please.",
+    "verdict": "wrapper"
+  },
+  {
+    "name": "leading sure",
+    "rulesText": "Ship it on Friday, um, please.",
+    "output": "Sure, ship it on Friday, please.",
+    "verdict": "wrapper"
+  },
+  {
+    "name": "speaker's own sure stays",
+    "rulesText": "Sure, um, I can do that.",
+    "output": "Sure, I can do that.",
+    "verdict": "accept",
+    "text": "Sure, I can do that."
+  },
+  {
+    "name": "speaker's own colon stays",
+    "rulesText": "Note to self, um: buy milk and eggs.",
+    "output": "Note to self: buy milk and eggs.",
+    "verdict": "accept",
+    "text": "Note to self: buy milk and eggs."
+  },
+  {
+    "name": "code fence",
+    "rulesText": "Run npm test, um, now.",
+    "output": "```\nRun npm test now.\n```",
+    "verdict": "wrapper"
+  },
+  {
+    "name": "chat token",
+    "rulesText": "Run npm test, um, now.",
+    "output": "Run npm test now.<|im_end|>",
+    "verdict": "wrapper"
+  },
+  {
+    "name": "unknown tag",
+    "rulesText": "Run npm test, um, now.",
+    "output": "<output>Run npm test now.</output>",
+    "verdict": "wrapper"
+  },
+  {
+    "name": "tag the speaker dictated stays",
+    "rulesText": "Wrap it in a <div>, um, tag.",
+    "output": "Wrap it in a <div> tag.",
+    "verdict": "accept",
+    "text": "Wrap it in a <div> tag."
+  },
+  {
+    "name": "quote wrap",
+    "rulesText": "Run npm test, um, now.",
+    "output": "\"Run npm test now.\"",
+    "verdict": "wrapper"
+  },
+  {
+    "name": "decomposed accent equals composed",
+    "rulesText": "Meet at the café, um, at noon.",
+    "output": "Meet at the café at noon.",
+    "verdict": "accept",
+    "text": "Meet at the café at noon."
+  },
+  {
+    "name": "nbsp and cr count as spaces",
+    "rulesText": "Ship it\r\non Friday, um, please.",
+    "output": "Ship it on Friday, please.",
+    "verdict": "accept",
+    "text": "Ship it on Friday, please."
+  },
+  {
+    "name": "crlf only output",
+    "rulesText": "Ship it on Friday.",
+    "output": "\r\n",
+    "verdict": "empty"
+  },
+  {
+    "name": "a no correction cannot drop a long clause (quarterly report)",
+    "rulesText": "Send the quarterly sales report to the regional board, no, the finance team should review every number in the forecast first.",
+    "output": "The finance team should review every number in the forecast first.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "a sentence-initial sorry cannot drop a long previous sentence (signed contract)",
+    "rulesText": "We signed the contract with the new supplier in Leeds on Monday. Sorry, I have to leave early today for a dentist appointment across town.",
+    "output": "Sorry, I have to leave early today for a dentist appointment across town.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "a sentence-initial wait cannot reach into a long previous sentence",
+    "rulesText": "The quarterly report covers revenue, hiring, the office lease and the travel budget. Wait, I need to add the marketing numbers.",
+    "output": "The quarterly report covers revenue and hiring. Wait, I need to add the marketing numbers.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "sorry for the delay is not a correction",
+    "rulesText": "Sorry for the delay, the report covers a, b, c and d.",
+    "output": "Sorry for the delay, the report covers a.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "a sentence-initial actually is not a correction",
+    "rulesText": "Actually, the report covers a, b, c and d.",
+    "output": "Actually, the report covers a.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "chained make that keeps only the last repair",
+    "rulesText": "Order two pizzas, make that three pizzas, make that four pizzas.",
+    "output": "Order 4 pizzas.",
+    "verdict": "accept",
+    "text": "Order 4 pizzas."
+  },
+  {
+    "name": "a cue with no repair exempts nothing",
+    "rulesText": "Move the meeting to Friday, sorry.",
+    "output": "Move the meeting.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "dropping exactly the maximum share is allowed",
+    "rulesText": "Pack apples, bananas, cherries, grapes, lemons, limes, mangoes, melons, oranges, peaches, pears, plums, berries, figs, dates, kiwis, olives, onions and carrots.",
+    "output": "Pack apples, bananas, cherries, grapes, lemons, limes, mangoes, melons, oranges, peaches, pears, plums, berries, olives, onions and carrots.",
+    "verdict": "accept",
+    "text": "Pack apples, bananas, cherries, grapes, lemons, limes, mangoes, melons, oranges, peaches, pears, plums, berries, olives, onions and carrots."
+  },
+  {
+    "name": "dropping one word past the maximum share is not",
+    "rulesText": "Pack apples, bananas, cherries, grapes, lemons, limes, mangoes, melons, oranges, peaches, pears, plums, berries, figs, dates, kiwis, olives, onions and carrots.",
+    "output": "Pack apples, bananas, cherries, grapes, lemons, limes, mangoes, melons, oranges, peaches, pears, plums, olives, onions and carrots.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "a dictated tag followed by a combining mark stays",
+    "rulesText": "Wrap the title in <b>́ tags, um, please.",
+    "output": "Wrap the title in <b>́ tags please.",
+    "verdict": "accept",
+    "text": "Wrap the title in <b>́ tags please."
+  },
+  {
+    "name": "a kept comma before wait is not a correction",
+    "rulesText": "I think we should, wait until Monday.",
+    "output": "Wait until Monday.",
+    "verdict": "droppedContent"
+  }
+]

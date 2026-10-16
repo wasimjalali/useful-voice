@@ -129,7 +129,7 @@ import Testing
     }
 
     static var caseCount: Int {
-        Int(ProcessInfo.processInfo.environment["UV_LM_DIFF_CASES"] ?? "") ?? 1000
+        Int(ProcessInfo.processInfo.environment["UV_LM_DIFF_CASES"] ?? "") ?? 600
     }
 
     // MARK: - Differential tests

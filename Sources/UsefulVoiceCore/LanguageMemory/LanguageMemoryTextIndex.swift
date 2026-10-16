@@ -24,9 +24,14 @@ import Foundation
 /// skeleton; a phrase is checked by looking up its windows. Presence of all windows is
 /// necessary, not sufficient, hence "may".
 ///
-/// The set only ever grows (`absorb`). Rules rewrite the text as they go, and a rule later
-/// in the list can match text an earlier rule just wrote, so the index must cover every
-/// version of the text it has seen. Extra windows only cost an occasional needless regex.
+/// Two stages. The first looks the phrase's windows up in sets that only ever grow
+/// (`absorb`): rules rewrite the text as they go, so those sets cover every version of the
+/// text seen so far and answer in a few hash lookups, which is what disposes of the
+/// thousands of phrases that are nowhere near the text. The second looks for the phrase's
+/// skeleton in the skeleton of the *current* text, and refuses an occurrence flanked by an
+/// ASCII letter, digit or underscore, which the regex's word boundaries would refuse too.
+/// That one is exact about what the text holds now, so a phrase whose windows are all
+/// present but never together costs a short array scan instead of a regex scan.
 struct LanguageMemoryTextIndex {
     /// The phrase side: the skeleton of the trimmed phrase.
     struct Signature {
@@ -36,6 +41,11 @@ struct LanguageMemoryTextIndex {
     private var unigrams = Set<UInt32>()
     private var bigrams = Set<UInt64>()
     private var trigrams = Set<UInt64>()
+    /// The skeleton of the text as of the last `absorb`, and per entry whether it comes
+    /// from an ASCII letter, digit or underscore (the only word characters whose status
+    /// does not depend on the Unicode tables of the ICU in use).
+    private var current: [UInt32] = []
+    private var currentIsASCIIWord: [Bool] = []
 
     init(text: String) {
         absorb(text)
@@ -50,10 +60,10 @@ struct LanguageMemoryTextIndex {
         return Signature(skeleton: skeleton(of: trimmed))
     }
 
-    /// Adds every window of `text`'s skeleton to the index.
+    /// Makes `text` the current text and adds every window of its skeleton to the index.
     mutating func absorb(_ text: String) {
-        let s = Self.skeleton(of: text)
-        guard !s.isEmpty else { return }
+        (current, currentIsASCIIWord) = Self.skeletonWithWordFlags(of: text)
+        let s = current
         for i in 0..<s.count {
             unigrams.insert(s[i])
             if i + 1 < s.count {
@@ -65,23 +75,44 @@ struct LanguageMemoryTextIndex {
         }
     }
 
-    /// False only when the regex for this phrase certainly finds nothing in any text the
-    /// index has absorbed.
+    /// False only when the regex for this phrase certainly finds nothing in the current
+    /// text. (Stage one alone speaks for every text absorbed so far; see above.)
     func mayContain(_ signature: Signature) -> Bool {
         let p = signature.skeleton
         switch p.count {
         case 0:
             return true
         case 1:
-            return unigrams.contains(p[0])
+            if !unigrams.contains(p[0]) { return false }
         case 2:
-            return bigrams.contains(Self.pack(p[0], p[1]))
+            if !bigrams.contains(Self.pack(p[0], p[1])) { return false }
         default:
             for i in 0...(p.count - 3) where !trigrams.contains(Self.pack(p[i], p[i + 1], p[i + 2])) {
                 return false
             }
-            return true
         }
+        return occursInCurrentText(p)
+    }
+
+    private func occursInCurrentText(_ p: [UInt32]) -> Bool {
+        let n = current.count
+        let m = p.count
+        guard m <= n else { return false }
+        let first = p[0]
+        var i = 0
+        while i <= n - m {
+            if current[i] == first {
+                var j = 1
+                while j < m && current[i + j] == p[j] { j += 1 }
+                if j == m {
+                    let leftBlocked = i > 0 && currentIsASCIIWord[i - 1]
+                    let rightBlocked = i + m < n && currentIsASCIIWord[i + m]
+                    if !leftBlocked && !rightBlocked { return true }
+                }
+            }
+            i += 1
+        }
+        return false
     }
 
     // Scalars are at most 0x10FFFF, which fits in 21 bits; three of them fit in a UInt64.
@@ -99,17 +130,26 @@ struct LanguageMemoryTextIndex {
     /// all three as the same letters. ASCII and scalars no case mapping touches take the
     /// fast path.
     static func skeleton(of text: String) -> [UInt32] {
+        skeletonWithWordFlags(of: text).skeleton
+    }
+
+    static func skeletonWithWordFlags(of text: String) -> (skeleton: [UInt32], isASCIIWord: [Bool]) {
         var out: [UInt32] = []
+        var flags: [Bool] = []
         out.reserveCapacity(text.utf8.count)
+        flags.reserveCapacity(text.utf8.count)
         for scalar in text.unicodeScalars {
             let v = scalar.value
             if v < 0x80 {
                 out.append(v >= 0x41 && v <= 0x5A ? v + 0x20 : v)
+                flags.append((v >= 0x30 && v <= 0x39) || (v >= 0x41 && v <= 0x5A) || (v >= 0x61 && v <= 0x7A) || v == 0x5F)
             } else {
+                let before = out.count
                 appendSkeleton(of: scalar, to: &out, depth: 0)
+                flags.append(contentsOf: repeatElement(false, count: out.count - before))
             }
         }
-        return out
+        return (out, flags)
     }
 
     private static func appendSkeleton(of scalar: Unicode.Scalar, to out: inout [UInt32], depth: Int) {

@@ -123,19 +123,28 @@ enum LanguageMemoryBenchCorpus {
         return terms
     }
 
+    /// A fixed id for the n-th object, so fingerprints agree across processes.
+    static func fixedID(_ n: UInt64) -> UUID {
+        UUID(uuid: (UInt8(truncatingIfNeeded: n >> 56), UInt8(truncatingIfNeeded: n >> 48),
+                    UInt8(truncatingIfNeeded: n >> 40), UInt8(truncatingIfNeeded: n >> 32),
+                    UInt8(truncatingIfNeeded: n >> 24), UInt8(truncatingIfNeeded: n >> 16),
+                    UInt8(truncatingIfNeeded: n >> 8), UInt8(truncatingIfNeeded: n),
+                    9, 9, 9, 9, 9, 9, 9, 9))
+    }
+
     static func snapshot(terms count: Int, transcript: String) -> LanguageMemorySnapshot {
         let terms = terms(count: count, transcript: transcript)
         var rng = SplitMix64(seed: 99)
         let words = transcript.split(whereSeparator: { " .,".contains($0) }).map(String.init)
         var replacements: [ReplacementRule] = []
-        for _ in 0..<50 {
+        for n in 0..<50 {
             let heard = words[Int.random(in: 0..<words.count, using: &rng)]
-            replacements.append(ReplacementRule(match: heard, replacement: heard.capitalized + "!"))
+            replacements.append(ReplacementRule(id: fixedID(1_000_000 + UInt64(n)), match: heard, replacement: heard.capitalized + "!"))
         }
         var snippets: [MemorySnippet] = []
         for i in 0..<20 {
             let w = words[Int.random(in: 0..<words.count, using: &rng)]
-            snippets.append(MemorySnippet(trigger: "snip \(w)", expansion: "expansion \(i)"))
+            snippets.append(MemorySnippet(id: fixedID(2_000_000 + UInt64(i)), trigger: "snip \(w)", expansion: "expansion \(i)"))
         }
         return LanguageMemorySnapshot(terms: terms, replacements: replacements, snippets: snippets)
     }

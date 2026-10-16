@@ -245,6 +245,9 @@ const checkApp = (app) => {
 };
 checkApp(BUILT_APP);
 
+// Values that reach the appcast are escaped for XML, so a URL with an & or a
+// quote cannot break out of the attribute or the element.
+const xml = (text) => String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[c]);
 const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 // A detach that fails is retried, then forced, and only logged: an error
 // from the steps before it must be the one that reaches the terminal.
@@ -333,12 +336,12 @@ try {
   <channel>
     <title>Useful Voice</title>
     <item>
-      <title>${version}</title>
-      <pubDate>${new Date().toUTCString()}</pubDate>
-      <sparkle:version>${build}</sparkle:version>
-      <sparkle:shortVersionString>${version}</sparkle:shortVersionString>
+      <title>${xml(version)}</title>
+      <pubDate>${xml(new Date().toUTCString())}</pubDate>
+      <sparkle:version>${xml(build)}</sparkle:version>
+      <sparkle:shortVersionString>${xml(version)}</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <enclosure url="${downloadBase}/${ZIP}" type="application/octet-stream" ${signed} />
+      <enclosure url="${xml(`${downloadBase}/${ZIP}`)}" type="application/octet-stream" ${signed} />
     </item>
   </channel>
 </rss>
@@ -347,16 +350,16 @@ try {
   // The installer names this release's zip and its hash, and refuses anything else.
   zipSha = createHash("sha256").update(readFileSync(zip)).digest("hex");
   const installer = readFileSync(path.join(ROOT, "scripts/install.sh"), "utf8")
-    .replace("@@ZIP_URL@@", `${downloadBase}/${ZIP}`)
-    .replace("@@ZIP_SHA256@@", zipSha);
+    .replace("@@ZIP_URL@@", () => `${downloadBase}/${ZIP}`)
+    .replace("@@ZIP_SHA256@@", () => zipSha);
   if (installer.includes("@@ZIP_")) throw new Error("install.sh placeholders were not filled");
   writeFileSync(path.join(out, "install.sh"), installer, { mode: 0o755 });
   // Published beside the appcast.
   const installUrl = new URL("install.sh", values["feed-url"]).href;
   const notes = readFileSync(path.join(ROOT, "bundle/release-notes.md"), "utf8")
-    .replaceAll("@@VERSION@@", version)
-    .replaceAll("@@INSTALL_COMMAND@@", `curl -fsSL ${installUrl} | sh`)
-    .replaceAll("@@SOURCE_URL@@", SOURCE);
+    .replaceAll("@@VERSION@@", () => version)
+    .replaceAll("@@INSTALL_COMMAND@@", () => `curl -fsSL ${installUrl} | sh`)
+    .replaceAll("@@SOURCE_URL@@", () => SOURCE);
   if (/@@[A-Z_]+@@/.test(notes)) throw new Error("release-notes.md placeholders were not filled");
   writeFileSync(path.join(out, NOTES), notes);
   // Last: its presence marks a finished release folder.

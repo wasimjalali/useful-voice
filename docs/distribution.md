@@ -84,7 +84,9 @@ at a file that doesn't exist) and refuses when `latest.yml` and the installer di
 
 The tests: `install-script` serves a copy of the release on 127.0.0.1 the way GitHub serves
 assets and runs `irm .../install.ps1 | iex`. A tampered installer is refused with nothing
-installed, the real one installs under Windows PowerShell 5.1, then again under PowerShell 7.
+installed, the real one installs under Windows PowerShell 5.1. Run again under PowerShell 7 while
+the app is running, it is refused (exit non-zero, app left running, install untouched); with the
+app stopped, it reinstalls.
 `update` installs an older build (0.0.9, same code) whose feed points at that copy and checks
 it updates itself to the new version through `electron-updater` and starts again. That test
 uses electron-updater's generic provider, so the GitHub provider's lookup of the newest `v` release
@@ -128,6 +130,9 @@ is the owner's call), so Windows warns about it:
   of the web (the CI install test records this on every run: "Zone.Identifier stream: False"),
   and SmartScreen's prompt is for files that carry it, so this path should not show "Windows
   protected your PC". Confirm on a real Windows machine before the site promises it.
+- **Re-running the one-liner.** If Useful Voice is running, `install.ps1` refuses and changes
+  nothing: "Useful Voice is running. Quit it from its tray icon, then run this again." It never
+  kills the app, so a recording, the notes draft and unsaved history are not lost.
 - On Windows 11 with Smart App Control turned on, Microsoft documents that unsigned apps without
   a reputation are blocked, with no Run anyway. Signing is the only fix for those machines.
 

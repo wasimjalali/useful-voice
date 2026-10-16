@@ -7,8 +7,9 @@
 #      nothing is installed.
 #   2. The real installer installs per-user under Windows PowerShell 5.1: one uninstall
 #      entry, the release's version, the exe on disk.
-#   3. The same one-liner works again from PowerShell 7 (a reinstall over the first, with the
-#      app running: the script closes it first).
+#   3. With the app running, the one-liner from PowerShell 7 is refused: it exits non-zero,
+#      tells the user to quit the app, never kills it and leaves the install untouched. After
+#      the app is stopped, the same one-liner reinstalls over the first.
 #
 # Usage: pwsh e2e/installer/install-script.ps1 <publish-local dir> <out dir>
 # <publish-local dir> is release.mjs output made with --base-url http://127.0.0.1:8719.
@@ -128,12 +129,28 @@ try {
   }
 
   # 3. Again from PowerShell 7, over the first install, with the app still running: the
-  # script must close it and say so.
+  # script must refuse, leave the app running and change nothing.
+  $before = @(Get-UvEntries)
+  $pidsBefore = @(Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+  if ($pidsBefore.Count -eq 0) { throw 'the app is not running before the refusal check' }
   $r = Invoke-OneLiner 'pwsh'
-  Say "== 3. real installer again, PowerShell 7: exit $($r.ExitCode)"
+  Say "== 3. real installer while the app runs, PowerShell 7: exit $($r.ExitCode)"
+  Say $r.Output
+  if ($r.ExitCode -eq 0) { throw 'install.ps1 exited 0 while the app was running' }
+  if ($r.Output -notmatch 'Useful Voice is running\. Quit it from its tray icon') { throw 'install.ps1 did not tell the user to quit the app' }
+  $pidsAfter = @(Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+  if (@($pidsBefore | Where-Object { $pidsAfter -notcontains $_ }).Count -ne 0) { throw 'install.ps1 killed the running app' }
+  $after = @(Get-UvEntries)
+  if ($after.Count -ne 1 -or $after[0].DisplayVersion -ne $before[0].DisplayVersion -or $after[0].Key -ne $before[0].Key) { throw 'the refused run changed the uninstall entry' }
+  if (-not (Test-Path -LiteralPath $exe)) { throw 'the refused run removed the installed exe' }
+  Say 'OK: refused, app still running, install untouched'
+
+  # Quit the app the way a user would (here: stop it), then the same one-liner reinstalls.
+  Stop-App
+  $r = Invoke-OneLiner 'pwsh'
+  Say "== 3b. real installer again, PowerShell 7: exit $($r.ExitCode)"
   Say $r.Output
   if ($r.ExitCode -ne 0) { throw "install.ps1 failed under PowerShell 7 (exit $($r.ExitCode))" }
-  if ($r.Output -notmatch 'Closing the running Useful Voice') { throw 'install.ps1 did not close the running app' }
   $entries = @(Get-UvEntries)
   if ($entries.Count -ne 1 -or $entries[0].DisplayVersion -ne $version) { throw "expected one $version entry after the reinstall, found $($entries.Count)" }
   Stop-App

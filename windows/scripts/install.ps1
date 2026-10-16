@@ -76,16 +76,13 @@
       return $exe
     }
 
-    # Re-running this one-liner while the app is running: close that copy (matched by its
-    # install path, so another program with the same name is left alone) before installing.
+    # Re-running this one-liner while the app is running: refuse and change nothing. Killing it
+    # would lose a recording in progress, the notes draft and unsaved history. Matched by install
+    # path, so another program with the same name does not block the install.
     $running = Get-InstalledExe
     $copies = @(Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $running })
     if ($copies.Count -gt 0) {
-      Write-Host 'Closing the running Useful Voice...'
-      $copies | Stop-Process -Force -ErrorAction SilentlyContinue
-      foreach ($p in $copies) { [void]$p.WaitForExit(10000) }
-      $left = @(Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $running })
-      if ($left.Count -gt 0) { Fail 'Useful Voice is still running and could not be closed. Quit it from the tray and run this again.' }
+      Fail 'Useful Voice is running. Quit it from its tray icon, then run this again. Nothing was changed.'
     }
 
     Write-Host 'Installing...'

@@ -17,17 +17,20 @@ public actor LocalCleanupModel: CleanupModel {
     private let generator: any CleanupTextGenerator
     private let modelURL: URL
     private let idleUnloadAfter: Duration
+    private let sleep: @Sendable (Duration) async throws -> Void
     private var loaded = false
     private var idleTask: Task<Void, Never>?
     private var idleGeneration = 0
 
     public init(
         modelURL: URL, generator: any CleanupTextGenerator,
-        idleUnloadAfter: Duration = CleanupModelPolicy.defaultIdleUnload
+        idleUnloadAfter: Duration = CleanupModelPolicy.defaultIdleUnload,
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) {
         self.modelURL = modelURL
         self.generator = generator
         self.idleUnloadAfter = idleUnloadAfter
+        self.sleep = sleep
     }
 
     public var isLoaded: Bool { loaded }
@@ -84,8 +87,9 @@ public actor LocalCleanupModel: CleanupModel {
         idleGeneration += 1
         let generation = idleGeneration
         let delay = idleUnloadAfter
+        let sleep = self.sleep
         idleTask = Task { [weak self] in
-            do { try await Task.sleep(for: delay) } catch { return }
+            do { try await sleep(delay) } catch { return }
             await self?.unloadIfIdle(generation: generation)
         }
     }

@@ -28,13 +28,34 @@ private final class FakeGenerator: CleanupTextGenerator, @unchecked Sendable {
     func unload() { lock.withLock { _unloads += 1 } }
 }
 
+/// A sleeper the test controls: each call is a numbered timer that waits until `fireAll`
+/// (or is cancelled), so the idle window is exercised without real waiting or timing margins.
+private final class ManualSleeper: @unchecked Sendable {
+    struct Cancelled: Error {}
+    private let lock = NSLock()
+    private var _issued = 0
+    private var _fired = 0
+
+    var issued: Int { lock.withLock { _issued } }
+
+    func sleep(_ duration: Duration) async throws {
+        let ticket = lock.withLock { () -> Int in _issued += 1; return _issued }
+        while lock.withLock({ _fired < ticket }) {
+            if Task.isCancelled { throw Cancelled() }
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+    }
+
+    func fireAll() { lock.withLock { _fired = _issued } }
+}
+
 struct LocalCleanupModelTests {
     private let url = URL(fileURLWithPath: "/tmp/none.gguf")
     private let line = "[Styling: semi-formal] [Structure: prose] [Context: general]"
     private var soon: ContinuousClock.Instant { .now.advanced(by: .seconds(10)) }
 
     private func waitUntil(_ condition: @escaping () async -> Bool) async -> Bool {
-        let end = ContinuousClock.now.advanced(by: .seconds(5))
+        let end = ContinuousClock.now.advanced(by: .seconds(30))
         while ContinuousClock.now < end {
             if await condition() { return true }
             try? await Task.sleep(for: .milliseconds(10))
@@ -71,9 +92,13 @@ struct LocalCleanupModelTests {
 
     @Test func unloadsAfterTheIdleWindow() async {
         let gen = FakeGenerator()
-        let model = LocalCleanupModel(modelURL: url, generator: gen, idleUnloadAfter: .milliseconds(120))
+        let timer = ManualSleeper()
+        let model = LocalCleanupModel(
+            modelURL: url, generator: gen, idleUnloadAfter: .seconds(60), sleep: { try await timer.sleep($0) })
         _ = await model.clean("x", controlLine: line, deadline: soon)
         #expect(await model.isLoaded)
+        #expect(await waitUntil { timer.issued == 1 })
+        timer.fireAll()
         #expect(await waitUntil { await !model.isLoaded })
         #expect(gen.unloads == 1)
         // The next dictation loads it again.
@@ -82,22 +107,26 @@ struct LocalCleanupModelTests {
         await model.unload()
     }
 
-    @Test func activityRestartsTheIdleTimerAndADictationInProgressIsNeverUnloaded() async {
+    @Test func aDictationInProgressIsNeverUnloadedAndActivityRestartsTheTimer() async {
         let gen = FakeGenerator()
-        let model = LocalCleanupModel(modelURL: url, generator: gen, idleUnloadAfter: .milliseconds(200))
+        let timer = ManualSleeper()
+        let model = LocalCleanupModel(
+            modelURL: url, generator: gen, idleUnloadAfter: .seconds(60), sleep: { try await timer.sleep($0) })
         await model.begin()
-        // Longer than the idle window while the dictation is still going: still loaded.
-        try? await Task.sleep(for: .milliseconds(500))
+        // No timer runs while the dictation is going, however long it lasts.
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(timer.issued == 0)
+        await model.end()
+        #expect(await waitUntil { timer.issued == 1 })
+        // A new dictation starts before the window ends: the first timer must not unload.
+        await model.begin()
+        timer.fireAll()
+        try? await Task.sleep(for: .milliseconds(100))
         #expect(await model.isLoaded)
         #expect(gen.unloads == 0)
-        // The dictation ends: the window starts then.
         await model.end()
-        try? await Task.sleep(for: .milliseconds(80))
-        #expect(await model.isLoaded)
-        await model.begin()
-        try? await Task.sleep(for: .milliseconds(350))
-        #expect(await model.isLoaded)
-        await model.end()
+        #expect(await waitUntil { timer.issued == 2 })
+        timer.fireAll()
         #expect(await waitUntil { await !model.isLoaded })
         #expect(gen.unloads == 1)
     }

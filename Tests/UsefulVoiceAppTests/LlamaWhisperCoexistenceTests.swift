@@ -38,7 +38,14 @@ private func ms(_ d: Duration) -> Double {
     Double(d.components.seconds) * 1000 + Double(d.components.attoseconds) / 1e15
 }
 
-struct LlamaWhisperLinkTests {
+@Suite("S1-mini next to whisper.cpp (needs the real weights; CI runs it alone)", .serialized,
+       .enabled(if: modelPath("UV_S1_MINI_PATH") != nil && modelPath("UV_WHISPER_TINY_PATH") != nil))
+struct LlamaWhisperCoexistenceTests {
+    private let s1 = modelPath("UV_S1_MINI_PATH") ?? ""
+    private let tiny = modelPath("UV_WHISPER_TINY_PATH") ?? ""
+    private let control = "[Styling: semi-formal] [Structure: prose] [Context: general]"
+    private let cardInput = "so um i need to like send the the report by uh friday no wait make that thursday"
+
     @Test func bothFrameworksLoadInOneProcess() {
         let whisperInfo = WhisperRuntimeInfo.systemInfo()
         let llamaInfo = LlamaRuntime.systemInfo()
@@ -53,15 +60,6 @@ struct LlamaWhisperLinkTests {
         #expect(whisper.count == 1)
         #expect(llama.count == 1)
     }
-}
-
-@Suite("S1-mini next to whisper.cpp (needs the real weights)", .serialized,
-       .enabled(if: modelPath("UV_S1_MINI_PATH") != nil && modelPath("UV_WHISPER_TINY_PATH") != nil))
-struct LlamaWhisperCoexistenceTests {
-    private let s1 = modelPath("UV_S1_MINI_PATH") ?? ""
-    private let tiny = modelPath("UV_WHISPER_TINY_PATH") ?? ""
-    private let control = "[Styling: semi-formal] [Structure: prose] [Context: general]"
-    private let cardInput = "so um i need to like send the the report by uh friday no wait make that thursday"
 
     private func prompt(_ text: String) -> String {
         S1MiniModel.prompt(controlLine: control, text: text)

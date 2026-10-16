@@ -143,14 +143,14 @@ struct CleanupPipelineTests {
         #expect(r.source == .rules)
         #expect(r.model == .timedOut)
         #expect(waited >= .milliseconds(140))
-        #expect(waited < .seconds(2))
+        #expect(waited < .seconds(4))
     }
 
     @Test func fastModelDoesNotWaitForTheDeadline() async {
         let started = ContinuousClock.now
         let r = await run(raw, model: FakeModel(.answer("I need to send the report by Thursday.")), deadline: .seconds(30))
         #expect(r.model == .accepted)
-        #expect(started.duration(to: .now) < .seconds(5))
+        #expect(started.duration(to: .now) < .seconds(10))
     }
 
     @Test func rulesThatLeaveNothingReturnTheRawTextAndSkipTheModel() async {

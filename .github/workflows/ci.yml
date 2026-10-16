@@ -49,10 +49,16 @@ jobs:
         # Xcode's toolchain ships Swift Testing, so plain `swift test` works on
         # CI (the Makefile's framework copy is only needed on the Command Line
         # Tools-only dev machine).
+        run: swift test
+
+      # The real-weights tests run alone: llama.cpp's worker threads spin, and next to the
+      # other 800 tests they starve the timing-based ones (and the model's own latency
+      # numbers). They are skipped in the step above because the paths are not set there.
+      - name: S1-mini and whisper.cpp in one process (real weights)
         env:
           UV_S1_MINI_PATH: ${{ runner.temp }}/uv-models/s1-mini-q4_k_m.gguf
           UV_WHISPER_TINY_PATH: ${{ runner.temp }}/uv-models/ggml-tiny.en.bin
-        run: swift test
+        run: swift test --skip-build --filter LlamaWhisper
 
   windows:
     runs-on: windows-latest

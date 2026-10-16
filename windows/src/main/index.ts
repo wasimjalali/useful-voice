@@ -1254,6 +1254,10 @@ class UsefulVoiceApp {
    * pasted into. A window start pastes nothing, so it records no target at all.
    */
   private async toggleDictation(requested: DictationSource): Promise<void> {
+    // Once the quit has begun nothing may start recording: the flush and the window teardown
+    // below would race it. Checked again after the awaits, where a press that was already
+    // waiting on the foreground window lands.
+    if (this.quitting) return;
     // While the setup flow is open the hotkey dictates into the flow's own field, never
     // into the app in front.
     // The settings this dictation uses, copied now: Settings changed while it runs apply to the next.
@@ -1314,6 +1318,7 @@ class UsefulVoiceApp {
         }
       }
     }
+    if (this.quitting) return;
     await this.service.toggle({ source, targetApp, targetHandle, target, context, press, ownField: ownEditable });
     void this.data.flush();
   }

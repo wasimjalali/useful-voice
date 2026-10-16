@@ -10,8 +10,10 @@ public enum CleanupModelPolicy {
     /// another value to `LocalCleanupModel`.
     public static let defaultIdleUnload: Duration = .seconds(60)
 
-    /// AI cleanup stays off below 8 GB of RAM: 8 GiB, the figure a Mac sold as "8 GB" reports.
-    public static let minimumMemoryBytes: UInt64 = 8 * 1_073_741_824
+    /// AI cleanup stays off below 8 GB of RAM. The check is "at least 7 GiB reported": Windows'
+    /// total memory leaves out hardware-reserved memory, so 8 GB PCs report 7.0 to 7.9 GiB,
+    /// and an 8 GB Mac reports 8 GiB. A 6 GB machine reports under 6 GiB and stays off.
+    public static let minimumMemoryBytes: UInt64 = 7 * 1_073_741_824
 
     public static func memoryAllowsModel(physicalMemoryBytes: UInt64) -> Bool {
         physicalMemoryBytes >= minimumMemoryBytes

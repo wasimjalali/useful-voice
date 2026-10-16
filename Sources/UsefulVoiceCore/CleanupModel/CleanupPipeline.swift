@@ -10,7 +10,7 @@ import Foundation
 ///   1. `CleanupRules` run on the raw text (English only).
 ///   2. Rules left nothing (the whole dictation was fillers): the raw text is the result, so
 ///      History and the clipboard never get an empty entry. The model is not asked.
-///   3. `CleanupModelPolicy.decide` (flag, model downloaded, 8 GB of RAM, English): when it
+///   3. `CleanupModelPolicy.decide` (flag, model downloaded, 8 GB class of RAM, English): when it
 ///      says skip, the rules text is the result.
 ///   4. The model gets the rules text and the control line, up to the deadline. A timeout,
 ///      nil (error, nothing returned) or an answer the guard rejects (too many words

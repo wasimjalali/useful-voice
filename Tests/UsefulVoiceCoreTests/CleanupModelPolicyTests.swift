@@ -5,10 +5,16 @@ import Testing
 struct CleanupModelPolicyTests {
     private let gib: UInt64 = 1_073_741_824
 
-    @Test func memoryRuleIsEightGibibytes() {
+    @Test func memoryRuleIsSevenGibibytesReported() {
+        let gibD = Double(gib)
+        func bytes(_ g: Double) -> UInt64 { UInt64(g * gibD) }
         #expect(!CleanupModelPolicy.memoryAllowsModel(physicalMemoryBytes: 0))
         #expect(!CleanupModelPolicy.memoryAllowsModel(physicalMemoryBytes: 4 * gib))
-        #expect(!CleanupModelPolicy.memoryAllowsModel(physicalMemoryBytes: 8 * gib - 1))
+        #expect(!CleanupModelPolicy.memoryAllowsModel(physicalMemoryBytes: 6 * gib))
+        #expect(!CleanupModelPolicy.memoryAllowsModel(physicalMemoryBytes: bytes(6.9)))
+        #expect(!CleanupModelPolicy.memoryAllowsModel(physicalMemoryBytes: 7 * gib - 1))
+        #expect(CleanupModelPolicy.memoryAllowsModel(physicalMemoryBytes: 7 * gib))
+        #expect(CleanupModelPolicy.memoryAllowsModel(physicalMemoryBytes: bytes(7.8)))
         #expect(CleanupModelPolicy.memoryAllowsModel(physicalMemoryBytes: 8 * gib))
         #expect(CleanupModelPolicy.memoryAllowsModel(physicalMemoryBytes: 16 * gib))
     }
@@ -26,7 +32,7 @@ struct CleanupModelPolicyTests {
         #expect(decide(true, true, 16 * gib, "EN-us") == .run)
         #expect(decide(false, false, 1 * gib, "de") == .skip(.flagOff))
         #expect(decide(true, false, 1 * gib, "de") == .skip(.modelNotDownloaded))
-        #expect(decide(true, true, 4 * gib, "de") == .skip(.notEnoughMemory))
+        #expect(decide(true, true, 6 * gib, "de") == .skip(.notEnoughMemory))
         #expect(decide(true, true, 16 * gib, "de") == .skip(.notEnglish))
         #expect(decide(true, true, 16 * gib, nil) == .skip(.notEnglish))
         #expect(decide(true, true, 16 * gib, "english") == .skip(.notEnglish))

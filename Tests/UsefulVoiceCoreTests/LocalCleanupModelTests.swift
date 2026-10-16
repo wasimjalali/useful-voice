@@ -131,6 +131,52 @@ struct LocalCleanupModelTests {
         #expect(gen.unloads == 1)
     }
 
+    @Test func aCleanThatFinishesAfterTheNextBeginCannotUnloadUnderIt() async {
+        let gen = FakeGenerator()
+        let timer = ManualSleeper()
+        let model = LocalCleanupModel(
+            modelURL: url, generator: gen, idleUnloadAfter: .seconds(60), sleep: { try await timer.sleep($0) })
+        // Dictation 1 is still "ending" (clean running) when dictation 2 begins.
+        await model.begin()
+        let first = Task { await model.clean("one", controlLine: line, deadline: soon) }
+        await model.begin()
+        _ = await first.value
+        // Dictation 1's clean finished while dictation 2 is in progress: no timer may run.
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(timer.issued == 0)
+        timer.fireAll()
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(await model.isLoaded)
+        #expect(gen.unloads == 0)
+        // Dictation 1 ends: dictation 2 is still going, so still no timer.
+        await model.end()
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(timer.issued == 0)
+        #expect(await model.isLoaded)
+        // Dictation 2 ends: now the window starts, and the weights go.
+        await model.end()
+        #expect(await waitUntil { timer.issued == 1 })
+        timer.fireAll()
+        #expect(await waitUntil { await !model.isLoaded })
+        #expect(gen.unloads == 1)
+    }
+
+    @Test func anExtraEndNeverGoesNegative() async {
+        let gen = FakeGenerator()
+        let timer = ManualSleeper()
+        let model = LocalCleanupModel(
+            modelURL: url, generator: gen, idleUnloadAfter: .seconds(60), sleep: { try await timer.sleep($0) })
+        await model.end()
+        await model.end()
+        await model.begin()
+        try? await Task.sleep(for: .milliseconds(50))
+        let issuedWhileActive = timer.issued
+        #expect(await model.isLoaded)
+        await model.end()
+        #expect(await waitUntil { timer.issued == issuedWhileActive + 1 })
+        await model.unload()
+    }
+
     @Test func loadFailureReturnsNilAndRetriesNextTime() async {
         let gen = FakeGenerator()
         gen.failLoad = true

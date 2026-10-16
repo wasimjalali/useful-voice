@@ -3,14 +3,16 @@ import Foundation
 /// Runs the cleanup model on demand and keeps it in memory only while it is being used.
 ///
 /// - `begin()` is called when a dictation starts: it loads the weights while the person is
-///   still talking and cancels any pending unload.
-/// - `end()` is called when the dictation ends or is cancelled: it starts the idle timer.
+///   still talking, counts the dictation as in progress and cancels any pending unload.
+/// - `end()` is called when that dictation ends or is cancelled, once per `begin`: when no
+///   dictation is left in progress it starts the idle timer.
 /// - `clean` loads on demand if `begin` was not called or the weights were unloaded, runs the
-///   model, and starts the idle timer again. Nothing here ever throws to the caller: a load
-///   or run error is logged and `clean` returns nil, so the pipeline keeps the rules text.
-/// - After `idleUnloadAfter` (60 s by default) with no `begin` or `clean`, the weights are
-///   freed. A dictation that is still in progress is never unloaded under: only `end` and
-///   `clean` start the timer.
+///   model, and starts the idle timer only when no dictation is in progress. So a `clean`
+///   that finishes after the next dictation's `begin` cannot unload under that dictation.
+///   Nothing here ever throws to the caller: a load or run error is logged and `clean`
+///   returns nil, so the pipeline keeps the rules text.
+/// - After `idleUnloadAfter` (60 s by default) with no dictation in progress and no `clean`,
+///   the weights are freed.
 ///
 /// An actor, so a load, a run and an unload never overlap.
 public actor LocalCleanupModel: CleanupModel {
@@ -19,6 +21,7 @@ public actor LocalCleanupModel: CleanupModel {
     private let idleUnloadAfter: Duration
     private let sleep: @Sendable (Duration) async throws -> Void
     private var loaded = false
+    private var activeDictations = 0
     private var idleTask: Task<Void, Never>?
     private var idleGeneration = 0
 
@@ -36,12 +39,14 @@ public actor LocalCleanupModel: CleanupModel {
     public var isLoaded: Bool { loaded }
 
     public func begin() {
+        activeDictations += 1
         cancelIdleTimer()
         _ = ensureLoaded()
     }
 
     public func end() {
-        armIdleTimer()
+        activeDictations = max(0, activeDictations - 1)
+        if activeDictations == 0 { armIdleTimer() }
     }
 
     public func unload() {
@@ -54,7 +59,7 @@ public actor LocalCleanupModel: CleanupModel {
 
     public func clean(_ text: String, controlLine: String, deadline: ContinuousClock.Instant) async -> String? {
         cancelIdleTimer()
-        defer { armIdleTimer() }
+        defer { if activeDictations == 0 { armIdleTimer() } }
         guard ContinuousClock.now < deadline, ensureLoaded() else { return nil }
         do {
             return try generator.generate(

@@ -83,7 +83,7 @@ struct CleanupPipelineTests {
         gates.modelInstalled = false
         #expect(await run(raw, gates: gates, model: model).model == .skipped(.modelNotDownloaded))
         gates = on
-        gates.physicalMemoryBytes = 4 << 30
+        gates.physicalMemoryBytes = 6 << 30
         let low = await run(raw, gates: gates, model: model)
         #expect(low.model == .skipped(.notEnoughMemory))
         #expect(low.text == rules)
@@ -97,6 +97,24 @@ struct CleanupPipelineTests {
         #expect(de.model == .skipped(.notEnglish))
         #expect(await run(raw, model: nil).model == .skipped(.noModel))
         #expect(model.calls.isEmpty)
+    }
+
+    @Test func aModelThatCannotLoadNeverReachesTheDictation() async {
+        // The disk or the runtime fails at load: the real model object logs it, returns nil, and
+        // the pipeline hands back the rules text. Nothing throws or rejects.
+        struct DiskError: Error {}
+        final class Broken: CleanupTextGenerator, @unchecked Sendable {
+            func load(modelAt url: URL) throws { throw DiskError() }
+            func generate(prompt: String, deadline: ContinuousClock.Instant) throws -> String { throw DiskError() }
+            func unload() {}
+        }
+        let model = LocalCleanupModel(modelURL: URL(fileURLWithPath: "/nonexistent/s1.gguf"), generator: Broken())
+        await model.begin()
+        let r = await run(raw, model: model)
+        #expect(r.text == rules)
+        #expect(r.source == .rules)
+        #expect(r.model == .failed)
+        await model.end()
     }
 
     @Test func nilFromTheModelFallsBackToRules() async {

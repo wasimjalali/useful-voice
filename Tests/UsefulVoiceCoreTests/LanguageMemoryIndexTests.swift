@@ -294,6 +294,52 @@ import Testing
         #expect(failures.isEmpty, "\(failures.prefix(10))")
     }
 
+    /// Multi-scalar phrases and texts drawn from the scalars whose case behaviour is
+    /// hardest, with the phrase often a re-cased slice of the text so the regex matches.
+    /// The index may say "maybe" for a non-match, but must never say "no" when the regex matches.
+    @Test func testIndexNeverRejectsWhatTheRegexMatchesOnRandomMultiScalarPhrases() {
+        let pool: [String] = [
+            "a", "A", "b", "s", "S", "k", "K", "i", "I", "f", "F", "l", "t", "z", "1", "_",
+            "α", "Α", "σ", "ς", "Σ", "ά", "Ά", "ω", "Ω",
+            "я", "Я", "ё", "Ё", "д", "Д",
+            "ß", "ẞ", "\u{212A}", "ſ", "İ", "ı", "ﬁ", "ﬃ", "Ǆ", "ǆ", "ǅ", "ŉ",
+            "\u{301}", "\u{308}", "e\u{301}", "é", "ü", "u\u{308}",
+            "🙂", "👍", "👍🏽", "\u{200D}", "\u{FE0F}",
+        ]
+        var rng = SplitMix64(seed: 20_261_016)
+        func pick(_ n: Int) -> [String] { (0..<n).map { _ in pool.randomElement(using: &rng)! } }
+        var matched = 0
+        var rejected = 0
+        for _ in 0..<3000 {
+            var pieces = pick(Int.random(in: 3...12, using: &rng))
+            for i in pieces.indices where Int.random(in: 0..<4, using: &rng) == 0 { pieces[i] = " " }
+            let text = pieces.joined()
+            let phrase: String
+            if Bool.random(using: &rng), text.count > 2 {
+                let chars = Array(text)
+                let from = Int.random(in: 0..<chars.count, using: &rng)
+                let to = min(chars.count, from + Int.random(in: 1...4, using: &rng))
+                phrase = Self.recase(String(chars[from..<to]), &rng)
+            } else {
+                phrase = pick(Int.random(in: 1...4, using: &rng)).joined()
+            }
+            guard let signature = LanguageMemoryTextIndex.signature(for: phrase) else { continue }
+            let regexMatches = LegacyLanguageMemory.containsWordBoundaryPhrase(phrase, in: text)
+            let mayContain = LanguageMemoryTextIndex(text: text).mayContain(signature)
+            if regexMatches {
+                matched += 1
+                if !mayContain {
+                    Issue.record("index rejected \(phrase.unicodeScalars.map { String($0.value, radix: 16) }) in \(text.unicodeScalars.map { String($0.value, radix: 16) })")
+                    return
+                }
+            } else if !mayContain {
+                rejected += 1
+            }
+        }
+        #expect(matched > 200)
+        #expect(rejected > 200)
+    }
+
     /// `absorb` re-derives only the stretch of text that changed. After any sequence of
     /// edits its view of the text must equal a fresh build's, and every window of every
     /// version it has seen must still be in its sets.

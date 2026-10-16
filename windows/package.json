@@ -95,5 +95,8 @@
     "portable": {
       "artifactName": "${productName}-${version}-portable.${ext}"
     }
+  },
+  "dependencies": {
+    "node-llama-cpp": "3.22.1"
   }
 }

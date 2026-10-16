@@ -228,7 +228,8 @@ import Foundation
     @Test func aPinnedNonEnglishLanguageSkipsThePreloadAutoAndEnglishDoNot() async {
         generator.answer = "x"
         let german = makeModel()
-        let pinnedDe = makeController(text: spoken, model: german, pin: .de)
+        // A German pin means a German transcript: the run-time language check skips the model too.
+        let pinnedDe = makeController(text: "also ähm das ist gut", language: "de", model: german, pin: .de)
         pinnedDe.toggle()
         await pinnedDe.awaitCleanupLifecycle()
         await german.waitForLoad()

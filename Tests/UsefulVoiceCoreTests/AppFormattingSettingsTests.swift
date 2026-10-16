@@ -146,7 +146,12 @@ import Foundation
         #expect(AppFormattingSettings.cleaned(name: "  Wasim \n") == "Wasim")
         #expect(AppFormattingSettings.cleaned(name: "Wasim\nJalali") == "Wasim Jalali")
         #expect(AppFormattingSettings.cleaned(name: "Wasim \t  \n Jalali") == "Wasim Jalali")
-        #expect(AppFormattingSettings.cleaned(name: "Was\u{0}im\u{7}") == "Wasim")
+        #expect(AppFormattingSettings.cleaned(name: "Was\u{0}im\u{7}") == "Was im")
+        #expect(AppFormattingSettings.cleaned(name: "ab\u{1}cd") == "ab cd")
+        #expect(AppFormattingSettings.cleaned(name: "ab\u{7F}\u{85}cd") == "ab cd")      // DEL and C1
+        #expect(AppFormattingSettings.cleaned(name: "ab\u{2028}\u{2029}cd") == "ab cd")
+        // Format characters stay: the zero-width non-joiner is part of the name.
+        #expect(AppFormattingSettings.cleaned(name: "فاطمه\u{200C}زهرا") == "فاطمه\u{200C}زهرا")
         #expect(AppFormattingSettings.cleaned(name: " \n\t ") == "")
         #expect(AppFormattingSettings.cleaned(name: String(repeating: "a", count: 500)).count == AppFormattingSettings.maxNameLength)
         #expect(try decode(#"{"userName": "  Sam  "}"#).userName == "Sam")

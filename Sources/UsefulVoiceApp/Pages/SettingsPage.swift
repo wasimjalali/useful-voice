@@ -546,7 +546,7 @@ struct SettingsPage: View {
                             title: "Auto-send", selection: autoSendBinding(for: category),
                             options: Self.autoSendOptions)
                         .frame(width: 200)
-                        .accessibilityLabel("\(category.displayName) auto-send")
+                        .accessibilityLabel("\(category.displayName) send key")
                     }
                 }
             }

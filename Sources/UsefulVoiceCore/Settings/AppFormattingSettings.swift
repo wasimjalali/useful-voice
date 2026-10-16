@@ -80,14 +80,17 @@ public struct AppFormattingSettings: Codable, Equatable, Sendable {
 
     // MARK: - Name
 
-    /// The name as it is used: control characters removed (a line break counts as a space),
-    /// runs of whitespace collapsed to one space, trimmed, cut to `maxNameLength` characters.
+    /// The name as it is used: every control character (Cc, C0, DEL and C1) and the line and
+    /// paragraph separators count as a space, format characters (zero-width joiners, bidi
+    /// marks, soft hyphen) are kept, runs of whitespace collapse to one space, the result is
+    /// trimmed and cut to `maxNameLength` characters.
     public static func cleaned(name: String) -> String {
         var out = String.UnicodeScalarView()
         var pendingSpace = false
         for scalar in name.unicodeScalars {
             let isSpace = CharacterSet.whitespacesAndNewlines.contains(scalar)
-            if !isSpace, CharacterSet.controlCharacters.contains(scalar) { continue }
+                || scalar.properties.generalCategory == .control
+                || scalar == "\u{2028}" || scalar == "\u{2029}"
             if isSpace { pendingSpace = !out.isEmpty; continue }
             if pendingSpace { out.append(" "); pendingSpace = false }
             out.append(scalar)

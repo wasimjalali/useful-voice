@@ -673,7 +673,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// chain, not Accessibility: asking AX about our own process from the main thread can
     /// stall.
     private static func ownEditableFieldHasFocus() -> Bool {
-        guard let editor = NSApp.keyWindow?.firstResponder as? NSTextView, editor.isEditable else { return false }
+        isEditableTextFocus(NSApp.keyWindow?.firstResponder)
+    }
+
+    /// Whether a first responder is a text view that accepts typing and is not the field
+    /// editor of a password field.
+    static func isEditableTextFocus(_ responder: NSResponder?) -> Bool {
+        guard let editor = responder as? NSTextView, editor.isEditable else { return false }
         if editor.isFieldEditor, editor.delegate is NSSecureTextField { return false }
         return true
     }

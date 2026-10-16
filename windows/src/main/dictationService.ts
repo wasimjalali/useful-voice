@@ -109,6 +109,8 @@ export interface DeliveryResult {
   partlyTyped?: boolean;
   /** An app that types, and the text has a line break: copied only, nothing sent. */
   lineBreaks?: boolean;
+  /** The paste script failed: Windows refused the keystroke (an elevated target). */
+  pasteFailed?: boolean;
 }
 
 export interface TextSinkPort {
@@ -768,7 +770,14 @@ export class DictationService {
       return;
     }
     if (delivered.clipboardFallback) {
-      this.finish(session, finalText, 'copiedNotPasted', session.targetApp, 'Copied to your clipboard. Press Ctrl+V to paste it.');
+      this.finish(
+        session,
+        finalText,
+        'copiedNotPasted',
+        session.targetApp,
+        'Copied to your clipboard. Press Ctrl+V to paste it.',
+        delivered.pasteFailed ? 'pasteBlocked' : undefined,
+      );
       return;
     }
     // Neither pasted nor on the clipboard: only a broken sink reports this.
@@ -785,7 +794,7 @@ export class DictationService {
     result: DictationDelivery,
     appName?: string,
     idleMessage?: string,
-    notice?: 'partlyTyped' | 'lineBreaks',
+    notice?: 'partlyTyped' | 'lineBreaks' | 'pasteBlocked',
   ): void {
     const event: DictationOutcomeEvent = { kind: 'delivered', words: countWords(text), result };
     if (appName !== undefined) event.appName = appName;

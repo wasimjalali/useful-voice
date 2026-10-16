@@ -116,6 +116,11 @@ export interface PasteDeliveryResult {
   partlyTyped?: boolean;
   /** An app that types, and the text has a line break: copied only, nothing sent. */
   lineBreaks?: boolean;
+  /**
+   * The paste script itself failed (Windows refused the keystroke, the usual case being
+   * a target that runs as administrator). Never set for a lock failure or a copy.
+   */
+  pasteFailed?: boolean;
   /** The method chosen, once the target lock passed. */
   method?: InsertionMethod;
   reason: DeliveryReason;
@@ -154,6 +159,15 @@ export async function deliverToTarget<Snapshot extends ClipboardContents>(
   let early = halted();
   if (early) return early;
 
+  // The method, chosen before the lock: text with a line break for an app that types is
+  // only copied, so the target is never read or brought back just to copy.
+  const method = insertionMethodFor(target?.appId, input.typeOutApps, text);
+  if (method === 'copyOnly') {
+    fx.writeClipboard(text);
+    fx.log('delivery', 'text has a line break and this app types; copied instead');
+    return { delivered: false, clipboardFallback: true, lineBreaks: true, method, reason: 'lineBreaks' };
+  }
+
   // The target lock: only the window captured at the hotkey press. If focus moved, it
   // is brought back once; if that fails, the target is gone or shows another page, copy.
   const withAddress = target?.browserUrl !== undefined;
@@ -179,12 +193,6 @@ export async function deliverToTarget<Snapshot extends ClipboardContents>(
     return copyOnly(lock.kind === 'copyOnly' ? lock.reason : 'notRestored');
   }
 
-  const method = insertionMethodFor(target.appId, input.typeOutApps, text);
-  if (method === 'copyOnly') {
-    fx.writeClipboard(text);
-    fx.log('delivery', 'text has a line break and this app types; copied instead');
-    return { delivered: false, clipboardFallback: true, lineBreaks: true, method, reason: 'lineBreaks' };
-  }
   const snapshot = fx.snapshotClipboard();
   // The dictation goes on the clipboard first in both modes: the safety net.
   fx.writeClipboard(text);
@@ -207,6 +215,7 @@ export async function deliverToTarget<Snapshot extends ClipboardContents>(
   if (attempt.result !== 'sent') {
     const result: PasteDeliveryResult = { delivered: false, clipboardFallback: true, reason: attempt.result, method };
     if (method === 'typeOut' && attempt.typedUnits !== 0) result.partlyTyped = true;
+    if (method === 'paste' && attempt.result === 'failed') result.pasteFailed = true;
     fx.log(
       'delivery',
       attempt.result === 'secure'

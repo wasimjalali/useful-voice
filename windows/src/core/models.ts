@@ -204,6 +204,11 @@ export type DictationOutcomeEvent =
       partlyTyped?: boolean;
       /** With `copiedNotPasted`: the text has a line break, so an app that types got nothing. */
       lineBreaks?: boolean;
+      /**
+       * With `copiedNotPasted`: Windows refused the paste keystroke (the target runs as
+       * administrator). The only outcome that may show the "blocked" banner.
+       */
+      pasteBlocked?: boolean;
     }
   | { kind: 'cancelled' };
 

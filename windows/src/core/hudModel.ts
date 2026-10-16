@@ -65,6 +65,15 @@ const IN_FLIGHT = new Set<HudView['kind']>(['recording', 'transcribing', 'insert
 /** Views that wait for the user; a language confirmation must not destroy them. */
 /** The notice when typing stopped part way. */
 export const PARTLY_TYPED = 'Partly typed. The full text is on your clipboard.';
+/**
+ * Whether an outcome may raise the "Windows blocked the paste" banner: only a paste
+ * Windows refused. A lock failure, a line-break copy or a partly typed stop is not an
+ * administrator problem.
+ */
+export function isPasteBlocked(event: DictationOutcomeEvent): boolean {
+  return event.kind === 'delivered' && event.result === 'copiedNotPasted' && event.pasteBlocked === true;
+}
+
 /** Text with a line break, for an app that types: copied, not typed. */
 export const LINE_BREAKS = "Copied. It has line breaks, so it wasn't typed. Press Ctrl+V.";
 

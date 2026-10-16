@@ -9,7 +9,7 @@ import {
 } from '../src/core/delivery/deliveryFlow.js';
 import type { ClipboardContents } from '../src/core/delivery/clipboardRestore.js';
 import type { DeliveryTarget } from '../src/core/delivery/deliveryTarget.js';
-import { HudModel, hudLabel, type HudFrame } from '../src/core/hudModel.js';
+import { HudModel, hudLabel, isPasteBlocked, type HudFrame } from '../src/core/hudModel.js';
 
 /**
  * One hotkey dictation's delivery, with every platform effect faked and recorded.
@@ -145,6 +145,15 @@ describe('target in front', () => {
     expect(keystrokes(h.calls)).toEqual([]);
     expect(h.calls).not.toContain('restore');
     expect(h.clipboard()).toBe('git add .\ngit commit');
+  });
+
+  it('decides line-break copy before the lock: no foreground read, no reactivation', async () => {
+    const h = harness({ focus: [elsewhere], reactivate: 'refused' });
+    const result = await deliverToTarget(input({ target: terminal, text: 'one\ntwo' }), h.fx);
+    expect(result).toMatchObject({ lineBreaks: true, reason: 'lineBreaks', clipboardFallback: true });
+    expect(h.calls).not.toContain('reactivate');
+    expect(h.calls).not.toContain('readFocus');
+    expect(h.clipboard()).toBe('one\ntwo');
   });
 
   it('still pastes text with a line break into a paste app', async () => {
@@ -303,6 +312,14 @@ describe('the last look before the keystroke', () => {
       expect(h.calls).not.toContain('restore');
     });
 
+    it(`marks only a failed paste script as blocked (${result})`, async () => {
+      const h = harness({ focus: [notepad], paste: { result } });
+      const outcome = await deliverToTarget(input(), h.fx);
+      expect(outcome.pasteFailed).toBe(result === 'failed' ? true : undefined);
+      const typed = harness({ focus: [terminal], typeOut: { result, typedUnits: 0 } });
+      expect((await deliverToTarget(input({ target: terminal }), typed.fx)).pasteFailed).toBeUndefined();
+    });
+
     it(`says "partly typed" when typing stopped part way (${result})`, async () => {
       const h = harness({ focus: [terminal], typeOut: { result, typedUnits: 7 } });
       const outcome = await deliverToTarget(input({ target: terminal }), h.fx);
@@ -395,6 +412,16 @@ describe('time and cancel', () => {
 });
 
 describe('the notice', () => {
+  it('only a paste Windows refused raises the administrator banner', () => {
+    const copied = { kind: 'delivered', words: 3, result: 'copiedNotPasted' } as const;
+    expect(isPasteBlocked({ ...copied, pasteBlocked: true })).toBe(true);
+    expect(isPasteBlocked(copied)).toBe(false);
+    expect(isPasteBlocked({ ...copied, lineBreaks: true })).toBe(false);
+    expect(isPasteBlocked({ ...copied, partlyTyped: true })).toBe(false);
+    expect(isPasteBlocked({ kind: 'delivered', words: 3, result: 'pasted' })).toBe(false);
+    expect(isPasteBlocked({ kind: 'cancelled' })).toBe(false);
+  });
+
   it('the HUD says "partly typed", not "copied", when typing stopped part way', () => {
     const frames: Array<HudFrame | null> = [];
     const hud = new HudModel((frame) => frames.push(frame), {

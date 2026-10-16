@@ -166,7 +166,7 @@ class FakeTranscriber implements TranscriberPort {
 class FakeSink implements TextSinkPort {
   delivered: string[] = [];
   requests: Array<{ text: string; targetApp?: string; targetHandle?: number; target?: DeliveryTarget; mode: string; signal?: AbortSignal }> = [];
-  result: { delivered: boolean; clipboardFallback: boolean; cancelled?: boolean; partlyTyped?: boolean; lineBreaks?: boolean } = { delivered: true, clipboardFallback: false };
+  result: { delivered: boolean; clipboardFallback: boolean; cancelled?: boolean; partlyTyped?: boolean; lineBreaks?: boolean; pasteFailed?: boolean } = { delivered: true, clipboardFallback: false };
   /** Never resolves, to exercise the delivery timeout. */
   hang = false;
   /** Waits for the abort signal and reports it stopped before pasting, like the real sink. */
@@ -175,7 +175,7 @@ class FakeSink implements TextSinkPort {
   gate: Promise<void> | null = null;
   error: Error | null = null;
 
-  async deliver(request: { text: string; targetApp?: string; targetHandle?: number; target?: DeliveryTarget; mode: string; signal?: AbortSignal }): Promise<{ delivered: boolean; clipboardFallback: boolean; cancelled?: boolean; partlyTyped?: boolean; lineBreaks?: boolean }> {
+  async deliver(request: { text: string; targetApp?: string; targetHandle?: number; target?: DeliveryTarget; mode: string; signal?: AbortSignal }): Promise<{ delivered: boolean; clipboardFallback: boolean; cancelled?: boolean; partlyTyped?: boolean; lineBreaks?: boolean; pasteFailed?: boolean }> {
     this.delivered.push(request.text);
     this.requests.push(request);
     if (this.error) throw this.error;
@@ -1305,6 +1305,27 @@ describe('outcomes', () => {
     ]);
     expect(ctx.statuses.at(-1)?.message).toBe(PARTLY_TYPED);
     expect(PARTLY_TYPED).toBe('Partly typed. The full text is on your clipboard.');
+  });
+
+  it('flags the outcome as blocked only when the paste script failed', async () => {
+    const blocked = setup();
+    blocked.sink.result = { delivered: false, clipboardFallback: true, pasteFailed: true };
+    await blocked.service.toggle({ source: 'hotkey', targetApp: 'Admin tool' });
+    await blocked.service.toggle({ source: 'hotkey' });
+    expect(blocked.outcomes).toEqual([
+      { kind: 'delivered', words: 2, result: 'copiedNotPasted', appName: 'Admin tool', pasteBlocked: true },
+    ]);
+    for (const result of [
+      { delivered: false, clipboardFallback: true },
+      { delivered: false, clipboardFallback: true, lineBreaks: true },
+      { delivered: false, clipboardFallback: true, partlyTyped: true },
+    ]) {
+      const ctx = setup();
+      ctx.sink.result = result;
+      await ctx.service.toggle({ source: 'hotkey', targetApp: 'Notepad' });
+      await ctx.service.toggle({ source: 'hotkey' });
+      expect(ctx.outcomes[0]).not.toHaveProperty('pasteBlocked');
+    }
   });
 
   it('says why when text with a line break was copied instead of typed', async () => {

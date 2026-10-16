@@ -1284,6 +1284,7 @@ class UsefulVoiceApp {
       const delivered: DeliveryResult = { delivered: result.delivered, clipboardFallback: result.clipboardFallback };
       if (result.partlyTyped) delivered.partlyTyped = true;
       if (result.lineBreaks) delivered.lineBreaks = true;
+      if (result.pasteFailed) delivered.pasteFailed = true;
       return delivered;
     } finally {
       forgetPageDetails(target);

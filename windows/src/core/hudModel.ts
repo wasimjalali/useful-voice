@@ -28,7 +28,8 @@ export type HudView =
   | { kind: 'saving' }
   /** `saved`: the text was saved and copied (window or retry dictation), not inserted. */
   | { kind: 'done'; words: number; saved: boolean }
-  | { kind: 'copied' }
+  /** `partlyTyped`: typing stopped part way; the full text is on the clipboard. */
+  | { kind: 'copied'; partlyTyped?: boolean }
   | { kind: 'cancelled' }
   | { kind: 'error'; error: DictationError }
   | { kind: 'language'; name: string };
@@ -62,6 +63,9 @@ const REAL_CLOCK: HudClock = {
 const IN_FLIGHT = new Set<HudView['kind']>(['recording', 'transcribing', 'inserting', 'saving', 'error']);
 
 /** Views that wait for the user; a language confirmation must not destroy them. */
+/** The notice when typing stopped part way. */
+export const PARTLY_TYPED = 'Partly typed. The full text is on your clipboard.';
+
 const PERSISTENT = new Set<HudView['kind']>(['error', 'copied']);
 
 export class HudModel {
@@ -115,7 +119,7 @@ export class HudModel {
       return;
     }
     if (event.result === 'copiedNotPasted') {
-      this.show({ kind: 'copied' }, HUD_PERSISTENT_MS);
+      this.show(event.partlyTyped ? { kind: 'copied', partlyTyped: true } : { kind: 'copied' }, HUD_PERSISTENT_MS);
       return;
     }
     this.show({ kind: 'done', words: event.words, saved: event.result === 'copied' }, HUD_DONE_MS);
@@ -297,7 +301,7 @@ export function hudLabel(view: HudView): string {
     case 'done':
       return `${view.saved ? 'Saved and copied' : 'Inserted'}, ${formatWords(view.words)}`;
     case 'copied':
-      return 'Copied. Press Ctrl+V to paste';
+      return view.partlyTyped ? PARTLY_TYPED : 'Copied. Press Ctrl+V to paste';
     case 'cancelled':
       return 'Cancelled';
     case 'error':

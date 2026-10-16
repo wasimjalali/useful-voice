@@ -40,7 +40,7 @@ export interface DockHandle {
 type Mode = 'idle' | 'recording' | 'transcribing' | 'inserting' | 'done' | 'error';
 
 type Done =
-  | { kind: 'delivered'; words: number; result: 'pasted' | 'copiedNotPasted' | 'copied'; appName?: string }
+  | { kind: 'delivered'; words: number; result: 'pasted' | 'copiedNotPasted' | 'copied'; appName?: string; partlyTyped?: boolean }
   | { kind: 'cancelled' };
 
 /** How long the done row stays before the dock returns to idle. */
@@ -274,7 +274,9 @@ export function createDock(options: DockOptions): DockHandle {
           'div',
           { class: 'dock-status', role: 'status' },
           el('span', { class: 'dock-tone-icon' }, icon(STREAM_ICONS.warning, 18)),
-          el('span', {}, el('b', {}, 'Copied.'), ' Press Ctrl+V to paste'),
+          info.partlyTyped
+            ? el('span', {}, el('b', {}, 'Partly typed.'), ' The full text is on your clipboard.')
+            : el('span', {}, el('b', {}, 'Copied.'), ' Press Ctrl+V to paste'),
         ),
         el('span', { class: 'spacer' }),
         el('button', { class: 'btn btn-secondary dock-action', type: 'button', onclick: () => void api.copyLastTranscript() }, 'Copy last transcript'),
@@ -479,7 +481,14 @@ export function createDock(options: DockOptions): DockHandle {
 
   api.onOutcome((outcome: DictationOutcomeEvent) => {
     if (outcome.kind === 'cancelled') showDone({ kind: 'cancelled' });
-    else showDone({ kind: 'delivered', words: outcome.words, result: outcome.result, appName: outcome.appName });
+    else
+      showDone({
+        kind: 'delivered',
+        words: outcome.words,
+        result: outcome.result,
+        appName: outcome.appName,
+        partlyTyped: outcome.partlyTyped === true,
+      });
   });
 
   api.onTelemetry((telemetry: DictationTelemetry) => {

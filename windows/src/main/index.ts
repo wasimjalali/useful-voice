@@ -7,17 +7,8 @@ import os from 'node:os';
 
 import { DataStore } from '../core/settings/dataStore.js';
 import { planLoginItem, wasAutoStarted } from '../core/settings/autostart.js';
-import { decideClipboardRestore, isProbablyVerifiable } from '../core/delivery/clipboardRestore.js';
-import { pasteTargetMoved } from '../core/delivery/pasteTarget.js';
-import {
-  TYPE_OUT_UNITS_PER_CHUNK,
-  appIdFor,
-  checkTarget,
-  insertionMethodFor,
-  isKnownBrowser,
-  recheckTarget,
-  type DeliveryTarget,
-} from '../core/delivery/deliveryTarget.js';
+import { DELIVERY_TIMEOUT, deliverToTarget } from '../core/delivery/deliveryFlow.js';
+import { appIdFor, isKnownBrowser, type DeliveryTarget } from '../core/delivery/deliveryTarget.js';
 import {
   normaliseMemoryLanguage,
   type AppSettings,
@@ -126,6 +117,8 @@ if (E2E) {
 }
 
 const CLIPBOARD_RESTORE_DELAY_MS = 700;
+/** The sink's time when the service names none (it always does). */
+const DEFAULT_SINK_BUDGET_MS = 8000;
 
 /**
  * The HUD window is a fixed transparent area, big enough for the widest state, so the
@@ -190,6 +183,8 @@ class UsefulVoiceApp {
    * can be switched to typing. In memory only.
    */
   private recentTargetApps: string[] = [];
+  /** The hotkey target whose browser address is still being read, if any. */
+  private pendingAddressTarget: DeliveryTarget | null = null;
   private service!: DictationService;
   private diagnostics!: Diagnostics;
 
@@ -1185,10 +1180,12 @@ class UsefulVoiceApp {
       if (target) this.noteRecentTarget(target);
       if (target && front && isKnownBrowser(target.appId)) {
         // Off the critical path: recording never waits on UI Automation. The address
-        // stays on this dictation's target, in memory only.
+        // stays on this dictation's target, in memory only, and a read that finishes
+        // after delivery has settled is dropped.
         const pending = target;
-        void browserAddress(front.handle).then((address) => {
-          if (address) pending.browserUrl = address;
+        this.pendingAddressTarget = pending;
+        void browserAddress(front.handle, pending.appId).then((address) => {
+          if (address && this.pendingAddressTarget === pending) pending.browserUrl = address;
         });
       }
     }
@@ -1238,7 +1235,7 @@ class UsefulVoiceApp {
    * Electron and cannot drift from what the tests assert.
    */
   private async deliver(request: DeliveryRequest): Promise<DeliveryResult> {
-    const { text, mode, targetApp } = request;
+    const { text, mode } = request;
     // A cancel that arrived before anything touched the clipboard stops here, on every
     // path: copy, moved window and paste alike.
     const cancelled: DeliveryResult = { delivered: false, clipboardFallback: false, cancelled: true };
@@ -1249,94 +1246,61 @@ class UsefulVoiceApp {
       clipboard.writeText(text);
       return { delivered: true, clipboardFallback: false };
     }
-    // The target lock: paste only into the window captured at the hotkey press. If
-    // focus moved (the user stopped from the dock, or clicked into another window), the
-    // target is brought back once; if that fails, or it is gone, the text is copied.
-    const lockTarget = request.target;
-    let target = await foregroundWindow();
-    if (request.signal?.aborted) return cancelled;
-    let lock = checkTarget(lockTarget, target ? toDeliveryTarget(target) : null, true);
-    if (lock.kind === 'reactivate' && lockTarget?.windowHandle !== undefined) {
-      const outcome = await reactivateWindow(lockTarget.windowHandle, lockTarget.focusHandle);
-      if (request.signal?.aborted) return cancelled;
-      target = outcome === 'gone' ? null : await foregroundWindow();
-      lock =
-        outcome === 'gone'
-          ? { kind: 'copyOnly', reason: 'targetGone' }
-          : recheckTarget(lockTarget, target ? toDeliveryTarget(target) : null, outcome === 'ok');
-    } else if (lock.kind === 'reactivate') {
-      lock = { kind: 'copyOnly', reason: 'notRestored' };
-    }
-    if (lock.kind !== 'insert' || !target || pasteTargetMoved(lockTarget?.windowHandle, target)) {
-      const reason = lock.kind === 'copyOnly' ? lock.reason : 'notRestored';
-      this.diagnostics.log('delivery', `target not reachable (${reason}); copied instead of pasting`);
-      clipboard.writeText(text);
-      return { delivered: false, clipboardFallback: true };
-    }
-    const method = insertionMethodFor(target.processName, this.settings.all.typeOutApps, text);
-    const snapshot = snapshotClipboard();
-
-    // The dictation goes on the clipboard first in both modes: the safety net.
-    clipboard.writeText(text);
-
-    // The last point at which a cancel can still stop the paste. After this line the
-    // keystroke is sent and the dictation is delivered whatever the user does next.
-    if (request.signal?.aborted) {
-      this.restoreSnapshot(snapshot);
-      return cancelled;
-    }
-    // Exactly one way in: typed out, or Ctrl+V. Both scripts check the target is still
-    // in front right before the first keystroke and send nothing when it is not.
-    const sent =
-      method === 'typeOut'
-        ? await typeText(text, target.handle, TYPE_OUT_UNITS_PER_CHUNK)
-        : await pasteClipboard(target.handle);
-    if (sent === 'moved' || sent === 'secure') {
-      this.diagnostics.log(
-        'delivery',
-        sent === 'secure' ? 'a password field has focus; left on clipboard' : 'focus left the target; left on clipboard',
+    // The target lock, the method, the proof and the restore: `deliverToTarget` decides
+    // (and is tested in `tests/deliveryFlow.test.ts`); this supplies the Windows effects.
+    const target = request.target;
+    const deadline = Date.now() + (request.timeBudgetMs ?? DEFAULT_SINK_BUDGET_MS);
+    const kill = killOnTimeout(request.signal);
+    try {
+      const result = await deliverToTarget(
+        {
+          text,
+          target,
+          typeOutApps: this.settings.all.typeOutApps,
+          restorePreviousClipboard: this.settings.all.restorePreviousClipboard,
+          signal: request.signal,
+          deadline,
+          settleMs: CLIPBOARD_RESTORE_DELAY_MS,
+        },
+        {
+          now: () => Date.now(),
+          readFocus: async (budgetMs, withAddress) => {
+            const front = await foregroundWindow(budgetMs);
+            if (!front) return null;
+            const focus = toDeliveryTarget(front);
+            // The address is read only from the target's own window: another window's
+            // page says nothing about the target's.
+            if (withAddress && target?.windowHandle === front.handle) {
+              const left = deadline - Date.now();
+              const address = await browserAddress(front.handle, focus.appId, left);
+              if (address) focus.browserUrl = address;
+            }
+            return focus;
+          },
+          reactivate: (lockTarget, budgetMs) =>
+            reactivateWindow(lockTarget.windowHandle ?? 0, lockTarget.focusHandle, budgetMs),
+          snapshotClipboard: () => snapshotClipboard(),
+          writeClipboard: (value) => clipboard.writeText(value),
+          restoreClipboard: (snapshot) => this.restoreSnapshot(snapshot),
+          clipboardHoldsText: (value) => clipboardHoldsText(value),
+          paste: (lockTarget, until) => pasteClipboard(lockTarget.windowHandle ?? 0, until, kill),
+          typeOut: (lockTarget, batches, until) => typeText(batches, lockTarget.windowHandle ?? 0, until, kill),
+          wait: (ms) => delay(ms),
+          log: (category, message) => this.diagnostics.log(category, message),
+        },
       );
-      return { delivered: false, clipboardFallback: true };
+      if (result.cancelled) return cancelled;
+      const delivered: DeliveryResult = { delivered: result.delivered, clipboardFallback: result.clipboardFallback };
+      if (result.partlyTyped) delivered.partlyTyped = true;
+      return delivered;
+    } finally {
+      // The window title and the page address were for this dictation only.
+      if (target) {
+        delete target.browserUrl;
+        delete target.windowTitle;
+      }
+      if (this.pendingAddressTarget === target) this.pendingAddressTarget = null;
     }
-    const pasteSent = sent === 'sent';
-
-    // Confirmation is limited to observing that focus did not move and that the
-    // clipboard was consumed: reading the target's text is not possible without a
-    // UI-automation dependency. Both reads are skipped when they could not mean
-    // anything — an unverifiable target, or a paste that never ran. A typed delivery
-    // only needs the focus check.
-    let focusAfter = null as Awaited<ReturnType<typeof foregroundWindow>>;
-    let stillOurs = false;
-    if (pasteSent && method === 'typeOut') {
-      focusAfter = await foregroundWindow();
-    } else if (pasteSent && isProbablyVerifiable(target)) {
-      // The target needs a moment to handle the keystroke; reading the clipboard
-      // sooner would see our own text and call a landed paste a failure.
-      await delay(CLIPBOARD_RESTORE_DELAY_MS);
-      focusAfter = await foregroundWindow();
-      stillOurs = clipboardHoldsText(text);
-    }
-
-    const decision = decideClipboardRestore({
-      clipboard: snapshot,
-      target,
-      pasteSent,
-      focusAfter,
-      clipboardStillHoldsText: stillOurs,
-      restorePreviousClipboard: this.settings.all.restorePreviousClipboard,
-      method,
-    });
-
-    if (decision.restore) {
-      this.restoreSnapshot(snapshot);
-    } else if (decision.reason === 'snapshot-incomplete') {
-      this.diagnostics.log('clipboard', 'not restoring: original could not be captured fully');
-    } else if (decision.reason === 'unverifiable-target') {
-      const name = target?.processName ?? targetApp ?? 'the target app';
-      this.diagnostics.log('delivery', `unverifiable target (${name}); left on clipboard`);
-    }
-
-    return { delivered: decision.delivered, clipboardFallback: !decision.delivered };
   }
 
   /**
@@ -2025,6 +1989,22 @@ function toDeliveryTarget(front: ForegroundWindowInfo): DeliveryTarget {
   if (front.processId !== undefined) target.processId = front.processId;
   if (front.focusHandle !== undefined) target.focusHandle = front.focusHandle;
   return target;
+}
+
+/**
+ * A signal that fires only when the delivery ran out of time, never on a cancel. It
+ * kills a running keystroke script outright; a cancel lets a paste that already
+ * started finish, as it always has.
+ */
+function killOnTimeout(signal: AbortSignal | undefined): AbortSignal | undefined {
+  if (!signal) return undefined;
+  const kill = new AbortController();
+  const onAbort = (): void => {
+    if (signal.reason === DELIVERY_TIMEOUT) kill.abort();
+  };
+  if (signal.aborted) onAbort();
+  else signal.addEventListener('abort', onAbort, { once: true });
+  return kill.signal;
 }
 
 function delay(ms: number): Promise<void> {

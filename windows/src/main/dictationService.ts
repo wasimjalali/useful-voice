@@ -10,6 +10,8 @@ import type {
 } from '../core/models.js';
 import { applyMemory } from '../core/memory/memoryPostProcessor.js';
 import type { DeliveryTarget } from '../core/delivery/deliveryTarget.js';
+import { DELIVERY_TIMEOUT } from '../core/delivery/deliveryFlow.js';
+import { PARTLY_TYPED } from '../core/hudModel.js';
 import { selectKeyterms } from '../core/memory/biasBuilder.js';
 import { RecordingClock, SilenceWatchdog } from '../core/audio/silenceWatchdog.js';
 import { LEVEL_METER_GAIN, MINIMUM_AUDIO_BYTES } from '../core/audio/wav.js';
@@ -81,9 +83,16 @@ export interface DeliveryRequest {
   target?: DeliveryTarget;
   /**
    * Aborted when the user cancels. The sink must check it right before it pastes and
-   * stop there; once the paste is sent it finishes and reports `delivered`.
+   * stop there; once the paste is sent it finishes and reports `delivered`. Aborted
+   * with the reason `DELIVERY_TIMEOUT` when the service stopped waiting: the sink must
+   * then send no keystroke at all, and leave the text on the clipboard.
    */
   signal?: AbortSignal;
+  /**
+   * How long the sink has, from the moment it is called. It plans its steps (and caps
+   * typing) to finish within it, ahead of the service's own timeout.
+   */
+  timeBudgetMs?: number;
 }
 
 export interface DeliveryResult {
@@ -93,6 +102,8 @@ export interface DeliveryResult {
   clipboardFallback: boolean;
   /** The sink stopped before pasting because the signal aborted. Nothing was sent. */
   cancelled?: boolean;
+  /** Typing stopped part way: some of the text went in, all of it is on the clipboard. */
+  partlyTyped?: boolean;
 }
 
 export interface TextSinkPort {
@@ -176,6 +187,13 @@ export interface DictationOutcome {
  * typing a long dictation out.
  */
 export const DEFAULT_DELIVERY_TIMEOUT_MS = 10_000;
+
+/**
+ * The part of the delivery timeout the sink does not get (at most half of it): room for
+ * it to notice its deadline, stop and put the text on the clipboard before the service
+ * gives up.
+ */
+export const DELIVERY_TIMEOUT_MARGIN_MS = 1500;
 
 /** How often the silence and max-length limits are checked, independent of audio frames. */
 export const DEFAULT_TICK_MS = 250;
@@ -734,6 +752,12 @@ export class DictationService {
       this.finish(session, finalText, 'pasted', session.targetApp);
       return;
     }
+    if (delivered.clipboardFallback && delivered.partlyTyped) {
+      // Some of it went in before typing stopped: say so, or the user pastes a second copy
+      // blind. The whole text is on the clipboard.
+      this.finish(session, finalText, 'copiedNotPasted', session.targetApp, PARTLY_TYPED, true);
+      return;
+    }
     if (delivered.clipboardFallback) {
       this.finish(session, finalText, 'copiedNotPasted', session.targetApp, 'Copied to your clipboard. Press Ctrl+V to paste it.');
       return;
@@ -752,9 +776,11 @@ export class DictationService {
     result: DictationDelivery,
     appName?: string,
     idleMessage?: string,
+    partlyTyped = false,
   ): void {
     const event: DictationOutcomeEvent = { kind: 'delivered', words: countWords(text), result };
     if (appName !== undefined) event.appName = appName;
+    if (partlyTyped) event.partlyTyped = true;
     this.emitOutcome(session, event);
     this.session = null;
     this.setState('idle', idleMessage);
@@ -791,7 +817,15 @@ export class DictationService {
   private async deliver(text: string, mode: 'paste' | 'copy', session: Session): Promise<DeliveryResult> {
     const timeoutMs = this.deps.deliveryTimeoutMs ?? DEFAULT_DELIVERY_TIMEOUT_MS;
     let timer: NodeJS.Timeout | null = null;
+    // This delivery's own signal: a cancel passes through to it, and a timeout aborts it
+    // with `DELIVERY_TIMEOUT` so the sink stops for good instead of pasting late.
+    const delivery = new AbortController();
+    const cancel = this.abortController?.signal;
+    const onCancel = (): void => delivery.abort(cancel?.reason);
+    if (cancel?.aborted) onCancel();
+    else cancel?.addEventListener('abort', onCancel, { once: true });
     try {
+      const timeBudgetMs = Math.max(timeoutMs / 2, timeoutMs - DELIVERY_TIMEOUT_MARGIN_MS);
       const request: DeliveryRequest =
         mode === 'paste'
           ? {
@@ -800,16 +834,18 @@ export class DictationService {
               targetApp: session.targetApp,
               targetHandle: session.targetHandle,
               target: session.target,
-              signal: this.abortController?.signal,
+              signal: delivery.signal,
+              timeBudgetMs,
             }
-          : { text, mode, signal: this.abortController?.signal };
+          : { text, mode, signal: delivery.signal, timeBudgetMs };
       const result = await Promise.race([
         this.deps.sink.deliver(request),
         new Promise<DeliveryResult>((resolve) => {
-          timer = setTimeout(
-            () => resolve({ delivered: false, clipboardFallback: true }),
-            timeoutMs,
-          );
+          timer = setTimeout(() => {
+            delivery.abort(DELIVERY_TIMEOUT);
+            this.deps.onDiagnostic?.('delivery', 'timed out; stopped the sink');
+            resolve({ delivered: false, clipboardFallback: true });
+          }, timeoutMs);
           timer.unref?.();
         }),
       ]);
@@ -819,6 +855,7 @@ export class DictationService {
       return { delivered: false, clipboardFallback: true };
     } finally {
       if (timer) clearTimeout(timer);
+      cancel?.removeEventListener('abort', onCancel);
       this.clearDeliveryTimer();
     }
   }

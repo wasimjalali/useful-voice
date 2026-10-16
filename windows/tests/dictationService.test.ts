@@ -71,6 +71,8 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DeliveryTarget } from '../src/core/delivery/deliveryTarget.js';
+import { DELIVERY_TIMEOUT } from '../src/core/delivery/deliveryFlow.js';
+import { PARTLY_TYPED } from '../src/core/hudModel.js';
 import {
   DictationService,
   classifyRecordingFailure,
@@ -164,7 +166,7 @@ class FakeTranscriber implements TranscriberPort {
 class FakeSink implements TextSinkPort {
   delivered: string[] = [];
   requests: Array<{ text: string; targetApp?: string; targetHandle?: number; target?: DeliveryTarget; mode: string; signal?: AbortSignal }> = [];
-  result: { delivered: boolean; clipboardFallback: boolean; cancelled?: boolean } = { delivered: true, clipboardFallback: false };
+  result: { delivered: boolean; clipboardFallback: boolean; cancelled?: boolean; partlyTyped?: boolean } = { delivered: true, clipboardFallback: false };
   /** Never resolves, to exercise the delivery timeout. */
   hang = false;
   /** Waits for the abort signal and reports it stopped before pasting, like the real sink. */
@@ -173,7 +175,7 @@ class FakeSink implements TextSinkPort {
   gate: Promise<void> | null = null;
   error: Error | null = null;
 
-  async deliver(request: { text: string; targetApp?: string; targetHandle?: number; target?: DeliveryTarget; mode: string; signal?: AbortSignal }): Promise<{ delivered: boolean; clipboardFallback: boolean; cancelled?: boolean }> {
+  async deliver(request: { text: string; targetApp?: string; targetHandle?: number; target?: DeliveryTarget; mode: string; signal?: AbortSignal }): Promise<{ delivered: boolean; clipboardFallback: boolean; cancelled?: boolean; partlyTyped?: boolean }> {
     this.delivered.push(request.text);
     this.requests.push(request);
     if (this.error) throw this.error;
@@ -602,6 +604,36 @@ describe('delivery that never calls back', () => {
     // The service must accept a new dictation.
     await ctx.service.toggle({ source: 'hotkey' });
     expect(ctx.service.currentState).toBe('recording');
+  });
+
+  it('stops the sink when it times out, so no keystroke follows', async () => {
+    const ctx = setup();
+    let keystrokes = 0;
+    let seen: AbortSignal | undefined;
+    ctx.sink.deliver = async (request) => {
+      seen = request.signal;
+      // A sink stuck past the timeout (a slow script), then about to press Ctrl+V.
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      if (!request.signal?.aborted) keystrokes += 1;
+      return { delivered: true, clipboardFallback: false };
+    };
+    await ctx.service.startRecording({ source: 'hotkey', target: { appId: 'notepad', windowHandle: 7 } });
+    await ctx.service.stopAndProcess();
+    expect(ctx.service.currentState).toBe('idle');
+    expect(seen?.aborted).toBe(true);
+    expect(seen?.reason).toBe(DELIVERY_TIMEOUT);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(keystrokes).toBe(0);
+    expect(ctx.diagnostics).toContainEqual({ category: 'delivery', message: 'timed out; stopped the sink' });
+  });
+
+  it('gives the sink a time budget that ends before the service gives up', async () => {
+    const ctx = setup();
+    await ctx.service.startRecording({ source: 'hotkey' });
+    await ctx.service.stopAndProcess();
+    const budget = (ctx.sink.requests[0] as { timeBudgetMs?: number }).timeBudgetMs;
+    expect(budget).toBeGreaterThan(0);
+    expect(budget).toBeLessThan(200);
   });
 
   it('treats a throwing sink as delivered-to-clipboard, not as a lost dictation', async () => {
@@ -1253,6 +1285,18 @@ describe('outcomes', () => {
     await ctx.service.toggle({ source: 'hotkey', targetApp: 'Notepad' });
     await ctx.service.toggle({ source: 'hotkey' });
     expect(ctx.outcomes).toEqual([{ kind: 'delivered', words: 2, result: 'copiedNotPasted', appName: 'Notepad' }]);
+  });
+
+  it('says "partly typed" when typing stopped part way, never plain "copied"', async () => {
+    const ctx = setup();
+    ctx.sink.result = { delivered: false, clipboardFallback: true, partlyTyped: true };
+    await ctx.service.toggle({ source: 'hotkey', targetApp: 'Terminal' });
+    await ctx.service.toggle({ source: 'hotkey' });
+    expect(ctx.outcomes).toEqual([
+      { kind: 'delivered', words: 2, result: 'copiedNotPasted', appName: 'Terminal', partlyTyped: true },
+    ]);
+    expect(ctx.statuses.at(-1)?.message).toBe(PARTLY_TYPED);
+    expect(PARTLY_TYPED).toBe('Partly typed. The full text is on your clipboard.');
   });
 
   it('emits no outcome for a failure', async () => {

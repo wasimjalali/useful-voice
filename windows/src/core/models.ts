@@ -195,7 +195,14 @@ export type DictationDelivery = 'pasted' | 'copiedNotPasted' | 'copied';
 
 /** Sent once per dictation, before the idle status. */
 export type DictationOutcomeEvent =
-  | { kind: 'delivered'; words: number; result: DictationDelivery; appName?: string }
+  | {
+      kind: 'delivered';
+      words: number;
+      result: DictationDelivery;
+      appName?: string;
+      /** With `copiedNotPasted`: typing stopped part way, the full text is on the clipboard. */
+      partlyTyped?: boolean;
+    }
   | { kind: 'cancelled' };
 
 /**

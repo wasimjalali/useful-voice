@@ -16,6 +16,8 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDeleg
     private var controller: SPUStandardUpdaterController?
 
     /// The version a check found and the user has not installed or skipped yet.
+    /// A session that aborts or ends with an error clears it too: the menu must
+    /// not keep offering an update that failed to download or install.
     private(set) var pendingVersion: String?
 
     /// False in a local build, which has no feed: the menu hides the update item.
@@ -52,9 +54,22 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDeleg
         Task { @MainActor in self.pendingVersion = nil }
     }
 
-    /// Skip This Version ends the offer; Remind Me Later keeps it.
+    /// Skip This Version and Install Update end the offer; Remind Me Later keeps it.
     nonisolated func updater(_ updater: SPUUpdater, userDidMake choice: SPUUserUpdateChoice, forUpdate updateItem: SUAppcastItem, state: SPUUserUpdateState) {
-        guard choice == .skip else { return }
+        guard choice != .dismiss else { return }
+        Task { @MainActor in self.pendingVersion = nil }
+    }
+
+    /// The update driver stopped on an error (a failed download or install, a
+    /// feed that could not be read).
+    nonisolated func updater(_ updater: SPUUpdater, didAbortWithError error: any Error) {
+        Task { @MainActor in self.pendingVersion = nil }
+    }
+
+    /// A cycle that ends with an error. One that ends normally keeps the offer:
+    /// that is Remind Me Later, or a found update the user has not opened yet.
+    nonisolated func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: (any Error)?) {
+        guard error != nil else { return }
         Task { @MainActor in self.pendingVersion = nil }
     }
 

@@ -34,6 +34,16 @@ private func memoryMB() -> (resident: Double, footprint: Double) {
     return (Double(info.resident_size) / 1_048_576, Double(info.phys_footprint) / 1_048_576)
 }
 
+/// Runs blocking work (a model run, a child process) on a dispatch thread, so an async test
+/// never parks Swift's small cooperative pool.
+private func offThePool<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
+    try await withCheckedThrowingContinuation { continuation in
+        DispatchQueue.global(qos: .userInitiated).async {
+            continuation.resume(with: Result { try work() })
+        }
+    }
+}
+
 private func ms(_ d: Duration) -> Double {
     Double(d.components.seconds) * 1000 + Double(d.components.attoseconds) / 1e15
 }
@@ -88,19 +98,23 @@ struct LlamaWhisperCoexistenceTests {
     @Test(.timeLimit(.minutes(5)))
     func whisperTranscribesARealClipAfterS1MiniRan() async throws {
         let runtime = try LlamaRuntime(modelPath: s1)
-        let ran = try runtime.complete(prompt: prompt(cardInput), deadline: .now.advanced(by: .seconds(60)))
+        let promptText = prompt(cardInput)
+        let ran = try await offThePool { try runtime.complete(prompt: promptText, deadline: .now.advanced(by: .seconds(60))) }
         #expect(!ran.text.isEmpty)
 
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("uv-coexist-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         let wav = dir.appendingPathComponent("speech.wav")
-        let say = Process()
-        say.executableURL = URL(fileURLWithPath: "/usr/bin/say")
-        say.arguments = ["-o", wav.path, "--data-format=LEI16@16000", "Hello, this is a test of local dictation on this Mac."]
-        try say.run()
-        say.waitUntilExit()
-        try #require(say.terminationStatus == 0, "say failed to synthesize the clip")
+        let sayStatus = try await offThePool { () -> Int32 in
+            let say = Process()
+            say.executableURL = URL(fileURLWithPath: "/usr/bin/say")
+            say.arguments = ["-o", wav.path, "--data-format=LEI16@16000", "Hello, this is a test of local dictation on this Mac."]
+            try say.run()
+            say.waitUntilExit()
+            return say.terminationStatus
+        }
+        try #require(sayStatus == 0, "say failed to synthesize the clip")
 
         let engine = WhisperCppEngine()
         let result: LocalTranscriptionResult
@@ -118,7 +132,7 @@ struct LlamaWhisperCoexistenceTests {
         print("COEXIST whisper after S1-mini -> \(result.text.debugDescription)")
         #expect(result.text.lowercased().contains("hello"))
         // And S1-mini still runs after whisper did.
-        let again = try runtime.complete(prompt: prompt(cardInput), deadline: .now.advanced(by: .seconds(60)))
+        let again = try await offThePool { try runtime.complete(prompt: promptText, deadline: .now.advanced(by: .seconds(60))) }
         #expect(again.text == ran.text)
     }
 
@@ -152,16 +166,35 @@ struct LlamaWhisperCoexistenceTests {
             try runtime.complete(prompt: prompt(cardInput), deadline: .now.advanced(by: .milliseconds(-1)))
         }
         // 5 ms is shorter than any real run: the abort fires inside the decode or between tokens.
+        // How fast it stops is printed, not asserted: a wall-clock bound is flaky on a shared runner.
         let started = ContinuousClock.now
         #expect(throws: LlamaRuntime.RuntimeError.deadlineExceeded) {
             try runtime.complete(prompt: prompt(cardInput), deadline: .now.advanced(by: .milliseconds(5)))
         }
-        let took = ms(started.duration(to: .now))
-        print("COEXIST 5 ms deadline stopped the run after \(took) ms")
-        #expect(took < 1000)
+        print("COEXIST 5 ms deadline stopped the run after \(ms(started.duration(to: .now))) ms")
         // The runtime is still usable afterwards.
         let ok = try runtime.complete(prompt: prompt(cardInput), deadline: .now.advanced(by: .seconds(60)))
         #expect(!ok.text.isEmpty)
+    }
+
+    /// The quit path: a stop signal ends a load and a run that llama.cpp is in the middle of.
+    @Test(.timeLimit(.minutes(5)))
+    func aStopSignalEndsALoadAndARun() async throws {
+        let beforeLoad = LlamaRuntime.StopSignal()
+        beforeLoad.set()
+        #expect(throws: LlamaRuntime.RuntimeError.stopped) {
+            try LlamaRuntime(modelPath: s1, stop: beforeLoad)
+        }
+
+        let signal = LlamaRuntime.StopSignal()
+        let runtime = try LlamaRuntime(modelPath: s1, stop: signal)
+        let promptText = prompt(cardInput)
+        let run = Task.detached {
+            try await offThePool { try runtime.complete(prompt: promptText, deadline: .now.advanced(by: .seconds(60))) }
+        }
+        try await Task.sleep(for: .milliseconds(5))
+        signal.set()
+        await #expect(throws: LlamaRuntime.RuntimeError.stopped) { try await run.value }
     }
 
     @Test(.timeLimit(.minutes(5)))

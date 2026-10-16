@@ -997,6 +997,22 @@
   {
    "url": "https://chat.openai.com/c/1",
    "expected": "workChat"
+  },
+  {
+   "url": "mail.google.com:443/mail",
+   "expected": "email"
+  },
+  {
+   "url": "mail.google.com:/mail",
+   "expected": "email"
+  },
+  {
+   "url": "https://@mail.google.com/",
+   "expected": "email"
+  },
+  {
+   "url": "https://mail.google.com:8090/mail",
+   "expected": "email"
   }
  ],
  "parse": [
@@ -1047,6 +1063,56 @@
   },
   {
    "url": "http://host:port/",
+   "host": null,
+   "path": null
+  },
+  {
+   "url": "https://buzz.example.org/x",
+   "host": "buzz.example.org",
+   "path": "/x"
+  },
+  {
+   "url": "https://web0.example9.com/",
+   "host": "web0.example9.com",
+   "path": "/"
+  },
+  {
+   "url": "data://x.com",
+   "host": null,
+   "path": null
+  },
+  {
+   "url": "zz://x.com",
+   "host": null,
+   "path": null
+  },
+  {
+   "url": "JAVA://x.com",
+   "host": null,
+   "path": null
+  },
+  {
+   "url": "ZIP://x.com",
+   "host": null,
+   "path": null
+  },
+  {
+   "url": "x0y9://x.com",
+   "host": null,
+   "path": null
+  },
+  {
+   "url": "svn+ssh://x.com",
+   "host": null,
+   "path": null
+  },
+  {
+   "url": "x-y://x.com",
+   "host": null,
+   "path": null
+  },
+  {
+   "url": "a.b://x.com",
    "host": null,
    "path": null
   },

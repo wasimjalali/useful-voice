@@ -2499,6 +2499,145 @@
    "category": "workChat",
    "input": "Sounds good, thanks.",
    "expected": "Sounds good, thanks"
+  },
+  {
+   "id": "code-lone-curly-quote",
+   "category": "coding",
+   "input": "“",
+   "expected": "\""
+  },
+  {
+   "id": "code-slash-dotted-word",
+   "category": "coding",
+   "input": "slash config.local",
+   "expected": "/config.local"
+  },
+  {
+   "id": "code-slash-capitalised-word",
+   "category": "coding",
+   "input": "slash Sam",
+   "expected": "slash Sam"
+  },
+  {
+   "id": "code-slash-version-number",
+   "category": "coding",
+   "input": "docs slash 2.0",
+   "expected": "docs/2.0"
+  },
+  {
+   "id": "code-zero-digits",
+   "category": "coding",
+   "input": "0 dot 0",
+   "expected": "0.0"
+  },
+  {
+   "id": "code-nine-digits",
+   "category": "coding",
+   "input": "9 dot 9",
+   "expected": "9.9"
+  },
+  {
+   "id": "cont-after-lone-newline",
+   "category": "other",
+   "before": "\n",
+   "input": "The answer",
+   "expected": "The answer"
+  },
+  {
+   "id": "cont-opener-after-one-letter-word",
+   "category": "other",
+   "before": "x [",
+   "input": "The answer",
+   "expected": "the answer"
+  },
+  {
+   "id": "cont-bullet-keeps-capital",
+   "category": "other",
+   "before": "- ",
+   "input": "The milk",
+   "expected": "The milk"
+  },
+  {
+   "id": "cont-two-capitals-kept",
+   "category": "other",
+   "before": "and",
+   "input": "NO way",
+   "expected": " NO way"
+  },
+  {
+   "id": "cont-blank-dictionary-entry-ignored",
+   "category": "other",
+   "before": "and",
+   "words": [
+    " "
+   ],
+   "input": "The cat",
+   "expected": " the cat"
+  },
+  {
+   "id": "cont-single-letter-before",
+   "category": "other",
+   "before": "x",
+   "input": "The answer",
+   "expected": " the answer"
+  },
+  {
+   "id": "cont-space-then-paren-at-start",
+   "category": "other",
+   "before": " (",
+   "input": "The answer",
+   "expected": "The answer"
+  },
+  {
+   "id": "cont-lone-full-stop-before",
+   "category": "other",
+   "before": ".",
+   "input": "The answer",
+   "expected": " The answer"
+  },
+  {
+   "id": "email-before-lone-newline",
+   "category": "email",
+   "before": "\n",
+   "input": "Hi Sam, thanks for the update.",
+   "expected": "Hi Sam,\n\nThanks for the update."
+  },
+  {
+   "id": "email-before-lone-full-stop",
+   "category": "email",
+   "before": ".",
+   "input": "Hi Sam, thanks for the update.",
+   "expected": " Hi Sam, thanks for the update."
+  },
+  {
+   "id": "email-greeting-empty-name-rejected",
+   "category": "email",
+   "input": "Hi , thanks for the update.",
+   "expected": "Hi , thanks for the update."
+  },
+  {
+   "id": "email-sign-off-three-name-words",
+   "category": "email",
+   "input": "Can you send me the report. Thanks, Anne Marie Smith",
+   "expected": "Can you send me the report.\n\nThanks,\nAnne Marie Smith"
+  },
+  {
+   "id": "email-sign-off-four-name-words",
+   "category": "email",
+   "input": "Can you send me the report. Thanks, Anne Marie Van Smith",
+   "expected": "Can you send me the report. Thanks, Anne Marie Van Smith"
+  },
+  {
+   "id": "style-abbrev-single-word",
+   "category": "workChat",
+   "input": "Etc.",
+   "expected": "Etc."
+  },
+  {
+   "id": "style-double-dot-only",
+   "category": "workChat",
+   "input": "..",
+   "expected": ".."
   }
  ]
 }

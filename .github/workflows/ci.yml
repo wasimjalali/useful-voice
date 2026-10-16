@@ -150,6 +150,12 @@ jobs:
       - name: Package
         run: npx electron-builder --win --publish never
 
+      # The hidden S1-mini cleanup runs node-llama-cpp from inside the packaged app. This
+      # starts it the way the app does (the packaged exe as plain Node, the worker inside
+      # app.asar) with no model, so a missing, mis-unpacked or non-loading binary fails here.
+      - name: Packaged app self-test (S1-mini runtime)
+        run: node scripts/check-packaged-llama.mjs "release/win-unpacked/Useful Voice.exe" release/win-unpacked/resources
+
   # An install made under the old Karko appId must be replaced, not duplicated, by
   # the current installer. electron-builder derives the NSIS uninstall key from
   # `build.nsis.guid` (pinned to the old appId's GUID), so this builds the legacy

@@ -31,18 +31,27 @@ import {
   checkTarget,
   insertionMethodFor,
   recheckTarget,
+  targetMatches,
   typeOutChunks,
   type DeliveryTarget,
   type InsertionMethod,
   type TargetCheck,
   type TargetLossReason,
 } from './deliveryTarget.js';
+import type { AutoSendKey } from '../apps/appCategory.js';
 
 /** The abort reason the dictation service uses when a delivery runs out of time. */
 export const DELIVERY_TIMEOUT = 'delivery-timeout';
 
 /** Kept back from a paste's deadline, with the settle wait, for the foreground read after it. */
 export const PROOF_READ_MS = 500;
+
+/**
+ * How long a pasted dictation is given to land before the send key goes out. Ctrl+V and
+ * the key arrive in the same input queue in order, but an Electron app reads the clipboard
+ * on its own time, and Return before the text is in sends an empty message.
+ */
+export const AUTO_SEND_SETTLE_MS = 300;
 
 /** How one paste or type-out attempt ended, as the platform script reports it. */
 export type InsertResult = 'sent' | 'moved' | 'secure' | 'failed' | 'timeout';
@@ -75,6 +84,8 @@ export interface DeliveryEffects<Snapshot extends ClipboardContents> {
   paste(target: DeliveryTarget, deadline: number): Promise<InsertAttempt>;
   /** Unicode keystrokes, batch by batch, each guarded the same way. */
   typeOut(target: DeliveryTarget, batches: number[][], deadline: number): Promise<InsertAttempt>;
+  /** The auto-send key (Return, Shift+Return or Ctrl+Return), guarded by the target window being in front. */
+  sendKey(target: DeliveryTarget, key: AutoSendKey, deadline: number): Promise<InsertAttempt>;
   wait(ms: number): Promise<void>;
   log(category: string, message: string): void;
 }
@@ -91,6 +102,13 @@ export interface PasteDeliveryInput {
   deadline: number;
   /** How long a paste is given to land before the proof is read. */
   settleMs: number;
+  /**
+   * The key to press once the text has landed, `off` (the default) for none. It goes out
+   * only after a keystroke delivery (pasted or typed to the end) and only while the
+   * window and page captured at the press are still in front. Never after a copy-only
+   * delivery, partly typed text, a line-break copy or any failure.
+   */
+  autoSend?: AutoSendKey;
 }
 
 /** Why the text did or did not go in, for tests and the diagnostics log. */
@@ -123,6 +141,8 @@ export interface PasteDeliveryResult {
   pasteFailed?: boolean;
   /** The method chosen, once the target lock passed. */
   method?: InsertionMethod;
+  /** The auto-send key went out after the text landed. */
+  autoSent?: boolean;
   reason: DeliveryReason;
 }
 
@@ -254,7 +274,31 @@ export async function deliverToTarget<Snapshot extends ClipboardContents>(
   if (!decision.delivered) {
     // Sent but not proven: "Press Ctrl+V" would paste it a second time.
     fx.log('delivery', `paste sent but not proven (${decision.reason}, ${target.appId ?? 'unknown app'}); left on clipboard`);
-    return { delivered: true, unproven: true, clipboardFallback: false, reason: decision.reason, method };
+    return autoSend({ delivered: true, unproven: true, clipboardFallback: false, reason: decision.reason, method });
   }
-  return { delivered: true, clipboardFallback: false, reason: decision.reason, method };
+  return autoSend({ delivered: true, clipboardFallback: false, reason: decision.reason, method });
+
+  /**
+   * The send key, after a delivery whose keystroke went out (the script checked the target
+   * was in front when it sent it). It waits for a pasted text to land, then looks at the
+   * foreground once more: only the window and page captured at the press get the key. Any
+   * doubt (cancelled, out of time, focus moved, the key failing) sends nothing, and the
+   * delivery stays as it was: delivered, with the text on the clipboard or in the field.
+   */
+  async function autoSend(result: PasteDeliveryResult): Promise<PasteDeliveryResult> {
+    const key = input.autoSend ?? 'off';
+    if (key === 'off' || !target || (method !== 'paste' && method !== 'typeOut')) return result;
+    const skip = (why: string): PasteDeliveryResult => {
+      fx.log('delivery', `send key not pressed: ${why}`);
+      return result;
+    };
+    if (method === 'paste') await fx.wait(AUTO_SEND_SETTLE_MS);
+    if (stop()) return skip('cancelled or out of time');
+    const focus = await fx.readFocus(remaining(), withAddress);
+    if (stop()) return skip('cancelled or out of time');
+    if (!focus || !targetMatches(target, focus)) return skip('the target is no longer in front');
+    const attempt = await fx.sendKey(target, key, input.deadline);
+    if (attempt.result !== 'sent') return skip(`the key script stopped (${attempt.result})`);
+    return { ...result, autoSent: true };
+  }
 }

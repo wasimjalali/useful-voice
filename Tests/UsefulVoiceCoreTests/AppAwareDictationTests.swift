@@ -415,15 +415,39 @@ import Foundation
 
     // MARK: window dictations and Useful Voice itself (WAS-54 item 4)
 
-    @Test func aWindowDictationIsOtherCopiedAndFiledUnderNoApp() async {
+    @Test func aWindowDictationHasNoAppContextCopiedAndFiledUnderNoApp() async {
         focus = mail
         let c = controller(emailDictation)
         await dictate(c, source: .window)
-        #expect(delivered == [emailDictation])             // Other: no email layout
+        #expect(delivered == [emailDictation])             // no email layout
         #expect(deliveredModes == [.copy])
         #expect(records.first?.appID == nil)
         #expect(records.first?.category == nil)
         #expect(cursorReads.isEmpty)
+    }
+
+    @Test func aWindowDictationGetsNoCategoryFormatting() async {
+        // Other set to Casual drops the final full stop where it applies. A window dictation,
+        // also one from our own window with no editable field, keeps it.
+        appFormatting.setStyle(.casual, for: .other)
+        focus = mail
+        let c = controller("Are you free tonight.", ownAppID: "ai.useful.voice")
+        await dictate(c, source: .window)
+        #expect(delivered == ["Are you free tonight."])
+        #expect(cursorReads.isEmpty)
+
+        delivered = []
+        focus = ownWindow
+        ownFieldEditable = false
+        await dictate(c)                                   // hotkey, no editable field of ours
+        #expect(delivered == ["Are you free tonight."])
+        #expect(deliveredModes == [.copy, .copy])
+
+        // A hotkey press with no readable target outside our app still formats as Other.
+        delivered = []
+        focus = nil
+        await dictate(c)
+        #expect(delivered == ["Are you free tonight"])
     }
 
     @Test func theHotkeyInUsefulVoiceWithNoEditableFieldFocusedIsAWindowDictation() async {

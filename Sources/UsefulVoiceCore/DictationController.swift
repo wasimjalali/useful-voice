@@ -128,7 +128,8 @@ public final class DictationController {
         let appID: String?
         /// "Auto-format transcript" at the press.
         let autoFormat: Bool
-        /// The dictation goes into one of this app's own fields: no app context at all.
+        /// A dictation into one of this app's own fields, or a window dictation: no app
+        /// context at all (no app, category, caret read or category formatting).
         let inOwnApp: Bool
         let cursorRead: Task<String?, Never>?
 
@@ -320,7 +321,8 @@ public final class DictationController {
             // The hotkey pressed with Useful Voice itself in front pastes into our own
             // focused field when it is an editable one (a note, the first-run practice
             // pad). With none focused it is a window dictation: copied, never pasted into
-            // our own window, and formatted as Other.
+            // our own window. A window dictation has no app context, so no category
+            // formatting (cleanup and the user's own rules still run).
             let inOwnApp = isOwnApp(target)
             if inOwnApp, !ownFieldIsEditable() {
                 target = nil
@@ -329,7 +331,7 @@ public final class DictationController {
             activeSource = effectiveSource
             activeTarget = target
             activeAppName = target?.appName
-            activePress = capturePress(for: target, inOwnApp: inOwnApp && target != nil)
+            activePress = capturePress(for: target, inOwnApp: inOwnApp || effectiveSource == .window)
             state = .recording
         } catch {
             state = .error(DictationError.startFailure(error))

@@ -3,11 +3,14 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { seedUserData } from './fixtures.js';
+import { sendToMain } from './harness.js';
 
 // The Pasting settings (B1) on the built app: an install upgraded from a build that had
-// typing switched on for one terminal. It turns "Restore clipboard after paste" off and
-// back on, switches typing off for that app and on again, and checks every change lands
+// typing switched on for two terminals. It turns "Restore clipboard after paste" off and
+// back on, switches typing off for one app and on again, and checks every change lands
 // in settings.json, the row stays put when switched off, and the file keeps the rest.
+// Then two switches flipped faster than a save returns must both land, and a type-out
+// that stopped part way must say so instead of the plain "Copied" notice.
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const out = process.env.E2E_OUT ?? path.join(root, 'e2e-results');
@@ -47,7 +50,7 @@ test.beforeAll(async () => {
   userData = await seedUserData();
   await fs.writeFile(
     path.join(userData, 'settings.json'),
-    JSON.stringify({ version: 1, firstRunCompleted: true, settings: { typeOutApps: ['WindowsTerminal.exe'], languagePin: 'de' } }),
+    JSON.stringify({ version: 1, firstRunCompleted: true, settings: { typeOutApps: ['WindowsTerminal.exe', 'putty.exe'], languagePin: 'de' } }),
   );
   const env = { ...process.env } as Record<string, string>;
   delete env.ELECTRON_RUN_AS_NODE;
@@ -97,10 +100,10 @@ test('pasting settings: clipboard restore and per-app typing save and survive', 
   // Off: saved, and the row stays where it was so it can be switched back.
   await terminal.click();
   await expect(terminal).toHaveAttribute('aria-checked', 'false');
-  await expect.poll(async () => (await savedSettings()).typeOutApps).toEqual([]);
+  await expect.poll(async () => (await savedSettings()).typeOutApps).toEqual(['putty']);
   await expect(terminal).toBeVisible();
   await terminal.click();
-  await expect.poll(async () => (await savedSettings()).typeOutApps).toEqual(['windowsterminal']);
+  await expect.poll(async () => (await savedSettings()).typeOutApps).toEqual(['putty', 'windowsterminal']);
 
   await restore.click();
   await expect(restore).toHaveAttribute('aria-checked', 'true');
@@ -108,4 +111,41 @@ test('pasting settings: clipboard restore and per-app typing save and survive', 
   // Nothing else in the file was disturbed.
   expect((await savedSettings()).languagePin).toBe('de');
   await shot('pasting-02-final');
+});
+
+test('two typing switches flipped before the first save returns both land', async () => {
+  const group = win.locator('#settings-pasting');
+  const terminal = group.getByRole('switch', { name: 'Type into windowsterminal' });
+  const putty = group.getByRole('switch', { name: 'Type into putty' });
+  await expect(terminal).toHaveAttribute('aria-checked', 'true');
+  await expect(putty).toHaveAttribute('aria-checked', 'true');
+  // Both clicks go out in the same task, long before the first IPC save can come back.
+  await win.evaluate(() => {
+    const switches = [...document.querySelectorAll<HTMLButtonElement>('#settings-pasting [role="switch"]')];
+    for (const name of ['Type into windowsterminal', 'Type into putty']) {
+      switches.find((button) => button.getAttribute('aria-label') === name)?.click();
+    }
+  });
+  await expect.poll(async () => (await savedSettings()).typeOutApps).toEqual([]);
+  await expect(terminal).toHaveAttribute('aria-checked', 'false');
+  await expect(putty).toHaveAttribute('aria-checked', 'false');
+  await shot('pasting-03-both-off');
+});
+
+test('a type-out that stopped part way says so in the dock', async () => {
+  await win.locator('.rail-item', { hasText: 'Dictations' }).click();
+  // What main sends when typing stopped part way. (A real hotkey dictation would type
+  // into the machine running the suite.)
+  await sendToMain(app, 'dictation:outcome', {
+    kind: 'delivered',
+    words: 9,
+    result: 'copiedNotPasted',
+    appName: 'Windows Terminal',
+    partlyTyped: true,
+  });
+  await sendToMain(app, 'dictation:state', { state: 'idle', message: 'Partly typed. The full text is on your clipboard.' });
+  const status = win.locator('.dock .dock-inner:not(.is-leaving) .dock-status');
+  await expect(status).toContainText('Partly typed. The full text is on your clipboard.');
+  await expect(status).not.toContainText('Press Ctrl+V');
+  await shot('pasting-04-partly-typed');
 });

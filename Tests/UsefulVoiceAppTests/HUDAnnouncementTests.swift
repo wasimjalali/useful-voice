@@ -102,4 +102,16 @@ struct HUDAnnouncementTests {
         #expect(HUDDisplay.copiedNotPasted(fix: .openAccessibilitySettings).fix == .openAccessibilitySettings)
         #expect(HUDDisplay.copiedNotPasted(fix: nil).fix == nil)
     }
+
+    /// Typing stopped part way: its own words, spoken urgently, held like the Copied
+    /// notice, and no fix (nothing is wrong with a permission).
+    @Test func partlyTypedHasItsOwnNotice() {
+        let display = HUDDisplay.partlyTyped
+        #expect(said(display) == .init(text: "Partly typed. The full text is on your clipboard.", urgent: true))
+        #expect(display.accessibilityLabel == said(display)?.text)
+        #expect(display.lifetime == 8)
+        #expect(display.isPersistent)
+        #expect(display.fix == nil)
+        #expect(said(display) != said(.copiedNotPasted(fix: nil)))
+    }
 }

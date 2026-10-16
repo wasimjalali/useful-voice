@@ -346,7 +346,7 @@ import Foundation
         #expect(c.deliveryTarget == nil)
         await { c.toggle(); await c.awaitProcessing() }()
         #expect(deliveredModes == [.copy])
-        #expect(outcomes == [.delivered(words: 8, mode: .copied, appName: nil)])
+        #expect(outcomes == [.delivered(words: 9, mode: .copied, appName: nil)])
         #expect(reactivations == 0)
         #expect(records.first?.appID == nil)
         #expect(records.first?.category == nil)

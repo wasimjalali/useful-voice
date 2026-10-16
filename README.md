@@ -12,7 +12,7 @@ Useful Voice is a fast, personal dictation app for macOS and Windows. Tap a hotk
 
 ## What you get
 
-**Dictate anywhere.** Tap your key (Right Command by default), speak, tap again. The text is inserted at your cursor and also copied to the clipboard, so a missed insert is one paste away. Esc cancels. Recording stops by itself after 60 seconds of silence.
+**Dictate anywhere.** Tap your key (Right Command by default), speak, tap again. The text is inserted at your cursor. If the insert can't be confirmed, the text stays on your clipboard, so a missed insert is one paste away. Esc cancels. Recording stops by itself after 60 seconds of silence.
 
 **It lands where you started.** The app, window and text field you were in when you pressed the key are locked in. If you click elsewhere while it transcribes, Useful Voice brings that field back before it pastes. If it can't (the app quit, say), it pastes nowhere else: the text stays on your clipboard. Settings > Pasting chooses whether your old clipboard comes back after a paste, and which apps get the text typed out as keystrokes instead (for terminals and apps that block paste).
 
@@ -74,3 +74,5 @@ The design notes and audit reports are in [docs/audit](docs/audit), starting wit
 ## License
 
 [MIT](LICENSE). Contributions are welcome as pull requests, and there's no CLA to sign.
+
+Third-party code and models are listed in [windows/THIRD_PARTY_NOTICES.md](windows/THIRD_PARTY_NOTICES.md). The optional AI cleanup, hidden and off by default, uses S1-mini by Superwhisper (Apache 2.0).

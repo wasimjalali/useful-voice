@@ -93,13 +93,35 @@ public final class LlamaRuntime: @unchecked Sendable {
     /// Where the model runs.
     public enum Placement: String, Sendable, CaseIterable {
         /// Only the CPU backend (plus Accelerate for big matmuls): no device list, no GPU
-        /// offload of weights, cache or operations. The default for the cleanup model.
+        /// offload of weights, cache or operations. The cleanup model's fallback.
         case cpuOnly
         /// Weights on the CPU, but every device left in the list. llama.cpp may still send
         /// large matmuls to the GPU ("op offload"). Kept for measurement.
         case cpuWithDevices
-        /// Every layer on Metal.
+        /// Every layer on Metal. The cleanup model's choice on a real Apple-silicon Mac.
         case metal
+    }
+
+    /// Where the cleanup model runs on this Mac: Metal on Apple silicon outside a virtual
+    /// machine when llama.cpp lists a GPU, the CPU otherwise. On an Apple M4 a cleanup took
+    /// 120 to 140 ms on Metal and 2.6 to 3.3 s on the CPU; on CI's virtual Mac the paravirtual
+    /// GPU was no faster than its CPU (evals/results/2026-10-16-s1-mini-macos-m4-local.md).
+    /// Intel Macs stay on the CPU: Metal there was never measured.
+    public static func preferredPlacement() -> Placement {
+        guard sysctlFlag("hw.optional.arm64") == 1, sysctlFlag("kern.hv_vmm_present") != 1 else { return .cpuOnly }
+        _ = backendReady
+        for i in 0..<ggml_backend_dev_count() {
+            let type = ggml_backend_dev_type(ggml_backend_dev_get(i))
+            if type == GGML_BACKEND_DEVICE_TYPE_GPU || type == GGML_BACKEND_DEVICE_TYPE_IGPU { return .metal }
+        }
+        return .cpuOnly
+    }
+
+    /// An integer sysctl, or nil when this macOS does not have it.
+    private static func sysctlFlag(_ name: String) -> Int32? {
+        var value: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        return sysctlbyname(name, &value, &size, nil, 0) == 0 ? value : nil
     }
 
     /// Measurement only: run without the deadline abort callback to see what it costs.
@@ -114,8 +136,10 @@ public final class LlamaRuntime: @unchecked Sendable {
     public let modelPath: String
     private let stop: StopSignal?
 
-    /// Loads the weights. See `Placement`; the CPU is the default for the cleanup model, and
-    /// llama.cpp can only stop a running decode on the CPU. The PR notes have the numbers.
+    /// Loads the weights. See `Placement`; the cleanup model uses `preferredPlacement()`.
+    /// llama.cpp can only stop a running decode on the CPU: on Metal the deadline and the stop
+    /// signal land between tokens, so a run can overrun by about one prompt decode (about 350 ms
+    /// at 900 and at 1,515 tokens on an M4, evals/results/2026-10-16-s1-mini-macos-metal.md).
     public init(modelPath: String, placement: Placement = .cpuOnly, threads: Int32? = nil, microBatch: UInt32? = nil, stop: StopSignal? = nil) throws {
         // A signal that is already set must not pay for backend init or the first part of the load.
         if stop?.isSet == true { throw RuntimeError.stopped }
@@ -175,6 +199,8 @@ public final class LlamaRuntime: @unchecked Sendable {
     /// answer up to 1.5 times its length plus 64 tokens), so a short dictation costs a small
     /// KV cache, and an answer that fills that room without ending is an error, not a
     /// result. `deadline` is checked between tokens and, on the CPU, inside a running decode.
+    /// On Metal it is not seen before the first token: `llama_decode` returns at once and the
+    /// wait is in sampling.
     public func complete(
         prompt: String, deadline: ContinuousClock.Instant, maxPromptTokens: Int = 1536
     ) throws -> Completion {

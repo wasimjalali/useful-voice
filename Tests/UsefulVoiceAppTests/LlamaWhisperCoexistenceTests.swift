@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import MachO
 import Testing
-import UsefulVoiceCore
+@testable import UsefulVoiceCore
 import UsefulVoiceLlama
 @testable import UsefulVoiceApp
 

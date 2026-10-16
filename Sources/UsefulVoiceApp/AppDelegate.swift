@@ -624,7 +624,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             appFormatting: { [settings] in settings.appFormatting },
             textBeforeCursor: { target in await FocusTracker.shared.textBeforeCursor(of: target) },
             sendKey: { chord in TextInserter.postSendKey(chord) },
-            ownAppID: Bundle.main.bundleIdentifier
+            ownAppID: Bundle.main.bundleIdentifier,
+            ownFieldIsEditable: { Self.ownEditableFieldHasFocus() },
+            autoFormat: { [settings] in settings.formattingEnabled }
         )
         controller.onStateChange = { [weak self] state in
             if state == .recording, let target = self?.controller?.deliveryTarget {
@@ -664,6 +666,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.buildProviders().first
         }
         self.controller = controller
+    }
+
+    /// Whether one of this app's own text fields (a note, the first-run practice pad) has
+    /// focus and accepts typing. A password field does not count. Read from the responder
+    /// chain, not Accessibility: asking AX about our own process from the main thread can
+    /// stall.
+    private static func ownEditableFieldHasFocus() -> Bool {
+        guard let editor = NSApp.keyWindow?.firstResponder as? NSTextView, editor.isEditable else { return false }
+        if editor.isFieldEditor, editor.delegate is NSSecureTextField { return false }
+        return true
     }
 
     private func reprocessHistory(_ record: DictationRecord) {
@@ -758,7 +770,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             memoryHitIDs: formatted.memoryHitIDs.isEmpty ? nil : formatted.memoryHitIDs,
             replacementRuleIDs: formatted.replacementRuleIDs.isEmpty ? nil : formatted.replacementRuleIDs,
             snippetIDs: formatted.snippetIDs.isEmpty ? nil : formatted.snippetIDs,
-            audioPath: audioURL.path
+            audioPath: audioURL.path,
+            appID: record.appID,
+            category: record.category
         )
         languageMemory.recordUsage(
             termIDs: formatted.memoryHitIDs,

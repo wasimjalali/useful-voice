@@ -28,6 +28,11 @@ import Foundation
     private var deliveryResult: DeliveryResult?
     private var deliveryFails = false
     private var textBefore: String?
+    /// "Auto-format transcript" (on by default in the app) and whether one of our own text
+    /// fields has focus while Useful Voice is in front.
+    private var autoFormatOn = true
+    private var ownFieldEditable = false
+    private var language: LanguagePin = .en
 
     // What the person chose.
     private var appFormatting = AppFormattingSettings(userName: "Wasim")
@@ -80,7 +85,9 @@ import Foundation
             diagnostics: .memoryOnly,
             format: format,
             rawTransform: rawTransform,
-            context: { FormattingContext(appBundleID: nil, dictionaryWords: words, language: .auto) },
+            context: { [weak self] in
+                FormattingContext(appBundleID: nil, dictionaryWords: words, language: self?.language ?? .auto)
+            },
             isSecureInputActive: { [weak self] in self?.secureInput ?? false },
             focusTarget: { [weak self] in self?.focus },
             isTargetRunning: { _ in true },
@@ -100,7 +107,9 @@ import Foundation
                 return self?.textBefore
             },
             sendKey: { [weak self] chord in self?.sentKeys.append(chord) },
-            ownAppID: ownAppID)
+            ownAppID: ownAppID,
+            ownFieldIsEditable: { [weak self] in self?.ownFieldEditable ?? false },
+            autoFormat: { [weak self] in self?.autoFormatOn ?? false })
         controller.onOutcome = { [weak self] outcome in self?.outcomes.append(outcome) }
         return controller
     }
@@ -328,7 +337,8 @@ import Foundation
             diagnostics: .memoryOnly,
             focusTarget: { [weak self] in self?.focus },
             appFormatting: { AppFormattingSettings() },
-            textBeforeCursor: { _ in await withCheckedContinuation { (_: CheckedContinuation<String?, Never>) in } })
+            textBeforeCursor: { _ in await withCheckedContinuation { (_: CheckedContinuation<String?, Never>) in } },
+            autoFormat: { true })
         let started = Date()
         c.toggle()
         #expect(c.state == .recording)               // the press did not wait for the reader
@@ -337,6 +347,70 @@ import Foundation
         await c.awaitProcessing()
         #expect(delivered == ["We could go"])        // formatted without the unknown context
         #expect(Date().timeIntervalSince(started) < 15)   // it only has to end; CI machines are slow under load
+    }
+
+    // MARK: Auto-format transcript and cleanup rules
+
+    @Test func categoryFormattingAndTheCursorReadFollowAutoFormatTranscript() async {
+        autoFormatOn = false
+        textBefore = "I was thinking"
+        let c = controller(emailDictation)
+        await dictate(c)
+        #expect(delivered == [emailDictation])
+        #expect(cursorReads.isEmpty)
+        #expect(records.first?.mode == .raw)
+        // The app and category are still recorded: they feed the Settings app list.
+        #expect(records.first?.category == "email")
+    }
+
+    @Test func cleanupRulesRunBeforeCategoryFormattingThroughTheWholePipeline() async {
+        focus = slack
+        var received: [String] = []
+        let c = controller("Um, so we should, uh, ship it.", format: { text, _ in
+            received.append(text)
+            return FormattingResult(text: text, newTerms: [])
+        })
+        await dictate(c)
+        // Fillers gone and the sentence capital kept, then the Work chat style drops the full stop.
+        #expect(received == ["So we should ship it"])
+        #expect(delivered == ["So we should ship it"])
+        #expect(records.first?.rawText == "Um, so we should, uh, ship it.")
+        #expect(records.first?.mode == .formatted)
+    }
+
+    @Test func cleanupFeedsTheEmailLayoutAndRunsEvenWhenFormatForTheAppIsOff() async {
+        let c = controller("Hi Sam, um, can you send me the report. Thanks.")
+        await dictate(c)
+        #expect(delivered == [emailFormatted])
+
+        delivered = []
+        appFormatting.enabled = false
+        await dictate(c)
+        #expect(delivered == ["Hi Sam, can you send me the report. Thanks."])
+        #expect(cursorReads.count == 1)     // the second dictation did not read the caret
+    }
+
+    @Test func cleanupFollowsAutoFormatRawModeAndTheLanguage() async {
+        let um = "So um we should ship it."
+        autoFormatOn = false
+        await dictate(controller(um))
+        #expect(delivered == [um])
+
+        delivered = []
+        autoFormatOn = true
+        await dictate(controller(um), rawMode: true)
+        #expect(delivered == [um])
+
+        delivered = []
+        language = LanguagePin(rawValue: "de")
+        await dictate(controller(um))
+        #expect(delivered.first?.contains("um") == true)
+    }
+
+    @Test func aTranscriptThatIsOnlyFillerIsKeptNotEmptied() async {
+        let c = controller("Um, uh.")
+        await dictate(c)
+        #expect(delivered == ["Um, uh."])
     }
 
     // MARK: window dictations and Useful Voice itself (WAS-54 item 4)
@@ -352,12 +426,14 @@ import Foundation
         #expect(cursorReads.isEmpty)
     }
 
-    @Test func theHotkeyPressedInUsefulVoiceItselfIsAWindowDictation() async {
+    @Test func theHotkeyInUsefulVoiceWithNoEditableFieldFocusedIsAWindowDictation() async {
         focus = ownWindow
+        ownFieldEditable = false
         let c = controller(emailDictation, ownAppID: "ai.useful.voice")
         c.toggle()
         #expect(c.deliveryTarget == nil)
-        await { c.toggle(); await c.awaitProcessing() }()
+        c.toggle()
+        await c.awaitProcessing()
         #expect(deliveredModes == [.copy])
         #expect(outcomes == [.delivered(words: 9, mode: .copied, appName: nil)])
         #expect(reactivations == 0)
@@ -367,8 +443,29 @@ import Foundation
         #expect(sentKeys.isEmpty)
     }
 
+    @Test func theHotkeyInUsefulVoiceWithAnEditableFieldFocusedPastesThereLikeBefore() async {
+        // A note, or the first-run practice pad.
+        focus = ownWindow
+        ownFieldEditable = true
+        appFormatting.setAutoSend(.return, for: .other)
+        let c = controller("hello there", ownAppID: "ai.useful.voice")
+        c.toggle()
+        #expect(c.deliveryTarget == ownWindow)
+        c.toggle()
+        await c.awaitProcessing()
+        #expect(deliveredModes == [.paste])
+        #expect(delivered == ["hello there"])
+        #expect(outcomes == [.delivered(words: 2, mode: .pasted, appName: "Useful Voice")])
+        // Not filed under an app, no caret read from our own field, never a send key.
+        #expect(records.first?.appID == nil)
+        #expect(records.first?.category == nil)
+        #expect(cursorReads.isEmpty)
+        #expect(sentKeys.isEmpty)
+    }
+
     @Test func theOwnAppIsMatchedWithoutRegardToCase() async {
         focus = DeliveryTarget(appID: "AI.Useful.Voice", appName: "Useful Voice", processID: 42)
+        ownFieldEditable = false
         let c = controller("hello", ownAppID: "ai.useful.voice")
         await dictate(c)
         #expect(deliveredModes == [.copy])
@@ -400,7 +497,8 @@ import Foundation
             diagnostics: .memoryOnly,
             focusTarget: { [weak self] in self?.focus },
             appFormatting: { [weak self] in self?.appFormatting ?? .standard },
-            sendKey: { [weak self] chord in self?.sentKeys.append(chord) })
+            sendKey: { [weak self] chord in self?.sentKeys.append(chord) },
+            autoFormat: { true })
         appFormatting.setAutoSend(.return, for: .workChat)
         await dictate(c)
         #expect(c.canRetry)

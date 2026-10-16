@@ -55,26 +55,44 @@ public struct AppFormattingSettings: Codable, Equatable, Sendable {
         overrides = container.decodeAppCategoryOverrides(forKey: .overrides)
     }
 
+    /// One map value, read on its own: a wrong type is nil instead of an error.
+    private struct LenientText: Decodable {
+        let text: String?
+        init(from decoder: Decoder) throws { text = try? decoder.singleValueContainer().decode(String.self) }
+    }
+
     /// A map keyed by category whose values are read one by one, so one unknown value
     /// does not drop the rest.
     private static func lenientMap<Value: RawRepresentable>(
         _ container: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys
     ) -> [String: Value] where Value.RawValue == String {
-        guard let raw = try? container.decodeIfPresent([String: String].self, forKey: key) else { return [:] }
+        // Each value is decoded on its own, so a number or an unknown word in one entry
+        // drops only that entry.
+        guard let raw = try? container.decodeIfPresent([String: LenientText].self, forKey: key) else { return [:] }
         var result: [String: Value] = [:]
         for (name, value) in raw {
-            if AppCategory(rawValue: name) != nil, let parsed = Value(rawValue: value) { result[name] = parsed }
+            if AppCategory(rawValue: name) != nil, let text = value.text, let parsed = Value(rawValue: text) {
+                result[name] = parsed
+            }
         }
         return result
     }
 
     // MARK: - Name
 
-    /// The name as it is used: trimmed, line breaks turned into spaces, cut to `maxNameLength`.
+    /// The name as it is used: control characters removed (a line break counts as a space),
+    /// runs of whitespace collapsed to one space, trimmed, cut to `maxNameLength` characters.
     public static func cleaned(name: String) -> String {
-        let flat = name.unicodeScalars.map { CharacterSet.newlines.contains($0) ? " " : String($0) }.joined()
-        let trimmed = flat.trimmingCharacters(in: .whitespacesAndNewlines)
-        return String(trimmed.prefix(maxNameLength))
+        var out = String.UnicodeScalarView()
+        var pendingSpace = false
+        for scalar in name.unicodeScalars {
+            let isSpace = CharacterSet.whitespacesAndNewlines.contains(scalar)
+            if !isSpace, CharacterSet.controlCharacters.contains(scalar) { continue }
+            if isSpace { pendingSpace = !out.isEmpty; continue }
+            if pendingSpace { out.append(" "); pendingSpace = false }
+            out.append(scalar)
+        }
+        return String(String(out).prefix(maxNameLength)).trimmingCharacters(in: .whitespaces)
     }
 
     // MARK: - Style

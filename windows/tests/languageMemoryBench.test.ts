@@ -1,6 +1,7 @@
 import { describe, it } from 'vitest';
 import { writeFileSync } from 'node:fs';
 import { applyMemory } from '../src/core/memory/memoryPostProcessor.js';
+import { applyMemory as legacyApplyMemory } from './legacy/legacyMemoryPostProcessor.js';
 import type {
   LanguageMemorySnapshot,
   MemoryLanguage,
@@ -16,7 +17,8 @@ import type {
  *
  * A 15,149-character transcript, 1,000 and 5,000 terms (a third English, a third
  * German, a third language-neutral), auto scope and detected `de`. It prints one
- * `LMBENCH {json}` line per case. The corpus is generated from a fixed seed; it follows
+ * `LMBENCH {json}` line per case. UV_LM_BENCH_SIDE=legacy times the pre-index code kept in
+ * tests/legacy instead (the "before" side). The corpus is generated from a fixed seed; it follows
  * the Swift corpus's shape but is not byte-identical to it.
  */
 const enabled = process.env.UV_LM_BENCH === '1';
@@ -133,24 +135,27 @@ function fingerprint(r: ReturnType<typeof applyMemory>): string {
   return h.toString(16);
 }
 
+const side = process.env.UV_LM_BENCH_SIDE === 'legacy' ? 'legacy' : 'production';
+const run = side === 'legacy' ? legacyApplyMemory : applyMemory;
+
 describe.skipIf(!enabled)('Language Memory benchmark', () => {
   it('times applyMemory', () => {
     const text = transcript(15_149);
     const runs = Number(process.env.UV_LM_BENCH_RUNS ?? 5);
     const lines: string[] = [];
-    for (const size of [1000, 5000]) {
+    for (const size of (process.env.UV_LM_BENCH_SIZES ?? '1000,5000').split(',').map(Number)) {
       const snap = snapshot(size, text);
       for (const [scope, language] of [['auto', 'auto'], ['de', 'de']] as const) {
         const samples: number[] = [];
         let last: ReturnType<typeof applyMemory> | undefined;
         for (let i = 0; i < runs; i += 1) {
           const start = performance.now();
-          last = applyMemory(text, snap, language);
+          last = run(text, snap, language);
           samples.push(performance.now() - start);
         }
         const sorted = [...samples].sort((a, b) => a - b);
         const line = JSON.stringify({
-          side: 'production', terms: size, scope, chars: text.length,
+          side, terms: size, scope, chars: text.length,
           first_ms: Number(samples[0]?.toFixed(2)), median_ms: Number((sorted[Math.floor(runs / 2)] as number).toFixed(2)),
           min_ms: Number((sorted[0] as number).toFixed(2)), runs, fired: last!.appliedRuleIds.length,
           hits: last!.memoryHitIds.length, snippets: last!.appliedSnippetIds.length, fingerprint: fingerprint(last!),

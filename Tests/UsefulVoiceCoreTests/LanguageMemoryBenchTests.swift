@@ -49,10 +49,18 @@ import Testing
                         last = r
                     }
                     let r = last!
+                    // How much of the pass is just building the rules (canonical keys and the
+                    // locale-aware sort), which the index does not touch.
+                    var ruleSamples: [Double] = []
+                    for _ in 0..<runs {
+                        let start = DispatchTime.now().uptimeNanoseconds
+                        _ = DictionaryCorrector.effectiveRules(from: snapshot, language: language)
+                        ruleSamples.append(Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6)
+                    }
                     let line = """
                     {"side":"\(side)","terms":\(size),"scope":"\(scopeName)","chars":\(transcript.count),\
                     "first_ms":\(String(format: "%.2f", samples[0])),"median_ms":\(String(format: "%.2f", median(samples))),\
-                    "min_ms":\(String(format: "%.2f", samples.min()!)),"runs":\(runs),\
+                    "min_ms":\(String(format: "%.2f", samples.min()!)),"rules_median_ms":\(String(format: "%.2f", median(ruleSamples))),"runs":\(runs),\
                     "fired":\(r.replacementRuleIDs.count),"hits":\(r.memoryHitIDs.count),"snippets":\(r.snippetIDs.count),\
                     "fingerprint":"\(LanguageMemoryBenchCorpus.fingerprint(r, stableIDs: stable))"}
                     """

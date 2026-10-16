@@ -79,6 +79,28 @@ export function skeletonOf(text: string): Skeleton {
   return { skeleton: Uint32Array.from(out), ascii: Uint8Array.from(flags), starts };
 }
 
+/**
+ * Replaces `remove` entries at `at` with `insert`, in place when the buffer has room. A rule
+ * rewrites a few words of a text of thousands of characters, and allocating three fresh
+ * arrays of that size per rewrite cost more than the regexes the index saved.
+ */
+function splice<T extends Uint32Array | Uint8Array>(
+  buffer: T, length: number, at: number, remove: number, insert: T,
+): { buffer: T; length: number } {
+  const newLength = length - remove + insert.length;
+  let target = buffer;
+  if (newLength > buffer.length) {
+    const Ctor = buffer.constructor as new (n: number) => T;
+    target = new Ctor(Math.max(newLength, buffer.length * 2));
+    target.set(buffer.subarray(0, at), 0);
+    target.set(buffer.subarray(at + remove, length), at + insert.length);
+  } else {
+    target.copyWithin(at + insert.length, at + remove, length);
+  }
+  target.set(insert, at);
+  return { buffer: target, length: newLength };
+}
+
 function isHighSurrogate(unit: number): boolean {
   return unit >= 0xd800 && unit <= 0xdbff;
 }
@@ -87,11 +109,33 @@ function isLowSurrogate(unit: number): boolean {
   return unit >= 0xdc00 && unit <= 0xdfff;
 }
 
+/**
+ * Signatures by phrase, because a dictation re-derives one per rule, per candidate and per
+ * pass and the dictionary does not change between dictations. Bounded by refusing new
+ * entries, not by evicting, so a huge dictionary cannot churn it.
+ */
+const SIGNATURE_CACHE = new Map<string, PhraseSignature | null>();
+const SIGNATURE_CACHE_LIMIT = 50_000;
+
 /** The signature of `phrase` as the matcher sees it (trimmed), or null for an empty phrase. */
 export function phraseSignature(phrase: string): PhraseSignature | null {
+  const cached = SIGNATURE_CACHE.get(phrase);
+  if (cached !== undefined) return cached;
   const trimmed = phrase.trim();
-  if (trimmed.length === 0) return null;
-  return { skeleton: skeletonOf(trimmed).skeleton };
+  const signature = trimmed.length === 0 ? null : { skeleton: phraseSkeleton(trimmed) };
+  if (SIGNATURE_CACHE.size < SIGNATURE_CACHE_LIMIT) SIGNATURE_CACHE.set(phrase, signature);
+  return signature;
+}
+
+/** `skeletonOf(text).skeleton`, with a straight loop for the common all-ASCII phrase. */
+function phraseSkeleton(text: string): Uint32Array {
+  const out = new Uint32Array(text.length);
+  for (let i = 0; i < text.length; i += 1) {
+    const unit = text.charCodeAt(i);
+    if (unit >= 0x80) return skeletonOf(text).skeleton;
+    out[i] = unit >= 0x41 && unit <= 0x5a ? unit + 0x20 : unit;
+  }
+  return out;
 }
 
 function hash2(a: number, b: number): number {
@@ -108,8 +152,10 @@ export class TextIndex {
   private readonly trigrams = new Set<number>();
   private text = '';
   private current: Uint32Array = new Uint32Array(0);
+  private currentLength = 0;
   private currentASCII: Uint8Array = new Uint8Array(0);
   private starts: Uint32Array = new Uint32Array(1);
+  private startsLength = 1;
 
   constructor(text: string) {
     this.absorb(text);
@@ -142,49 +188,49 @@ export class TextIndex {
     const middle = skeletonOf(text.slice(prefix, newLength - suffix));
     const keepHead = this.starts[prefix] as number;
     const keepTailFrom = this.starts[oldLength - suffix] as number;
-    const tailLength = this.current.length - keepTailFrom;
-    const total = keepHead + middle.skeleton.length + tailLength;
+    const removedSkeleton = keepTailFrom - keepHead;
 
-    const skeleton = new Uint32Array(total);
-    const ascii = new Uint8Array(total);
-    skeleton.set(this.current.subarray(0, keepHead), 0);
-    ascii.set(this.currentASCII.subarray(0, keepHead), 0);
-    skeleton.set(middle.skeleton, keepHead);
-    ascii.set(middle.ascii, keepHead);
-    skeleton.set(this.current.subarray(keepTailFrom), keepHead + middle.skeleton.length);
-    ascii.set(this.currentASCII.subarray(keepTailFrom), keepHead + middle.skeleton.length);
+    const skeleton = splice(this.current, this.currentLength, keepHead, removedSkeleton, middle.skeleton);
+    const ascii = splice(this.currentASCII, this.currentLength, keepHead, removedSkeleton, middle.ascii);
+    this.current = skeleton.buffer;
+    this.currentASCII = ascii.buffer;
+    this.currentLength = skeleton.length;
 
-    const starts = new Uint32Array(newLength + 1);
-    starts.set(this.starts.subarray(0, prefix), 0);
-    for (let i = 0; i < text.length - prefix - suffix; i += 1) {
-      starts[prefix + i] = (middle.starts[i] as number) + keepHead;
+    // Entries for the rewritten scalars, then every later entry moves by the length change.
+    const middleStarts = new Uint32Array(newLength - suffix - prefix);
+    for (let i = 0; i < middleStarts.length; i += 1) middleStarts[i] = (middle.starts[i] as number) + keepHead;
+    const startsNow = splice(this.starts, this.startsLength, prefix, oldLength - suffix - prefix, middleStarts);
+    this.starts = startsNow.buffer;
+    this.startsLength = startsNow.length;
+    const shift = middle.skeleton.length - removedSkeleton;
+    if (shift !== 0) {
+      for (let i = newLength - suffix; i < this.startsLength; i += 1) {
+        this.starts[i] = (this.starts[i] as number) + shift;
+      }
     }
-    const shift = keepHead + middle.skeleton.length - keepTailFrom;
-    for (let i = 0; i <= suffix; i += 1) {
-      starts[newLength - suffix + i] = (this.starts[oldLength - suffix + i] as number) + shift;
-    }
-
     this.text = text;
-    this.current = skeleton;
-    this.currentASCII = ascii;
-    this.starts = starts;
 
+    const total = this.currentLength;
     const from = Math.max(0, keepHead - 2);
     const to = Math.min(total - 1, keepHead + middle.skeleton.length);
     for (let i = from; i <= to; i += 1) {
-      const a = skeleton[i] as number;
+      const a = this.current[i] as number;
       this.unigrams.add(a);
       if (i + 1 < total) {
-        const b = skeleton[i + 1] as number;
+        const b = this.current[i + 1] as number;
         this.bigrams.add(hash2(a, b));
-        if (i + 2 < total) this.trigrams.add(hash3(a, b, skeleton[i + 2] as number));
+        if (i + 2 < total) this.trigrams.add(hash3(a, b, this.current[i + 2] as number));
       }
     }
   }
 
   /** The skeleton of the current text, for the tests that compare it with a fresh build. */
   currentSkeleton(): { skeleton: Uint32Array; ascii: Uint8Array; starts: Uint32Array } {
-    return { skeleton: this.current, ascii: this.currentASCII, starts: this.starts };
+    return {
+      skeleton: this.current.subarray(0, this.currentLength),
+      ascii: this.currentASCII.subarray(0, this.currentLength),
+      starts: this.starts.subarray(0, this.startsLength),
+    };
   }
 
   /** False only when the regex for this phrase certainly finds nothing in the current text. */
@@ -205,7 +251,7 @@ export class TextIndex {
   }
 
   private occursInCurrentText(p: Uint32Array): boolean {
-    const n = this.current.length;
+    const n = this.currentLength;
     const m = p.length;
     if (m > n) return false;
     const first = p[0] as number;

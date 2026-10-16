@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 
 import { DataStore } from '../core/settings/dataStore.js';
+import { removeStaleTempFiles } from '../core/settings/jsonStore.js';
 import { planLoginItem, wasAutoStarted } from '../core/settings/autostart.js';
 import { deliverToTarget } from '../core/delivery/deliveryFlow.js';
 import { appIdFor, isKnownBrowser, type DeliveryTarget } from '../core/delivery/deliveryTarget.js';
@@ -387,6 +388,13 @@ class UsefulVoiceApp {
     this.firstRun.sandbox = launch.forced && decision === 'show';
     this.settings.setFrozen(this.firstRun.sandbox);
     this.data.setFrozen(this.firstRun.sandbox);
+    // A write whose temp file was locked too can leave it behind; a forced first run touches nothing.
+    if (!this.firstRun.sandbox) {
+      const userData = app.getPath('userData');
+      for (const name of ['settings.json', 'data.json']) {
+        await removeStaleTempFiles(path.join(userData, name), (message) => this.diagnostics.log('settings', message));
+      }
+    }
     this.diagnostics.log('data', `load outcome: ${this.data.outcome.status}`);
     this.data.onSaveFailure((error) => {
       this.diagnostics.log('data', `save failed: ${error.message}`);

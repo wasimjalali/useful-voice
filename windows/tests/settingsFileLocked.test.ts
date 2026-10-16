@@ -17,8 +17,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 //  6. data.json flushes queued behind a write waiting out a lock run one at a time afterwards,
 //     never together, and the file ends with the newest state (a stale snapshot must never rename last)
 //  7. two writes to one file in the same millisecond use different temp files
+//  8. the temp file itself held open (not only the rename) is retried the same way, and fails loudly when held for good
+//  9. a temp file left behind by a failed cleanup is removed at the next launch once it is a minute old, never sooner
 
 const failures: string[] = [];
+/** Error codes the next temp-file writes fail with, one per call. */
+const writeFailures: string[] = [];
 const renames: Array<[string, string]> = [];
 /** Blocks the next rename until `release()`, so a test queues later work behind it without relying on timing. */
 let held: { entered: () => void; gate: Promise<void> } | null = null;
@@ -36,6 +40,8 @@ vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
   const isTemp = (file: unknown) => String(file).includes('.tmp-');
   const writeFile = (async (file: string, ...rest: unknown[]) => {
+    const code = isTemp(file) ? writeFailures.shift() : undefined;
+    if (code) throw Object.assign(new Error(`${code}: held open, open '${file}'`), { code });
     if (isTemp(file)) writes.most = Math.max(writes.most, ++writes.active);
     return (actual.promises.writeFile as (...args: unknown[]) => Promise<void>)(file, ...rest);
   }) as typeof actual.promises.writeFile;
@@ -64,7 +70,7 @@ vi.mock('electron', () => ({
 }));
 
 const { SettingsStore } = await import('../src/main/settingsStore.js');
-const { writeJsonAtomic } = await import('../src/core/settings/jsonStore.js');
+const { removeStaleTempFiles, writeJsonAtomic } = await import('../src/core/settings/jsonStore.js');
 const { DataStore } = await import('../src/core/settings/dataStore.js');
 
 async function storeWith(typeOutApps: string[]): Promise<{ dir: string; store: InstanceType<typeof SettingsStore> }> {
@@ -89,6 +95,7 @@ const temps = async (dir: string) => (await realFs.readdir(dir)).filter((name) =
 describe('a settings save while settings.json is held open', () => {
   beforeEach(() => {
     failures.length = 0;
+    writeFailures.length = 0;
     renames.length = 0;
     held = null;
     writes.active = 0;
@@ -129,6 +136,27 @@ describe('a settings save while settings.json is held open', () => {
     expect(await temps(dir)).toEqual([]);
   });
 
+  it.each(['EPERM', 'EBUSY'])('a temp file held open with %s is retried and the save lands', async (code) => {
+    const { dir, store } = await storeWith(['putty']);
+    writeFailures.push(code, code);
+    const write = nextWrite(store);
+    store.update({ typeOutApps: [] });
+    expect((await write).ok).toBe(true);
+    expect((await saved(dir)).typeOutApps).toEqual([]);
+    expect(await temps(dir)).toEqual([]);
+  });
+
+  it('a temp file held for good still fails, says so and leaves the old file', async () => {
+    const { dir, store } = await storeWith(['putty']);
+    writeFailures.push(...Array<string>(50).fill('EBUSY'));
+    const write = nextWrite(store);
+    store.update({ typeOutApps: [] });
+    expect((await write).ok).toBe(false);
+    expect(store.saveError?.message).toContain('EBUSY');
+    expect((await saved(dir)).typeOutApps).toEqual(['putty']);
+    expect(await temps(dir)).toEqual([]);
+  });
+
   it('a file held for good still fails, says so and leaves no temp file', async () => {
     const { dir, store } = await storeWith(['putty']);
     failures.push(...Array<string>(50).fill('EPERM'));
@@ -153,6 +181,7 @@ describe('a settings save while settings.json is held open', () => {
 describe('data.json flushes while the file is held open', () => {
   beforeEach(() => {
     failures.length = 0;
+    writeFailures.length = 0;
     renames.length = 0;
     held = null;
     writes.active = 0;
@@ -206,5 +235,45 @@ describe('temp file names', () => {
     const [first, second] = renames.map(([from]) => from);
     expect(first).not.toBe(second);
     expect(await temps(dir)).toEqual([]);
+  });
+});
+
+describe('temp files left behind', () => {
+  it('removes only old temp files of that file, and says nothing when all goes well', async () => {
+    const dir = await realFs.mkdtemp(path.join(os.tmpdir(), 'uv-stale-temp-'));
+    const file = path.join(dir, 'settings.json');
+    const now = Date.now();
+    const make = async (name: string, ageMs: number) => {
+      const target = path.join(dir, name);
+      await realFs.writeFile(target, '{}');
+      const when = new Date(now - ageMs);
+      await realFs.utimes(target, when, when);
+    };
+    await make('settings.json.tmp-1-1-1', 5 * 60_000);
+    await make('settings.json.tmp-1-2-2', 30_000);
+    await make('data.json.tmp-1-1-1', 5 * 60_000);
+    await make('settings.json', 5 * 60_000);
+    const problems: string[] = [];
+    await removeStaleTempFiles(file, (message) => problems.push(message), now);
+    expect((await realFs.readdir(dir)).sort()).toEqual(['data.json.tmp-1-1-1', 'settings.json', 'settings.json.tmp-1-2-2']);
+    expect(problems).toEqual([]);
+  });
+
+  it('reports a temp file it cannot remove instead of throwing', async () => {
+    const dir = await realFs.mkdtemp(path.join(os.tmpdir(), 'uv-stale-temp-'));
+    const file = path.join(dir, 'data.json');
+    const now = Date.now();
+    await realFs.writeFile(`${file}.tmp-1-1-1`, '{}');
+    const old = new Date(now - 5 * 60_000);
+    await realFs.utimes(`${file}.tmp-1-1-1`, old, old);
+    const rm = vi.spyOn(realFs, 'rm').mockRejectedValue(Object.assign(new Error('EBUSY: resource busy'), { code: 'EBUSY' }));
+    const problems: string[] = [];
+    try {
+      await removeStaleTempFiles(file, (message) => problems.push(message), now);
+    } finally {
+      rm.mockRestore();
+    }
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('data.json.tmp-1-1-1');
   });
 });

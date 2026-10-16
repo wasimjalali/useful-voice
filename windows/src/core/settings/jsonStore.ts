@@ -94,8 +94,8 @@ export async function writeJsonAtomic(filePath: string, value: unknown): Promise
   await fs.mkdir(directory, { recursive: true });
   const temp = `${filePath}.tmp-${process.pid}-${Date.now()}-${(tempCounter += 1)}`;
   try {
-    await fs.writeFile(temp, JSON.stringify(value, null, 2), 'utf8');
-    await renameRetryingLocks(temp, filePath);
+    await retryingLocks(() => fs.writeFile(temp, JSON.stringify(value, null, 2), 'utf8'));
+    await retryingLocks(() => fs.rename(temp, filePath));
   } catch (error) {
     await fs.rm(temp, { force: true }).catch(() => undefined);
     throw error;
@@ -103,25 +103,66 @@ export async function writeJsonAtomic(filePath: string, value: unknown): Promise
 }
 
 /**
- * What Windows returns for a rename while another process has either file open: an
+ * What Windows returns for a write or rename while another process has the file open: an
  * antivirus scan, the indexer, a backup or sync tool, or anything reading the file.
  * The lock usually clears within milliseconds. Giving up on the first one dropped the
  * write while the app already showed the change as saved.
+ *
+ * Windows reports ERROR_ACCESS_DENIED as EPERM, so a read-only or ACL-denied file is
+ * indistinguishable from a lock and is retried for the same second before it fails.
+ * (A missing folder, or a directory where the file should be, still fails at once on POSIX.)
  */
-const LOCKED_RENAME_CODES = new Set(['EPERM', 'EACCES', 'EBUSY']);
+const LOCKED_CODES = new Set(['EPERM', 'EACCES', 'EBUSY']);
 /** About one second in all, then the error goes to the caller. */
-const RENAME_RETRY_DELAYS_MS = [10, 20, 40, 80, 160, 250, 250, 250];
+const LOCK_RETRY_DELAYS_MS = [10, 20, 40, 80, 160, 250, 250, 250];
 
-async function renameRetryingLocks(from: string, to: string): Promise<void> {
+async function retryingLocks(operation: () => Promise<void>): Promise<void> {
   for (let attempt = 0; ; attempt += 1) {
     try {
-      await fs.rename(from, to);
+      await operation();
       return;
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      const delay = RENAME_RETRY_DELAYS_MS[attempt];
-      if (delay === undefined || code === undefined || !LOCKED_RENAME_CODES.has(code)) throw error;
+      const delay = LOCK_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined || code === undefined || !LOCKED_CODES.has(code)) throw error;
       await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
+/** A temp file this old belongs to a write that died: no live write takes a minute. */
+const STALE_TEMP_AGE_MS = 60_000;
+
+/**
+ * Remove `<name>.tmp-*` files left beside `filePath` by a write whose cleanup failed
+ * (a lock on the temp file itself). Failures are reported to `onError`, never thrown.
+ */
+export async function removeStaleTempFiles(
+  filePath: string,
+  onError: (message: string) => void,
+  now: number = Date.now(),
+): Promise<void> {
+  const directory = path.dirname(filePath);
+  const prefix = `${path.basename(filePath)}.tmp-`;
+  let names: string[];
+  try {
+    names = await fs.readdir(directory);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      onError(`could not look for leftover temp files in ${directory}: ${describe(error)}`);
+    }
+    return;
+  }
+  for (const name of names) {
+    if (!name.startsWith(prefix)) continue;
+    const target = path.join(directory, name);
+    try {
+      const stats = await fs.stat(target);
+      if (!stats.isFile() || now - stats.mtimeMs < STALE_TEMP_AGE_MS) continue;
+      await fs.rm(target, { force: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      onError(`could not remove the leftover temp file ${name}: ${describe(error)}`);
     }
   }
 }

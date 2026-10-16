@@ -33,6 +33,8 @@ import {
   type TranscriptionHint,
 } from '../core/transcription/deepgramProvider.js';
 import { SettingsStore } from './settingsStore.js';
+import type { CleanupRuntime } from './cleanupModel/cleanupRuntime.js';
+import { dictationSettings, preloadLanguageFor, wireCleanup, type CleanupWiring } from './cleanupModel/cleanupWiring.js';
 import {
   applyAppearance,
   canvasColor,
@@ -189,6 +191,11 @@ class UsefulVoiceApp {
   private desktop: Desktop = windowsDesktop;
   private fakeDesktop: FakeDesktop | null = null;
   private service!: DictationService;
+  /** The hidden S1-mini cleanup. Off unless `--cleanup-model` or `UV_CLEANUP_MODEL=1`; then it is wired in below. */
+  private cleanup!: CleanupRuntime;
+  private cleanupServiceDeps: CleanupWiring['serviceDeps'] = {};
+  /** A dictation is open for the cleanup model: between the first recording status and the idle one. */
+  private cleanupOpen = false;
   private diagnostics!: Diagnostics;
 
   /**
@@ -389,6 +396,14 @@ class UsefulVoiceApp {
     this.createRecorderWindow();
     this.announcer = new Announcer((text, urgency) => this.sendAnnouncement(text, urgency));
     this.hudModel = new HudModel((frame) => this.onHudFrame(frame));
+    const cleanupWiring = wireCleanup({
+      userDataDir: app.getPath('userData'),
+      argv: process.argv,
+      env: process.env,
+      warn: (message) => this.diagnostics.log('cleanup', message),
+    });
+    this.cleanup = cleanupWiring.runtime;
+    this.cleanupServiceDeps = cleanupWiring.serviceDeps;
     this.service = this.buildService();
     this.tray = new TrayController({
       // The tray is part of the app, not the app the user is dictating into, so a
@@ -946,6 +961,8 @@ class UsefulVoiceApp {
 
   async quit(): Promise<void> {
     try {
+      // Not awaited: it ends the model worker at once and must not wait behind a load.
+      void this.cleanup.dispose();
       await this.service.cancel();
       // Always give the data a chance to reach disk before exiting: a debounced
       // save that never fires would lose the user's last dictionary edit.
@@ -1053,6 +1070,11 @@ class UsefulVoiceApp {
 
   // ---- dictation ---------------------------------------------------------
 
+  /** The settings a dictation runs with: the first-run sandbox language stands in for the pin. */
+  private dictationSettings(): AppSettings {
+    return dictationSettings(this.settings.all, this.firstRun);
+  }
+
   private buildService(): DictationService {
     this.recorder = new RecorderBridge({
       send: (channel, payload) => {
@@ -1092,11 +1114,9 @@ class UsefulVoiceApp {
         },
       },
       sink: { deliver: (request) => this.deliver(request) },
-      settings: () =>
-        this.firstRun.sandbox && this.firstRun.language
-          ? { ...this.settings.all, languagePin: this.firstRun.language }
-          : this.settings.all,
+      settings: () => this.dictationSettings(),
       memory: () => this.data.memorySnapshot(),
+      ...this.cleanupServiceDeps,
       apiKey: async () => this.dictationKey(),
       onStatus: (status) => this.handleStatus(status),
       // Before the idle status, so a window can show its done line before it resets.
@@ -1155,6 +1175,15 @@ class UsefulVoiceApp {
     // Leaving the recording state hands the paste to whatever is in front, so a picker that
     // is still open would be the foreground window and take it.
     if (status.state === 'transcribing' || status.state === 'delivering') this.closeLanguagePicker(true);
+
+    // The hidden cleanup model loads while the person talks and is let go when the dictation is over.
+    if (status.state === 'recording' && !this.cleanupOpen) {
+      this.cleanupOpen = true;
+      this.cleanup.beginDictation(preloadLanguageFor(this.dictationSettings()));
+    } else if ((status.state === 'idle' || status.state === 'error') && this.cleanupOpen) {
+      this.cleanupOpen = false;
+      this.cleanup.endDictation();
+    }
 
     if (status.state === 'recording') {
       void playCue('start').catch(() => undefined);
@@ -1906,7 +1935,10 @@ class UsefulVoiceApp {
       if (/^https:\/\//i.test(url) || url === 'ms-settings:privacy-microphone') await shell.openExternal(url);
     });
 
-    ipcMain.handle('app:flags', () => ({ previewFeatures: process.argv.includes('--preview-features') }));
+    ipcMain.handle('app:flags', () => ({
+      previewFeatures: process.argv.includes('--preview-features'),
+      cleanupModel: this.cleanup.flagOn,
+    }));
     ipcMain.handle('app:get-theme', () => resolvedTheme());
     ipcMain.handle('app:show-log', () => shell.showItemInFolder(this.diagnostics.path));
 
@@ -2142,7 +2174,7 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     'notes:get': [],
     'app:save-status': { ok: true },
     'app:get-theme': 'light',
-    'app:flags': { previewFeatures: false },
+    'app:flags': { previewFeatures: false, cleanupModel: false },
     'firstrun:get': { pending: false, forced: false, step: null, keySaved: true, hotkey: 'Control+Alt+Space', language: 'auto' },
   };
   for (const [channel, value] of Object.entries(stubs)) {

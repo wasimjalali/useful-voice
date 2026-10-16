@@ -69,6 +69,29 @@ export function s1ControlLine(category: string | null | undefined, style: string
   return `[Styling: ${s.styling}] [Structure: ${s.structure}] [Context: ${s.context}]`;
 }
 
+/**
+ * The control-line style for the style the user picked for an app category. Mirrors
+ * `S1MiniModel.controlStyle(for:)` on macOS: Formal is formal, Casual is semi-casual and
+ * Very casual is casual. No choice (null, undefined or anything else) is null, which
+ * leaves the card's default, semi-formal. The eval found that picking casual by app
+ * category alone hurt restraint, so only an explicit choice moves off the default.
+ *
+ * The app styles are the raw values of `FormattingStyle` (`formal`, `casual`,
+ * `veryCasual`); `s1ControlLine` takes the result, not the app style.
+ */
+export function s1ControlStyle(appStyle: string | null | undefined): S1Styling | null {
+  switch (appStyle) {
+    case 'formal':
+      return 'formal';
+    case 'casual':
+      return 'semi-casual';
+    case 'veryCasual':
+      return 'casual';
+    default:
+      return null;
+  }
+}
+
 /** The user message: control line, newline, transcript. */
 export function s1UserMessage(category: string | null | undefined, style: string | null | undefined, text: string): string {
   return `${s1ControlLine(category, style)}\n${text}`;

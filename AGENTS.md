@@ -28,6 +28,7 @@ Cross-platform dictation app. macOS: Swift (`Sources/UsefulVoiceCore`,
   silence-limit spec swaps the recorder window's `getUserMedia` for a scripted tone (`useScriptedMicrophone`). The shortest
   limits the app allows are 15 s of silence and 30 s of recording, so those two specs take 20 s and 35 s. Never press the
   hotkey to completion in a spec: it would paste into whatever is in front of the machine.
+- App-aware E2E: `e2e/app-aware.spec.ts` drives whole hotkey dictations through a scripted desktop. `__uv.useFakeDesktop({foreground:{processName,title}, address, textBefore, foregroundAfterPaste, focusMovesBeforeKey})` replaces who is in front, the browser page and the text before the caret; pastes, typed text and send keys are recorded in `__uv.fakeCalls()` and never sent (a send key to a different focused field is recorded as `sendKeyBlocked`). `__uv.fakeDesktop(patch)` changes the scripted state mid-dictation, `__uv.setTranscript(text)` sets what the Deepgram stub returns, `__uv.ownProcess()` gives our own process.
 
 ## Windows renderer layout
 
@@ -38,6 +39,15 @@ shared pieces live in `components/` and styles in `styles/` (`tokens.css` with t
 build concatenates every file in that order). `hud.ts` draws the HUD and floating language
 picker windows. `--preview-features` shows controls whose backend has not shipped
 (`components/flags.ts`).
+
+App-aware formatting on Windows lives in `src/core/apps/appAwareness.ts` (context capture, formatter wrapper,
+settings normalisers, send key), `src/core/apps/ownField.ts`, `src/core/apps/serialSave.ts`, `src/main/desktop.ts`,
+`src/core/delivery/deliveryFlow.ts` (auto-send step) and `renderer/pages/settings.ts` (the Apps group). On macOS the
+settings are one JSON UserDefaults key, `appFormatting` (`AppFormattingSettings`); the controller scenarios are in
+`Tests/UsefulVoiceCoreTests/AppAwareDictationTests.swift`. The text before the cursor is read at the press (macOS caps
+the read at 150 ms), kept in memory only. On both platforms a dictation into Useful Voice's own window carries no appID,
+category, cursor read or category formatting and never presses a send key; a hotkey press with Useful Voice in front
+pastes only into a focused editable field of ours, otherwise it's copied.
 
 ## `ELECTRON_RUN_AS_NODE` gotcha
 
@@ -82,7 +92,7 @@ Snapshot-only state hooks (they act only when `UV_SNAPSHOT` is set):
 | `UV_BANNER` | `mic`, `accessibility`, `keyMissing`, `keyInvalid`, `offline`, `modelMissing` |
 | `UV_VOCAB_FILTER` | `all`, `words`, `fixes`, `snippets`, `suggestions` |
 | `UV_INSIGHTS_RANGE`, `UV_INSIGHTS_FIXTURE` | `7d`/`30d`/`all`; `empty`/`firstWeek`/`full` |
-| `UV_SETTINGS_ANCHOR`, `UV_SETTINGS_STATE` | a group id; `noKey`, `invalidKey`, `confirmDelete` |
+| `UV_SETTINGS_ANCHOR`, `UV_SETTINGS_STATE` | a group id (`apps` opens Settings > Apps); `noKey`, `invalidKey`, `confirmDelete` |
 | `UV_HUD_STATE` | `recording`, `recordingLoud`, `silence`, `transcribing`, `local`, `localFa`, `inserting`, `done`, `doneSaved`, `copied`, `copiedAppChanged`, `lineBreaks`, `cancelled`, `errorNetwork`, `errorMic`, `errorTimedOut`, `errorSecure`, `language`, `picker` (renders the HUD alone; try `480x210`, picker `360x440`) |
 | `UV_MENU_HEADER` | `idle`, `recording` (the menu bar header row, `260x76`) |
 

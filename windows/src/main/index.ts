@@ -7,8 +7,9 @@ import os from 'node:os';
 
 import { DataStore } from '../core/settings/dataStore.js';
 import { planLoginItem, wasAutoStarted } from '../core/settings/autostart.js';
-import { decideClipboardRestore, isProbablyVerifiable } from '../core/delivery/clipboardRestore.js';
-import { pasteTargetMoved } from '../core/delivery/pasteTarget.js';
+import { deliverToTarget } from '../core/delivery/deliveryFlow.js';
+import { isKnownBrowser, type DeliveryTarget } from '../core/delivery/deliveryTarget.js';
+import { PendingAddress, focusReader, forgetPageDetails, killOnTimeout, toDeliveryTarget } from './deliveryGlue.js';
 import {
   normaliseMemoryLanguage,
   type AppSettings,
@@ -49,6 +50,10 @@ import {
   foregroundWindow,
   restoreForegroundWindow,
   pasteClipboard,
+  reactivateWindow,
+  browserAddress,
+  typeText,
+  ownProcessName,
   playCue,
   restoreClipboard,
   snapshotClipboard,
@@ -112,6 +117,8 @@ if (E2E) {
 }
 
 const CLIPBOARD_RESTORE_DELAY_MS = 700;
+/** The sink's time when the service names none (it always does). */
+const DEFAULT_SINK_BUDGET_MS = 8000;
 
 /**
  * The HUD window is a fixed transparent area, big enough for the widest state, so the
@@ -171,6 +178,13 @@ class UsefulVoiceApp {
   private pickerOpening = false;
   /** The app the current recording will paste into (a hotkey dictation only). */
   private recordingTarget: string | undefined;
+  /**
+   * Apps dictated into this session, newest first, for the Settings list of apps that
+   * can be switched to typing. In memory only.
+   */
+  private recentTargetApps: string[] = [];
+  /** The hotkey target whose browser address is still being read, if any. */
+  private readonly pendingAddress = new PendingAddress();
   private service!: DictationService;
   private diagnostics!: Diagnostics;
 
@@ -1152,17 +1166,28 @@ class UsefulVoiceApp {
     }
     let targetApp: string | undefined;
     let targetHandle: number | undefined;
+    let target: DeliveryTarget | undefined;
     if (this.service.currentState === 'idle' || this.service.currentState === 'error') this.recordingHandle = undefined;
     if (source === 'hotkey' && (this.service.currentState === 'idle' || this.service.currentState === 'error')) {
-      // Capture which app is focused NOW, before recording. By the time the
-      // transcript is ready the user may have clicked elsewhere, and pasting into
-      // the wrong window is worse than not pasting at all.
-      const target = await foregroundWindow();
-      targetApp = target ? target.title || target.processName : undefined;
-      targetHandle = target?.handle;
+      // Capture which app is focused NOW, before recording: the target lock. By the
+      // time the transcript is ready the user may have clicked elsewhere, and pasting
+      // into the wrong window is worse than not pasting at all.
+      const front = await foregroundWindow();
+      targetApp = front ? front.title || front.processName : undefined;
+      targetHandle = front?.handle;
       this.recordingHandle = targetHandle;
+      target = front ? toDeliveryTarget(front) : undefined;
+      if (target) this.noteRecentTarget(target);
+      if (target && front && isKnownBrowser(target.appId)) {
+        // Off the critical path: recording never waits on UI Automation. The address
+        // stays on this dictation's target, in memory only, and a read that finishes
+        // after delivery has settled is dropped.
+        const handle = front.handle;
+        const appId = target.appId;
+        void this.pendingAddress.start(target, async () => (await browserAddress(handle, appId)).address);
+      }
     }
-    await this.service.toggle({ source, targetApp, targetHandle });
+    await this.service.toggle({ source, targetApp, targetHandle, target });
     void this.data.flush();
   }
 
@@ -1208,7 +1233,7 @@ class UsefulVoiceApp {
    * Electron and cannot drift from what the tests assert.
    */
   private async deliver(request: DeliveryRequest): Promise<DeliveryResult> {
-    const { text, mode, targetApp } = request;
+    const { text, mode } = request;
     // A cancel that arrived before anything touched the clipboard stops here, on every
     // path: copy, moved window and paste alike.
     const cancelled: DeliveryResult = { delivered: false, clipboardFallback: false, cancelled: true };
@@ -1219,59 +1244,52 @@ class UsefulVoiceApp {
       clipboard.writeText(text);
       return { delivered: true, clipboardFallback: false };
     }
-    const target = await foregroundWindow();
-    if (request.signal?.aborted) return cancelled;
-    if (pasteTargetMoved(request.targetHandle, target)) {
-      // The user stopped from somewhere else (the dock, so Useful Voice is in front) or
-      // clicked away: a paste would land in the wrong window. Leave it on the clipboard.
-      this.diagnostics.log('delivery', 'start window is no longer in front; copied instead of pasting');
-      clipboard.writeText(text);
-      return { delivered: false, clipboardFallback: true };
-    }
-    const snapshot = snapshotClipboard();
-
-    clipboard.writeText(text);
-
-    // The last point at which a cancel can still stop the paste. After this line the
-    // keystroke is sent and the dictation is delivered whatever the user does next.
-    if (request.signal?.aborted) {
-      this.restoreSnapshot(snapshot);
-      return cancelled;
-    }
-    const pasteSent = await pasteClipboard();
-
-    // Confirmation is limited to observing that focus did not move and that the
-    // clipboard was consumed: reading the target's text is not possible without a
-    // UI-automation dependency. Both reads are skipped when they could not mean
-    // anything — an unverifiable target, or a paste that never ran.
-    let focusAfter = null as Awaited<ReturnType<typeof foregroundWindow>>;
-    let stillOurs = false;
-    if (pasteSent && isProbablyVerifiable(target)) {
-      // The target needs a moment to handle the keystroke; reading the clipboard
-      // sooner would see our own text and call a landed paste a failure.
-      await delay(CLIPBOARD_RESTORE_DELAY_MS);
-      focusAfter = await foregroundWindow();
-      stillOurs = clipboardHoldsText(text);
-    }
-
-    const decision = decideClipboardRestore({
-      clipboard: snapshot,
-      target,
-      pasteSent,
-      focusAfter,
-      clipboardStillHoldsText: stillOurs,
+    // The target lock, the method, the proof and the restore: `deliverToTarget` decides
+    // (and is tested in `tests/deliveryFlow.test.ts`); this supplies the Windows effects.
+    const target = request.target;
+    const deadline = Date.now() + (request.timeBudgetMs ?? DEFAULT_SINK_BUDGET_MS);
+    const kill = killOnTimeout(request.signal);
+    const readFocus = focusReader(target, {
+      foregroundWindow: (budgetMs) => foregroundWindow(budgetMs),
+      browserAddress: (handle, appId, budgetMs) => browserAddress(handle, appId, budgetMs),
+      log: (category, message) => this.diagnostics.log(category, message),
     });
-
-    if (decision.restore) {
-      this.restoreSnapshot(snapshot);
-    } else if (decision.reason === 'snapshot-incomplete') {
-      this.diagnostics.log('clipboard', 'not restoring: original could not be captured fully');
-    } else if (decision.reason === 'unverifiable-target') {
-      const name = target?.processName ?? targetApp ?? 'the target app';
-      this.diagnostics.log('delivery', `unverifiable target (${name}); left on clipboard`);
+    try {
+      const result = await deliverToTarget(
+        {
+          text,
+          target,
+          typeOutApps: this.settings.all.typeOutApps,
+          restorePreviousClipboard: this.settings.all.restorePreviousClipboard,
+          signal: request.signal,
+          deadline,
+          settleMs: CLIPBOARD_RESTORE_DELAY_MS,
+        },
+        {
+          now: () => Date.now(),
+          readFocus,
+          reactivate: (lockTarget, budgetMs) =>
+            reactivateWindow(lockTarget.windowHandle ?? 0, lockTarget.focusHandle, budgetMs),
+          snapshotClipboard: () => snapshotClipboard(),
+          writeClipboard: (value) => clipboard.writeText(value),
+          restoreClipboard: (snapshot) => this.restoreSnapshot(snapshot),
+          clipboardHoldsText: (value) => clipboardHoldsText(value),
+          paste: (lockTarget, until) => pasteClipboard(lockTarget.windowHandle ?? 0, until, kill),
+          typeOut: (lockTarget, batches, until) => typeText(batches, lockTarget.windowHandle ?? 0, until, kill),
+          wait: (ms) => delay(ms),
+          log: (category, message) => this.diagnostics.log(category, message),
+        },
+      );
+      if (result.cancelled) return cancelled;
+      const delivered: DeliveryResult = { delivered: result.delivered, clipboardFallback: result.clipboardFallback };
+      if (result.partlyTyped) delivered.partlyTyped = true;
+      if (result.lineBreaks) delivered.lineBreaks = true;
+      if (result.pasteFailed) delivered.pasteFailed = true;
+      return delivered;
+    } finally {
+      forgetPageDetails(target);
+      this.pendingAddress.settle(target);
     }
-
-    return { delivered: decision.delivered, clipboardFallback: !decision.delivered };
   }
 
   /**
@@ -1284,6 +1302,13 @@ class UsefulVoiceApp {
     if (!restored) {
       this.diagnostics.log('clipboard', 'restore did not verify; dictation left in place');
     }
+  }
+
+  /** Remember a hotkey target's app for the Settings type-out list. */
+  private noteRecentTarget(target: DeliveryTarget): void {
+    const id = target.appId;
+    if (!id || id === ownProcessName()) return;
+    this.recentTargetApps = [id, ...this.recentTargetApps.filter((app) => app !== id)].slice(0, 8);
   }
 
   /** The newest dictation still in the history, so a deleted one is never copied back. */
@@ -1423,6 +1448,7 @@ class UsefulVoiceApp {
     ipcMain.handle('settings:get', () => ({
       ...this.settings.all,
       hasApiKey: this.settings.hasApiKey,
+      recentTargetApps: this.recentTargetApps,
     }));
     ipcMain.handle('settings:save', (_event, patch: Partial<AppSettings>) => {
       // A value Electron cannot parse must never be saved: it would make every launch fail.
@@ -1443,7 +1469,7 @@ class UsefulVoiceApp {
       // Goes through the same plan as startup, so the entry written here is the one
       // the launcher will start and the one `--autostart` will therefore arrive on.
       this.applyLoginItem(next.launchAtLogin, 'settings');
-      return { ...next, hasApiKey: this.settings.hasApiKey };
+      return { ...next, hasApiKey: this.settings.hasApiKey, recentTargetApps: this.recentTargetApps };
     });
     ipcMain.handle('settings:set-api-key', (_event, key: string) => this.settings.setApiKey(key));
     ipcMain.handle('settings:clear-api-key', () => this.settings.clearApiKey());
@@ -2024,7 +2050,8 @@ export async function runSelfTest(): Promise<SelfTestResult> {
       languagePin: 'en', formattingEnabled: true, silenceTimeoutSeconds: 30,
       maxRecordingSeconds: 600, recordingsToKeep: 5, soundEffectsEnabled: true,
       launchAtLogin: false, hotkey: { accelerator: 'Control+Alt+Space', pushToTalk: false },
-      dictionaryBiasBudget: 100, hasApiKey: true,
+      dictionaryBiasBudget: 100, restorePreviousClipboard: true, typeOutApps: [], recentTargetApps: [],
+      hasApiKey: true,
     },
     'memory:get': {
       terms: [], replacements: [], snippets: [], suggestions: [],

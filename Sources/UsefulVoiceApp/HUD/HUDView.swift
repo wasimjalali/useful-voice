@@ -172,6 +172,18 @@ struct HUDView: View {
                 if let fix { fixButton(fix) }
                 closeButton
             }
+        case .partlyTyped:
+            row(trailing: 8) {
+                symbol("doc.on.clipboard")
+                Text(DictationIssue.partlyTypedMessage)
+                closeButton
+            }
+        case .lineBreaks:
+            row(trailing: 8) {
+                symbol("doc.on.clipboard")
+                Text(DictationIssue.lineBreaksMessage)
+                closeButton
+            }
         case .cancelled:
             row(trailing: 16) {
                 symbol("xmark")

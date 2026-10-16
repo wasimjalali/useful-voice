@@ -195,7 +195,21 @@ export type DictationDelivery = 'pasted' | 'copiedNotPasted' | 'copied';
 
 /** Sent once per dictation, before the idle status. */
 export type DictationOutcomeEvent =
-  | { kind: 'delivered'; words: number; result: DictationDelivery; appName?: string }
+  | {
+      kind: 'delivered';
+      words: number;
+      result: DictationDelivery;
+      appName?: string;
+      /** With `copiedNotPasted`: typing stopped part way, the full text is on the clipboard. */
+      partlyTyped?: boolean;
+      /** With `copiedNotPasted`: the text has a line break, so an app that types got nothing. */
+      lineBreaks?: boolean;
+      /**
+       * With `copiedNotPasted`: Windows refused the paste keystroke (the target runs as
+       * administrator). The only outcome that may show the "blocked" banner.
+       */
+      pasteBlocked?: boolean;
+    }
   | { kind: 'cancelled' };
 
 /**
@@ -275,6 +289,18 @@ export interface AppSettings {
   appearance: Appearance;
   /** Words per day the Insights page measures progress against. No UI sets it yet. */
   dailyWordGoal: number;
+  /**
+   * After a paste that provably landed, put the previous clipboard back. Off leaves the
+   * dictation on the clipboard. On by default: the behaviour before the setting existed,
+   * so a settings file written by an older build is unchanged.
+   */
+  restorePreviousClipboard: boolean;
+  /**
+   * Apps (lowercased executable names without `.exe`) that get the dictation typed out as
+   * Unicode keystrokes instead of pasted: terminals and apps that block paste. Empty by
+   * default, so every app pastes until the user turns typing on for it.
+   */
+  typeOutApps: string[];
 }
 
 export type Appearance = 'system' | 'light' | 'dark';
@@ -308,4 +334,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dictionaryBiasBudget: 100,
   appearance: 'system',
   dailyWordGoal: 2500,
+  restorePreviousClipboard: true,
+  typeOutApps: [],
 };

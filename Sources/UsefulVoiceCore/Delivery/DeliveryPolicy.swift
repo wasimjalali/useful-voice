@@ -57,6 +57,13 @@ public enum DeliveryPolicy {
     ///     exactly the payload (its count moved by another amount, or the app
     ///     re-created it). Web composers do this: Claude's and Slack's report a
     ///     count one or two off, so a paste that landed read as a miss.
+    ///
+    /// "Never ask for a manual paste after a sent keystroke" covers only what can't
+    /// be measured: an AX-blind target, a field that stopped answering or changed
+    /// by another amount, and a type-out that sent every batch (decided before this
+    /// runs). A measurable field whose count did not move after a paste, with an AX
+    /// insert that did not grow it either, is measured evidence of a miss: that one
+    /// still asks for Cmd-V.
     public static func finalDecision(pastePosted: Bool,
                                      axVisible: Bool,
                                      axInsertGrew: Bool,
@@ -74,5 +81,20 @@ public enum DeliveryPolicy {
         // could not even post it, there is nothing on screen: ask for a manual
         // paste.
         return pastePosted ? .keepDictationPasted : .keepDictationManual
+    }
+
+    /// Whether the user's previous clipboard may be written back now.
+    ///
+    /// - Parameters:
+    ///   - proven: the text provably landed (the element grew by the payload, or a
+    ///     decision that `restoresUserClipboard`).
+    ///   - canRestoreSafely: the snapshot was copied in full (or the clipboard was
+    ///     empty); a partial copy must never replace the user's data.
+    ///   - restorePreviousClipboard: the user's setting. Off leaves the dictation
+    ///     on the clipboard even after a proven paste.
+    public static func shouldRestoreClipboard(proven: Bool,
+                                              canRestoreSafely: Bool,
+                                              restorePreviousClipboard: Bool) -> Bool {
+        proven && canRestoreSafely && restorePreviousClipboard
     }
 }

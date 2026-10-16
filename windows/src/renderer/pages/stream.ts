@@ -174,7 +174,7 @@ function build(): HTMLElement {
   const header = el(
     'header',
     { class: 'st-header' },
-    el('div', { class: 'st-title-row' }, el('h1', { class: 'st-title' }, 'Stream'), titleCount, el('span', { class: 'spacer' }), search),
+    el('div', { class: 'st-title-row' }, el('h1', { class: 'st-title' }, 'Dictations'), titleCount, el('span', { class: 'spacer' }), search),
     tools,
   );
 

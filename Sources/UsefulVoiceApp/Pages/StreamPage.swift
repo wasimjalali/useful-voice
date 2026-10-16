@@ -129,7 +129,7 @@ private struct StreamHeader: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text("Stream")
+            Text("Dictations")
                 .font(.uv(.title, .semibold))
                 .foregroundStyle(Theme.ink)
             if !store.query.isEmpty, store.shownCount > 0 {

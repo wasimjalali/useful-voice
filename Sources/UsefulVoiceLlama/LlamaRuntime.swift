@@ -70,6 +70,7 @@ public final class LlamaRuntime: @unchecked Sendable {
     private let model: OpaquePointer
     private let vocab: OpaquePointer
     private let threads: Int32
+    public var threadCount: Int32 { threads }
     public let gpuLayers: Int32
     public let modelPath: String
 

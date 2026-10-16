@@ -44,6 +44,7 @@ struct CleanupPipelineTests {
 
     @Test func modelAnswerThatPassesTheGuardIsUsed() async {
         let model = FakeModel(.answer("I need to send the report by Thursday."))
+        let before = ContinuousClock.now
         let r = await run(raw, model: model)
         #expect(r.text == "I need to send the report by Thursday.")
         #expect(r.source == .model)
@@ -52,7 +53,9 @@ struct CleanupPipelineTests {
         let call = model.calls[0]
         #expect(call.text == rules)
         #expect(call.controlLine == "[Styling: semi-formal] [Structure: prose] [Context: general]")
-        #expect(call.deadline > ContinuousClock.now)
+        // The deadline is absolute: two seconds from when the pipeline started.
+        #expect(call.deadline >= before.advanced(by: .seconds(2)))
+        #expect(call.deadline <= ContinuousClock.now.advanced(by: .seconds(2)))
     }
 
     @Test func controlLineFollowsCategoryAndStyle() async {

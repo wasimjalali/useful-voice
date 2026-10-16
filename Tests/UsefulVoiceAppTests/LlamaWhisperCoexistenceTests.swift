@@ -143,7 +143,7 @@ struct LlamaWhisperCoexistenceTests {
                 let t0 = ContinuousClock.now
                 let runtime = try LlamaRuntime(modelPath: s1, gpuLayers: layers)
                 let loadMs = ms(t0.duration(to: .now))
-                print("MEASURE \(label) load \(loadMs) ms mem \(memoryMB())")
+                print("MEASURE \(label) load \(loadMs) ms threads \(runtime.threadCount) cores \(ProcessInfo.processInfo.activeProcessorCount) mem \(memoryMB())")
                 var times: [Double] = []
                 for s in sentences + sentences {
                     let t = ContinuousClock.now

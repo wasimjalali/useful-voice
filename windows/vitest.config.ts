@@ -2,7 +2,8 @@ import { configDefaults, defineConfig } from 'vitest/config';
 
 /**
  * Tests that drive the real desktop (a real Edge window read with UI Automation) and time
- * it. They run on their own afterwards (`vitest.desktop.config.ts`, `npm test` runs both):
+ * it. They run on their own afterwards (`vitest.desktop.config.ts`; `npm test` runs both,
+ * `npx vitest run --config vitest.desktop.config.ts` runs them alone, a plain `vitest` never):
  * beside the other files they share the runner with tests that compile C# and start
  * dozens of PowerShells, and their timings measure that instead of the read.
  */

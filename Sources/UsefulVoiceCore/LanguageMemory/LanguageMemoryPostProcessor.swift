@@ -148,9 +148,7 @@ public enum LanguageMemoryPostProcessor {
     private static func matchingTermIDs(terms: [MemoryTerm],
                                         language: MemoryLanguage,
                                         texts: [String]) -> [UUID] {
-        mergedIDs(texts.map {
-            LanguageMemoryMatcher.matchingTermIDs(terms, in: $0, language: language)
-        })
+        mergedIDs(LanguageMemoryMatcher.matchingTermIDs(terms, inTexts: texts, language: language))
     }
 
     private static func mergedIDs(_ groups: [UUID]...) -> [UUID] {

@@ -1,0 +1,4 @@
+{"side":"legacy","terms":1000,"scope":"auto","chars":15149,"first_ms":3771.13,"median_ms":256.6,"min_ms":230.62,"runs":5,"fired":124,"hits":83,"snippets":0,"fingerprint":"2c2c1ae761804fb0"}
+{"side":"legacy","terms":1000,"scope":"de","chars":15149,"first_ms":135.38,"median_ms":139.21,"min_ms":131.83,"runs":5,"fired":101,"hits":59,"snippets":0,"fingerprint":"93e35b522c71bde7"}
+{"side":"legacy","terms":5000,"scope":"auto","chars":15149,"first_ms":17196.55,"median_ms":3182.75,"min_ms":2998.71,"runs":5,"fired":381,"hits":381,"snippets":0,"fingerprint":"8c235675ff11c7ae"}
+{"side":"legacy","terms":5000,"scope":"de","chars":15149,"first_ms":2104.11,"median_ms":2104.11,"min_ms":2065.75,"runs":5,"fired":273,"hits":257,"snippets":0,"fingerprint":"9d17d6fda0d407e2"}

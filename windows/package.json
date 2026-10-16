@@ -68,6 +68,14 @@
         "to": "THIRD_PARTY_NOTICES.md"
       }
     ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "wasimjalali",
+        "repo": "useful-voice-releases",
+        "releaseType": "release"
+      }
+    ],
     "extraMetadata": {
       "main": "dist/main/index.js"
     },
@@ -91,12 +99,14 @@
       "signtoolOptions": {
         "publisherName": "Useful Build"
       },
-      "legalTrademarks": "Useful Voice"
+      "legalTrademarks": "Useful Voice",
+      "verifyUpdateCodeSignature": false
     },
     "nsis": {
       "guid": "cfa29547-fa82-5f74-b344-dfe1c5823243",
       "oneClick": false,
       "perMachine": false,
+      "allowElevation": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
@@ -113,6 +123,7 @@
     ]
   },
   "dependencies": {
+    "electron-updater": "6.8.10",
     "node-llama-cpp": "3.22.1"
   }
 }

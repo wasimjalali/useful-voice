@@ -1,4 +1,5 @@
 import AppKit
+import UsefulVoiceCore
 
 /// Speaks HUD state changes to VoiceOver. The HUD panel never takes focus, so
 /// nothing would announce it: the app posts an NSAccessibility announcement on

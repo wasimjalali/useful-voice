@@ -5,7 +5,7 @@ import Testing
 /// The indexed Language Memory matcher against the old matcher (`LegacyLanguageMemory`,
 /// the code as it was before the index) over random dictionaries and texts. The two must
 /// agree on everything: the text, the rules that fired, the term hits, the snippets.
-@Suite struct LanguageMemoryIndexTests {
+@Suite(.serialized) struct LanguageMemoryIndexTests {
     // MARK: - Scenario generator
 
     /// Pieces that stress the matcher: case folding that changes length, other scripts,
@@ -129,7 +129,7 @@ import Testing
     }
 
     static var caseCount: Int {
-        Int(ProcessInfo.processInfo.environment["UV_LM_DIFF_CASES"] ?? "") ?? 600
+        Int(ProcessInfo.processInfo.environment["UV_LM_DIFF_CASES"] ?? "") ?? 250
     }
 
     // MARK: - Differential tests

@@ -86,7 +86,7 @@ each other (three alternating pairs of 15-sample runs, auto scope: 222 to 246 ms
   - Swift: 5,000 random scenarios per test, three tests (rule application at three index
     settings, term matching at three settings over four texts each, the full pass), plus the
     index-never-rejects property, plus incremental-update equality. 14 tests passed
-    (`...-swift-differential-5000.log`). CI runs 600 scenarios per test on every push.
+    (`...-swift-differential-5000.log`). CI runs 250 scenarios per test on every push.
   - Windows: 3,000 scenarios per test, same shape. 6 tests passed (`...-windows-differential-3000.log`).
     CI runs 150 per test.
   - Scenarios mix: ASCII, German (`ß`, umlauts, NFC and NFD), Cyrillic, Greek (final sigma),

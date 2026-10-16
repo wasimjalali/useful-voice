@@ -68,23 +68,24 @@ jobs:
           # reads the file: from the Keychain it would wait on an access prompt.
           "$BIN/generate_keys" --account uv-dry-run -x "$RUNNER_TEMP/uv-dry-run.key"
 
-      # The guards that keep a test build from passing for a real one.
+      # The guards that keep a test build from passing for a real one. Their output,
+      # like release.json, goes outside the checkout: the script refuses untracked files.
       - name: Refuses a release with another key, or ad hoc on the real account
         run: |
           set +e
-          node scripts/release-mac.mjs --version 0.0.1 --ed-key-file "$RUNNER_TEMP/uv-dry-run.key" --ed-public-key "$ED_KEY" 2> other-key.txt; code=$?
-          cat other-key.txt
-          [ "$code" -eq 1 ] && grep -q "signed with the real update key" other-key.txt || { echo "expected a refusal of a release with another key"; exit 1; }
-          node scripts/release-mac.mjs --version 0.0.1 --ad-hoc --ed-public-key "$ED_KEY" 2> real-account.txt; code=$?
-          cat real-account.txt
-          [ "$code" -eq 1 ] && grep -q "throwaway key" real-account.txt || { echo "expected a refusal of ad hoc on the real account"; exit 1; }
+          node scripts/release-mac.mjs --version 0.0.1 --ed-key-file "$RUNNER_TEMP/uv-dry-run.key" --ed-public-key "$ED_KEY" 2> "$RUNNER_TEMP/other-key.txt"; code=$?
+          cat "$RUNNER_TEMP/other-key.txt"
+          [ "$code" -eq 1 ] && grep -q "signed with the real update key" "$RUNNER_TEMP/other-key.txt" || { echo "expected a refusal of a release with another key"; exit 1; }
+          node scripts/release-mac.mjs --version 0.0.1 --ad-hoc --ed-public-key "$ED_KEY" 2> "$RUNNER_TEMP/real-account.txt"; code=$?
+          cat "$RUNNER_TEMP/real-account.txt"
+          [ "$code" -eq 1 ] && grep -q "throwaway key" "$RUNNER_TEMP/real-account.txt" || { echo "expected a refusal of ad hoc on the real account"; exit 1; }
 
       - name: Build the release
         run: |
           node scripts/release-mac.mjs --version 0.0.1 --ad-hoc \
             --ed-key-file "$RUNNER_TEMP/uv-dry-run.key" --ed-public-key "$ED_KEY" \
             --download-base http://127.0.0.1:8765 \
-            --feed-url http://127.0.0.1:8765/appcast.xml | tee release.json
+            --feed-url http://127.0.0.1:8765/appcast.xml | tee "$RUNNER_TEMP/release.json"
 
       - name: Check the release folder
         run: |
@@ -95,7 +96,7 @@ jobs:
           done
           xmllint --noout appcast.xml
           # stdout carries only the summary JSON.
-          python3 -c 'import json; d = json.load(open("../../release.json")); assert d["adHoc"] is True and d["version"] == "0.0.1", d'
+          python3 -c 'import json, sys; d = json.load(open(sys.argv[1])); assert d["adHoc"] is True and d["version"] == "0.0.1", d' "$RUNNER_TEMP/release.json"
           grep -q 'sparkle:edSignature="' appcast.xml
           grep -q 'url="http://127.0.0.1:8765/Useful-Voice-macOS.zip"' appcast.xml
           if grep -nE '@@[A-Z_]+@@' install.sh release-notes.md; then echo "unfilled placeholders"; exit 1; fi
@@ -148,6 +149,6 @@ jobs:
           name: release-dry-run
           path: |
             dist/release
-            release.json
+            ${{ runner.temp }}/release.json
           retention-days: 7
           if-no-files-found: ignore

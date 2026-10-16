@@ -392,7 +392,7 @@ class UsefulVoiceApp {
     // A write whose temp file was locked too can leave it behind; a forced first run touches nothing.
     if (!this.firstRun.sandbox) {
       const userData = app.getPath('userData');
-      for (const name of ['settings.json', 'data.json']) {
+      for (const name of ['settings.json', 'data.json', 'hud-position.json']) {
         await removeStaleTempFiles(path.join(userData, name), (message) => this.diagnostics.log('settings', message));
       }
     }
@@ -983,6 +983,8 @@ class UsefulVoiceApp {
       // save that never fires would lose the user's last dictionary edit.
       await this.data.flush();
       await this.settings.save();
+      // Never rejects (the chain catches), so a HUD drag just before Quit still lands.
+      await this.hudPositionWrite;
       await this.diagnostics.flush();
     } finally {
       globalShortcut.unregisterAll();

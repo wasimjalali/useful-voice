@@ -31,10 +31,10 @@ public enum CategoryCoding {
     /// A path made only of "~", "." and ".." parts ("~", "..", "../.."). Not a word, but it
     /// joins a spoken slash: "cd ~ slash projects" is `cd ~/projects`.
     private static func isPathRoot(_ t: Tok) -> Bool {
-        if !t.lead.isEmpty || t.core.isEmpty { return false }
-        var parts = t.core.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
-        if parts.count > 1, parts.last == "" { parts.removeLast() }
-        return parts.enumerated().allSatisfy { i, p in p == "." || p == ".." || (p == "~" && i == 0) }
+        let parts = t.core.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        return parts.enumerated().allSatisfy { i, p in
+            p == "." || p == ".." || (p == "~" && i == 0) || (p.isEmpty && i > 0 && i == parts.count - 1)
+        }
     }
 
     /// Names that are a dot file when spoken alone: "dot gitignore" is `.gitignore`. They are

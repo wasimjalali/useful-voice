@@ -37,10 +37,10 @@ const COMMON_BASENAMES = new Set([
  * joins a spoken slash: "cd ~ slash projects" is `cd ~/projects`.
  */
 function isPathRoot(t: Tok): boolean {
-  if (t.lead !== '' || t.core === '') return false;
   const parts = t.core.split('/');
-  if (parts[parts.length - 1] === '' && parts.length > 1) parts.pop();
-  return parts.every((p, i) => p === '.' || p === '..' || (p === '~' && i === 0));
+  return parts.every(
+    (p, i) => p === '.' || p === '..' || (p === '~' && i === 0) || (p === '' && i > 0 && i === parts.length - 1),
+  );
 }
 
 /**

@@ -2721,6 +2721,18 @@
    "category": "coding",
    "input": "dot slash build",
    "expected": "./build"
+  },
+  {
+   "id": "code-quoted-path-root",
+   "category": "coding",
+   "input": "cd \"~ slash projects\"",
+   "expected": "cd \"~/projects\""
+  },
+  {
+   "id": "code-dot-before-parent-untouched",
+   "category": "coding",
+   "input": "wait dot ..",
+   "expected": "wait dot .."
   }
  ]
 }

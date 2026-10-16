@@ -174,7 +174,16 @@ import Testing
                 != LegacyLanguageMemory.matchingTermIDs(s.terms, in: s.text, language: s.language) {
                 differences += 1
             }
-            skippedByIndex += s.terms.count
+            // The phrases the index rules out for this text are the regex scans the indexed
+            // configuration skips; counting them keeps the assertion below from being vacuous.
+            let index = LanguageMemoryTextIndex(text: s.text)
+            for term in s.terms {
+                for phrase in [term.phrase] + term.aliases + term.pronunciations {
+                    if let signature = LanguageMemoryTextIndex.signature(for: phrase), !index.mayContain(signature) {
+                        skippedByIndex += 1
+                    }
+                }
+            }
             if differences > 5 { return }
         }
         #expect(differences == 0)
@@ -373,6 +382,42 @@ import Testing
                               ("\u{212A}", "k"), ("s", "ſ"), ("istanbul", "İstanbul"), ("σ", "ς"), ("ς", "Σ"),
                               ("ǆ", "ǅ"), ("ʼn", "ŉ"), ("ΟΔΟΣ", "οδός")] {
             agree([ReplacementRule(match: match, replacement: "<\(match)>")], "x \(text) y")
+        }
+    }
+
+    /// A scalar the Unicode tables do not assign could be case-mapped by a newer ICU than
+    /// the tables the skeleton was built from, so the index must not rule anything out for
+    /// it: the text goes to the regex, and a phrase containing one is not indexed at all.
+    @Test func testUnassignedScalarsAreWildcards() {
+        let unassigned: [Unicode.Scalar] = ["\u{0378}", "\u{FFFF}", "\u{10FFFF}"]
+        for scalar in unassigned {
+            #expect(LanguageMemoryTextIndex.isUncertain(scalar))
+        }
+        #expect(!LanguageMemoryTextIndex.isUncertain("a"))
+        #expect(!LanguageMemoryTextIndex.isUncertain("é"))
+
+        let plain = LanguageMemoryTextIndex(text: "hello world")
+        let withUnassigned = LanguageMemoryTextIndex(text: "hello \u{0378} world")
+        let probe = LanguageMemoryTextIndex.signature(for: "zzz")!
+        #expect(!plain.mayContain(probe))
+        #expect(withUnassigned.mayContain(probe))
+        #expect(withUnassigned.windowsPresent(probe))
+
+        // The wildcard is sticky: later versions of the text keep it, since the windows
+        // of every version are in the sets.
+        var rewritten = LanguageMemoryTextIndex(text: "hello \u{0378} world")
+        rewritten.absorb("hello world")
+        #expect(rewritten.mayContain(probe))
+
+        for scalar in unassigned {
+            #expect(LanguageMemoryTextIndex.signature(for: "ab\(scalar)cd") == nil)
+        }
+
+        for scalar in unassigned {
+            agree([ReplacementRule(match: "zzz", replacement: "R"),
+                   ReplacementRule(match: "world", replacement: "W\(scalar)")],
+                  "hello \(scalar) world zzz")
+            agree([ReplacementRule(match: "x\(scalar)y", replacement: "R")], "a x\(scalar)y b")
         }
     }
 

@@ -182,17 +182,18 @@ describe('indexed Language Memory against the old matcher', () => {
   it('an incrementally updated index equals a fresh one and keeps every window', () => {
     for (let seed = 0; seed < CASES; seed += 1) {
       const rnd = rngFrom(seed + 4_000_000);
-      const pieces = ['ab', 'ß', 'ﬁ', '🙂', 'K', 'İ', ' ', 'x́', 'Σ', 'cafe', 'é'];
+      // Lone surrogates and two emoji that share a high surrogate (U+D83D), cut at arbitrary
+      // UTF-16 offsets below, are what the surrogate back-off in `absorb` exists for.
+      const pieces = ['ab', 'ß', 'ﬁ', '🙂', '😀', '\ud83d', '\ude42', 'K', 'İ', ' ', 'x́', 'Σ', 'cafe', 'é'];
       let text = Array.from({ length: Math.floor(rnd() * 30) }, () => pieces[Math.floor(rnd() * pieces.length)]).join('');
       const index = new TextIndex(text);
       const everSeen: Uint32Array[] = [skeletonOf(text).skeleton];
       for (let step = 0; step < 8; step += 1) {
         // Rewrite a random stretch, sometimes not at all, sometimes the lot.
-        const units = [...text];
-        const from = Math.floor(rnd() * (units.length + 1));
-        const to = Math.min(units.length, from + Math.floor(rnd() * 5));
+        const from = Math.floor(rnd() * (text.length + 1));
+        const to = Math.min(text.length, from + Math.floor(rnd() * 5));
         const insert = Array.from({ length: Math.floor(rnd() * 4) }, () => pieces[Math.floor(rnd() * pieces.length)]).join('');
-        text = units.slice(0, from).join('') + insert + units.slice(to).join('');
+        text = text.slice(0, from) + insert + text.slice(to);
         index.absorb(text);
         const fresh = skeletonOf(text);
         const now = index.currentSkeleton();
@@ -212,6 +213,36 @@ describe('indexed Language Memory against the old matcher', () => {
         expect(lost, `seed ${seed} step ${step}: windows lost`).toBe(0);
       }
     }
+  });
+
+  it('agrees at word boundaries next to hyphens, underscores and digits', () => {
+    const NOW_ = '2026-01-01T00:00:00.000Z';
+    const rule = (id: string, match: string, replacement: string): ReplacementRule => ({
+      id, match, replacement, matchMode: 'wordBoundaryPhrase', language: 'auto', isEnabled: true,
+      usageCount: 0, createdAt: NOW_, updatedAt: NOW_,
+    });
+    // Filler rules push the set over the indexing threshold so the prefilter is in play.
+    const filler = Array.from({ length: 24 }, (_, i) => rule(`f${i}`, `zzfiller${i}`, 'x'));
+    const cases: Array<[string, string]> = [
+      ['gpt', 'gpt-4o'], ['gpt', 'a gpt-4o b'], ['4o', 'gpt-4o'], ['4o', 'gpt4o'], ['gpt', 'gpt4o'],
+      ['gpt', 'my_gpt'], ['gpt', 'my-gpt'], ['gpt', 'gpt_x'], ['gpt', 'gpt-'], ['gpt', '-gpt'],
+      ['gpt', '9gpt'], ['gpt', 'gpt9'], ['gpt', 'GPT-4O'], ['a-b', 'x a-b y'], ['a-b', 'a-b-c'],
+      ['b', 'a-b'], ['x', '_x_'], ['x', ' x '], ['café', 'café-au-lait'], ['3', 'v3.1'], ['3', 'v3_1'],
+    ];
+    for (const [match, text] of cases) {
+      const rules = [...filler, rule('r', match, `<${match}>`)];
+      expect(new RuleSet(rules, 'auto').apply(text), `${match} in ${text}`)
+        .toEqual(new LegacyRuleSet(rules, 'auto').apply(text));
+      // The index alone must also not rule the phrase out where the regex matches it.
+      const signature = phraseSignature(match);
+      if (signature && containsWordBoundaryPhrase(match, text)) {
+        expect(new TextIndex(text).mayContain(signature), `${match} in ${text}`).toBe(true);
+      }
+    }
+    // Hyphen and dot are not word characters, so these must match; underscore and digits are.
+    expect(containsWordBoundaryPhrase('gpt', 'gpt-4o')).toBe(true);
+    expect(containsWordBoundaryPhrase('gpt', 'gpt_4o')).toBe(false);
+    expect(containsWordBoundaryPhrase('gpt', 'gpt4o')).toBe(false);
   });
 
   it('the skeleton covers every case folding the regex knows', () => {

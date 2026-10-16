@@ -11,8 +11,9 @@ import Foundation
 enum LegacyLanguageMemory {
     /// The old `wordBoundaryRegex(for:)`, with its own cache keyed on the phrase's bytes.
     /// (The production cache used to be keyed on the `String`, which treats NFC and NFD
-    /// spellings of a phrase as one key; see `LanguageMemoryMatcher.cache`. The oracle must
-    /// not depend on which spelling reached the cache first, so it compiles by bytes.)
+    /// spellings of a phrase as one key. It is now `PhraseRegexCache`, keyed on the UTF-8
+    /// bytes. The oracle must not depend on which spelling reached its cache first, so it
+    /// compiles by bytes too.)
     private final class RegexCache: @unchecked Sendable {
         let lock = NSLock()
         var regexes: [[UInt8]: NSRegularExpression] = [:]

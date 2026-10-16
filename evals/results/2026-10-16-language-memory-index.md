@@ -26,7 +26,10 @@ with output byte-identical to the current matcher, and does Windows have the sam
   - Linux: x86_64, 4 vCPU shared with other jobs, Swift 6.1.2 release
     (`swift test -c release -Xswiftc -enable-testing`), swift-corelibs-foundation.
   - macOS: GitHub `macos-15` (arm64), Swift 6.1.2 release, system ICU. Run 38898778290.
-  - Windows core: Node 22.22 (V8, the engine inside Electron) on Linux, `vitest`.
+  - Windows core: Node 22.22 on Linux, `vitest`. Node 22 is V8 12.4, ICU 77, Unicode 16. The app
+    ships Electron 43.7.0 (V8 15.0, ICU 78, Unicode 17), so every Windows number and the exhaustive
+    check below were measured on Node's engine, not Electron's. The review re-ran the exhaustive
+    fold check and a 5,000-case differential under Electron 43's runtime: 0 failures.
 - Commands: `UV_LM_BENCH=1 UV_LM_BENCH_RUNS=5 swift test -c release -Xswiftc -enable-testing --filter LanguageMemoryBenchTests`
   and `UV_LM_BENCH=1 npx vitest run tests/languageMemoryBench.test.ts` (add `UV_LM_BENCH_SIDE=legacy` for the old code).
 - Raw output: `evals/results/raw/2026-10-16-language-memory-index-*`.
@@ -63,7 +66,7 @@ and machine, so they are not comparable with these.
 At 5,000 terms the real code on `main` is 3x slower than the oracle (35 s against 11 s) because
 past 4,096 rules the regex cache stops helping and every rule recompiles.
 
-### Windows core (Node 22 on Linux; median of 5; `first` = the first call in the process)
+### Windows core (Node 22 on Linux; median of 5; `first` = the first call for this row)
 
 | terms | scope | before | before, first | after | after, first |
 |---|---|---:|---:|---:|---:|
@@ -72,11 +75,18 @@ past 4,096 rules the regex cache stops helping and every rule recompiles.
 | 5,000 | auto | 3,183 | 17,197 | 1,260 | 3,370 |
 | 5,000 | de | 2,104 | 2,104 | 748 | 709 |
 
-Windows shows the same slowdown (the first dictation after launch spends 17 s at 5,000 terms),
-so the index is mirrored there. At 1,000 terms with warm regexes the two are within noise of
-each other (three alternating pairs of 15-sample runs, auto scope: 222 to 246 ms before, 224 to 250 ms after).
+The rows run one after another in one process, so `first` is the first call for that row, not
+a cold start. Only the 1,000 auto row is cold (regex cache empty): 3.7 s before, 0.9 s after. The
+5,000 auto `first` (17.2 s before, 3.4 s after) follows the 1,000 rows, so part of its regex cache
+is already warm; a true cold start at 5,000 terms was not measured.
 
-### Equivalence (the output did not change)
+Windows shows the same slowdown on a cold start, so the index is mirrored there. It is not free
+when everything is warm: at 1,000 terms the indexed version is slower by a few percent to about 20%
+(three alternating pairs of 15-sample runs, auto scope: 222 to 246 ms before, 224 to 250 ms after,
+3% to 7%; de scope 139 before, 156 after, 12% in the table above, 15% to 20% in the pairs),
+because the index is built on every pass and only pays for itself when it skips many regexes.
+
+### Equivalence (the output did not change, apart from the cache note under What changed)
 
 - Every benchmark row carries a fingerprint of the result (text, fired rule order, term hits,
   snippets). Before and after match on all 12 rows, on three platforms:
@@ -86,7 +96,9 @@ each other (three alternating pairs of 15-sample runs, auto scope: 222 to 246 ms
   - Swift: 5,000 random scenarios per test, three tests (rule application at three index
     settings, term matching at three settings over four texts each, the full pass), plus the
     index-never-rejects property, plus incremental-update equality. 14 tests passed
-    (`...-swift-differential-5000.log`). CI runs 250 scenarios per test on every push.
+    (`...-swift-differential-5000.log`). The 5,000-scenario run was on Linux
+    (swift-corelibs-foundation), not macOS. The same differential tests also run on the macOS
+    runner (macos-15, system ICU) on every push, as part of `make test`, at 250 scenarios per test.
   - Windows: 3,000 scenarios per test, same shape. 6 tests passed (`...-windows-differential-3000.log`).
     CI runs 150 per test.
   - Scenarios mix: ASCII, German (`ß`, umlauts, NFC and NFD), Cyrillic, Greek (final sigma),
@@ -115,10 +127,32 @@ each other (three alternating pairs of 15-sample runs, auto scope: 222 to 246 ms
   in the process (found by the differential test). It is also a class now, so its overflow test
   runs on a private instance rather than the process-wide one the new tests fill.
 
+### Behaviour change: NFC and NFD phrases no longer share a regex
+
+Before: `[String: NSRegularExpression]` treated a phrase's NFC and NFD spellings (`café` as one
+scalar or as `e` plus a combining acute) as the same key, so whichever spelling reached the cache
+first in the process decided the regex both spellings used. ICU matches code points, so the two
+regexes are not the same: the NFC one does not match NFD text and the reverse. The result for a
+given phrase could therefore depend on what was dictated earlier.
+
+Now: each spelling gets its own regex, so a phrase matches what its own code points match, whatever
+ran before. That is the deterministic behaviour, and it is what the old matcher does on a fresh process
+for either spelling. Output is therefore not strictly byte-identical to the old code for a dictionary
+that holds both spellings of one phrase and a process that looked the other one up first. Nothing in the
+differential run needs the old order-dependent result (the oracle compiles by bytes too). This is a
+call for the owner to confirm; reverting it is one line (key the cache on the `String`) but brings back
+the order dependence.
+
 ## Conclusion
 
-The indexed matcher gives 18x to 35x on macOS CI and about 25x on Linux, output identical, and
-cuts the Windows first-dictation cost from 17 s to 3.4 s at 5,000 terms. What is left at 5,000
+The speedup depends on the size. On macOS CI it is 18x to 20x at 1,000 terms and 28x to 35x at
+5,000. On Linux it is about 5x at 1,000 terms and 22x to 28x at 5,000 (about 25x holds only at 5,000).
+Output is identical, apart from the NFC and NFD cache change above.
+
+Windows is a mixed result and should be read that way. The first dictation after launch drops from
+3.7 s to 0.9 s at 1,000 terms, and the 5,000 auto first call from 17.2 s to 3.4 s. But warm
+1,000-term dictations are about 20 ms slower than before (de scope 15% to 20%, auto 3% to 7%), since
+the index is built on every pass. At 5,000 terms warm runs are 2.5x to 2.8x faster. What is left at 5,000
 terms (about 1 s) is the regex replace for the roughly 360 rules that really fire, the rule
 sort, and regex compilation; none of that is something an index removes. Follow-ups, not done: replace
 at the positions the index already knows instead of scanning the whole text, and cache
@@ -127,4 +161,7 @@ the sorted rules between dictations.
 Residual risk: the skeleton uses Swift's (and V8's) case tables, the regex uses ICU's. If an OS
 ICU pairs two letters that Swift's tables do not, the index could skip a rule the regex would have
 applied. The exhaustive test checks this on the CI runner's ICU for every scalar, not on every
-macOS version users run.
+macOS version users run. The one case that can be closed in code is closed: on macOS a scalar that
+Swift's Unicode tables leave unassigned (which a newer ICU might case-map) turns the index off for
+that text, and a phrase containing one skips the index, so the regex decides. Windows has no
+such guard; there the exhaustive check above, run on Node's and Electron 43's engines, is the evidence.

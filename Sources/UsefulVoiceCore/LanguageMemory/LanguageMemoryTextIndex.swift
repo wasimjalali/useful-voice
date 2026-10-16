@@ -50,6 +50,11 @@ struct LanguageMemoryTextIndex {
     /// end) where that scalar's skeleton starts in `current`.
     private var scalars: [Unicode.Scalar] = []
     private var starts: [Int] = [0]
+    /// True once any version of the text held a scalar this build's Unicode tables do not
+    /// assign. The regex runs on the system's ICU, which may be newer and may case-map that
+    /// scalar, so the skeleton cannot be trusted for it. The index then stops ruling
+    /// phrases out (every phrase "may" match) and the real regex decides, as before.
+    private var holdsUncertainScalar = false
 
     init(text: String) {
         absorb(text)
@@ -61,6 +66,8 @@ struct LanguageMemoryTextIndex {
     static func signature(for phrase: String) -> Signature? {
         let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count <= LanguageMemoryMatcher.maxPhraseLength else { return nil }
+        // A phrase with a scalar the tables do not assign is a wildcard: unindexed path.
+        if trimmed.unicodeScalars.contains(where: Self.isUncertain) { return nil }
         return Signature(skeleton: skeleton(of: trimmed))
     }
 
@@ -82,6 +89,9 @@ struct LanguageMemoryTextIndex {
         }
 
         let middle = Self.skeletonWithWordFlags(of: new[prefix..<(new.count - suffix)])
+        if !holdsUncertainScalar, new[prefix..<(new.count - suffix)].contains(where: Self.isUncertain) {
+            holdsUncertainScalar = true
+        }
         let keepHead = starts[prefix]
         let keepTailFrom = starts[scalars.count - suffix]
         let shift = keepHead + middle.skeleton.count - keepTailFrom
@@ -127,6 +137,7 @@ struct LanguageMemoryTextIndex {
 
     /// Stage one alone: every window of `signature` has been seen in some version of the text.
     func windowsPresent(_ signature: Signature) -> Bool {
+        if holdsUncertainScalar { return true }
         let p = signature.skeleton
         switch p.count {
         case 0:
@@ -145,7 +156,7 @@ struct LanguageMemoryTextIndex {
 
     /// False only when the regex for this phrase certainly finds nothing in the current text.
     func mayContain(_ signature: Signature) -> Bool {
-        guard !signature.skeleton.isEmpty else { return true }
+        guard !signature.skeleton.isEmpty, !holdsUncertainScalar else { return true }
         return windowsPresent(signature) && occursInCurrentText(signature.skeleton)
     }
 
@@ -168,6 +179,11 @@ struct LanguageMemoryTextIndex {
             i += 1
         }
         return false
+    }
+
+    /// Scalars whose case behaviour this build cannot vouch for: non-ASCII and unassigned.
+    static func isUncertain(_ scalar: Unicode.Scalar) -> Bool {
+        scalar.value >= 0x80 && scalar.properties.generalCategory == .unassigned
     }
 
     // Scalars are at most 0x10FFFF, which fits in 21 bits; three of them fit in a UInt64.

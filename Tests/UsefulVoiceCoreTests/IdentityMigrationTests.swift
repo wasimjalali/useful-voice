@@ -208,6 +208,25 @@ private final class ScriptedFileManager: FileManager {
     }
 }
 
+/// Preferences that stop taking writes once `lastKey` is written, like a process
+/// that dies right after that write. Everything before it is persisted.
+private final class DyingDefaults: UserDefaults, @unchecked Sendable {
+    var lastKey: String?
+    private var dead = false
+
+    override func set(_ value: Any?, forKey defaultName: String) {
+        guard !dead else { return }
+        super.set(value, forKey: defaultName)
+        if defaultName == lastKey { dead = true }
+    }
+
+    override func set(_ value: Bool, forKey defaultName: String) {
+        guard !dead else { return }
+        super.set(value, forKey: defaultName)
+        if defaultName == lastKey { dead = true }
+    }
+}
+
 private struct Harness {
     let root: URL
     let appSupport: URL
@@ -637,6 +656,27 @@ struct IdentityMigrationDefaultsTests {
 
         #expect(!h.defaults.bool(forKey: FirstRunGate.recheckGrantsKey))
         #expect(h.defaults.bool(forKey: FirstRunGate.completedKey))
+    }
+
+    /// The app dies right after "setup finished" is copied. The rerun then finds it in
+    /// the new domain and treats it as the new identity's own answer, so the recheck
+    /// must already be on disk by then.
+    @Test func aCrashRightAfterSetupFinishedIsCopiedStillLeavesTheRecheck() {
+        let h = Harness(legacyDefaults: [FirstRunGate.completedKey: true]); defer { h.cleanUp() }
+        let dying = DyingDefaults(suiteName: h.names.newDefaultsDomain)!
+        dying.lastKey = FirstRunGate.completedKey
+        let legacy = h.legacyDefaults
+        _ = IdentityMigration(
+            fileManager: h.fileManager, appSupport: h.appSupport, names: h.names,
+            readLegacyDefaults: { _ in legacy }, defaults: dying, keychain: h.keychain
+        ).run(diagnostics: h.silentDiagnostics())
+        dying.synchronize()
+        #expect(!h.defaults.bool(forKey: IdentityMigration.migratedFlag))   // died before the end
+
+        _ = h.migration().run(diagnostics: h.silentDiagnostics())          // next launch
+
+        #expect(h.defaults.bool(forKey: FirstRunGate.completedKey))
+        #expect(h.defaults.bool(forKey: FirstRunGate.recheckGrantsKey))
     }
 
     @Test func theLegacyDomainIsLeftUntouched() {

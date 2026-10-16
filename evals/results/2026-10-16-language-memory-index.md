@@ -74,7 +74,7 @@ past 4,096 rules the regex cache stops helping and every rule recompiles.
 
 Windows shows the same slowdown (the first dictation after launch spends 17 s at 5,000 terms),
 so the index is mirrored there. At 1,000 terms with warm regexes the two are within noise of
-each other (alternating runs, 15 samples: 211 to 245 ms before, 223 to 250 ms after for auto).
+each other (three alternating pairs of 15-sample runs, auto scope: 222 to 246 ms before, 224 to 250 ms after).
 
 ### Equivalence (the output did not change)
 

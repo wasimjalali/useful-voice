@@ -74,8 +74,7 @@ jobs:
           set +e
           node scripts/release-mac.mjs --version 0.0.1 --ed-key-file "$RUNNER_TEMP/uv-dry-run.key" --ed-public-key "$ED_KEY" 2> other-key.txt; code=$?
           cat other-key.txt
-          # Before the owner makes the real key the first guard answers, after it the second.
-          [ "$code" -eq 1 ] && grep -qE "no update key yet|signed with the real update key" other-key.txt || { echo "expected a refusal of a release with another key"; exit 1; }
+          [ "$code" -eq 1 ] && grep -q "signed with the real update key" other-key.txt || { echo "expected a refusal of a release with another key"; exit 1; }
           node scripts/release-mac.mjs --version 0.0.1 --ad-hoc --ed-public-key "$ED_KEY" 2> real-account.txt; code=$?
           cat real-account.txt
           [ "$code" -eq 1 ] && grep -q "throwaway key" real-account.txt || { echo "expected a refusal of ad hoc on the real account"; exit 1; }

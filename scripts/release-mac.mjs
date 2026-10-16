@@ -29,9 +29,9 @@ const RELEASES = "https://github.com/wasimjalali/useful-voice-releases/releases"
 const SOURCE = "https://github.com/wasimjalali/usefulvoice";
 // The public half of the update signing key. The private half lives only in
 // the release Mac's Keychain (account "useful-voice") and the password manager.
-// Empty until the owner makes the key (docs/distribution.md, "The update key"):
-// no release can be built before then.
-const ED_PUBLIC_KEY = "";
+// Made once (docs/distribution.md, "The update key"). Never replace it: every
+// installed copy trusts only this key.
+const ED_PUBLIC_KEY = "oC3FCvgvoo7M6WbmCzWIvA050lhqc3VHtC3lvkhvf8I=";
 const ED_ACCOUNT = "useful-voice";
 // UV-004: every release is signed with this one self-signed certificate, so the
 // designated requirement stays the same across updates and macOS keeps the

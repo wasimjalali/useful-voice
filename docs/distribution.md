@@ -100,21 +100,23 @@ Release builds check the feed daily (`SUEnableAutomaticChecks`), a plain request
 system profile. A found update never opens a window on its own, since it would take focus from the
 app being dictated into: the menu bar item changes to Install update X.Y.Z instead.
 
-### The update key (once, before the first release)
+### The update key
 
-Sparkle's EdDSA key does not exist yet, so the script refuses to build a release. On the release Mac:
+The Sparkle EdDSA key exists. It was made on the release Mac under the Keychain account
+`useful-voice`, and its public half is `ED_PUBLIC_KEY` in `scripts/release-mac.mjs`. The private half
+lives only in that Keychain and the password manager. Never make a second key: every installed copy
+only trusts this one. The first release run asks whether `sign_update` may use the "useful-voice"
+Keychain item: click Always Allow (it is the only tool besides `generate_keys` that reads it).
+
+To print the public key again, or to back the private key up:
 
 ```sh
 swift package resolve
-.build/artifacts/sparkle/Sparkle/bin/generate_keys --account useful-voice     # prints the public key
-.build/artifacts/sparkle/Sparkle/bin/generate_keys --account useful-voice -x useful-voice-sparkle.key
+.build/artifacts/sparkle/Sparkle/bin/generate_keys --account useful-voice -p
+.build/artifacts/sparkle/Sparkle/bin/generate_keys --account useful-voice -x "$TMPDIR/useful-voice-sparkle.key"
 ```
 
-Store the exported private key in the password manager, then delete the file. The first release run asks
-whether `sign_update` may use the "useful-voice" Keychain item: click Always Allow (it is the only
-tool besides `generate_keys` that reads it). Put the public key in
-`ED_PUBLIC_KEY` in `scripts/release-mac.mjs` in a PR. Never make a second key: every installed copy
-only trusts this one.
+Store the exported private key in the password manager, then delete the file.
 
 ### Publishing (owner only)
 

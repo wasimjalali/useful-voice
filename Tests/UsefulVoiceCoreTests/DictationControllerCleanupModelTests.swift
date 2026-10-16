@@ -75,14 +75,14 @@ import Foundation
 
     private func makeController(
         text: String, language: String? = "en", model: LocalCleanupModel?,
-        gates: CleanupPipeline.Gates? = nil, autoFormat: Bool = true
+        gates: CleanupPipeline.Gates? = nil, autoFormat: Bool = true, pin: LanguagePin = .auto
     ) -> DictationController {
         let provider = FakeProvider(name: "fake", result: .success(
             Transcript(text: text, detectedLanguage: language, durationSeconds: 1)))
         let gates = gates ?? on
         return DictationController(
             recorder: recorder, providers: { [provider] in [provider] }, store: store,
-            hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
+            hint: { TranscriptionHint(languagePin: pin, dictionaryWords: []) },
             recordingsToKeep: 10,
             deliver: { [weak self] text, mode, done in
                 self?.delivered.append(text)
@@ -223,6 +223,34 @@ import Foundation
         #expect(delivered == ["I need to send the report by Thursday."])
         #expect(generator.prompts.count == 1)
         #expect(generator.loads == 1)
+    }
+
+    @Test func aPinnedNonEnglishLanguageSkipsThePreloadAutoAndEnglishDoNot() async {
+        generator.answer = "x"
+        let german = makeModel()
+        let pinnedDe = makeController(text: spoken, model: german, pin: .de)
+        pinnedDe.toggle()
+        await pinnedDe.awaitCleanupLifecycle()
+        await german.waitForLoad()
+        #expect(generator.loads == 0)
+        #expect(await !german.isLoaded)
+        await pinnedDe.toggleAndWait()
+        await pinnedDe.awaitCleanupLifecycle()
+        #expect(generator.loads == 0)
+        #expect(timer.armed == 0)                 // no preload, so no dictation to settle
+
+        for pin in [LanguagePin.auto, .en, LanguagePin(rawValue: "en-GB")] {
+            let model = makeModel()
+            let controller = makeController(text: spoken, model: model, pin: pin)
+            let before = generator.loads
+            controller.toggle()
+            await controller.awaitCleanupLifecycle()
+            await model.waitForLoad()
+            #expect(generator.loads == before + 1, "\(pin.rawValue)")
+            #expect(await model.isLoaded)
+            await controller.toggleAndWait()
+            await model.unload()
+        }
     }
 
     @Test func gatesThatFailMeanNoPreloadAndNoModelCall() async {

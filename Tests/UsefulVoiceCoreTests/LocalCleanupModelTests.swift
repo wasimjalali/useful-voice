@@ -289,4 +289,46 @@ struct LocalCleanupModelTests {
         #expect(await waitUntil { await !model.isLoaded })
         #expect(gen.unloads == 1)
     }
+
+    @Test func theIdleWindowStartsWhenALoadFinishesEvenIfTheLoadTookLongerThanTheWindow() async {
+        let gen = FakeGenerator()
+        let gate = DispatchSemaphore(value: 0)
+        gen.loadGate = gate
+        let timer = ManualSleeper()
+        let model = LocalCleanupModel(
+            modelURL: url, generator: gen, idleUnloadAfter: .seconds(60), sleep: { try await timer.sleep($0) })
+        // A dictation opens and closes while the load is still running (it takes "over 60 s").
+        await model.begin()
+        await model.end()
+        #expect(await waitUntil { timer.issued == 1 })
+        timer.fireAll()                            // the 60 s pass during the load
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(gen.unloads == 0)                  // nothing loaded yet, nothing to free
+        gate.signal()
+        await model.waitForLoad()
+        #expect(await model.isLoaded)              // the stale timer did not discard the fresh load
+        #expect(await waitUntil { timer.issued == 2 })   // a new window started at load end
+        #expect(gen.unloads == 0)
+        timer.fireAll()
+        #expect(await waitUntil { await !model.isLoaded })
+        #expect(gen.unloads == 1)
+    }
+
+    @Test func noTimerRunsWhileALoadWithNoDictationIsStillInFlight() async {
+        let gen = FakeGenerator()
+        let gate = DispatchSemaphore(value: 0)
+        gen.loadGate = gate
+        let timer = ManualSleeper()
+        let model = LocalCleanupModel(
+            modelURL: url, generator: gen, idleUnloadAfter: .seconds(60), sleep: { try await timer.sleep($0) })
+        #expect(await model.clean("x", controlLine: line, deadline: soon) == nil)   // cold: starts the load
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(timer.issued == 0)
+        gate.signal()
+        await model.waitForLoad()
+        #expect(await waitUntil { timer.issued == 1 })    // armed by the load finishing
+        timer.fireAll()
+        #expect(await waitUntil { await !model.isLoaded })
+        #expect(gen.unloads == 1)
+    }
 }

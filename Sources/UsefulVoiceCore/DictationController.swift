@@ -259,6 +259,11 @@ public final class DictationController {
         await processingTask?.value
     }
 
+    /// Test helper: awaits the queued begin/end calls to the cleanup model.
+    func awaitCleanupLifecycle() async {
+        await cleanupLifecycle?.value
+    }
+
     /// Test helper: awaits whatever processing is in flight.
     func awaitProcessing() async {
         await processingTask?.value
@@ -354,15 +359,18 @@ public final class DictationController {
     }
 
     /// Preloads the cleanup model while the person is still talking, when the hidden flag is
-    /// on and the gates pass (the language is not known yet, so English is assumed). Fire and
-    /// forget: nothing here waits for the load, and a failed load only means the model step
+    /// on and the gates pass. A pinned language other than English skips it (the model only runs
+    /// for English, so loading it would be wasted); auto assumes English until the transcript
+    /// says otherwise, and that run-time language check still applies. Fire and forget: nothing here waits for the load, and a failed load only means the model step
     /// falls back to the rules text later.
     private func beginCleanupModelDictation() {
         guard let model = cleanupModel, !cleanupDictationOpen else { return }
         let gates = cleanupGates()
+        let pin = hint().languagePin
         guard case .run = CleanupModelPolicy.decide(
             flagOn: gates.flagOn, modelInstalled: gates.modelInstalled,
-            physicalMemoryBytes: gates.physicalMemoryBytes, language: "en") else { return }
+            physicalMemoryBytes: gates.physicalMemoryBytes,
+            language: pin == .auto ? "en" : pin.rawValue) else { return }
         cleanupDictationOpen = true
         let previous = cleanupLifecycle
         cleanupLifecycle = Task { await previous?.value; await model.begin() }

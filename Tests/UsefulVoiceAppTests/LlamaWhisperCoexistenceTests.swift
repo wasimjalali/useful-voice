@@ -162,6 +162,17 @@ struct LlamaWhisperCoexistenceTests {
             }
             print("MEASURE after \(label) unload \(memoryMB())")
         }
+        // One context, repeated decodes: separates a cost paid once per context from a slow steady state.
+        for placement in [LlamaRuntime.Placement.cpuOnly, .metal] {
+            do {
+                let runtime = try LlamaRuntime(modelPath: s1, placement: placement)
+                for line in try runtime.probe(prompt: prompt(cardInput), repeats: 4, steps: 10) {
+                    print("MEASURE probe \(placement.rawValue) \(line)")
+                }
+            } catch {
+                print("MEASURE probe \(placement.rawValue) failed: \(error)")
+            }
+        }
         // Metal placement in the same process (llama-bench runs on the GPU even with -ngl 0).
         do {
             let t0 = ContinuousClock.now

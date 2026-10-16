@@ -238,6 +238,37 @@ public final class LlamaRuntime: @unchecked Sendable {
                 nativeGenerateMs: perf.t_eval_ms))
     }
 
+    /// Measurement only: one context, no abort callback, the prompt decoded `repeats` times with
+    /// the cache cleared between, then `steps` single-token decodes. Returns milliseconds per call.
+    public func probe(prompt: String, repeats: Int, steps: Int) throws -> [String] {
+        var tokens = try tokenize(prompt)
+        var cparams = llama_context_default_params()
+        cparams.n_ctx = 512
+        cparams.n_batch = 512
+        cparams.n_threads = threads
+        cparams.n_threads_batch = threads
+        if placement == .cpuOnly { cparams.offload_kqv = false; cparams.op_offload = false }
+        let t0 = ContinuousClock.now
+        guard let ctx = llama_init_from_model(model, cparams) else { throw RuntimeError.contextFailed }
+        defer { llama_free(ctx) }
+        var lines = ["context \(Self.seconds(t0.duration(to: .now)) * 1000) ms, prompt \(tokens.count) tokens"]
+        for r in 0..<repeats {
+            llama_memory_clear(llama_get_memory(ctx), true)
+            let t = ContinuousClock.now
+            let status = tokens.withUnsafeMutableBufferPointer { llama_decode(ctx, llama_batch_get_one($0.baseAddress, Int32($0.count))) }
+            lines.append("prompt decode #\(r) status \(status) \(Self.seconds(t.duration(to: .now)) * 1000) ms")
+        }
+        var one: [llama_token] = [tokens.last ?? 0]
+        var gen: [Double] = []
+        for _ in 0..<steps {
+            let t = ContinuousClock.now
+            _ = one.withUnsafeMutableBufferPointer { llama_decode(ctx, llama_batch_get_one($0.baseAddress, 1)) }
+            gen.append(Self.seconds(t.duration(to: .now)) * 1000)
+        }
+        lines.append("single-token decodes ms \(gen.map { String(format: "%.0f", $0) }.joined(separator: " "))")
+        return lines
+    }
+
     private func tokenize(_ text: String) throws -> [llama_token] {
         let byteCount = Int32(text.utf8.count)
         var capacity = byteCount + 16

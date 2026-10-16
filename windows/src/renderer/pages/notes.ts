@@ -312,6 +312,9 @@ function discardChanges(): void {
   render();
 }
 
+// The main process asks for this before it quits (plain Quit and Restart to update): destroying a
+// window fires no pagehide, so a draft still inside the autosave window would be lost.
+(window as unknown as { __uvFlushPending?: () => Promise<boolean> }).__uvFlushPending = flushSave;
 // An edit still inside the autosave window must not be lost when the window closes or hides.
 window.addEventListener('pagehide', () => void flushSave());
 document.addEventListener('visibilitychange', () => {

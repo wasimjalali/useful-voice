@@ -1185,6 +1185,7 @@ class UsefulVoiceApp {
     let targetHandle: number | undefined;
     let target: DeliveryTarget | undefined;
     let context: ContextCapture | undefined;
+    let ownEditable = false;
     if (this.service.currentState === 'idle' || this.service.currentState === 'error') this.recordingHandle = undefined;
     if (source === 'hotkey' && (this.service.currentState === 'idle' || this.service.currentState === 'error')) {
       // Capture which app is focused NOW, before recording: the target lock. By the
@@ -1200,6 +1201,7 @@ class UsefulVoiceApp {
         this.diagnostics.log('dictation', 'hotkey pressed in Useful Voice with no field focused; saving and copying only');
       } else {
         // In front, with one of our own fields focused, Useful Voice is the target like any app.
+        ownEditable = own;
         targetApp = front ? front.title || front.processName : undefined;
         targetHandle = front?.handle;
         this.recordingHandle = targetHandle;
@@ -1229,7 +1231,7 @@ class UsefulVoiceApp {
         }
       }
     }
-    await this.service.toggle({ source, targetApp, targetHandle, target, context, press });
+    await this.service.toggle({ source, targetApp, targetHandle, target, context, press, ownField: ownEditable });
     void this.data.flush();
   }
 

@@ -580,25 +580,28 @@ const SEND_KEY_NAMES: Record<AutoSendKey, string> = {
 /** How many apps from History the list offers. */
 const MAX_SEEN_APPS = 8;
 
-/** Apps listed under "App categories" this session, so a row that was reset stays put. */
-const appRows = new Set<string>();
-
 function appLabel(appID: string): string {
   return appID.replace(/\.exe$/i, '');
 }
 
-/** The apps in History, newest first, then the ones the user has a choice for. */
-function seenApps(settings: SettingsDTO): string[] {
+/**
+ * The apps the list shows: the newest apps in History (browsers left out, their category
+ * comes from the page), then every app the user has a choice for, browsers included, so a
+ * saved choice can always be seen and reset.
+ */
+function listedApps(settings: SettingsDTO): string[] {
   const apps: string[] = [];
-  const add = (id: string | undefined): void => {
-    const key = id === undefined ? '' : normalizeAppID(id);
-    if (key !== '' && !apps.includes(key)) apps.push(key);
-  };
+  let fromHistory = 0;
   for (const entry of state.history) {
-    add(entry.appID);
-    if (apps.length >= MAX_SEEN_APPS) break;
+    const key = entry.appID === undefined ? '' : normalizeAppID(entry.appID);
+    if (key === '' || isBrowser(registryAppID(key) ?? key) || apps.includes(key)) continue;
+    apps.push(key);
+    if (++fromHistory >= MAX_SEEN_APPS) break;
   }
-  for (const id of Object.keys(settings.appCategories)) add(id);
+  for (const id of Object.keys(settings.appCategories)) {
+    const key = normalizeAppID(id);
+    if (key !== '' && !apps.includes(key)) apps.push(key);
+  }
   return apps;
 }
 
@@ -692,11 +695,6 @@ interface AppRow {
   reset: HTMLButtonElement;
 }
 
-/** The apps this page lists: History and the user's own choices, without browsers. */
-function listedApps(settings: SettingsDTO): string[] {
-  return seenApps(settings).filter((id) => !isBrowser(registryAppID(id) ?? id));
-}
-
 /**
  * Each app seen in History with the category it is treated as, and a way back to the
  * automatic one. A pick or Reset updates its row in place: rebuilding the list would
@@ -706,8 +704,8 @@ function appCategoriesSurface(settings: SettingsDTO): HTMLElement {
   const overrides = (): Record<string, AppCategory> => state.settings?.appCategories ?? settings.appCategories;
   const rows = new Map<string, AppRow>();
   const list = surface(row('App categories', null));
-  const empty = el('p', { class: 's-note' }, 'Apps you dictate into show up here.');
-  const wrapper = el('div', { class: 's-apps' }, list, empty);
+  // No apps yet: the whole block stays out of the page.
+  const wrapper = el('div', { class: 's-apps' }, list);
 
   const update = (id: string, appRow: AppRow): void => {
     const current = overrides();
@@ -736,13 +734,14 @@ function appCategoriesSurface(settings: SettingsDTO): HTMLElement {
 
   /** Bring the rows in line with the apps listed, keeping the ones already drawn. */
   const sync = (): void => {
-    if (state.settings) for (const id of listedApps(state.settings)) appRows.add(id);
-    for (const [id, appRow] of rows) {
-      if (appRows.has(id)) continue;
-      appRow.node.remove();
+    const ids = state.settings ? listedApps(state.settings) : [...rows.keys()];
+    const gone = [...rows.keys()].filter((id) => !ids.includes(id));
+    const focusedGone = gone.some((id) => rows.get(id)?.node.contains(document.activeElement));
+    for (const id of gone) {
+      rows.get(id)?.node.remove();
       rows.delete(id);
     }
-    for (const id of appRows) {
+    for (const id of ids) {
       let appRow = rows.get(id);
       if (!appRow) {
         appRow = build(id);
@@ -751,7 +750,9 @@ function appCategoriesSurface(settings: SettingsDTO): HTMLElement {
       }
       update(id, appRow);
     }
-    empty.hidden = rows.size > 0;
+    // A row that had the focus is gone: keep it in the list, on the first picker left.
+    if (focusedGone) [...rows.values()][0]?.picker.element.querySelector<HTMLElement>('.select-trigger')?.focus();
+    wrapper.hidden = rows.size === 0;
   };
 
   /** A category for the app, or null to go back to the automatic one. */
@@ -759,8 +760,9 @@ function appCategoriesSurface(settings: SettingsDTO): HTMLElement {
     await saveApps(() => {
       const next: Record<string, AppCategory> = {};
       for (const [key, value] of Object.entries(overrides())) if (normalizeAppID(key) !== id) next[key] = value;
-      // The category it already has without a choice of yours is not a choice.
-      const natural = resolveCategory({ appID: id });
+      // The category it already has without a choice of yours is not a choice. A browser has
+      // none: its category comes from the page.
+      const natural = isBrowser(registryAppID(id) ?? id) ? null : resolveCategory({ appID: id });
       if (category !== null && category !== natural) next[id] = category;
       return { appCategories: next };
     });
@@ -769,12 +771,8 @@ function appCategoriesSurface(settings: SettingsDTO): HTMLElement {
 
   // History changed while Settings is open: add the new apps, and on a cleared History drop
   // the rows that only History kept. The rows are patched, never rebuilt.
-  settingsLive.historyChanged = () => {
-    if (state.history.length === 0) appRows.clear();
-    sync();
-  };
+  settingsLive.historyChanged = sync;
 
-  for (const id of listedApps(settings)) appRows.add(id);
   sync();
   return wrapper;
 }

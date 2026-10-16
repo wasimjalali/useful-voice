@@ -88,7 +88,7 @@ export function normaliseAutoSend(raw: unknown): Partial<Record<AppCategory, Aut
 /** One line, no control characters, trimmed and capped. Anything else is no name. */
 export function normaliseUserName(raw: unknown): string {
   if (typeof raw !== 'string') return '';
-  const clean = raw.replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ').replace(/\s+/g, ' ').trim();
+  const clean = raw.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, ' ').replace(/\s+/g, ' ').trim();
   return Array.from(clean).slice(0, MAX_USER_NAME_CHARS).join('').trim();
 }
 

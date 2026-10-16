@@ -24,6 +24,7 @@ export type FakeCall =
   | { kind: 'paste'; handle: number; inserted: string }
   | { kind: 'typeOut'; handle: number; typed: string }
   | { kind: 'sendKey'; handle: number; key: string; focusHandle?: number }
+  | { kind: 'sendKeyBlocked'; handle: number; key: string; focusHandle?: number }
   | { kind: 'reactivate'; handle: number };
 
 export interface FakeDesktopPatch {
@@ -34,6 +35,12 @@ export interface FakeDesktopPatch {
   reactivate?: 'ok' | 'gone' | 'refused';
   /** Who is in front once a paste has gone in: the window changed under the dictation. */
   foregroundAfterPaste?: FakeForegroundInput | null;
+  /**
+   * Which field of the same window has the keyboard focus the instant a send key would go
+   * out, after the last look at the foreground: the race the script's own focus check closes.
+   * `null` puts it back.
+   */
+  focusMovesBeforeKey?: number | null;
 }
 
 export class FakeDesktop implements Desktop {
@@ -43,6 +50,7 @@ export class FakeDesktop implements Desktop {
   private paste: InsertResult = 'sent';
   private reactivation: 'ok' | 'gone' | 'refused' = 'refused';
   private afterPaste: FakeForegroundInput | null = null;
+  private keyFocus: number | null = null;
   private readonly recorded: FakeCall[] = [];
 
   constructor(private readonly readClipboard: () => string) {}
@@ -65,6 +73,7 @@ export class FakeDesktop implements Desktop {
     if (patch.pasteResult !== undefined) this.paste = patch.pasteResult;
     if (patch.reactivate !== undefined) this.reactivation = patch.reactivate;
     if (patch.foregroundAfterPaste !== undefined) this.afterPaste = patch.foregroundAfterPaste;
+    if (patch.focusMovesBeforeKey !== undefined) this.keyFocus = patch.focusMovesBeforeKey;
   }
 
   calls(): FakeCall[] {
@@ -105,6 +114,12 @@ export class FakeDesktop implements Desktop {
   }
 
   async sendKey(handle: number, key: string, _deadline?: number, _kill?: AbortSignal, focusHandle?: number): Promise<{ result: InsertResult }> {
+    // Like the script: no key unless the captured field still has the focus.
+    const current = this.keyFocus ?? this.front?.focusHandle;
+    if (focusHandle !== undefined && current !== undefined && current !== focusHandle) {
+      this.recorded.push({ kind: 'sendKeyBlocked', handle, key, focusHandle });
+      return { result: 'moved' };
+    }
     this.recorded.push({ kind: 'sendKey', handle, key, focusHandle });
     return { result: 'sent' };
   }

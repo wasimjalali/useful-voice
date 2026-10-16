@@ -2205,11 +2205,11 @@ describe('app-aware formatting', () => {
     expect(ctx.sink.delivered).toEqual(['See you at five.']);
   });
 
-  it('a window dictation, and a press with no target, are Other, and are filed under no app', async () => {
+  it('a window dictation, and a press with no target, are filed under no app, and a window dictation is not category formatted', async () => {
     const window = setup({ settings: { categoryStyles: { other: 'casual' } } });
     await dictate(window, 'See you at five.', { source: 'window', context: capture('workChat') });
-    // The window source drops the context: Other, whatever was handed in.
-    expect(window.sink.delivered).toEqual(['See you at five']);
+    // The window source drops the context and has no app to fit the text to: no category formatting.
+    expect(window.sink.delivered).toEqual(['See you at five.']);
     expect(window.last()?.appID).toBeUndefined();
     expect(window.last()?.category).toBeUndefined();
 
@@ -2283,6 +2283,60 @@ describe('app-aware formatting', () => {
 
   describe('cleanup rules and the press snapshot', () => {
     const english = (text: string) => ({ text, durationSeconds: 1, detectedLanguage: 'en' });
+
+    it('a dictation into our own field gets cleanup and the user rules but no category formatting, retry included', async () => {
+      const memory = {
+        replacements: [{
+          id: 'r1', match: 'ship it', replacement: 'Ship it', matchMode: 'wordBoundaryPhrase' as const, language: 'auto',
+          isEnabled: true, usageCount: 0, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+        }],
+      };
+      // Casual for Other would drop the full stop.
+      const ctx = setup({ settings: { categoryStyles: { other: 'casual' } }, memory });
+      ctx.transcriber.transcript = english('Um, so we should, uh, ship it.');
+      await ctx.service.startRecording({ source: 'hotkey', ownField: true });
+      await ctx.service.stopAndProcess();
+      expect(ctx.sink.delivered).toEqual(['So we should Ship it.']);
+      expect(ctx.last()?.appID).toBeUndefined();
+
+      // A failed upload of the same kind of dictation is retried the same way.
+      const failing = setup({ settings: { categoryStyles: { other: 'casual' } } });
+      failing.transcriber.error = new ProviderError('transport', 'down');
+      await failing.service.startRecording({ source: 'hotkey', ownField: true });
+      await failing.service.stopAndProcess();
+      failing.transcriber.error = null;
+      failing.transcriber.transcript = english('See you at five.');
+      await failing.service.retryLast();
+      expect(failing.sink.delivered).toEqual(['See you at five.']);
+
+      // The same press into another app is formatted for it.
+      const other = setup({ settings: { categoryStyles: { other: 'casual' } } });
+      other.transcriber.transcript = english('See you at five.');
+      await other.service.startRecording({ source: 'hotkey', context: capture('other', null, 'notepad.exe') });
+      await other.service.stopAndProcess();
+      expect(other.sink.delivered).toEqual(['See you at five']);
+    });
+
+    it('when the formatter throws, delivers the transcript as it came with only the user rules, as raw', async () => {
+      const memory = {
+        replacements: [{
+          id: 'r1', match: 'ship it', replacement: 'Ship it', matchMode: 'wordBoundaryPhrase' as const, language: 'auto',
+          isEnabled: true, usageCount: 0, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+        }],
+      };
+      const ctx = setup({
+        memory,
+        formatter: async () => {
+          throw new Error('formatter exploded');
+        },
+      });
+      ctx.transcriber.transcript = english('Um, so we should, uh, ship it.');
+      await ctx.service.startRecording({ source: 'hotkey', context: capture('workChat') });
+      await ctx.service.stopAndProcess();
+      // No cleanup, no casual: the transcript, with the user's own rule.
+      expect(ctx.sink.delivered).toEqual(['Um, so we should, uh, Ship it.']);
+      expect(ctx.last()).toMatchObject({ mode: 'raw' });
+    });
 
     it('cleans fillers and stutters first, then formats for the app, then runs the user rules', async () => {
       const ctx = setup({

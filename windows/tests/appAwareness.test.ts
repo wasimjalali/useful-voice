@@ -225,6 +225,11 @@ describe('settings read from a file', () => {
     expect(normaliseUserName('Wasim\nJalali\t')).toBe('Wasim Jalali');
     expect(normaliseUserName('x'.repeat(200))).toHaveLength(60);
     expect(normaliseUserName('Was\u0000im   \u2028 Jalali\u007f')).toBe('Was im Jalali');
+    // Every control character is a space (C0, DEL and C1), but format characters stay.
+    expect(normaliseUserName('ab\u0001cd')).toBe('ab cd');
+    expect(normaliseUserName('ab\u0085cd\u009fef')).toBe('ab cd ef');
+    expect(normaliseUserName('فاطمه\u200cزهرا')).toBe('فاطمه\u200cزهرا');
+    expect(normaliseUserName('a\u200d\u200eb\u00adc')).toBe('a\u200d\u200eb\u00adc');
     expect(normaliseUserName(42)).toBe('');
     expect(normaliseUserName(undefined)).toBe('');
   });

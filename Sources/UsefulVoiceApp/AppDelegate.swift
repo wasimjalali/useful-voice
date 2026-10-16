@@ -167,7 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // While the first-run flow is on screen, it asks for each permission at its
         // own step, so nothing is requested here and there's no Accessibility pill.
         // A grant recheck kept behind a closed window at login does both, like any
-        // other launch, so the pill and the menu's fix item still say what's off.
+        // other launch, so the pill and the window banners still say what's off.
         let firstRunActive = firstRun?.active == true
         let recheckOnly = firstRun?.recheckOnly == true
         let userInitiated = LaunchReason.current(from: notification) == .userInitiated

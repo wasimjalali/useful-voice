@@ -70,7 +70,7 @@ public enum FirstRunGate {
     /// Whether the flow is on screen at launch. Only then does it stand in for the
     /// launch permission requests and the "Accessibility access is off" pill. A
     /// recheck left behind a closed window at login is not, so the app asks and
-    /// shows the pill (and the menu's fix item) as it does without setup.
+    /// shows the pill as it does without setup.
     public static func flowOnScreenAtLaunch(flowActive: Bool, recheckOnly: Bool,
                                             userInitiated: Bool) -> Bool {
         flowActive && opensWindowAtLaunch(flowActive: flowActive, recheckOnly: recheckOnly,

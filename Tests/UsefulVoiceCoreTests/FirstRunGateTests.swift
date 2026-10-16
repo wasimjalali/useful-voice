@@ -134,7 +134,7 @@ struct FirstRunGateTests {
     // MARK: Who asks for the permissions at launch
 
     /// The recheck at login keeps the window closed, so nothing on screen asks for
-    /// Accessibility: the app must ask, show the pill and offer the menu's fix item.
+    /// Accessibility: the app must ask and show the pill.
     @Test func aRecheckKeptBehindAClosedWindowIsNotOnScreen() {
         #expect(!FirstRunGate.flowOnScreenAtLaunch(flowActive: true, recheckOnly: true,
                                                    userInitiated: false))

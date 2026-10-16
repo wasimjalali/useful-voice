@@ -186,9 +186,15 @@ export interface StartOptions {
   target?: DeliveryTarget;
   /**
    * The category and the text before the cursor, captured with the target at the press.
-   * Only a hotkey dictation has one; a window dictation formats as Other.
+   * Only a hotkey dictation has one.
    */
   context?: ContextCapture;
+  /**
+   * The hotkey was pressed in one of Useful Voice's own fields. Like a window dictation it
+   * has no app to fit the text to, so it gets no category formatting (cleanup rules and the
+   * user's own rules still run).
+   */
+  ownField?: boolean;
   /**
    * The settings this dictation uses, copied at the press. Absent means copy them now.
    */
@@ -263,6 +269,11 @@ interface Session {
   readonly context?: ContextCapture;
   /** The settings at the press. Fixed for the dictation and for its retry. */
   readonly press: PressSettings;
+  /**
+   * No app to fit the text to (a window dictation or one into our own field): no category
+   * formatting. Set at the start and kept for a retry; never inferred from a missing context.
+   */
+  readonly noCategory: boolean;
   /** The context once its late reads landed, for a retry. Never holds the text before the cursor. */
   knownContext?: DictationContext;
   readonly rawMode: boolean;
@@ -294,6 +305,7 @@ export class DictationService {
     audio: CapturedAudio;
     language: MemoryLanguage;
     press: PressSettings;
+    noCategory: boolean;
     /** The press-time app and category, without the text before the cursor. */
     context: DictationContext | null;
   } | null = null;
@@ -367,6 +379,7 @@ export class DictationService {
       target: options.source === 'hotkey' ? options.target : undefined,
       context: options.source === 'hotkey' ? options.context : undefined,
       press: options.press ?? snapshotPress(settings),
+      noCategory: options.source === 'window' || options.ownField === true,
       rawMode: options.rawMode === true,
       delivered: false,
       stopping: false,
@@ -515,6 +528,7 @@ export class DictationService {
       source: 'window',
       ...(known ? { context: { initial: known, settled: Promise.resolve(known) } } : {}),
       press: failed.press,
+      noCategory: failed.noCategory,
       rawMode: false,
       delivered: false,
       stopping: true,
@@ -775,7 +789,7 @@ export class DictationService {
       } catch {
         // Cleanup never costs a dictation: the transcript goes on as it was.
       }
-      if (press.appAwareFormatting) {
+      if (press.appAwareFormatting && !session.noCategory) {
         const words = snapshot.terms
           .filter((term) => languageMatches(term.language, effectiveLanguage))
           .map((term) => term.phrase);
@@ -784,7 +798,7 @@ export class DictationService {
       }
       formattingChangedText = preparedText !== rawText;
     }
-    const memoryResult = applyMemory(preparedText, snapshot, effectiveLanguage);
+    let memoryResult = applyMemory(preparedText, snapshot, effectiveLanguage);
 
     let finalText = memoryResult.text;
     let mode: 'raw' | 'formatted' = formattingChangedText ? 'formatted' : 'raw';
@@ -797,9 +811,12 @@ export class DictationService {
           mode = 'formatted';
         }
       } catch {
-        // A formatter failure must never lose the dictation: fall back to the
-        // unformatted text, which is already correct.
-        mode = formattingChangedText ? 'formatted' : 'raw';
+        // A formatter failure must never lose the dictation: deliver the transcript as it came
+        // (the user's own dictionary, rules and snippets still apply), without the cleanup and
+        // the category formatting, as raw.
+        memoryResult = applyMemory(rawText, snapshot, effectiveLanguage);
+        finalText = memoryResult.text;
+        mode = 'raw';
       }
       if (!current()) return;
     }
@@ -1016,6 +1033,7 @@ export class DictationService {
       audio: captured,
       language,
       press: session.press,
+      noCategory: session.noCategory,
       context: known ? { ...known, textBeforeCursor: null } : null,
     };
   }

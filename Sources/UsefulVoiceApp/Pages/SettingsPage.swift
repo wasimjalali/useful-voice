@@ -35,6 +35,9 @@ struct SettingsPage: View {
     /// Apps listed under "Type instead of paste" on this visit: the ones switched on,
     /// plus any added or switched off here, so a row does not vanish under the pointer.
     @State private var typeOutRows: [String] = []
+    /// App-aware formatting, and the apps seen in History that can be given a category.
+    @State private var appFormatting = AppFormattingSettings.standard
+    @State private var seenApps: [String] = []
     @State private var appearance: AppearanceChoice = .system
     @State private var dailyGoal = AppSettings.defaultDailyWordGoal
     @State private var isTesting = false
@@ -72,6 +75,8 @@ struct SettingsPage: View {
         _restoreClipboard = State(initialValue: settings.restorePreviousClipboard)
         _typeOutAppIDs = State(initialValue: settings.typeOutAppIDs)
         _typeOutRows = State(initialValue: settings.typeOutAppIDs)
+        _appFormatting = State(initialValue: settings.appFormatting)
+        _seenApps = State(initialValue: SeenApps.ids(in: viewModel.historyStore.all()))
         _appearance = State(initialValue: settings.appearance)
         _dailyGoal = State(initialValue: settings.dailyWordGoal)
         _system = StateObject(wrappedValue: SettingsSystemState(history: viewModel.historyStore))
@@ -94,7 +99,7 @@ struct SettingsPage: View {
 
     static let groups: [(id: String, title: String)] = [
         ("general", "General"), ("engine", "Engine"), ("formatting", "Formatting"),
-        ("pasting", "Pasting"), ("hotkeys", "Hotkeys"), ("appearance", "Appearance"), ("data", "Data"),
+        ("apps", "Apps"), ("pasting", "Pasting"), ("hotkeys", "Hotkeys"), ("appearance", "Appearance"), ("data", "Data"),
         ("importExport", "Import and export"), ("diagnostics", "Diagnostics"), ("about", "About"),
     ]
 
@@ -158,6 +163,7 @@ struct SettingsPage: View {
                     generalGroup
                     engineGroup
                     formattingGroup
+                    appsGroup
                     pastingGroup
                     hotkeysGroup
                     appearanceGroup
@@ -507,6 +513,117 @@ struct SettingsPage: View {
                                  + "and fixes mistakes afterwards.")
             }
         }
+    }
+
+    // MARK: - Apps
+
+    private var appsGroup: some View {
+        SettingsGroup(id: "apps", title: "Apps") {
+            SettingsRow(title: "Format for the app") {
+                Toggle("", isOn: appFormattingEnabledBinding).labelsHidden()
+                    .accessibilityLabel("Format for the app")
+            }
+            SettingsRow(title: "Your name", detail: "Only used to sign emails.") {
+                TextField("Name", text: appNameBinding)
+                    .premiumInputChrome()
+                    .frame(width: 200)
+                    .onSubmit { saved() }
+                    .accessibilityLabel("Your name")
+            }
+            ForEach(AppCategory.allCases, id: \.self) { category in
+                SettingsRow(title: category.displayName) {
+                    // Coding has no style: its rules ignore it.
+                    if category != .coding {
+                        BrandedMenuPicker(
+                            title: "Style", selection: styleBinding(for: category),
+                            options: category.allowedStyles.map { (label: $0.displayName, value: $0) })
+                        .frame(width: 130)
+                        .disabled(!appFormatting.enabled)
+                        .accessibilityLabel("\(category.displayName) style")
+                    }
+                    if AppFormattingSettings.offersAutoSend(category) {
+                        BrandedMenuPicker(
+                            title: "Auto-send", selection: autoSendBinding(for: category),
+                            options: Self.autoSendOptions)
+                        .frame(width: 200)
+                        .accessibilityLabel("\(category.displayName) auto-send")
+                    }
+                }
+            }
+            if !appCategoryRows.isEmpty {
+                SettingsRow(title: "App categories") {
+                    if !appFormatting.overrides.byApp.isEmpty {
+                        Button("Reset") { resetAppCategories() }.buttonStyle(.brandSecondary)
+                    }
+                }
+                ForEach(appCategoryRows, id: \.self) { id in
+                    SettingsRow(title: Self.appName(for: id)) {
+                        BrandedMenuPicker(
+                            title: "Category", selection: appCategoryBinding(for: id),
+                            options: AppCategory.allCases.map { (label: $0.displayName, value: $0) })
+                        .frame(width: 170)
+                        .accessibilityLabel("\(Self.appName(for: id)) category")
+                    }
+                }
+            }
+        }
+    }
+
+    private static let autoSendOptions: [(label: String, value: AutoSendKey)] = [
+        (label: "No auto-send", value: .off),
+        (label: "Auto-send Return", value: .return),
+        (label: "Auto-send Shift+Return", value: .shiftReturn),
+        (label: "Auto-send \u{2318}Return", value: .modReturn),
+    ]
+
+    /// The apps listed for a category: the ones seen in History, then any with a saved
+    /// choice that History no longer shows.
+    private var appCategoryRows: [String] {
+        var seen = Set(seenApps.map { AppCategoryRegistry.normalizeAppID($0) })
+        var rows = seenApps
+        for key in appFormatting.overrides.byApp.keys.sorted()
+        where seen.insert(AppCategoryRegistry.normalizeAppID(key)).inserted {
+            rows.append(key)
+        }
+        return rows
+    }
+
+    private func saveAppFormatting(_ change: (inout AppFormattingSettings) -> Void, toast: Bool = true) {
+        change(&appFormatting)
+        settings.appFormatting = appFormatting
+        if toast { saved() }
+    }
+
+    private var appFormattingEnabledBinding: Binding<Bool> {
+        Binding(get: { appFormatting.enabled },
+                set: { value in saveAppFormatting { $0.enabled = value } })
+    }
+
+    private var appNameBinding: Binding<String> {
+        Binding(get: { appFormatting.userName },
+                set: { value in
+                    saveAppFormatting({ $0.userName = String(value.prefix(AppFormattingSettings.maxNameLength)) },
+                                      toast: false)
+                })
+    }
+
+    private func styleBinding(for category: AppCategory) -> Binding<FormattingStyle> {
+        Binding(get: { appFormatting.style(for: category) },
+                set: { value in saveAppFormatting { $0.setStyle(value, for: category) } })
+    }
+
+    private func autoSendBinding(for category: AppCategory) -> Binding<AutoSendKey> {
+        Binding(get: { appFormatting.autoSendKey(for: category) },
+                set: { value in saveAppFormatting { $0.setAutoSend(value, for: category) } })
+    }
+
+    private func appCategoryBinding(for id: String) -> Binding<AppCategory> {
+        Binding(get: { appFormatting.category(forAppID: id, url: nil) },
+                set: { value in saveAppFormatting { $0.setCategory(value, forAppID: id) } })
+    }
+
+    private func resetAppCategories() {
+        saveAppFormatting { $0.resetOverrides() }
     }
 
     // MARK: - Pasting
@@ -1047,6 +1164,8 @@ struct SettingsPage: View {
         recordingsToKeep = settings.recordingsToKeep
         soundEffectsEnabled = settings.soundEffectsEnabled
         restoreClipboard = settings.restorePreviousClipboard
+        appFormatting = settings.appFormatting
+        seenApps = SeenApps.ids(in: viewModel.historyStore.all())
         typeOutAppIDs = settings.typeOutAppIDs
         typeOutRows = typeOutRows + typeOutAppIDs.filter { id in
             !typeOutRows.contains { $0.lowercased() == id.lowercased() }

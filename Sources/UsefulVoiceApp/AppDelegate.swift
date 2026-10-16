@@ -620,7 +620,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             focusTarget: { FocusTracker.shared.snapshot() },
             isTargetRunning: { FocusTracker.shared.isRunning($0) },
             reactivate: { await FocusTracker.shared.reactivate($0) },
-            typeOutApps: { [settings] in settings.typeOutAppIDs }
+            typeOutApps: { [settings] in settings.typeOutAppIDs },
+            appFormatting: { [settings] in settings.appFormatting },
+            textBeforeCursor: { target in await FocusTracker.shared.textBeforeCursor(of: target) },
+            sendKey: { chord in TextInserter.postSendKey(chord) },
+            ownAppID: Bundle.main.bundleIdentifier
         )
         controller.onStateChange = { [weak self] state in
             if state == .recording, let target = self?.controller?.deliveryTarget {

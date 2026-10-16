@@ -1,0 +1,31 @@
+loadavg before { 3.67 4.58 3.75 }
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "Cleanup eval through the app's pipeline (needs the weights and an output path)" started.
+◇ Test runTheCasesThroughThePipeline() started.
+ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+ggml_metal_library_init: using embedded metal library
+ggml_metal_library_init: loaded in 0.008 sec
+ggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)
+ggml_metal_device_init: GPU name:   MTL0 (Apple M4)
+ggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)
+ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+ggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)
+ggml_metal_device_init: simdgroup reduction   = true
+ggml_metal_device_init: simdgroup matrix mul. = true
+ggml_metal_device_init: has unified memory    = true
+ggml_metal_device_init: has bfloat            = true
+ggml_metal_device_init: has tensor            = false
+ggml_metal_device_init: use residency sets    = true
+ggml_metal_device_init: use shared buffers    = true
+ggml_metal_device_init: recommendedMaxWorkingSetSize  = 12713.12 MB
+EVAL placement metal, 73 cases from heldout.json
+EVAL 25/73
+EVAL 50/73
+EVAL outcomes [(key: "accepted", value: 22), (key: "rejected(UsefulVoiceCore.CleanupGuard.Reason.changedNumber)", value: 1), (key: "rejected(UsefulVoiceCore.CleanupGuard.Reason.negation)", value: 1), (key: "rejected(UsefulVoiceCore.CleanupGuard.Reason.noWordChange)", value: 49)]
+✔ Test runTheCasesThroughThePipeline() passed after 13.905 seconds.
+✔ Suite "Cleanup eval through the app's pipeline (needs the weights and an output path)" passed after 13.905 seconds.
+✔ Test run with 1 test in 1 suite passed after 13.905 seconds.
+EXIT 0
+loadavg after { 3.30 4.46 3.71 }

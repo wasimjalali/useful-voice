@@ -6,20 +6,28 @@ import UsefulVoiceLlama
 /// target because it is the only place that links `UsefulVoiceLlama`: the Core target stays
 /// free of the second ggml.
 ///
-/// The CPU runs the model: llama.cpp can only stop a running decode on the CPU, which is what
-/// makes the deadline strict, and for a 0.6B model the CPU was faster than Metal in the
-/// measurements (see the PR). Pass `placement: .metal` to try Metal.
+/// Metal runs the model on a real Apple-silicon Mac, the CPU everywhere else
+/// (`LlamaRuntime.preferredPlacement()`). If the weights do not load on Metal, they load on
+/// the CPU instead.
 public final class LlamaCleanupGenerator: CleanupTextGenerator, @unchecked Sendable {
     private let placement: LlamaRuntime.Placement
     private var runtime: LlamaRuntime?
     private let stop = LlamaRuntime.StopSignal()
 
-    public init(placement: LlamaRuntime.Placement = .cpuOnly) {
+    /// Where the loaded model runs, nil while nothing is loaded.
+    public var loadedPlacement: LlamaRuntime.Placement? { runtime?.placement }
+
+    public init(placement: LlamaRuntime.Placement = LlamaRuntime.preferredPlacement()) {
         self.placement = placement
     }
 
     public func load(modelAt url: URL) throws {
-        runtime = try LlamaRuntime(modelPath: url.path, placement: placement, stop: stop)
+        do {
+            runtime = try LlamaRuntime(modelPath: url.path, placement: placement, stop: stop)
+        } catch LlamaRuntime.RuntimeError.modelLoadFailed(let why) where placement != .cpuOnly {
+            Diagnostics.shared.warning("cleanup-model", "\(placement.rawValue) load failed (\(why)), using the CPU")
+            runtime = try LlamaRuntime(modelPath: url.path, placement: .cpuOnly, stop: stop)
+        }
     }
 
     public func generate(prompt: CleanupPrompt, deadline: ContinuousClock.Instant) throws -> String {

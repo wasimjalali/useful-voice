@@ -160,9 +160,10 @@ struct LlamaWhisperCoexistenceTests {
         #expect(try controlCount(evil) == controlCount(plain))
     }
 
-    @Test(.timeLimit(.minutes(5)))
-    func aPassedDeadlineStopsTheRun() throws {
-        let runtime = try LlamaRuntime(modelPath: s1)
+    /// On the CPU and on the placement the app picks here (Metal on a real Apple-silicon Mac).
+    @Test(.timeLimit(.minutes(5)), arguments: Array(Set([LlamaRuntime.Placement.cpuOnly, LlamaRuntime.preferredPlacement()])))
+    func aPassedDeadlineStopsTheRun(placement: LlamaRuntime.Placement) throws {
+        let runtime = try LlamaRuntime(modelPath: s1, placement: placement)
         #expect(throws: LlamaRuntime.RuntimeError.deadlineExceeded) {
             try runtime.complete(prompt: prompt(cardInput), deadline: .now.advanced(by: .milliseconds(-1)))
         }
@@ -172,7 +173,7 @@ struct LlamaWhisperCoexistenceTests {
         #expect(throws: LlamaRuntime.RuntimeError.deadlineExceeded) {
             try runtime.complete(prompt: prompt(cardInput), deadline: .now.advanced(by: .milliseconds(5)))
         }
-        print("COEXIST 5 ms deadline stopped the run after \(ms(started.duration(to: .now))) ms")
+        print("COEXIST \(placement.rawValue) 5 ms deadline stopped the run after \(ms(started.duration(to: .now))) ms")
         // The runtime is still usable afterwards.
         let ok = try runtime.complete(prompt: prompt(cardInput), deadline: .now.advanced(by: .seconds(60)))
         #expect(!ok.text.isEmpty)
@@ -220,6 +221,7 @@ struct LlamaWhisperCoexistenceTests {
         await model.begin()
         await model.waitForLoad()
         #expect(await model.isLoaded)
+        print("COEXIST pipeline placement \(String(describing: generator.loadedPlacement)) (preferred here: \(LlamaRuntime.preferredPlacement()))")
         let gates = CleanupPipeline.Gates(flagOn: true, modelInstalled: true, physicalMemoryBytes: 16 << 30)
         let result = await CleanupPipeline.run(
             raw: cardInput, language: "en", category: nil, style: nil,
@@ -236,7 +238,7 @@ struct LlamaWhisperCoexistenceTests {
     }
 
     /// Not an assertion test: the numbers the PR quotes. CPU first, then Metal (which may not
-    /// start on a virtual runner). Resident memory is the whole test process, with whisper's
+    /// start on a virtual runner). The placement the app picks here is printed first. Resident memory is the whole test process, with whisper's
     /// tiny model loaded too in the "with whisper" rows.
     @Test(.timeLimit(.minutes(10)))
     func measure() throws {
@@ -248,7 +250,8 @@ struct LlamaWhisperCoexistenceTests {
             "can you open the file source slash app dot ts and rename the function get user to fetch user",
         ]
         print("MEASURE baseline \(memoryMB())")
-        for (placement, repeats) in [(LlamaRuntime.Placement.cpuOnly, 1)] {
+        print("MEASURE preferred placement \(LlamaRuntime.preferredPlacement().rawValue)")
+        for (placement, repeats) in [(LlamaRuntime.Placement.cpuOnly, 1), (.metal, 1)] {
             let label = placement.rawValue
             do {
                 let t0 = ContinuousClock.now
@@ -297,6 +300,21 @@ struct LlamaWhisperCoexistenceTests {
             }
         } catch {
             print("MEASURE metal failed: \(error)")
+        }
+        // Does a deadline stop a Metal run before its first token? A prompt of about 1,000
+        // tokens, run once in full, then with the deadline at a quarter of its time to the first
+        // token. (On Metal `llama_decode` returns before the GPU is done; the wait is in sampling.)
+        do {
+            let runtime = try LlamaRuntime(modelPath: s1, placement: .metal)
+            let long = prompt((1...45).map { "item \($0) goes to room \($0 + 100) and costs \($0 * 3) dollars." }.joined(separator: " "))
+            let full = try runtime.complete(prompt: long, deadline: .now.advanced(by: .seconds(120)))
+            let cut = Duration.milliseconds(Int(full.stats.prefillSeconds * 250))
+            let t = ContinuousClock.now
+            var outcome = "finished"
+            do { _ = try runtime.complete(prompt: long, deadline: .now.advanced(by: cut)) } catch { outcome = "\(error)" }
+            print("MEASURE metal abort: prompt \(full.stats.promptTokens) tokens, first token after \(full.stats.prefillSeconds * 1000) ms (native prompt \(full.stats.nativePromptMs) ms), whole run \(full.stats.totalSeconds * 1000) ms; deadline at \(ms(cut)) ms -> \(outcome) after \(ms(t.duration(to: .now))) ms")
+        } catch {
+            print("MEASURE metal abort failed: \(error)")
         }
     }
 }

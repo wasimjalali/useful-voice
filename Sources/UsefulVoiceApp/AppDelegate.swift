@@ -22,6 +22,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let mainWindow = MainWindowController()
     private var viewModel: UsefulVoiceViewModel?
     private var firstRun: FirstRunModel?
+    /// The launch (or the close of an unfinished recheck) already asked for the
+    /// permissions, so nothing asks a second time.
+    private var launchPermissionsRequested = false
     private var history: DictationHistory?
     private var usageStats: UsageStatsStore?
     private var languageMemory: LanguageMemoryStore?
@@ -173,7 +176,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let userInitiated = LaunchReason.current(from: notification) == .userInitiated
         let flowOnScreen = FirstRunGate.flowOnScreenAtLaunch(
             flowActive: firstRunActive, recheckOnly: recheckOnly, userInitiated: userInitiated)
-        if !flowOnScreen { requestPermissions() }
+        if !flowOnScreen {
+            requestPermissions()
+            launchPermissionsRequested = true
+        }
         startHotkeys(flowOnScreen: flowOnScreen)
 
         // Only open the window when the user asked for the app. A login-item or
@@ -231,10 +237,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mainWindow.onVisibilityChange = { [weak firstRun] visible in
             firstRun?.windowVisibilityChanged(visible)
         }
-        mainWindow.onClose = { [weak firstRun] in
+        mainWindow.onClose = { [weak self, weak firstRun] in
             firstRun?.windowClosed()
+            // A recheck the person closed unfinished: the flow stood in for the
+            // launch requests and the pill, so do them now (see below).
+            if let firstRun {
+                self?.recheckWindowClosed(flowActive: firstRun.active,
+                                          recheckOnly: firstRun.recheckOnly)
+            }
         }
         self.firstRun = firstRun
+    }
+
+    /// The window closed with the grant recheck still up. A launch the user asked
+    /// for showed the flow instead of the permission requests and the pill, so
+    /// without this a missing Accessibility grant would leave the hotkey dead with
+    /// nothing saying why. Does what the hidden-recheck launch does, once.
+    private func recheckWindowClosed(flowActive: Bool, recheckOnly: Bool) {
+        guard FirstRunGate.closeNeedsLaunchPermissions(
+            flowActive: flowActive, recheckOnly: recheckOnly,
+            alreadyRequested: launchPermissionsRequested) else { return }
+        launchPermissionsRequested = true
+        requestPermissions()
+        if viewModel?.hotkeyActive != true, !AXIsProcessTrusted() {
+            hud.show(.error(HUDError(message: "Accessibility access is off", symbol: "hand.raised",
+                                     fix: .openAccessibilitySettings)))
+            startAccessibilityPoll()
+        }
     }
 
     /// Accessibility was just granted in the first-run flow: start the tap now
@@ -1200,6 +1229,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openMainWindow() {
         if let viewModel, let firstRun {
+            firstRun.resolveRecheckBeforeShow()
             mainWindow.show(viewModel: viewModel, settings: settings, firstRun: firstRun)
         }
     }

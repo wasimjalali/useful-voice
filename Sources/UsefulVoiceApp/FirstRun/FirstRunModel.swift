@@ -177,20 +177,9 @@ final class FirstRunModel: ObservableObject {
         let grantsNeedRecheck = defaults.bool(forKey: FirstRunGate.recheckGrantsKey)
         self.recheckOnly = FirstRunGate.isRecheckOnly(
             completed: completed, grantsNeedRecheck: grantsNeedRecheck, forced: forced)
-        // Key PRESENCE (attributes only, never prompts) or a usable local model.
-        // Never the key cache, which may not have loaded yet, and a stored key
-        // that cannot be read right now still counts as configured.
-        let decision = FirstRunGate.decide(
-            completed: completed,
-            engineConfigured: FirstRunGate.engineConfigured(
-                engine: settings.transcriptionEngine,
-                keyStored: DeepgramKeyStore.keyIsStored(),
-                activeModelUsable: viewModel.models.availability(
-                    of: viewModel.models.activeModel) == .usable),
-            microphoneAuthorized: AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
-            accessibilityTrusted: AXIsProcessTrusted(),
-            forced: forced,
-            grantsNeedRecheck: grantsNeedRecheck)
+        let decision = Self.gateDecision(
+            settings: settings, viewModel: viewModel, completed: completed,
+            forced: forced, grantsNeedRecheck: grantsNeedRecheck)
         // An offscreen render saves nothing, and unless the flow is forced it
         // renders the page it was asked for: a differently signed build is never
         // Accessibility-trusted, so the gate would otherwise always show setup.
@@ -226,6 +215,45 @@ final class FirstRunModel: ObservableObject {
                 MainActor.assumeIsolated { self?.appBecameActive() }
             }
             .store(in: &cancellables)
+    }
+
+    /// Key PRESENCE (attributes only, never prompts) or a usable local model.
+    /// Never the key cache, which may not have loaded yet, and a stored key
+    /// that cannot be read right now still counts as configured.
+    private static func gateDecision(settings: AppSettings, viewModel: UsefulVoiceViewModel,
+                                     completed: Bool, forced: Bool,
+                                     grantsNeedRecheck: Bool) -> FirstRunGate.Decision {
+        FirstRunGate.decide(
+            completed: completed,
+            engineConfigured: FirstRunGate.engineConfigured(
+                engine: settings.transcriptionEngine,
+                keyStored: DeepgramKeyStore.keyIsStored(),
+                activeModelUsable: viewModel.models.availability(
+                    of: viewModel.models.activeModel) == .usable),
+            microphoneAuthorized: AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
+            accessibilityTrusted: AXIsProcessTrusted(),
+            forced: forced,
+            grantsNeedRecheck: grantsNeedRecheck)
+    }
+
+    /// The recheck was decided at launch, but a login launch keeps its window
+    /// closed, so the person may have granted everything since (the launch
+    /// prompts, the pill). Asked again as the window is about to open: if the gate
+    /// now says everything is in place, setup is marked done and the normal window
+    /// shows. Forced and snapshot runs never get here with anything to drop, and
+    /// nothing is written for them.
+    func resolveRecheckBeforeShow() {
+        guard active, recheckOnly, !forced, !offscreen, !frozen, page == .welcome else { return }
+        let decision = Self.gateDecision(
+            settings: settings, viewModel: viewModel,
+            completed: defaults.bool(forKey: FirstRunGate.completedKey),
+            forced: false,
+            grantsNeedRecheck: defaults.bool(forKey: FirstRunGate.recheckGrantsKey))
+        guard FirstRunGate.recheckResolvedBeforeShow(
+            flowActive: active, recheckOnly: recheckOnly, decision: decision) else { return }
+        leave(page)
+        FirstRunGate.recordCompleted(in: defaults)
+        active = false
     }
 
     private static func jump(named name: String) -> (page: Page, preview: Preview?)? {

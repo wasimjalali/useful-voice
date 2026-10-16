@@ -162,6 +162,57 @@ struct FirstRunGateTests {
         }
     }
 
+    // MARK: The recheck, decided again when the window opens
+
+    /// A login launch kept the recheck behind a closed window. If the person granted
+    /// both permissions meanwhile, opening the window must not walk them through setup.
+    @Test func aRecheckThatIsSatisfiedByTheTimeTheWindowOpensIsDropped() {
+        let decision = FirstRunGate.decide(
+            completed: true, engineConfigured: true, microphoneAuthorized: true,
+            accessibilityTrusted: true, forced: false, grantsNeedRecheck: true)
+        #expect(FirstRunGate.recheckResolvedBeforeShow(
+            flowActive: true, recheckOnly: true, decision: decision))
+    }
+
+    @Test func aRecheckStillMissingAGrantStaysUpWhenTheWindowOpens() {
+        for (mic, ax) in [(false, true), (true, false), (false, false)] {
+            let decision = FirstRunGate.decide(
+                completed: true, engineConfigured: true, microphoneAuthorized: mic,
+                accessibilityTrusted: ax, forced: false, grantsNeedRecheck: true)
+            #expect(!FirstRunGate.recheckResolvedBeforeShow(
+                flowActive: true, recheckOnly: true, decision: decision))
+        }
+    }
+
+    /// A setup never finished, or no flow at all, is not the recheck's to drop.
+    @Test func onlyARecheckIsDroppedWhenTheWindowOpens() {
+        #expect(!FirstRunGate.recheckResolvedBeforeShow(
+            flowActive: true, recheckOnly: false, decision: .skipAndMarkCompleted))
+        #expect(!FirstRunGate.recheckResolvedBeforeShow(
+            flowActive: false, recheckOnly: true, decision: .skipAndMarkCompleted))
+        #expect(!FirstRunGate.recheckResolvedBeforeShow(
+            flowActive: true, recheckOnly: true, decision: .show))
+    }
+
+    // MARK: Closing the recheck window unfinished
+
+    /// The user asked for the launch, so the flow showed instead of the permission
+    /// requests and the pill. Closing it on Welcome must not leave the hotkey dead
+    /// with nothing saying why.
+    @Test func closingAnUnfinishedRecheckAsksForThePermissionsOnce() {
+        #expect(FirstRunGate.closeNeedsLaunchPermissions(
+            flowActive: true, recheckOnly: true, alreadyRequested: false))
+        #expect(!FirstRunGate.closeNeedsLaunchPermissions(
+            flowActive: true, recheckOnly: true, alreadyRequested: true))
+    }
+
+    @Test func closingAnythingButARecheckAsksForNothing() {
+        #expect(!FirstRunGate.closeNeedsLaunchPermissions(
+            flowActive: true, recheckOnly: false, alreadyRequested: false))
+        #expect(!FirstRunGate.closeNeedsLaunchPermissions(
+            flowActive: false, recheckOnly: true, alreadyRequested: false))
+    }
+
     @Test func completingSetupWithoutARecheckOnlyMarksItDone() {
         let suite = "first-run-gate-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

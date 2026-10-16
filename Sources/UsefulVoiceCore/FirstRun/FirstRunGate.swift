@@ -77,6 +77,24 @@ public enum FirstRunGate {
                                           userInitiated: userInitiated)
     }
 
+    /// Whether a recheck-only flow that was kept behind a closed window can be
+    /// dropped as the window is about to open: the gate, asked again with the
+    /// grants as they are now, says everything is in place. Only a recheck, never
+    /// a setup that was not finished and never a forced run.
+    public static func recheckResolvedBeforeShow(flowActive: Bool, recheckOnly: Bool,
+                                                 decision: Decision) -> Bool {
+        flowActive && recheckOnly && decision == .skipAndMarkCompleted
+    }
+
+    /// Whether closing the window should do what the launch skipped: ask for the
+    /// permissions and show the "Accessibility access is off" pill. True for a
+    /// recheck the person closed unfinished, when no launch request ran yet. Once
+    /// either has run, closing again never asks twice.
+    public static func closeNeedsLaunchPermissions(flowActive: Bool, recheckOnly: Bool,
+                                                   alreadyRequested: Bool) -> Bool {
+        flowActive && recheckOnly && !alreadyRequested
+    }
+
     /// Whether the app has a way to dictate without any further setup: a Deepgram
     /// key is stored (presence only, so a key that cannot be read right now still
     /// counts) or a local model file is usable. Never reads a cache, so a slow or

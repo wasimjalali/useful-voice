@@ -91,14 +91,26 @@ interface Call {
 
 const calls = async (app: Running['app']): Promise<Call[]> => (await hook(app, 'fakeCalls')) as Call[];
 
+/**
+ * Press the hotkey and return at once. `__uv.pressHotkey` hands back the promise of the whole
+ * press, which for the stop press only settles once the dictation is transcribed and delivered.
+ * An `evaluate` kept waiting that long on a promise nothing else holds can be dropped by
+ * Playwright ("Resulting promise was garbage collected", seen in CI), so the press is started
+ * detached and every caller polls for the state or outcome it expects.
+ */
+const press = (app: Running['app']): Promise<void> =>
+  app.evaluate(() => {
+    void (globalThis as unknown as { __uv: { pressHotkey(): Promise<void> } }).__uv.pressHotkey();
+  });
+
 /** One whole hotkey dictation: press, speak for a moment, press, wait until it is over. */
 async function hotkeyDictation(r: Running, transcript: string, seconds = 1.5): Promise<void> {
   await hook(r.app, 'setTranscript', transcript);
   const before = (await log(r.win)).outcomes.length;
-  await hook(r.app, 'pressHotkey');
+  await press(r.app);
   await expect.poll(() => hook(r.app, 'serviceState'), { timeout: 15 * SECOND }).toBe('recording');
   await r.win.waitForTimeout(seconds * SECOND);
-  await hook(r.app, 'pressHotkey');
+  await press(r.app);
   await expect.poll(async () => (await log(r.win)).outcomes.length, { timeout: 30 * SECOND }).toBe(before + 1);
   await expect.poll(() => hook(r.app, 'serviceState')).toBe('idle');
 }
@@ -154,11 +166,11 @@ test('the send key stays quiet after a copy-only delivery', async () => {
 
   // The window in front moved to another app while it transcribed, and could not be brought back.
   await hook(r.app, 'setTranscript', 'Sounds good, see you at five.');
-  await hook(r.app, 'pressHotkey');
+  await press(r.app);
   await expect.poll(() => hook(r.app, 'serviceState'), { timeout: 15 * SECOND }).toBe('recording');
   await hook(r.app, 'fakeDesktop', { foreground: { processName: 'notepad', title: 'Untitled - Notepad' } });
   await r.win.waitForTimeout(1500);
-  await hook(r.app, 'pressHotkey');
+  await press(r.app);
   await expect.poll(async () => (await log(r.win)).outcomes.length, { timeout: 30 * SECOND }).toBe(1);
   expect((await log(r.win)).outcomes[0]).toMatchObject({ kind: 'delivered', result: 'copiedNotPasted' });
   expect(await clipboardText(r.app)).toBe('Sounds good, see you at five');

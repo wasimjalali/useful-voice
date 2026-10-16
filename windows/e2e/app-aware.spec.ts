@@ -292,6 +292,7 @@ test('Settings: the switch, the name, a style and a send key per category, and t
   await win.getByRole('option', { name: 'Personal chat' }).click();
   await expect.poll(async () => (await savedSettings(userData)).appCategories).toEqual({ 'slack.exe': 'personalChat' });
   await expect(group.getByRole('button', { name: 'Reset slack' })).toBeVisible();
+  await group.locator('.s-apps').scrollIntoViewIfNeeded();
   await shot(win, 'app-aware-03-settings-override');
   await group.getByRole('button', { name: 'Reset slack' }).click();
   await expect.poll(async () => (await savedSettings(userData)).appCategories).toEqual({});
@@ -300,5 +301,6 @@ test('Settings: the switch, the name, a style and a send key per category, and t
 
   // Nothing else in the old file was disturbed.
   expect((await savedSettings(userData)).languagePin).toBe('de');
+  await group.locator('.s-apps').scrollIntoViewIfNeeded();
   await shot(win, 'app-aware-04-settings-final');
 });

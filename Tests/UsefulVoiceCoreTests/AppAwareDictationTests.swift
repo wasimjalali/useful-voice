@@ -133,6 +133,19 @@ import Foundation
         #expect(records.first?.category == "email")
     }
 
+    @Test func historyShowsFormattedOnlyWhenTheCategoryFormatterChangedTheText() async {
+        let c = controller(emailDictation)
+        await dictate(c)
+        #expect(records.last?.mode == .formatted)
+        focus = slack
+        await dictate(controller("Sounds good"))      // nothing to change
+        #expect(records.last?.mode == .raw)
+        appFormatting.enabled = false
+        focus = mail
+        await dictate(controller(emailDictation))
+        #expect(records.last?.mode == .raw)
+    }
+
     @Test func noNameMeansNoNameIsAdded() async {
         appFormatting.userName = ""
         let c = controller(emailDictation)

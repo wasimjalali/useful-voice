@@ -508,6 +508,7 @@ public final class DictationController {
             // user's dictionary fixes, replacement rules and snippets inside `format`, so a
             // user's own rule always has the last word. Anything unsure keeps the text.
             var pipelineText = transcript.text
+            var categoryChangedText = false
             if let press, press.settings.enabled {
                 let plan = AppFormattingPlan(
                     category: press.category,
@@ -515,6 +516,7 @@ public final class DictationController {
                     userName: press.settings.userName,
                     textBeforeCursor: await boundedCursorRead(press.cursorRead))
                 pipelineText = plan.apply(to: transcript.text, dictionaryWords: effectiveContext.dictionaryWords)
+                categoryChangedText = pipelineText != transcript.text
             }
             if let format {
                 do {
@@ -525,6 +527,8 @@ public final class DictationController {
                     memoryHitIDs = result.memoryHitIDs
                     snippetIDs = result.snippetIDs
                     if !result.newTerms.isEmpty { suggestTerms(result.newTerms) }
+                    // History shows "formatted" when the category formatter changed the text.
+                    if categoryChangedText { mode = .formatted }
                 } catch {
                     // The formatter failed: deliver the transcript as it came, without
                     // the category formatting.
@@ -539,6 +543,7 @@ public final class DictationController {
                 }
             } else {
                 finalText = pipelineText
+                if categoryChangedText { mode = .formatted }
             }
         }
 

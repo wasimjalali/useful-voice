@@ -11,7 +11,7 @@ import Foundation
 /// `windows/src/core/settings` mirrors the same keys and rules.
 public struct AppFormattingSettings: Codable, Equatable, Sendable {
     /// The longest name kept. A sign-off name is a name, not a paragraph.
-    public static let maxNameLength = 80
+    public static let maxNameLength = 60
 
     /// "Format for the app". On by default.
     public var enabled: Bool

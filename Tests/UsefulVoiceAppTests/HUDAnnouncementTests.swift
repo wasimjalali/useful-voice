@@ -114,4 +114,14 @@ struct HUDAnnouncementTests {
         #expect(display.fix == nil)
         #expect(said(display) != said(.copiedNotPasted(fix: nil)))
     }
+
+    /// Text with a line break for an app that types: copied only, and it says why.
+    @Test func lineBreaksHasItsOwnNotice() {
+        let display = HUDDisplay.lineBreaks
+        #expect(said(display) == .init(text: "Copied. It has line breaks, so it wasn't typed. Press Command V.", urgent: true))
+        #expect(display.accessibilityLabel == said(display)?.text)
+        #expect(display.lifetime == 8)
+        #expect(display.isPersistent)
+        #expect(display.fix == nil)
+    }
 }

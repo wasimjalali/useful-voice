@@ -72,7 +72,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DeliveryTarget } from '../src/core/delivery/deliveryTarget.js';
 import { DELIVERY_TIMEOUT } from '../src/core/delivery/deliveryFlow.js';
-import { PARTLY_TYPED } from '../src/core/hudModel.js';
+import { LINE_BREAKS, PARTLY_TYPED } from '../src/core/hudModel.js';
 import {
   DictationService,
   classifyRecordingFailure,
@@ -166,7 +166,7 @@ class FakeTranscriber implements TranscriberPort {
 class FakeSink implements TextSinkPort {
   delivered: string[] = [];
   requests: Array<{ text: string; targetApp?: string; targetHandle?: number; target?: DeliveryTarget; mode: string; signal?: AbortSignal }> = [];
-  result: { delivered: boolean; clipboardFallback: boolean; cancelled?: boolean; partlyTyped?: boolean } = { delivered: true, clipboardFallback: false };
+  result: { delivered: boolean; clipboardFallback: boolean; cancelled?: boolean; partlyTyped?: boolean; lineBreaks?: boolean } = { delivered: true, clipboardFallback: false };
   /** Never resolves, to exercise the delivery timeout. */
   hang = false;
   /** Waits for the abort signal and reports it stopped before pasting, like the real sink. */
@@ -175,7 +175,7 @@ class FakeSink implements TextSinkPort {
   gate: Promise<void> | null = null;
   error: Error | null = null;
 
-  async deliver(request: { text: string; targetApp?: string; targetHandle?: number; target?: DeliveryTarget; mode: string; signal?: AbortSignal }): Promise<{ delivered: boolean; clipboardFallback: boolean; cancelled?: boolean; partlyTyped?: boolean }> {
+  async deliver(request: { text: string; targetApp?: string; targetHandle?: number; target?: DeliveryTarget; mode: string; signal?: AbortSignal }): Promise<{ delivered: boolean; clipboardFallback: boolean; cancelled?: boolean; partlyTyped?: boolean; lineBreaks?: boolean }> {
     this.delivered.push(request.text);
     this.requests.push(request);
     if (this.error) throw this.error;
@@ -1297,6 +1297,18 @@ describe('outcomes', () => {
     ]);
     expect(ctx.statuses.at(-1)?.message).toBe(PARTLY_TYPED);
     expect(PARTLY_TYPED).toBe('Partly typed. The full text is on your clipboard.');
+  });
+
+  it('says why when text with a line break was copied instead of typed', async () => {
+    const ctx = setup();
+    ctx.sink.result = { delivered: false, clipboardFallback: true, lineBreaks: true };
+    await ctx.service.toggle({ source: 'hotkey', targetApp: 'Terminal' });
+    await ctx.service.toggle({ source: 'hotkey' });
+    expect(ctx.outcomes).toEqual([
+      { kind: 'delivered', words: 2, result: 'copiedNotPasted', appName: 'Terminal', lineBreaks: true },
+    ]);
+    expect(ctx.statuses.at(-1)?.message).toBe(LINE_BREAKS);
+    expect(LINE_BREAKS).toBe("Copied. It has line breaks, so it wasn't typed. Press Ctrl+V.");
   });
 
   it('emits no outcome for a failure', async () => {

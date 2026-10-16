@@ -220,9 +220,11 @@ describe('insertionMethodFor', () => {
     expect(insertionMethodFor('windowsterminal', ['WindowsTerminal.exe'], 'ls -la')).toBe('typeOut');
   });
 
-  it('pastes text with a line break, even for a type-out app', () => {
+  it('copies text with a line break for a type-out app, and still pastes it elsewhere', () => {
     for (const text of ['one\ntwo', 'one\r\ntwo', 'one\rtwo', 'end\n', 'a\u2028b', 'a\u2029b', 'a\u0085b']) {
-      expect(insertionMethodFor('putty', ['putty'], text)).toBe('paste');
+      expect(insertionMethodFor('putty', ['putty'], text)).toBe('copyOnly');
+      expect(insertionMethodFor('notepad', ['putty'], text)).toBe('paste');
+      expect(insertionMethodFor(undefined, ['putty'], text)).toBe('paste');
     }
     expect(insertionMethodFor('putty', ['putty'], 'one two')).toBe('typeOut');
   });

@@ -16,6 +16,9 @@ public enum InsertionOutcome: Equatable, Sendable {
     /// posted, or it ran out of time). Some of the text went in; all of it is on the
     /// clipboard.
     case partlyTyped
+    /// An app that types, and the text has a line break: copied only, nothing typed
+    /// or pasted.
+    case copiedHasLineBreaks
     /// The clipboard write itself failed: the text is nowhere but History.
     case failed
 }
@@ -155,7 +158,7 @@ public struct InsertionRequest: Equatable, Sendable {
         self.restorePreviousClipboard = restorePreviousClipboard
     }
 
-    /// Paste or type: exactly one, chosen from the per-app list and the text.
+    /// Paste, type or copy only: exactly one, chosen from the per-app list and the text.
     public var method: InsertionMethod {
         InsertionMethod.method(forAppID: appID, typeOutApps: typeOutApps, text: text)
     }
@@ -298,6 +301,8 @@ public enum InsertionFlow {
         }
 
         switch method {
+        case .copyOnly:
+            finish(.copiedHasLineBreaks)
         case .paste:
             if fx.postPaste() { verify() } else { runFallback(false, nil) }
         case .typeOut:

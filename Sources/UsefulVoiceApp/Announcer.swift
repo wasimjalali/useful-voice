@@ -26,6 +26,8 @@ enum Announcer {
             return Message(text: "Copied. Press Command V to paste", urgent: true)
         case .partlyTyped:
             return Message(text: DictationIssue.partlyTypedMessage, urgent: true)
+        case .lineBreaks:
+            return Message(text: HUDDisplay.lineBreaksSpoken, urgent: true)
         case .cancelled: return Message(text: "Cancelled", urgent: false)
         case .error(let error): return Message(text: error.message, urgent: true)
         case .language(let pin): return Message(text: "Language, \(pin.hudName)", urgent: false)

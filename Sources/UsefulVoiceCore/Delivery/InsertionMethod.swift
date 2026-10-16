@@ -9,17 +9,22 @@ public enum InsertionMethod: Equatable, Sendable {
     /// Synthesised Unicode keystrokes, for terminals and apps that block paste.
     /// Not layout dependent: each event carries the characters themselves.
     case typeOut
+    /// Neither: the text only goes on the clipboard. For an app that types, when the
+    /// text has a line break.
+    case copyOnly
 
     /// The method for an app, from the per-app "type it out" list. Paste unless the
     /// user turned typing on for this app. An unknown app always pastes.
     ///
-    /// Text with a line break always pastes: a typed line break is an Enter key,
-    /// which sends the message in a chat app or runs the line in a terminal.
+    /// Text with a line break is never typed: a typed line break is an Enter key,
+    /// which sends the message in a chat app or runs the line in a terminal. Nor is it
+    /// pasted into an app the user marked for typing (paste doesn't work there), so
+    /// it is copied only.
     public static func method(forAppID appID: String?, typeOutApps: [String], text: String) -> InsertionMethod {
-        guard !text.contains(where: \.isNewline) else { return .paste }
         guard let appID, !appID.isEmpty else { return .paste }
         let key = appID.lowercased()
-        return typeOutApps.contains { $0.lowercased() == key } ? .typeOut : .paste
+        guard typeOutApps.contains(where: { $0.lowercased() == key }) else { return .paste }
+        return text.contains(where: \.isNewline) ? .copyOnly : .typeOut
     }
 }
 

@@ -149,3 +149,18 @@ test('a type-out that stopped part way says so in the dock', async () => {
   await expect(status).not.toContainText('Press Ctrl+V');
   await shot('pasting-04-partly-typed');
 });
+
+test('text with a line break for a type-out app says why it was only copied', async () => {
+  await win.locator('.rail-item', { hasText: 'Dictations' }).click();
+  await sendToMain(app, 'dictation:outcome', {
+    kind: 'delivered',
+    words: 4,
+    result: 'copiedNotPasted',
+    appName: 'Windows Terminal',
+    lineBreaks: true,
+  });
+  await sendToMain(app, 'dictation:state', { state: 'idle', message: "Copied. It has line breaks, so it wasn't typed. Press Ctrl+V." });
+  const status = win.locator('.dock .dock-inner:not(.is-leaving) .dock-status');
+  await expect(status).toContainText("Copied. It has line breaks, so it wasn't typed. Press Ctrl+V.");
+  await shot('pasting-05-line-breaks');
+});

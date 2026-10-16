@@ -138,10 +138,20 @@ describe('target in front', () => {
     expect(h.clipboard()).toBe(text);
   });
 
-  it('pastes text with a line break even for a type-out app', async () => {
+  it('copies text with a line break for a type-out app: nothing typed or pasted, its own notice', async () => {
     const h = harness({ focus: [terminal] });
     const result = await deliverToTarget(input({ target: terminal, text: 'git add .\ngit commit' }), h.fx);
-    expect(result.method).toBe('paste');
+    expect(result).toMatchObject({ delivered: false, clipboardFallback: true, lineBreaks: true, method: 'copyOnly' });
+    expect(keystrokes(h.calls)).toEqual([]);
+    expect(h.calls).not.toContain('restore');
+    expect(h.clipboard()).toBe('git add .\ngit commit');
+  });
+
+  it('still pastes text with a line break into a paste app', async () => {
+    const h = harness({ focus: [notepad] });
+    const result = await deliverToTarget(input({ text: 'one\ntwo' }), h.fx);
+    expect(result).toMatchObject({ delivered: true, method: 'paste' });
+    expect(result.lineBreaks).toBeUndefined();
     expect(keystrokes(h.calls)).toEqual(['paste']);
   });
 
@@ -389,5 +399,8 @@ describe('the notice', () => {
     expect(hudLabel(partly)).toBe('Partly typed. The full text is on your clipboard.');
     hud.outcome({ kind: 'delivered', words: 3, result: 'copiedNotPasted' });
     expect(hudLabel(frames.at(-1)!)).toBe('Copied. Press Ctrl+V to paste');
+    hud.outcome({ kind: 'delivered', words: 3, result: 'copiedNotPasted', lineBreaks: true });
+    expect(frames.at(-1)).toMatchObject({ kind: 'copied', lineBreaks: true });
+    expect(hudLabel(frames.at(-1)!)).toBe("Copied. It has line breaks, so it wasn't typed. Press Ctrl+V.");
   });
 });

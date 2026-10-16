@@ -94,7 +94,7 @@ export interface PasteDeliveryInput {
 }
 
 /** Why the text did or did not go in, for tests and the diagnostics log. */
-export type DeliveryReason = TargetLossReason | InsertResult | RestoreReason | 'cancelled';
+export type DeliveryReason = TargetLossReason | InsertResult | RestoreReason | 'cancelled' | 'lineBreaks';
 
 export interface PasteDeliveryResult {
   /**
@@ -114,6 +114,8 @@ export interface PasteDeliveryResult {
   cancelled?: boolean;
   /** Type-out stopped part way: some of the text went in, all of it is on the clipboard. */
   partlyTyped?: boolean;
+  /** An app that types, and the text has a line break: copied only, nothing sent. */
+  lineBreaks?: boolean;
   /** The method chosen, once the target lock passed. */
   method?: InsertionMethod;
   reason: DeliveryReason;
@@ -178,6 +180,11 @@ export async function deliverToTarget<Snapshot extends ClipboardContents>(
   }
 
   const method = insertionMethodFor(target.appId, input.typeOutApps, text);
+  if (method === 'copyOnly') {
+    fx.writeClipboard(text);
+    fx.log('delivery', 'text has a line break and this app types; copied instead');
+    return { delivered: false, clipboardFallback: true, lineBreaks: true, method, reason: 'lineBreaks' };
+  }
   const snapshot = fx.snapshotClipboard();
   // The dictation goes on the clipboard first in both modes: the safety net.
   fx.writeClipboard(text);

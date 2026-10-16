@@ -137,25 +137,26 @@ export function recheckTarget(
 }
 
 /** How text goes in. Exactly one per delivery, so it can never land twice. */
-export type InsertionMethod = 'paste' | 'typeOut';
+export type InsertionMethod = 'paste' | 'typeOut' | 'copyOnly';
 
 /** Any line break: LF, CR, VT, FF, NEL, line and paragraph separators. */
 const LINE_BREAK = /[\n\r\u000B\u000C\u0085\u2028\u2029]/;
 
 /**
  * Paste unless the user turned typing on for this app. An unknown app always pastes.
- * Text with a line break always pastes: a typed line break is an Enter key, which
- * sends the message in a chat app or runs the line in a terminal.
+ * Text with a line break is never typed (a typed line break is an Enter key, which
+ * sends the message in a chat app or runs the line in a terminal), nor pasted into an
+ * app the user marked for typing (paste doesn't work there): it is copied only.
  */
 export function insertionMethodFor(
   appId: string | undefined,
   typeOutApps: readonly string[],
   text: string,
 ): InsertionMethod {
-  if (LINE_BREAK.test(text)) return 'paste';
   const key = appIdFor(appId);
   if (!key) return 'paste';
-  return typeOutApps.some((app) => appIdFor(app) === key) ? 'typeOut' : 'paste';
+  if (!typeOutApps.some((app) => appIdFor(app) === key)) return 'paste';
+  return LINE_BREAK.test(text) ? 'copyOnly' : 'typeOut';
 }
 
 /** UTF-16 units per SendInput batch. */

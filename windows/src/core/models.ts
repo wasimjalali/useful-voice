@@ -202,6 +202,8 @@ export type DictationOutcomeEvent =
       appName?: string;
       /** With `copiedNotPasted`: typing stopped part way, the full text is on the clipboard. */
       partlyTyped?: boolean;
+      /** With `copiedNotPasted`: the text has a line break, so an app that types got nothing. */
+      lineBreaks?: boolean;
     }
   | { kind: 'cancelled' };
 

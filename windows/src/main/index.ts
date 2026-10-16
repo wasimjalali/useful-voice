@@ -1292,6 +1292,7 @@ class UsefulVoiceApp {
       if (result.cancelled) return cancelled;
       const delivered: DeliveryResult = { delivered: result.delivered, clipboardFallback: result.clipboardFallback };
       if (result.partlyTyped) delivered.partlyTyped = true;
+      if (result.lineBreaks) delivered.lineBreaks = true;
       return delivered;
     } finally {
       // The window title and the page address were for this dictation only.

@@ -537,6 +537,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             // Some of it went in: say so, or the user pastes a
                             // second copy blind.
                             done(.success(.copiedPartlyTyped))
+                        case .copiedHasLineBreaks:
+                            done(.success(.copiedHasLineBreaks))
                         case .targetLost:
                             // Focus left the target between the check and the paste:
                             // the same "copied" notice as any unreachable target.
@@ -1047,6 +1049,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .copiedNotPasted: hud.show(.copiedNotPasted(fix: .openAccessibilitySettings))
             case .copiedAppChanged, .copiedSecureField, .copiedNotLanded: hud.show(.copiedNotPasted(fix: nil))
             case .copiedPartlyTyped: hud.show(.partlyTyped)
+            case .copiedHasLineBreaks: hud.show(.lineBreaks)
             }
         }
     }

@@ -238,10 +238,12 @@ import Testing
 
     // MARK: - Insertion method
 
-    @Test func testTextWithALineBreakAlwaysPastes() {
+    @Test func testTextWithALineBreakIsCopyOnlyForATypeOutAppAndPastesElsewhere() {
         let list = ["com.apple.Terminal"]
         for text in ["one\ntwo", "one\r\ntwo", "one\rtwo", "end\n", "a\u{2028}b", "a\u{2029}b", "a\u{85}b"] {
-            #expect(InsertionMethod.method(forAppID: "com.apple.Terminal", typeOutApps: list, text: text) == .paste)
+            #expect(InsertionMethod.method(forAppID: "com.apple.Terminal", typeOutApps: list, text: text) == .copyOnly)
+            #expect(InsertionMethod.method(forAppID: "com.apple.TextEdit", typeOutApps: list, text: text) == .paste)
+            #expect(InsertionMethod.method(forAppID: nil, typeOutApps: list, text: text) == .paste)
         }
         #expect(InsertionMethod.method(forAppID: "com.apple.Terminal", typeOutApps: list, text: "one two") == .typeOut)
     }

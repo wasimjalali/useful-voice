@@ -11,7 +11,7 @@ import type {
 import { applyMemory } from '../core/memory/memoryPostProcessor.js';
 import type { DeliveryTarget } from '../core/delivery/deliveryTarget.js';
 import { DELIVERY_TIMEOUT } from '../core/delivery/deliveryFlow.js';
-import { PARTLY_TYPED } from '../core/hudModel.js';
+import { LINE_BREAKS, PARTLY_TYPED } from '../core/hudModel.js';
 import { selectKeyterms } from '../core/memory/biasBuilder.js';
 import { RecordingClock, SilenceWatchdog } from '../core/audio/silenceWatchdog.js';
 import { LEVEL_METER_GAIN, MINIMUM_AUDIO_BYTES } from '../core/audio/wav.js';
@@ -107,6 +107,8 @@ export interface DeliveryResult {
   cancelled?: boolean;
   /** Typing stopped part way: some of the text went in, all of it is on the clipboard. */
   partlyTyped?: boolean;
+  /** An app that types, and the text has a line break: copied only, nothing sent. */
+  lineBreaks?: boolean;
 }
 
 export interface TextSinkPort {
@@ -758,7 +760,11 @@ export class DictationService {
     if (delivered.clipboardFallback && delivered.partlyTyped) {
       // Some of it went in before typing stopped: say so, or the user pastes a second copy
       // blind. The whole text is on the clipboard.
-      this.finish(session, finalText, 'copiedNotPasted', session.targetApp, PARTLY_TYPED, true);
+      this.finish(session, finalText, 'copiedNotPasted', session.targetApp, PARTLY_TYPED, 'partlyTyped');
+      return;
+    }
+    if (delivered.clipboardFallback && delivered.lineBreaks) {
+      this.finish(session, finalText, 'copiedNotPasted', session.targetApp, LINE_BREAKS, 'lineBreaks');
       return;
     }
     if (delivered.clipboardFallback) {
@@ -779,11 +785,11 @@ export class DictationService {
     result: DictationDelivery,
     appName?: string,
     idleMessage?: string,
-    partlyTyped = false,
+    notice?: 'partlyTyped' | 'lineBreaks',
   ): void {
     const event: DictationOutcomeEvent = { kind: 'delivered', words: countWords(text), result };
     if (appName !== undefined) event.appName = appName;
-    if (partlyTyped) event.partlyTyped = true;
+    if (notice) event[notice] = true;
     this.emitOutcome(session, event);
     this.session = null;
     this.setState('idle', idleMessage);

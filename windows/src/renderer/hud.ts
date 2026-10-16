@@ -9,6 +9,7 @@ import {
   formatClock,
   formatWords,
   hudLabel,
+  LINE_BREAKS,
   PARTLY_TYPED,
   type HudFrame,
 } from '../core/hudModel.js';
@@ -247,7 +248,7 @@ function mountHudCapsule(): void {
           'div',
           { class: 'has-x' },
           icon(ICON_PATHS.clipboard, 16),
-          view.partlyTyped ? PARTLY_TYPED : 'Copied. Press Ctrl+V to paste',
+          view.partlyTyped ? PARTLY_TYPED : view.lineBreaks ? LINE_BREAKS : 'Copied. Press Ctrl+V to paste',
           closeButton(),
         );
       case 'cancelled':

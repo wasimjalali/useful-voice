@@ -19,6 +19,8 @@ enum HUDDisplay: Equatable {
     case copiedNotPasted(fix: DictationFix?)
     /// Typing stopped part way; the full text is on the clipboard. No fix.
     case partlyTyped
+    /// Text with a line break, for an app that types: copied only. No fix.
+    case lineBreaks
     case cancelled
     case error(HUDError)
     /// A confirmation that the dictation language was switched.
@@ -135,7 +137,7 @@ extension HUDDisplay {
         case .done: return 1.2
         case .language: return 1.0
         case .cancelled: return 1.5
-        case .copiedNotPasted, .partlyTyped, .error: return 8
+        case .copiedNotPasted, .partlyTyped, .lineBreaks, .error: return 8
         }
     }
 
@@ -143,7 +145,7 @@ extension HUDDisplay {
     /// it carries a close button.
     var isPersistent: Bool {
         switch self {
-        case .copiedNotPasted, .partlyTyped, .error: return true
+        case .copiedNotPasted, .partlyTyped, .lineBreaks, .error: return true
         default: return false
         }
     }
@@ -174,7 +176,7 @@ extension HUDDisplay {
         case .transcribing(let partial, _): return partial == nil ? 1 : 2
         case .delivering: return 3
         case .done: return 4
-        case .copiedNotPasted, .partlyTyped: return 5
+        case .copiedNotPasted, .partlyTyped, .lineBreaks: return 5
         case .cancelled: return 6
         case .error: return 7
         case .language: return 8
@@ -186,6 +188,9 @@ extension HUDDisplay {
         if case .transcribing(let partial, _) = self { return partial != nil }
         return false
     }
+
+    /// The line-break notice as VoiceOver should say it ("Command V", not the symbol).
+    static let lineBreaksSpoken = "Copied. It has line breaks, so it wasn't typed. Press Command V."
 
     /// The accessible label of the whole HUD. The recording one carries the
     /// elapsed time ("Recording, 0:12"); the ticking timer itself is not a live
@@ -203,6 +208,7 @@ extension HUDDisplay {
             return done.label
         case .copiedNotPasted: return "Copied. Press Command V to paste"
         case .partlyTyped: return DictationIssue.partlyTypedMessage
+        case .lineBreaks: return Self.lineBreaksSpoken
         case .cancelled: return "Cancelled"
         case .error(let error): return error.message
         case .language(let pin): return "Language, \(pin.hudName)"

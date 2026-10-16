@@ -9,7 +9,8 @@ import Testing
 /// - posting anything into a password field, or after the target lost focus;
 /// - both pasting and typing, or running the AX insert after type-out (queued
 ///   keystrokes would land on top of it: the text twice);
-/// - typing text with a line break (each one is an Enter key);
+/// - typing text with a line break (each one is an Enter key), or pasting it into an
+///   app the user marked for typing, or calling that plain "copied";
 /// - typing on after a password field appeared, focus moved, a key could not be
 ///   posted or time ran out, or calling such a stop plain "copied";
 /// - blocking the main thread between batches instead of scheduling them;
@@ -255,10 +256,24 @@ import Testing
         #expect(!fake.calls.contains("restore"))
     }
 
-    @Test func testTextWithALineBreakIsPastedEvenForATypeOutApp() {
+    @Test func testTextWithALineBreakIsCopyOnlyForATypeOutApp() {
         let fake = Fake()
+        fake.probes = [probe(10)]
+        fake.axInsertOK = true
         fake.run("git add .\ngit commit", appID: terminal)
+        #expect(fake.keystrokes.isEmpty)
+        #expect(!fake.calls.contains("axInsert"))
+        #expect(fake.calls.contains("write"))
+        #expect(!fake.calls.contains("restore"))
+        #expect(fake.outcome == .copiedHasLineBreaks)
+    }
+
+    @Test func testTextWithALineBreakStillPastesInAPasteApp() {
+        let fake = Fake()
+        fake.probes = [probe(10), probe(10 + "one\ntwo".utf16.count)]
+        fake.run("one\ntwo")
         #expect(fake.keystrokes == ["paste"])
+        #expect(fake.outcome == .pasted)
     }
 
     @Test func testASecureFieldMidwayStopsTypingAsPartlyTyped() {

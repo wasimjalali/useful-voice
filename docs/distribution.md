@@ -110,6 +110,12 @@ Two rules keep Windows installs working:
   Mac-only release would break both until the next one.
 - **Tags are `vX.Y.Z`.** The updater's GitHub provider expects the `v` prefix.
 
+A per-machine install (all users, under Program Files, uninstall entry in HKLM) does not update
+itself: its silent update needs a UAC prompt, and a declined prompt would leave no app. The app
+turns updates off when it runs from under `%ProgramFiles%`, `%ProgramW6432%` or
+`%ProgramFiles(x86)%` and logs why. Those installs update by re-running the installer. A
+per-machine install in a custom folder is not detected.
+
 The releases repo must stay public: the updater and the one-liner read it without a token.
 
 ### Install commands for the site

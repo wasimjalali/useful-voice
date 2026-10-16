@@ -45,6 +45,10 @@ export function updatesDisabledReason(input: {
   portable: boolean;
   /** The NSIS uninstaller sits beside the exe: a real install, not `release/win-unpacked`. */
   installed: boolean;
+  /** The folder the exe runs from. */
+  exeDir?: string;
+  /** %ProgramFiles%, %ProgramW6432% and %ProgramFiles(x86)%, where a per-machine install lives. */
+  programFilesDirs?: readonly string[];
 }): string | null {
   if (input.platform !== 'win32') return 'not Windows';
   if (!input.isPackaged) return 'not a packaged build';
@@ -52,7 +56,21 @@ export function updatesDisabledReason(input: {
   // The portable exe unpacks to a temp folder on every launch: there is nothing to update in place.
   if (input.portable) return 'portable build';
   if (!input.installed) return 'not an installed copy';
+  // A per-machine install (all users, under Program Files) needs a UAC prompt to update, and the
+  // installer is built with allowElevation off. A declined prompt would leave no app, so these
+  // update by re-running the installer instead.
+  const { exeDir, programFilesDirs } = input;
+  if (exeDir && programFilesDirs?.some((dir) => isInside(exeDir, dir))) {
+    return 'per-machine install (update by re-running the installer)';
+  }
   return null;
+}
+
+/** Whether `child` is `parent` or under it, by Windows rules: case-insensitive, either slash. */
+function isInside(child: string, parent: string): boolean {
+  const norm = (p: string): string => path.win32.resolve(p).toLowerCase();
+  const rel = path.win32.relative(norm(parent), norm(child));
+  return !rel.startsWith('..') && !path.win32.isAbsolute(rel);
 }
 
 /**
@@ -98,6 +116,10 @@ export class Updater {
       e2e,
       portable: Boolean(process.env.PORTABLE_EXECUTABLE_DIR),
       installed: existsSync(path.join(path.dirname(process.execPath), `Uninstall ${app.getName()}.exe`)),
+      exeDir: path.dirname(process.execPath),
+      programFilesDirs: [process.env.ProgramFiles, process.env.ProgramW6432, process.env['ProgramFiles(x86)']].filter(
+        (dir): dir is string => Boolean(dir),
+      ),
     });
     if (reason) {
       this.options.log(`updates off: ${reason}`);

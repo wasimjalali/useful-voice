@@ -247,10 +247,18 @@ def same(a, b):
     return a == b
 
 bad = [k for k, v in legacy.items() if k not in new or not same(v, new[k])]
-print("ok" if not bad and new.get("uv.identityMigrated") is True else "bad %d" % len(bad))
+# A setup the old identity finished is checked against the grants again (the rename drops
+# them), so the new domain must carry the recheck flag exactly when the old one says done.
+recheck = (new.get("uv.firstRunRecheckGrants") is True) == (legacy.get("uv.firstRunCompleted") is True)
+if bad or new.get("uv.identityMigrated") is not True:
+    print("bad %d" % len(bad))
+elif not recheck:
+    print("bad recheck")
+else:
+    print("ok")
 PY
 )"
-check "every legacy preference copied with equal value and type" "$([ "$PREF_RESULT" = ok ] && echo yes || echo no)"
+check "every legacy preference copied with equal value and type, first-run recheck flagged" "$([ "$PREF_RESULT" = ok ] && echo yes || echo no)"
 check "legacy preferences domain byte-equal before and after" "$(cmp -s "$H/legacy.before.plist" "$H/legacy.after.plist" && echo yes || echo no)"
 
 # 4. Keychain. The new item is guarded for the app only, so the app answers (as a boolean)

@@ -29,6 +29,201 @@ struct FirstRunGateTests {
         #expect(decide(completed: true, engine: true, mic: false, ax: false) == .skip)
     }
 
+    // MARK: After the identity rename (WAS-30, UV-003)
+    //
+    // The renamed app has a new bundle id, so macOS has no Accessibility or
+    // Microphone grant for it. The migration copies "setup finished" from the
+    // old identity and sets the recheck flag; the gate then treats the install
+    // as unfinished until the grants are back.
+
+    private func decideAfterRename(engine: Bool = true, mic: Bool = false, ax: Bool = false,
+                                   forced: Bool = false) -> FirstRunGate.Decision {
+        FirstRunGate.decide(completed: true, engineConfigured: engine,
+                            microphoneAuthorized: mic, accessibilityTrusted: ax,
+                            forced: forced, grantsNeedRecheck: true)
+    }
+
+    @Test func renamedInstallWithNoGrantsShowsTheFlow() {
+        #expect(decideAfterRename() == .show)
+    }
+
+    @Test func renamedInstallMissingOnlyOneGrantShowsTheFlow() {
+        #expect(decideAfterRename(mic: true, ax: false) == .show)
+        #expect(decideAfterRename(mic: false, ax: true) == .show)
+    }
+
+    @Test func renamedInstallWithoutAnEngineShowsTheFlowEvenWithGrants() {
+        #expect(decideAfterRename(engine: false, mic: true, ax: true) == .show)
+    }
+
+    /// Both grants came back by hand before the flow was ever seen: it stays out
+    /// of the way and the install is marked done, which also clears the recheck.
+    @Test func renamedInstallWithEverythingBackIsMarkedDoneSilently() {
+        #expect(decideAfterRename(mic: true, ax: true) == .skipAndMarkCompleted)
+    }
+
+    @Test func theRecheckNeverHidesAForcedRun() {
+        #expect(decideAfterRename(mic: true, ax: true, forced: true) == .show)
+    }
+
+    /// Without the recheck flag a completed install is left alone, grants or not.
+    @Test func withoutTheRecheckACompletedInstallStillSkips() {
+        #expect(FirstRunGate.decide(completed: true, engineConfigured: true,
+                                    microphoneAuthorized: false, accessibilityTrusted: false,
+                                    forced: false, grantsNeedRecheck: false) == .skip)
+    }
+
+    @Test func recheckFlagLivesUnderTheDocumentedKey() {
+        #expect(FirstRunGate.recheckGrantsKey == "uv.firstRunRecheckGrants")
+    }
+
+    /// Done, Finish, "Set up later" and a silent mark all go through this. If the
+    /// recheck survived it, the flow would come back on the next launch.
+    @Test func completingSetupClearsTheRecheck() {
+        let suite = "first-run-gate-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: FirstRunGate.recheckGrantsKey)
+
+        FirstRunGate.recordCompleted(in: defaults)
+
+        #expect(defaults.bool(forKey: FirstRunGate.completedKey))
+        #expect(defaults.object(forKey: FirstRunGate.recheckGrantsKey) == nil)
+        // The next launch, grants still missing: a normal launch, no flow.
+        #expect(FirstRunGate.decide(
+            completed: defaults.bool(forKey: FirstRunGate.completedKey),
+            engineConfigured: true, microphoneAuthorized: false, accessibilityTrusted: false,
+            forced: false, grantsNeedRecheck: defaults.bool(forKey: FirstRunGate.recheckGrantsKey)) == .skip)
+    }
+
+    // MARK: Opening the window at launch
+
+    @Test func onlyAFinishedSetupWithTheRecheckIsRecheckOnly() {
+        #expect(FirstRunGate.isRecheckOnly(completed: true, grantsNeedRecheck: true, forced: false))
+        #expect(!FirstRunGate.isRecheckOnly(completed: false, grantsNeedRecheck: true, forced: false))
+        #expect(!FirstRunGate.isRecheckOnly(completed: true, grantsNeedRecheck: false, forced: false))
+        #expect(!FirstRunGate.isRecheckOnly(completed: true, grantsNeedRecheck: true, forced: true))
+    }
+
+    /// A migrated user who never re-grants must not get a window in front of their
+    /// work at every login. The flow stays up for the next time they open the window.
+    @Test func aLoginLaunchLeavesTheWindowClosedForTheRecheck() {
+        #expect(!FirstRunGate.opensWindowAtLaunch(flowActive: true, recheckOnly: true,
+                                                  userInitiated: false))
+    }
+
+    @Test func aLoginLaunchStillOpensTheWindowForASetupNeverFinished() {
+        #expect(FirstRunGate.opensWindowAtLaunch(flowActive: true, recheckOnly: false,
+                                                 userInitiated: false))
+    }
+
+    @Test func aLoginLaunchWithNoFlowStaysInTheMenuBar() {
+        #expect(!FirstRunGate.opensWindowAtLaunch(flowActive: false, recheckOnly: false,
+                                                  userInitiated: false))
+    }
+
+    @Test func aLaunchTheUserAskedForAlwaysOpensTheWindow() {
+        for active in [true, false] {
+            for recheck in [true, false] {
+                #expect(FirstRunGate.opensWindowAtLaunch(flowActive: active, recheckOnly: recheck,
+                                                         userInitiated: true))
+            }
+        }
+    }
+
+    // MARK: Who asks for the permissions at launch
+
+    /// The recheck at login keeps the window closed, so nothing on screen asks for
+    /// Accessibility: the app must ask and show the pill.
+    @Test func aRecheckKeptBehindAClosedWindowIsNotOnScreen() {
+        #expect(!FirstRunGate.flowOnScreenAtLaunch(flowActive: true, recheckOnly: true,
+                                                   userInitiated: false))
+    }
+
+    @Test func aRecheckTheUserOpenedIsOnScreen() {
+        #expect(FirstRunGate.flowOnScreenAtLaunch(flowActive: true, recheckOnly: true,
+                                                  userInitiated: true))
+    }
+
+    @Test func aSetupNeverFinishedIsOnScreenEvenAtLogin() {
+        #expect(FirstRunGate.flowOnScreenAtLaunch(flowActive: true, recheckOnly: false,
+                                                  userInitiated: false))
+        #expect(FirstRunGate.flowOnScreenAtLaunch(flowActive: true, recheckOnly: false,
+                                                  userInitiated: true))
+    }
+
+    /// The window opening for an ordinary launch does not mean a flow is showing.
+    @Test func noFlowIsNeverOnScreen() {
+        for recheck in [true, false] {
+            for user in [true, false] {
+                #expect(!FirstRunGate.flowOnScreenAtLaunch(flowActive: false, recheckOnly: recheck,
+                                                           userInitiated: user))
+            }
+        }
+    }
+
+    // MARK: The recheck, decided again when the window opens
+
+    /// A login launch kept the recheck behind a closed window. If the person granted
+    /// both permissions meanwhile, opening the window must not walk them through setup.
+    @Test func aRecheckThatIsSatisfiedByTheTimeTheWindowOpensIsDropped() {
+        let decision = FirstRunGate.decide(
+            completed: true, engineConfigured: true, microphoneAuthorized: true,
+            accessibilityTrusted: true, forced: false, grantsNeedRecheck: true)
+        #expect(FirstRunGate.recheckResolvedBeforeShow(
+            flowActive: true, recheckOnly: true, decision: decision))
+    }
+
+    @Test func aRecheckStillMissingAGrantStaysUpWhenTheWindowOpens() {
+        for (mic, ax) in [(false, true), (true, false), (false, false)] {
+            let decision = FirstRunGate.decide(
+                completed: true, engineConfigured: true, microphoneAuthorized: mic,
+                accessibilityTrusted: ax, forced: false, grantsNeedRecheck: true)
+            #expect(!FirstRunGate.recheckResolvedBeforeShow(
+                flowActive: true, recheckOnly: true, decision: decision))
+        }
+    }
+
+    /// A setup never finished, or no flow at all, is not the recheck's to drop.
+    @Test func onlyARecheckIsDroppedWhenTheWindowOpens() {
+        #expect(!FirstRunGate.recheckResolvedBeforeShow(
+            flowActive: true, recheckOnly: false, decision: .skipAndMarkCompleted))
+        #expect(!FirstRunGate.recheckResolvedBeforeShow(
+            flowActive: false, recheckOnly: true, decision: .skipAndMarkCompleted))
+        #expect(!FirstRunGate.recheckResolvedBeforeShow(
+            flowActive: true, recheckOnly: true, decision: .show))
+    }
+
+    // MARK: Closing the recheck window unfinished
+
+    /// The user asked for the launch, so the flow showed instead of the permission
+    /// requests and the pill. Closing it on Welcome must not leave the hotkey dead
+    /// with nothing saying why.
+    @Test func closingAnUnfinishedRecheckAsksForThePermissionsOnce() {
+        #expect(FirstRunGate.closeNeedsLaunchPermissions(
+            flowActive: true, recheckOnly: true, alreadyRequested: false))
+        #expect(!FirstRunGate.closeNeedsLaunchPermissions(
+            flowActive: true, recheckOnly: true, alreadyRequested: true))
+    }
+
+    @Test func closingAnythingButARecheckAsksForNothing() {
+        #expect(!FirstRunGate.closeNeedsLaunchPermissions(
+            flowActive: true, recheckOnly: false, alreadyRequested: false))
+        #expect(!FirstRunGate.closeNeedsLaunchPermissions(
+            flowActive: false, recheckOnly: true, alreadyRequested: false))
+    }
+
+    @Test func completingSetupWithoutARecheckOnlyMarksItDone() {
+        let suite = "first-run-gate-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        FirstRunGate.recordCompleted(in: defaults)
+
+        #expect(defaults.bool(forKey: FirstRunGate.completedKey))
+        #expect(defaults.object(forKey: FirstRunGate.recheckGrantsKey) == nil)
+    }
+
     @Test func upgradingUserWhoIsFullyConfiguredIsMarkedDoneSilently() {
         #expect(decide(engine: true, mic: true, ax: true) == .skipAndMarkCompleted)
     }

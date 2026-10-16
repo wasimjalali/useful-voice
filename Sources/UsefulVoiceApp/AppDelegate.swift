@@ -22,6 +22,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let mainWindow = MainWindowController()
     private var viewModel: UsefulVoiceViewModel?
     private var firstRun: FirstRunModel?
+    /// The launch (or the close of an unfinished recheck) already asked for the
+    /// permissions, so nothing asks a second time.
+    private var launchPermissionsRequested = false
     private var history: DictationHistory?
     private var usageStats: UsageStatsStore?
     private var languageMemory: LanguageMemoryStore?
@@ -128,6 +131,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if ProcessInfo.processInfo.environment["UV_SNAPSHOT"] == nil { primeKeyCache() }
         chimes.isEnabled = { [settings] in settings.soundEffectsEnabled }
         setUpController()
+        // Before the status item, whose menu shows the update item only when the
+        // updater runs. Not in a render or forced first-run preview, which save nothing.
+        if migrationAllowed { AppUpdater.shared.start() }
         if !isSnapshot { setUpStatusItem() }
         setUpFirstRun()
         // `UV_SNAPSHOT=<png path>@<width>x<height>` renders the page named by
@@ -164,11 +170,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
-        // While the first-run flow is up, it asks for each permission at its own
-        // step, so nothing is requested here.
+        // While the first-run flow is on screen, it asks for each permission at its
+        // own step, so nothing is requested here and there's no Accessibility pill.
+        // A grant recheck kept behind a closed window at login does both, like any
+        // other launch, so the pill and the window banners still say what's off.
         let firstRunActive = firstRun?.active == true
-        if !firstRunActive { requestPermissions() }
-        startHotkeys()
+        let recheckOnly = firstRun?.recheckOnly == true
+        let userInitiated = LaunchReason.current(from: notification) == .userInitiated
+        let flowOnScreen = FirstRunGate.flowOnScreenAtLaunch(
+            flowActive: firstRunActive, recheckOnly: recheckOnly, userInitiated: userInitiated)
+        if !flowOnScreen {
+            requestPermissions()
+            launchPermissionsRequested = true
+        }
+        startHotkeys(flowOnScreen: flowOnScreen)
 
         // Only open the window when the user asked for the app. A login-item or
         // restored-state launch must stay quiet in the menu bar: opening a
@@ -176,8 +191,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // every login, so the first keystrokes after logging in landed in
         // Useful Voice instead of the app the user was typing into.
         // The exception is first run: setup has to be seen, so the window opens
-        // with the flow over it even on a login launch.
-        if firstRunActive || LaunchReason.current(from: notification) == .userInitiated {
+        // with the flow over it even on a login launch. Not for the grant recheck
+        // after the rename: that waits until the user opens the window.
+        if FirstRunGate.opensWindowAtLaunch(
+            flowActive: firstRunActive, recheckOnly: recheckOnly, userInitiated: userInitiated) {
             openMainWindow()
         }
     }
@@ -223,10 +240,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mainWindow.onVisibilityChange = { [weak firstRun] visible in
             firstRun?.windowVisibilityChanged(visible)
         }
-        mainWindow.onClose = { [weak firstRun] in
+        mainWindow.onClose = { [weak self, weak firstRun] in
             firstRun?.windowClosed()
+            // A recheck the person closed unfinished: the flow stood in for the
+            // launch requests and the pill, so do them now (see below).
+            if let firstRun {
+                self?.recheckWindowClosed(flowActive: firstRun.active,
+                                          recheckOnly: firstRun.recheckOnly)
+            }
         }
         self.firstRun = firstRun
+    }
+
+    /// The window closed with the grant recheck still up. A launch the user asked
+    /// for showed the flow instead of the permission requests and the pill, so
+    /// without this a missing Accessibility grant would leave the hotkey dead with
+    /// nothing saying why. Does what the hidden-recheck launch does, once.
+    private func recheckWindowClosed(flowActive: Bool, recheckOnly: Bool) {
+        guard FirstRunGate.closeNeedsLaunchPermissions(
+            flowActive: flowActive, recheckOnly: recheckOnly,
+            alreadyRequested: launchPermissionsRequested) else { return }
+        launchPermissionsRequested = true
+        requestPermissions()
+        if viewModel?.hotkeyActive != true, !AXIsProcessTrusted() {
+            hud.show(.error(HUDError(message: "Accessibility access is off", symbol: "hand.raised",
+                                     fix: .openAccessibilitySettings)))
+            startAccessibilityPoll()
+        }
     }
 
     /// Accessibility was just granted in the first-run flow: start the tap now
@@ -947,7 +987,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func startHotkeys() {
+    /// `flowOnScreen`: the first-run flow is showing at launch, and its own
+    /// Accessibility step replaces the pill.
+    private func startHotkeys(flowOnScreen: Bool) {
         hotkeys.activationKeycode = Int64(settings.hotkeyKeycode)
         viewModel?.onHotkeyKeycodeChange = { [weak self] code in
             self?.hotkeys.activationKeycode = Int64(code)
@@ -989,7 +1031,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Not Accessibility-trusted yet. Poll until the user grants it, then
         // start the tap without requiring a relaunch.
         // The first-run flow has its own Accessibility step, so no pill there.
-        if firstRun?.active != true {
+        if !flowOnScreen {
             hud.show(.error(HUDError(message: "Accessibility access is off", symbol: "hand.raised",
                                      fix: .openAccessibilitySettings)))
         }
@@ -1196,6 +1238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openMainWindow() {
         if let viewModel, let firstRun {
+            firstRun.resolveRecheckBeforeShow()
             mainWindow.show(viewModel: viewModel, settings: settings, firstRun: firstRun)
         }
     }

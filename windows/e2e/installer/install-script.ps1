@@ -1,0 +1,184 @@
+# End to end test of install.ps1, run by the release-windows workflow on a clean
+# windows-latest runner. It runs the one-liner exactly as a user would
+# (`irm <url>/install.ps1 | iex`) against a local copy of the release, served as GitHub
+# serves assets (e2e/installer/serve.mjs):
+#
+#   1. A tampered installer is refused by Windows PowerShell 5.1 (what Windows ships), and
+#      nothing is installed.
+#   2. The real installer installs per-user under Windows PowerShell 5.1: one uninstall
+#      entry, the release's version, the exe on disk.
+#   3. With the app running, the one-liner from PowerShell 7 is refused: it exits non-zero,
+#      tells the user to quit the app, never kills it and leaves the install untouched. After
+#      the app is stopped, the same one-liner reinstalls over the first.
+#
+# Usage: pwsh e2e/installer/install-script.ps1 <publish-local dir> <out dir>
+# <publish-local dir> is release.mjs output made with --base-url http://127.0.0.1:8719.
+param(
+  [Parameter(Mandatory)] [string]$Publish,
+  [Parameter(Mandatory)] [string]$Out
+)
+$ErrorActionPreference = 'Stop'
+$Port = 8719
+$Base = "http://127.0.0.1:$Port"
+$Publish = (Resolve-Path $Publish).Path
+New-Item -ItemType Directory -Force -Path $Out | Out-Null
+$Out = (Resolve-Path $Out).Path
+$report = Join-Path $Out 'install-script-report.txt'
+$serveLog = Join-Path $Out 'install-script-requests.log'
+$serve = Join-Path $PSScriptRoot 'serve.mjs'
+$version = (Get-Content (Join-Path $PSScriptRoot '..\..\package.json') -Raw | ConvertFrom-Json).version
+
+function Say([string]$line) { $line | Tee-Object -FilePath $report -Append }
+
+function Get-UvEntries {
+  $roots = @(
+    'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+    'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+    'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+  )
+  foreach ($root in $roots) {
+    Get-ChildItem $root -ErrorAction SilentlyContinue | ForEach-Object {
+      $p = Get-ItemProperty $_.PSPath
+      if ($p.DisplayName -like 'Useful Voice*') {
+        [pscustomobject]@{ Root = $root; Key = $_.PSChildName; DisplayVersion = $p.DisplayVersion; InstallLocation = $p.InstallLocation; InstallDir = $(if ($p.UninstallString -match '^"([^"]+)"') { Split-Path -Parent $Matches[1] } else { Join-Path $env:LOCALAPPDATA 'Programs\Useful Voice' }) }
+      }
+    }
+  }
+}
+
+function Start-Server([string]$dir) {
+  $proc = Start-Process -FilePath 'node' -ArgumentList @($serve, $dir, $Port, $serveLog) -PassThru -NoNewWindow
+  for ($i = 0; $i -lt 50; $i++) {
+    # A server that died (port still held by the last one) must not pass for this one.
+    if ($proc.HasExited) { throw "the release server exited with $($proc.ExitCode)" }
+    try { Invoke-WebRequest -Uri "$Base/install.ps1" -Method Head -UseBasicParsing | Out-Null; return $proc } catch { Start-Sleep -Milliseconds 200 }
+  }
+  throw "the release server did not start on $Base"
+}
+
+# Runs the one-liner in a fresh shell and returns its exit code and output.
+function Invoke-OneLiner([string]$shell) {
+  $outFile = Join-Path $Out "oneliner-$([IO.Path]::GetFileNameWithoutExtension($shell))-$([Guid]::NewGuid().ToString('N')).txt"
+  # A child Windows PowerShell inherits PowerShell 7's PSModulePath and then cannot load its
+  # own modules. A user's console starts with Windows PowerShell's default, so test with that.
+  $savedModulePath = $env:PSModulePath
+  if ($shell -like '*powershell.exe') {
+    $env:PSModulePath = "$env:USERPROFILE\Documents\WindowsPowerShell\Modules;$env:ProgramFiles\WindowsPowerShell\Modules;$env:SystemRoot\system32\WindowsPowerShell\v1.0\Modules"
+  }
+  try {
+    $proc = Start-Process -FilePath $shell -ArgumentList @('-NoProfile', '-NonInteractive', '-Command', "irm $Base/install.ps1 | iex") `
+      -RedirectStandardOutput $outFile -RedirectStandardError "$outFile.err" -PassThru -NoNewWindow
+  } finally {
+    $env:PSModulePath = $savedModulePath
+  }
+  if (-not $proc.WaitForExit(600000)) { Stop-Process -Id $proc.Id -Force; throw "$shell one-liner did not finish within 10 minutes" }
+  $text = (Get-Content $outFile -Raw) + (Get-Content "$outFile.err" -Raw)
+  [pscustomobject]@{ ExitCode = $proc.ExitCode; Output = $text }
+}
+
+function Stop-App { Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep -Seconds 2 }
+
+Say "install.ps1 end to end, Useful Voice $version, $(Get-Date -Format o)"
+Say "Windows PowerShell: $((powershell.exe -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'))  PowerShell 7: $($PSVersionTable.PSVersion)"
+if (@(Get-UvEntries).Count -ne 0) { throw 'the runner already has a Useful Voice uninstall entry' }
+
+# 1. Tampered installer: one byte appended, same install.ps1 (and so the same expected hash).
+$tampered = Join-Path $env:RUNNER_TEMP 'publish-tampered'
+Copy-Item $Publish $tampered -Recurse -Force
+$installerName = (Get-ChildItem $tampered -Filter 'Useful-Voice-*-x64.exe').Name
+[IO.File]::AppendAllText((Join-Path $tampered $installerName), 'x')
+$server = Start-Server $tampered
+try {
+  $r = Invoke-OneLiner 'powershell.exe'
+} finally { Stop-Process -Id $server.Id -Force; $server.WaitForExit() }
+Say "== 1. tampered installer, Windows PowerShell 5.1: exit $($r.ExitCode)"
+Say $r.Output
+if ($r.ExitCode -eq 0) { throw 'install.ps1 exited 0 on a tampered installer' }
+if ($r.Output -notmatch 'does not match this release') { throw 'install.ps1 did not report the hash mismatch' }
+if (@(Get-UvEntries).Count -ne 0) { throw 'a tampered installer left an uninstall entry' }
+Say 'OK: refused, nothing installed'
+
+# 2. The real installer, Windows PowerShell 5.1.
+$server = Start-Server $Publish
+try {
+  $r = Invoke-OneLiner 'powershell.exe'
+  Say "== 2. real installer, Windows PowerShell 5.1: exit $($r.ExitCode)"
+  Say $r.Output
+  if ($r.ExitCode -ne 0) { throw "install.ps1 failed under Windows PowerShell 5.1 (exit $($r.ExitCode))" }
+  $entries = @(Get-UvEntries)
+  Say ($entries | Format-List | Out-String)
+  if ($entries.Count -ne 1 -or $entries[0].Root -notlike 'HKCU:*') { throw "expected one per-user uninstall entry, found $($entries.Count)" }
+  if ($entries[0].DisplayVersion -ne $version) { throw "expected version $version, found $($entries[0].DisplayVersion)" }
+  $exe = Join-Path $entries[0].InstallDir 'Useful Voice.exe'
+  if (-not (Test-Path -LiteralPath $exe)) { throw "installed exe missing at $exe" }
+  Start-Sleep -Seconds 3
+  $running = @(Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue)
+  Say "app processes after install: $($running.Count)"
+  # The runner is an elevated session, where install.ps1 deliberately does not start the app.
+  $elevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  if ($elevated) {
+    if ($running.Count -ne 0) { throw 'install.ps1 started the app from an elevated shell' }
+    if ($r.Output -notmatch 'not started') { throw 'install.ps1 did not say it skipped starting the app' }
+    Start-Process -FilePath $exe
+    Start-Sleep -Seconds 3
+    if (@(Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue).Count -eq 0) { throw 'the installed app did not start' }
+    Say 'OK: installed, not started from an elevated shell'
+  } else {
+    if ($running.Count -eq 0) { throw 'install.ps1 did not start the app' }
+    Say 'OK: installed and started'
+  }
+
+  # 3. Again from PowerShell 7, over the first install, with the app still running: the
+  # script must refuse, leave the app running and change nothing.
+  $before = @(Get-UvEntries)
+  # The main process starts first; Chromium may replace its helper processes at any time.
+  $main = Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue | Sort-Object StartTime | Select-Object -First 1
+  if (-not $main) { throw 'the app is not running before the refusal check' }
+  $r = Invoke-OneLiner 'pwsh'
+  Say "== 3. real installer while the app runs, PowerShell 7: exit $($r.ExitCode)"
+  Say $r.Output
+  if ($r.ExitCode -eq 0) { throw 'install.ps1 exited 0 while the app was running' }
+  if ($r.Output -notmatch 'Useful Voice is running\. Quit it from its tray icon') { throw 'install.ps1 did not tell the user to quit the app' }
+  if (-not (Get-Process -Id $main.Id -ErrorAction SilentlyContinue)) { throw 'install.ps1 killed the running app' }
+  $after = @(Get-UvEntries)
+  if ($after.Count -ne 1 -or $after[0].DisplayVersion -ne $before[0].DisplayVersion -or $after[0].Key -ne $before[0].Key) { throw 'the refused run changed the uninstall entry' }
+  if (-not (Test-Path -LiteralPath $exe)) { throw 'the refused run removed the installed exe' }
+  Say 'OK: refused, app still running, install untouched'
+
+  # 3a. The same from a 32-bit Windows PowerShell, which can't read the 64-bit app's path: it must
+  # still refuse rather than let the silent installer close the app.
+  $wow = Join-Path $env:SystemRoot 'SysWOW64\WindowsPowerShell\v1.0\powershell.exe'
+  if (Test-Path -LiteralPath $wow) {
+    $r = Invoke-OneLiner $wow
+    Say "== 3a. real installer while the app runs, 32-bit Windows PowerShell: exit $($r.ExitCode)"
+    Say $r.Output
+    if ($r.ExitCode -eq 0) { throw '32-bit install.ps1 exited 0 while the app was running' }
+    if ($r.Output -notmatch 'Useful Voice is running\. Quit it from its tray icon') { throw '32-bit install.ps1 did not tell the user to quit the app' }
+    if (-not (Get-Process -Id $main.Id -ErrorAction SilentlyContinue)) { throw '32-bit install.ps1 killed the running app' }
+    Say 'OK: refused from a 32-bit shell too'
+  } else {
+    Say 'SKIP 3a: no 32-bit Windows PowerShell on this machine'
+  }
+
+  # Quit the app the way a user would (here: stop it), then the same one-liner reinstalls.
+  Stop-App
+  $r = Invoke-OneLiner 'pwsh'
+  Say "== 3b. real installer again, PowerShell 7: exit $($r.ExitCode)"
+  Say $r.Output
+  if ($r.ExitCode -ne 0) { throw "install.ps1 failed under PowerShell 7 (exit $($r.ExitCode))" }
+  $entries = @(Get-UvEntries)
+  if ($entries.Count -ne 1 -or $entries[0].DisplayVersion -ne $version) { throw "expected one $version entry after the reinstall, found $($entries.Count)" }
+  Stop-App
+  Say 'OK: reinstalled'
+
+  # Informational, for the SmartScreen notes in docs/distribution.md: does a file fetched
+  # the way install.ps1 fetches it carry the mark of the web?
+  $probe = Join-Path $env:RUNNER_TEMP 'motw-probe.exe'
+  Invoke-WebRequest -Uri "$Base/$installerName" -OutFile $probe -UseBasicParsing
+  $zone = Get-Item -LiteralPath $probe -Stream 'Zone.Identifier' -ErrorAction SilentlyContinue
+  Say "Invoke-WebRequest download has a Zone.Identifier stream: $([bool]$zone)"
+} finally {
+  Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+  Stop-App
+}
+Say 'PASS'

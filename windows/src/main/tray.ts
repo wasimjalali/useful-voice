@@ -32,6 +32,8 @@ export interface TrayHandlers {
   /** A language was picked in the Language submenu. */
   onSetLanguage: (code: string) => void;
   onSetFormatting: (enabled: boolean) => void;
+  /** Quit, install the downloaded update and start again. */
+  onRestartToUpdate: () => void;
 }
 
 export interface TrayState {
@@ -49,6 +51,8 @@ export interface TrayState {
   formattingEnabled: boolean;
   /** The app a hotkey dictation will paste into, shown while recording. */
   insertingInto?: string | undefined;
+  /** A downloaded update's version, waiting for a restart. */
+  updateReady?: string | undefined;
 }
 
 export class TrayController {
@@ -201,6 +205,14 @@ export function buildTrayTemplate(
     { label: 'Open Useful Voice', click: () => handlers.onOpenWindow('stream') },
     { label: 'Open settings', click: () => handlers.onOpenWindow('settings') },
     { type: 'separator' },
+    state.updateReady
+      ? {
+          label: `Restart to update to ${state.updateReady}`,
+          // A restart mid-dictation, or with a failed one held for retry, would throw it away.
+          enabled: !state.recording && !state.transcribing && !state.canRetry,
+          click: () => handlers.onRestartToUpdate(),
+        }
+      : null,
     { label: 'Quit Useful Voice', click: () => handlers.onQuit() },
   ];
   return items.filter((item): item is Electron.MenuItemConstructorOptions => item !== null);

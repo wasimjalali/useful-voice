@@ -5,6 +5,11 @@ import Foundation
 public enum FirstRunGate {
     /// `UserDefaults` key set once setup is finished (or was never needed).
     public static let completedKey = "uv.firstRunCompleted"
+    /// `UserDefaults` key the identity migration sets when the previous identity
+    /// had finished setup. macOS keys the Accessibility and Microphone grants to
+    /// the bundle id, so the renamed app starts with none: while this is set, a
+    /// finished setup is checked against the grants again instead of trusted.
+    public static let recheckGrantsKey = "uv.firstRunRecheckGrants"
     /// Environment variable that forces the flow open without saving anything.
     public static let forceVariable = "UV_FIRST_RUN"
 
@@ -18,17 +23,76 @@ public enum FirstRunGate {
         case skipAndMarkCompleted
     }
 
+    /// `grantsNeedRecheck`: setup was finished under the previous identity (see
+    /// `recheckGrantsKey`). It is treated as not finished yet, so the flow shows
+    /// while a grant or the engine is missing and is marked done silently once
+    /// everything is in place. A completed install without it is never walked
+    /// through setup again, even if a permission is revoked later.
     public static func decide(completed: Bool,
                               engineConfigured: Bool,
                               microphoneAuthorized: Bool,
                               accessibilityTrusted: Bool,
-                              forced: Bool) -> Decision {
+                              forced: Bool,
+                              grantsNeedRecheck: Bool = false) -> Decision {
         if forced { return .show }
-        if completed { return .skip }
+        if completed && !grantsNeedRecheck { return .skip }
         if engineConfigured && microphoneAuthorized && accessibilityTrusted {
             return .skipAndMarkCompleted
         }
         return .show
+    }
+
+    /// Setup is done: Done, Finish, "Set up later", or a launch that found
+    /// everything in place. Clears the recheck too, so the flow never comes back
+    /// for the rename and the window banners take over for a missing grant.
+    public static func recordCompleted(in defaults: UserDefaults) {
+        defaults.set(true, forKey: completedKey)
+        defaults.removeObject(forKey: recheckGrantsKey)
+    }
+
+    /// The flow is up only because the grants are checked again after the rename:
+    /// setup itself was finished under the previous identity.
+    public static func isRecheckOnly(completed: Bool, grantsNeedRecheck: Bool, forced: Bool) -> Bool {
+        !forced && completed && grantsNeedRecheck
+    }
+
+    /// Whether the main window opens at launch. A launch the user asked for always
+    /// opens it. A login-item or restored launch opens it only for a setup that was
+    /// never finished; a recheck after the rename waits for the next time the user
+    /// opens the window (the Windows gate's rule), so a missing grant never puts a
+    /// window in front of their work at login.
+    public static func opensWindowAtLaunch(flowActive: Bool, recheckOnly: Bool,
+                                           userInitiated: Bool) -> Bool {
+        if userInitiated { return true }
+        return flowActive && !recheckOnly
+    }
+
+    /// Whether the flow is on screen at launch. Only then does it stand in for the
+    /// launch permission requests and the "Accessibility access is off" pill. A
+    /// recheck left behind a closed window at login is not, so the app asks and
+    /// shows the pill as it does without setup.
+    public static func flowOnScreenAtLaunch(flowActive: Bool, recheckOnly: Bool,
+                                            userInitiated: Bool) -> Bool {
+        flowActive && opensWindowAtLaunch(flowActive: flowActive, recheckOnly: recheckOnly,
+                                          userInitiated: userInitiated)
+    }
+
+    /// Whether a recheck-only flow that was kept behind a closed window can be
+    /// dropped as the window is about to open: the gate, asked again with the
+    /// grants as they are now, says everything is in place. Only a recheck, never
+    /// a setup that was not finished and never a forced run.
+    public static func recheckResolvedBeforeShow(flowActive: Bool, recheckOnly: Bool,
+                                                 decision: Decision) -> Bool {
+        flowActive && recheckOnly && decision == .skipAndMarkCompleted
+    }
+
+    /// Whether closing the window should do what the launch skipped: ask for the
+    /// permissions and show the "Accessibility access is off" pill. True for a
+    /// recheck the person closed unfinished, when no launch request ran yet. Once
+    /// either has run, closing again never asks twice.
+    public static func closeNeedsLaunchPermissions(flowActive: Bool, recheckOnly: Bool,
+                                                   alreadyRequested: Bool) -> Bool {
+        flowActive && recheckOnly && !alreadyRequested
     }
 
     /// Whether the app has a way to dictate without any further setup: a Deepgram

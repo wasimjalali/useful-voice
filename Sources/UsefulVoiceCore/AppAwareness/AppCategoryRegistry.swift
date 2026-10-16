@@ -126,10 +126,12 @@ public enum AppCategoryRegistry {
         return ParsedWebURL(host: host, path: path)
     }
 
+    /// Compares Unicode scalars, as the TypeScript side compares code points. `hasPrefix` would
+    /// compare Characters, so a combining mark after the slash ("/code/\u{301}x") would not match.
     private static func pathMatches(_ path: String, prefix: String) -> Bool {
-        if path == prefix { return true }
+        if path.unicodeScalars.elementsEqual(prefix.unicodeScalars) { return true }
         let base = prefix.hasSuffix("/") ? prefix : prefix + "/"
-        return path.hasPrefix(base)
+        return path.unicodeScalars.starts(with: base.unicodeScalars)
     }
 
     /// The category for a web address, or nil when no rule matches or the text is not an address.

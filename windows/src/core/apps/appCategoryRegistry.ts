@@ -173,7 +173,8 @@ export function categoryForURL(raw: string): AppCategory | null {
 /**
  * Reads the user's per-app category choices from stored settings, leniently: a missing,
  * null or malformed value is no overrides, and an entry whose category is unknown (a
- * newer or older app version wrote it) is dropped. It never throws.
+ * newer or older app version wrote it) is dropped. It never throws. Settings must read the
+ * stored field through this function, so files saved before overrides existed still load.
  */
 export function parseCategoryOverrides(raw: unknown): Record<string, AppCategory> {
   // No prototype, so a stored "__proto__" key is kept like any other, as Swift keeps it.

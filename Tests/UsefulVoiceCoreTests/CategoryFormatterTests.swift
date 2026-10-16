@@ -213,19 +213,19 @@ import Foundation
 
     // MARK: email layout
 
-    @Test func emailNeedsAGreetingASignOffOrALongDictation() {
+    @Test func emailLaysOutAGreetingOrALongDictationAndBreaksAtAnyLength() {
         func body(_ n: Int) -> String {
             "Word " + Array(repeating: "word", count: n - 2).joined(separator: " ") + " word."
         }
         let long = CategoryEmail.longDictationWords
-        let atLimit = body(long - 3) + " New paragraph. Word."
+        let atLimit = body(long - 2) + " Thanks, Sam"
         #expect(atLimit.split(separator: " ").count == long)
-        #expect(CategoryEmail.structure(atLimit, userName: nil) == body(long - 3) + "\n\nWord.")
-        let underLimit = body(long - 4) + " New paragraph. Word."
+        #expect(CategoryEmail.structure(atLimit, userName: nil) == body(long - 2) + "\n\nThanks,\nSam")
+        let underLimit = body(long - 3) + " Thanks, Sam"
         #expect(underLimit.split(separator: " ").count == long - 1)
         #expect(CategoryEmail.structure(underLimit, userName: nil) == underLimit)
-        #expect(CategoryEmail.structure(body(2) + " Thanks, Sam", userName: nil) == "Word word.\n\nThanks,\nSam")
-        #expect(CategoryEmail.structure("Hi Sam, " + body(2), userName: nil) == "Hi Sam,\n\nWord word.")
+        #expect(CategoryEmail.structure(body(3) + " New paragraph. Word.", userName: nil) == body(3) + "\n\nWord.")
+        #expect(CategoryEmail.structure("Hi Sam, " + body(3), userName: nil) == "Hi Sam,\n\n" + body(3))
         #expect(CategoryEmail.structure("Hi Sam how are you", userName: nil) == "Hi Sam how are you")
     }
 
@@ -242,5 +242,15 @@ import Foundation
         let out = CategoryCoding.format(chain)
         #expect(Date().timeIntervalSince(start) < 5)
         #expect(!out.isEmpty)
+    }
+
+    @Test func formatsLongSlashAndUnderscoreChainsInLinearTime() {
+        for (unit, joined) in [("src slash", "src/"), ("id underscore", "id_"), (".. slash", "../")] {
+            let chain = Array(repeating: unit, count: 2500).joined(separator: " ") + " end"
+            let start = Date()
+            let out = CategoryCoding.format(chain)
+            #expect(Date().timeIntervalSince(start) < 5, "\(unit)")
+            #expect(out == String(repeating: joined, count: 2500) + "end", "\(unit)")
+        }
     }
 }

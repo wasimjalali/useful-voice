@@ -70,9 +70,11 @@ export function isMidSentence(textBeforeCursor: string | null | undefined): bool
     j--;
   }
   if (j < 0) return false;
-  // Look through opening quotes and brackets: judge the text before them.
+  // Look through brackets and opening single quotes: judge the text before them.
   for (;;) {
     const c = cs[j] as string;
+    // A quotation starts its own sentence: 'He said "' then "The end." keeps its capital.
+    if (c === '\u201C' || (c === '"' && isOpeningQuoteAt(cs, j))) return false;
     const opening = OPENERS.has(c) || ((c === '"' || c === "'") && isOpeningQuoteAt(cs, j));
     if (!opening) break;
     j--;

@@ -207,17 +207,17 @@ describe('style helpers', () => {
 });
 
 describe('email layout', () => {
-  it('needs a greeting, a sign-off or a long dictation', () => {
+  it('lays out a greeting or a long dictation, and breaks at any length', () => {
     const body = (n: number) => `Word ${Array.from({ length: n - 2 }, () => 'word').join(' ')} word.`;
     const long = EMAIL_LONG_DICTATION_WORDS;
-    const atLimit = `${body(long - 3)} New paragraph. Word.`;
+    const atLimit = `${body(long - 2)} Thanks, Sam`;
     expect(atLimit.split(' ')).toHaveLength(long);
-    expect(structureEmail(atLimit, null)).toBe(`${body(long - 3)}\n\nWord.`);
-    const underLimit = `${body(long - 4)} New paragraph. Word.`;
+    expect(structureEmail(atLimit, null)).toBe(`${body(long - 2)}\n\nThanks,\nSam`);
+    const underLimit = `${body(long - 3)} Thanks, Sam`;
     expect(underLimit.split(' ')).toHaveLength(long - 1);
     expect(structureEmail(underLimit, null)).toBe(underLimit);
-    expect(structureEmail(`${body(2)} Thanks, Sam`, null)).toBe('Word word.\n\nThanks,\nSam');
-    expect(structureEmail(`Hi Sam, ${body(2)}`, null)).toBe('Hi Sam,\n\nWord word.');
+    expect(structureEmail(`${body(3)} New paragraph. Word.`, null)).toBe(`${body(3)}\n\nWord.`);
+    expect(structureEmail(`Hi Sam, ${body(3)}`, null)).toBe(`Hi Sam,\n\n${body(3)}`);
     expect(structureEmail('Hi Sam how are you', null)).toBe('Hi Sam how are you');
   });
 
@@ -234,5 +234,19 @@ describe('long input', () => {
     const out = formatCoding(chain);
     expect(performance.now() - start).toBeLessThan(2000);
     expect(out.length).toBeGreaterThan(0);
+  });
+
+  it('formats 5,000-word slash and underscore chains in linear time', () => {
+    for (const [unit, joined] of [
+      ['src slash', 'src/'],
+      ['id underscore', 'id_'],
+      ['.. slash', '../'],
+    ] as const) {
+      const chain = `${Array.from({ length: 2500 }, () => unit).join(' ')} end`;
+      const start = performance.now();
+      const out = formatCoding(chain);
+      expect(performance.now() - start, unit).toBeLessThan(2000);
+      expect(out, unit).toBe(`${joined.repeat(2500)}end`);
+    }
   });
 });

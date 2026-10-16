@@ -31,6 +31,7 @@ public enum CategoryCoding {
     /// A path made only of "~", "." and ".." parts ("~", "..", "../.."). Not a word, but it
     /// joins a spoken slash: "cd ~ slash projects" is `cd ~/projects`.
     private static func isPathRoot(_ t: Tok) -> Bool {
+        if let built = t.built { return built.root }
         let parts = t.core.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
         return parts.enumerated().allSatisfy { i, p in
             p == "." || p == ".." || (p == "~" && i == 0) || (p.isEmpty && i > 0 && i == parts.count - 1)
@@ -58,6 +59,25 @@ public enum CategoryCoding {
         "add", "insert", "put", "say",
     ]
 
+    /// Short lower-case words that are common parts of a snake_case name. A spoken underscore
+    /// joins two plain words only when one of them is on this list or otherwise looks like code:
+    /// "user underscore id" is `user_id`, "these logs underscore concerns" stays prose.
+    private static let identifierParts: Set<String> = [
+        "id", "ids", "name", "count", "max", "min", "url", "uri", "api", "db", "var", "tmp", "temp", "user",
+        "config", "cfg", "file", "path", "key", "value", "val", "index", "idx", "num", "len", "str", "obj",
+        "arr", "dict", "list", "src", "dst", "dir", "err", "msg", "ctx", "req", "res", "ptr", "buf", "env",
+        "fn", "func", "init", "foo", "bar", "baz", "type", "size", "utc", "ms", "px", "kb", "mb",
+    ]
+
+    /// Words before a spoken slash that let it start a path: "cd slash usr" is `cd /usr`, "move it
+    /// to slash tmp" is `to /tmp`. After any other word the slash stays spoken: "we slash build
+    /// times" and "20 slash src" are prose.
+    private static let slashLeaders: Set<String> = [
+        "cd", "ls", "cat", "rm", "mv", "cp", "mkdir", "touch", "open", "edit", "use", "type", "press",
+        "add", "insert", "put", "say", "in", "into", "to", "from", "at", "on", "of", "under", "inside",
+        "the", "a", "an", "my", "your", "our", "this", "that",
+    ]
+
     /// Plain lower-case folder names that mark a word as part of a path.
     private static let pathWords: Set<String> = [
         "src", "lib", "app", "bin", "usr", "etc", "var", "tmp", "home", "dist", "build", "docs", "test",
@@ -72,6 +92,19 @@ public enum CategoryCoding {
     private static let trailChars: Set<Character> = [".", ",", ";", ":", "!", "?", ")", "]", "}", "\"", "'", "`", ">", "\u{2026}"]
     private static let namePunct: Set<Character> = ["_", "-", "/", ".", "~", "@"]
 
+    /// What is known about a word that convertSymbols built by joining words and symbols. Kept so
+    /// a long chain ("src slash src slash ...") never rescans the growing word: linear time.
+    private struct Built {
+        /// Holds a letter or digit (so it is a name word).
+        var alnum: Bool
+        /// Only ASCII letters, digits, "_" and "-".
+        var ident: Bool
+        /// Only "~", "." and ".." parts (see isPathRoot).
+        var root: Bool
+        /// Ends in "/".
+        var endsSlash: Bool
+    }
+
     /// One whitespace-separated word, split into the punctuation around it and its core.
     private struct Tok {
         /// The whitespace before the word.
@@ -81,6 +114,8 @@ public enum CategoryCoding {
         var trail: String
         /// True when the word is, or ends in, a file name this pass built.
         var file: Bool
+        /// Set on words convertSymbols built. Such a word always holds a symbol, so it is code-like.
+        var built: Built? = nil
     }
 
     public static func straightenQuotes(_ text: String) -> String {
@@ -143,11 +178,12 @@ public enum CategoryCoding {
 
     /// A word that can sit next to a spoken symbol: a name core that is not an article, verb or symbol.
     private static func isNameWord(_ t: Tok) -> Bool {
-        isNameCore(t.core) && !notNames.contains(t.core.lowercased()) && !isSpokenSymbol(t)
+        if let built = t.built { return built.alnum }
+        return isNameCore(t.core) && !notNames.contains(t.core.lowercased()) && !isSpokenSymbol(t)
     }
 
     private static func isCodeLike(_ t: Tok) -> Bool {
-        if t.file { return true }
+        if t.file || t.built != nil { return true }
         for (i, c) in t.core.enumerated() {
             if c == "_" || c == "/" || c == "." || c == "~" || c == "@" { return true }
             if CategoryText.isDigit(c) { return true }
@@ -158,6 +194,7 @@ public enum CategoryCoding {
 
     /// ASCII letters, digits, "_" and "-" only: the shape of a variable, function or flag name.
     private static func isIdentifierShaped(_ t: Tok) -> Bool {
+        if let built = t.built { return built.ident }
         if t.core.isEmpty { return false }
         return t.core.allSatisfy { c in
             c == "_" || c == "-" || (c.isASCII && CategoryText.isAlnum(c))
@@ -166,10 +203,55 @@ public enum CategoryCoding {
 
     /// Whether a word can be part of a path. Bare numbers cannot: "slash 20 percent" is prose.
     private static func isPathish(_ t: Tok) -> Bool {
-        if t.file { return true }
+        if t.file || t.built != nil { return true }
         if t.core.contains(where: { $0 == "/" || $0 == "." || $0 == "_" || $0 == "~" || $0 == "@" }) { return true }
-        if pathWords.contains(t.core.lowercased()) { return true }
         return t.core.contains { !CategoryText.isDigit($0) && CategoryText.isAlnum($0) }
+    }
+
+    /// Whether a word next to a spoken underscore is clearly part of a code name: it holds a
+    /// digit, an underscore or an inner capital, or it is a common identifier part ("id").
+    private static func isUnderscoreCodeLike(_ t: Tok) -> Bool {
+        if t.built != nil { return true }
+        for (i, c) in t.core.enumerated() {
+            if c == "_" || CategoryText.isDigit(c) { return true }
+            if i > 0 && c.isUppercase { return true }
+        }
+        return identifierParts.contains(t.core)
+    }
+
+    private static func hasAlnum(_ t: Tok) -> Bool {
+        if let built = t.built { return built.alnum }
+        return t.core.contains(where: CategoryText.isAlnum)
+    }
+
+    private static func endsWithSlash(_ t: Tok) -> Bool {
+        if let built = t.built { return built.endsSlash }
+        return t.core.last == "/"
+    }
+
+    /// "Next.js", "Node.js": a capitalised name with ".js" is a product, never a file to mention.
+    /// A path ("src/App.js") is still a file.
+    private static func isProductName(_ core: String) -> Bool {
+        let cs = Array(core)
+        guard let dot = cs.lastIndex(of: "."), dot > 0, String(cs[(dot + 1)...]) == "js" else { return false }
+        return cs[0].isUppercase && !cs[0..<dot].contains("/")
+    }
+
+    /// A written file name ("src/app.tsx", "my_util.py") clear enough to mention after "at": its
+    /// name holds a "/", "_", digit or inner capital, starts in lower case, and has a lower-case
+    /// known extension. "meet at index.html" and "looking at Next.js" stay prose.
+    private static func isCodeFileName(_ core: String) -> Bool {
+        if !looksLikeFileName(core) { return false }
+        let cs = Array(core)
+        guard let dot = cs.lastIndex(of: ".") else { return false }
+        let ext = String(cs[(dot + 1)...])
+        if ext != ext.lowercased() || cs[0].isUppercase { return false }
+        for i in 0..<dot {
+            let c = cs[i]
+            if c == "/" || c == "_" || CategoryText.isDigit(c) { return true }
+            if i > 0 && c.isUppercase { return true }
+        }
+        return false
     }
 
     /// Whether a name can stand in front of an ambiguous extension such as ".go".
@@ -286,6 +368,9 @@ public enum CategoryCoding {
                 if let l = left, !isPathish(l) { left = nil }
                 if let r = right, !isPathish(r) { right = nil }
             }
+            // A spoken "./" or "../" starts a path, so it never joins the word before it:
+            // "run dot slash build" is `run ./build`.
+            if symbolWord(tok) == "dot" && slashes > 0 { left = nil }
             // "copy dot env": a dot file on its own, not joined to the word before it.
             var dotFile = false
             if dots == 1 && runLength == 1, let r = right, dotfiles.contains(r.core.lowercased()) {
@@ -295,11 +380,14 @@ public enum CategoryCoding {
 
             var allowed = false
             if underscores == runLength {
-                // Both sides must look like identifiers: "the underscore key" is prose.
+                // Both sides must look like identifiers, and one side like code: "the underscore key" and
+                // "logs underscore concerns" are prose, "user underscore id" is `user_id`. Two or more
+                // underscores ("underscore underscore init") are code on their own.
                 let identifiers = (left == nil || isIdentifierShaped(left!))
                     && (right == nil || isIdentifierShaped(right!))
-                allowed = identifiers
-                    && ((left != nil && right != nil) || (runLength >= 2 && (left != nil || right != nil)))
+                var pair = false
+                if let l = left, let r = right { pair = isUnderscoreCodeLike(l) || isUnderscoreCodeLike(r) }
+                allowed = identifiers && (pair || (runLength >= 2 && (left != nil || right != nil)))
             } else if dots > 0 && slashes > 0 {
                 allowed = true
             } else if dotFile {
@@ -307,7 +395,13 @@ public enum CategoryCoding {
             } else if let l = left, let r = right {
                 allowed = isCodeLike(l) || isCodeLike(r)
             } else if slashes == runLength && left == nil && right != nil {
-                allowed = isCodeLike(right!)
+                // A leading slash only where nothing, punctuation or a path-taking word comes before it.
+                var leads = true
+                if let lastOut = out.last {
+                    leads = !lastOut.trail.isEmpty
+                        || (lastOut.built == nil && slashLeaders.contains(lastOut.core.lowercased()))
+                }
+                allowed = leads && isCodeLike(right!)
             }
 
             if !allowed {
@@ -317,16 +411,31 @@ public enum CategoryCoding {
             }
             if left != nil { out.removeLast() }
             let base = left ?? Tok(sep: tok.sep, lead: "", core: "", trail: "", file: false)
+            let onlyUnderscores = underscores == runLength
+            var root = false
+            if let l = left, isPathRoot(l), !endsWithSlash(l), text == "/" {
+                // Root parts joined by one slash: ".." + "/" + ".." is still a root.
+                if let r = right { root = isPathRoot(r) && r.core.first != "~" } else { root = true }
+            }
+            let built = Built(
+                alnum: (left.map(hasAlnum) ?? false) || (right.map(hasAlnum) ?? false),
+                ident: onlyUnderscores && (left.map(isIdentifierShaped) ?? true)
+                    && (right.map(isIdentifierShaped) ?? true),
+                root: root,
+                endsSlash: right.map(endsWithSlash) ?? text.hasSuffix("/"))
             out.append(Tok(sep: base.sep, lead: base.lead,
                            core: base.core + text + (right?.core ?? ""),
                            trail: right?.trail ?? "",
-                           file: right?.file ?? false))
+                           file: right?.file ?? false,
+                           built: built))
             i = right != nil ? j + 1 : j
         }
         return out
     }
 
-    /// "at index.ts" and "tag index.ts" become `@index.ts`, only before a file name.
+    /// "tag index.ts", "at index dot ts" and "at src/app.tsx" become mentions. After "at" a
+    /// written name must look like code (isCodeFileName), and a product name ("Next.js") never
+    /// becomes one.
     private static func convertMentions(_ toks: [Tok]) -> [Tok] {
         var out: [Tok] = []
         var i = 0
@@ -334,8 +443,10 @@ public enum CategoryCoding {
             let tok = toks[i]
             let word = tok.core.lowercased()
             if tok.lead.isEmpty, tok.trail.isEmpty, word == "at" || word == "tag",
-               i + 1 < toks.count, toks[i + 1].file || looksLikeFileName(toks[i + 1].core),
-               toks[i + 1].lead.isEmpty {
+               i + 1 < toks.count, toks[i + 1].lead.isEmpty,
+               toks[i + 1].file
+                || (word == "tag" ? looksLikeFileName(toks[i + 1].core) : isCodeFileName(toks[i + 1].core)),
+               !isProductName(toks[i + 1].core) {
                 let next = toks[i + 1]
                 out.append(Tok(sep: tok.sep, lead: "", core: "@" + next.core, trail: next.trail, file: true))
                 i += 2

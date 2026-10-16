@@ -9,9 +9,10 @@ import Foundation
 /// a dictated sign-off or a spoken "new paragraph". The one thing it can add is the user's
 /// own name under a dictated sign-off, and only when a non-empty name is passed in.
 public enum CategoryEmail {
-    /// A dictation of at least this many words is laid out as an email even without a greeting
-    /// or sign-off (so a spoken "new paragraph" works). Shorter ones are laid out only when they
-    /// open with a greeting or close with a sign-off.
+    /// A dictation of at least this many words is laid out as an email (greeting, paragraphs and
+    /// sign-off) even without a greeting. A shorter one is laid out only when it opens with a
+    /// greeting; otherwise only its spoken "new paragraph" breaks apply, and a closing "Thanks,
+    /// John" stays as typed (in a short reply, John is not the sender).
     public static let longDictationWords = 25
 
     private static let greetingWords: Set<String> = ["hi", "hey", "hello", "dear"]
@@ -72,8 +73,10 @@ public enum CategoryEmail {
         guard let first = word.first,
               word.allSatisfy({ $0.isLetter || $0 == "-" || $0 == "'" || $0 == "\u{2019}" }) else { return false }
         let lower = word.lowercased()
+        // Group words first: "there" is also a sentence opener, but "Hi there," is a greeting.
+        if greetingGroupWords.contains(lower) { return true }
         if nonNameWords.contains(lower) { return false }
-        return first.isUppercase || greetingGroupWords.contains(lower)
+        return first.isUppercase
     }
 
     /// How many leading words form a greeting ("Hi Sarah," is 2), or 0. The greeting word needs
@@ -174,9 +177,9 @@ public enum CategoryEmail {
     }
 
     /// Structures a dictation as an email: greeting line, paragraphs, sign-off, and the
-    /// user's name under a dictated sign-off. Laid out only with an explicit greeting or
-    /// sign-off, or when long (`longDictationWords`). Returns the text unchanged when it
-    /// already contains a line break or has nothing to lay out.
+    /// user's name under a dictated sign-off. A sign-off counts only with an explicit greeting
+    /// or when long (`longDictationWords`); a spoken "new paragraph" is a break at any length.
+    /// Returns the text unchanged when it already contains a line break or has nothing to lay out.
     public static func structure(_ text: String, userName: String?,
                                  dictionaryWords: [String] = []) -> String {
         if CategoryText.containsNewline(text) { return text }
@@ -185,9 +188,9 @@ public enum CategoryEmail {
         let greeting: String? = greetingCount > 0 ? spoken[0..<greetingCount].joined(separator: " ") : nil
         let marked = markBreaks(Array(spoken[greetingCount...]))
         let hadBreak = marked.contains(breakMark)
-        let signOff = findSignOff(marked)
         let isLong = spoken.count >= longDictationWords
-        if greeting == nil && signOff == nil && !isLong { return text }
+        // A sign-off counts only in an email: one with a greeting, or a long dictation.
+        let signOff = greeting != nil || isLong ? findSignOff(marked) : nil
         if greeting == nil && signOff == nil && !hadBreak { return text }
 
         let bodyWords = signOff == nil ? marked : Array(marked[0..<signOff!.start])

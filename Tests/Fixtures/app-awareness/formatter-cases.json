@@ -323,7 +323,7 @@
    "id": "code-underscore-case",
    "category": "coding",
    "input": "Use Foo underscore Bar.",
-   "expected": "Use Foo_Bar."
+   "expected": "Use Foo underscore Bar."
   },
   {
    "id": "code-underscore-prose",
@@ -1579,7 +1579,7 @@
    "id": "email-new-paragraph-short-no-greeting",
    "category": "email",
    "input": "Thanks. New paragraph. See you.",
-   "expected": "Thanks. New paragraph. See you."
+   "expected": "Thanks.\n\nSee you."
   },
   {
    "id": "email-two-new-paragraphs-in-a-row",
@@ -1749,11 +1749,11 @@
    "expected": " The Verge says"
   },
   {
-   "id": "cont-opener-after-open-quote",
+   "id": "cont-quote-starts-sentence",
    "category": "other",
    "before": "He said, \"",
    "input": "The answer",
-   "expected": "the answer"
+   "expected": "The answer"
   },
   {
    "id": "cont-opener-after-open-paren",
@@ -1763,11 +1763,11 @@
    "expected": "the answer"
   },
   {
-   "id": "cont-opener-after-curly-quote",
+   "id": "cont-curly-quote-starts-sentence",
    "category": "other",
    "before": "He said, “",
    "input": "The answer",
-   "expected": "the answer"
+   "expected": "The answer"
   },
   {
    "id": "cont-opener-after-nested-openers",
@@ -2016,23 +2016,23 @@
    "expected": "Hi Sam2, hello again."
   },
   {
-   "id": "email-short-sign-off-lays-out",
+   "id": "email-short-sign-off-not-laid-out",
    "category": "email",
    "input": "Can you send me the report. Thanks, Sam",
-   "expected": "Can you send me the report.\n\nThanks,\nSam"
+   "expected": "Can you send me the report. Thanks, Sam"
   },
   {
-   "id": "email-short-sign-off-adds-user-name",
+   "id": "email-short-sign-off-no-user-name",
    "category": "email",
    "userName": "Wasim",
    "input": "Can you send me the report. Thanks.",
-   "expected": "Can you send me the report.\n\nThanks,\nWasim"
+   "expected": "Can you send me the report. Thanks."
   },
   {
-   "id": "email-short-new-paragraph-alone-untouched",
+   "id": "email-short-new-paragraph-breaks",
    "category": "email",
    "input": "One. New paragraph. Two.",
-   "expected": "One. New paragraph. Two."
+   "expected": "One.\n\nTwo."
   },
   {
    "id": "email-long-new-paragraph-lays-out",
@@ -2041,10 +2041,10 @@
    "expected": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again this month and the team stays on track.\n\nNext steps."
   },
   {
-   "id": "email-24-words-new-paragraph-untouched",
+   "id": "email-24-words-new-paragraph-breaks",
    "category": "email",
    "input": "Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word. New paragraph. Next.",
-   "expected": "Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word. New paragraph. Next."
+   "expected": "Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word.\n\nNext."
   },
   {
    "id": "email-25-words-new-paragraph-lays-out",
@@ -2218,7 +2218,7 @@
    "id": "code-slash-number-then-path",
    "category": "coding",
    "input": "20 slash src",
-   "expected": "20 /src"
+   "expected": "20 slash src"
   },
   {
    "id": "code-slash-leading-path",
@@ -2311,10 +2311,10 @@
    "expected": "@src/app.tsx"
   },
   {
-   "id": "code-at-dotted-after-words",
+   "id": "code-at-plain-written-file-stays",
    "category": "coding",
    "input": "look at readme.md",
-   "expected": "look @readme.md"
+   "expected": "look at readme.md"
   },
   {
    "id": "code-tag-dotted-upper-ext",
@@ -2618,14 +2618,14 @@
   {
    "id": "email-sign-off-three-name-words",
    "category": "email",
-   "input": "Can you send me the report. Thanks, Anne Marie Smith",
-   "expected": "Can you send me the report.\n\nThanks,\nAnne Marie Smith"
+   "input": "Hi Sam, can you send me the report. Thanks, Anne Marie Smith",
+   "expected": "Hi Sam,\n\nCan you send me the report.\n\nThanks,\nAnne Marie Smith"
   },
   {
    "id": "email-sign-off-four-name-words",
    "category": "email",
-   "input": "Can you send me the report. Thanks, Anne Marie Van Smith",
-   "expected": "Can you send me the report. Thanks, Anne Marie Van Smith"
+   "input": "Hi Sam, can you send me the report. Thanks, Anne Marie Van Smith",
+   "expected": "Hi Sam,\n\nCan you send me the report. Thanks, Anne Marie Van Smith"
   },
   {
    "id": "style-abbrev-single-word",
@@ -2714,7 +2714,7 @@
    "id": "code-ellipsis-not-a-root",
    "category": "coding",
    "input": "wait ... slash src",
-   "expected": "wait ... /src"
+   "expected": "wait ... slash src"
   },
   {
    "id": "code-dot-slash-spoken-still-works",
@@ -2733,6 +2733,244 @@
    "category": "coding",
    "input": "wait dot ..",
    "expected": "wait dot .."
+  },
+  {
+   "id": "code-run-dot-slash-script",
+   "category": "coding",
+   "input": "run dot slash build dot sh",
+   "expected": "run ./build.sh"
+  },
+  {
+   "id": "code-call-parent-path",
+   "category": "coding",
+   "input": "just call dot dot slash bin slash x",
+   "expected": "just call ../bin/x"
+  },
+  {
+   "id": "code-dot-slash-after-code-word",
+   "category": "coding",
+   "input": "src/app dot slash x",
+   "expected": "src/app ./x"
+  },
+  {
+   "id": "code-dot-slash-at-start",
+   "category": "coding",
+   "input": "dot slash build",
+   "expected": "./build"
+  },
+  {
+   "id": "code-at-product-name",
+   "category": "coding",
+   "input": "looking at Next.js",
+   "expected": "looking at Next.js"
+  },
+  {
+   "id": "code-at-plain-file-prose",
+   "category": "coding",
+   "input": "meet at index.html now",
+   "expected": "meet at index.html now"
+  },
+  {
+   "id": "code-at-snake-file",
+   "category": "coding",
+   "input": "look at my_util.py",
+   "expected": "look @my_util.py"
+  },
+  {
+   "id": "code-at-camel-file",
+   "category": "coding",
+   "input": "look at fooBar.ts",
+   "expected": "look @fooBar.ts"
+  },
+  {
+   "id": "code-at-digit-file",
+   "category": "coding",
+   "input": "look at v2.ts",
+   "expected": "look @v2.ts"
+  },
+  {
+   "id": "code-at-upper-extension-stays",
+   "category": "coding",
+   "input": "look at my_util.PY",
+   "expected": "look at my_util.PY"
+  },
+  {
+   "id": "code-at-capital-start-stays",
+   "category": "coding",
+   "input": "look at My_util.py",
+   "expected": "look at My_util.py"
+  },
+  {
+   "id": "code-tag-product-name",
+   "category": "coding",
+   "input": "tag Next.js",
+   "expected": "tag Next.js"
+  },
+  {
+   "id": "code-tag-path-capital-js",
+   "category": "coding",
+   "input": "tag src/App.js",
+   "expected": "@src/App.js"
+  },
+  {
+   "id": "code-at-spoken-product-name",
+   "category": "coding",
+   "input": "looking at Next dot js",
+   "expected": "looking at Next.js"
+  },
+  {
+   "id": "code-at-spoken-file",
+   "category": "coding",
+   "input": "look at index dot ts",
+   "expected": "look @index.ts"
+  },
+  {
+   "id": "code-underscore-prose-logs",
+   "category": "coding",
+   "input": "These logs underscore concerns",
+   "expected": "These logs underscore concerns"
+  },
+  {
+   "id": "code-underscore-list-word-right",
+   "category": "coding",
+   "input": "retry underscore count",
+   "expected": "retry_count"
+  },
+  {
+   "id": "code-underscore-list-word-left",
+   "category": "coding",
+   "input": "user underscore email",
+   "expected": "user_email"
+  },
+  {
+   "id": "code-underscore-camel-side",
+   "category": "coding",
+   "input": "myVar underscore copy",
+   "expected": "myVar_copy"
+  },
+  {
+   "id": "code-underscore-existing-underscore",
+   "category": "coding",
+   "input": "my_var underscore copy",
+   "expected": "my_var_copy"
+  },
+  {
+   "id": "code-underscore-chain",
+   "category": "coding",
+   "input": "max underscore retry underscore count",
+   "expected": "max_retry_count"
+  },
+  {
+   "id": "code-dunder-alone",
+   "category": "coding",
+   "input": "underscore underscore init",
+   "expected": "__init"
+  },
+  {
+   "id": "code-slash-prose-verb",
+   "category": "coding",
+   "input": "we slash build times in half",
+   "expected": "we slash build times in half"
+  },
+  {
+   "id": "code-slash-after-cd",
+   "category": "coding",
+   "input": "cd slash usr slash local",
+   "expected": "cd /usr/local"
+  },
+  {
+   "id": "code-slash-after-preposition",
+   "category": "coding",
+   "input": "move it to slash tmp",
+   "expected": "move it to /tmp"
+  },
+  {
+   "id": "code-slash-after-comma",
+   "category": "coding",
+   "input": "first, slash usr",
+   "expected": "first, /usr"
+  },
+  {
+   "id": "email-greeting-hi-there",
+   "category": "email",
+   "input": "Hi there, the report is ready.",
+   "expected": "Hi there,\n\nThe report is ready."
+  },
+  {
+   "id": "email-short-sign-off-name-not-sender",
+   "category": "email",
+   "input": "Got it. Thanks, John.",
+   "expected": "Got it. Thanks, John."
+  },
+  {
+   "id": "email-short-thanks-not-signed",
+   "category": "email",
+   "userName": "Wasim",
+   "input": "Sounds good. Thanks.",
+   "expected": "Sounds good. Thanks."
+  },
+  {
+   "id": "email-greeting-sign-off-lays-out",
+   "category": "email",
+   "input": "Hi Sam, can you send me the report. Thanks, John",
+   "expected": "Hi Sam,\n\nCan you send me the report.\n\nThanks,\nJohn"
+  },
+  {
+   "id": "email-greeting-sign-off-adds-user-name",
+   "category": "email",
+   "userName": "Wasim",
+   "input": "Hi Sam, can you send me the report. Thanks.",
+   "expected": "Hi Sam,\n\nCan you send me the report.\n\nThanks,\nWasim"
+  },
+  {
+   "id": "email-short-break-keeps-sign-off-words",
+   "category": "email",
+   "input": "Done. New paragraph. Thanks, John",
+   "expected": "Done.\n\nThanks, John"
+  },
+  {
+   "id": "cont-quote-after-speech-verb",
+   "category": "other",
+   "before": "He said \"",
+   "input": "The end.\"",
+   "expected": "The end.\""
+  },
+  {
+   "id": "cont-quote-after-equals",
+   "category": "other",
+   "before": "x = \"",
+   "input": "The answer",
+   "expected": "The answer"
+  },
+  {
+   "id": "code-ambiguous-code-like-base",
+   "category": "coding",
+   "input": "my_util dot go",
+   "expected": "my_util.go"
+  },
+  {
+   "id": "code-tilde-not-first-not-a-root",
+   "category": "coding",
+   "input": "cd ~/~ slash projects",
+   "expected": "cd ~/~ slash projects"
+  },
+  {
+   "id": "code-trailing-slash-root-right",
+   "category": "coding",
+   "input": "src slash ../",
+   "expected": "src/../"
+  },
+  {
+   "id": "email-greeting-lowercase-name-rejected",
+   "category": "email",
+   "input": "Hello world, this is a test.",
+   "expected": "Hello world, this is a test."
+  },
+  {
+   "id": "code-not-names-yes-no-will-not",
+   "category": "coding",
+   "input": "yes dot md, no dot md, will dot md, not dot md",
+   "expected": "yes dot md, no dot md, will dot md, not dot md"
   }
  ]
 }

@@ -275,9 +275,9 @@
    "expected": "coding"
   },
   {
-   "id": "codex-mac",
+   "id": "chatgpt-and-codex-mac-shared-id",
    "appID": "com.openai.codex",
-   "expected": "coding"
+   "expected": "workChat"
   },
   {
    "id": "jetbrains-intellij",
@@ -1013,6 +1013,14 @@
   {
    "url": "https://mail.google.com:8090/mail",
    "expected": "email"
+  },
+  {
+   "url": "https://claude.ai/code/́x",
+   "expected": "coding"
+  },
+  {
+   "url": "https://chatgpt.com/codex/́x",
+   "expected": "coding"
   }
  ],
  "parse": [

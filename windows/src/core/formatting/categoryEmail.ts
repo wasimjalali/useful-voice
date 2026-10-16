@@ -13,9 +13,10 @@ import { chars, containsNewline, isLetter, isUpper, splitWords, trimWS } from '.
  */
 
 /**
- * A dictation of at least this many words is laid out as an email even without a greeting or
- * sign-off (so a spoken "new paragraph" works). Shorter ones are laid out only when they
- * open with a greeting or close with a sign-off.
+ * A dictation of at least this many words is laid out as an email (greeting, paragraphs and
+ * sign-off) even without a greeting. A shorter one is laid out only when it opens with a
+ * greeting; otherwise only its spoken "new paragraph" breaks apply, and a closing "Thanks,
+ * John" stays as typed (in a short reply, John is not the sender).
  */
 export const EMAIL_LONG_DICTATION_WORDS = 25;
 
@@ -79,8 +80,10 @@ function isGreetingNameWord(word: string): boolean {
   const cs = chars(word);
   if (cs.length === 0 || !cs.every((c) => isLetter(c) || c === '-' || c === "'" || c === '\u2019')) return false;
   const lower = word.toLowerCase();
+  // Group words first: "there" is also a sentence opener, but "Hi there," is a greeting.
+  if (GREETING_GROUP_WORDS.has(lower)) return true;
   if (NON_NAME_WORDS.has(lower)) return false;
-  return isUpper(cs[0] as string) || GREETING_GROUP_WORDS.has(lower);
+  return isUpper(cs[0] as string);
 }
 
 /**
@@ -185,9 +188,10 @@ function withComma(phrase: string): string {
 
 /**
  * Structures a dictation as an email: greeting line, paragraphs, sign-off, and the
- * user's name under a dictated sign-off. Laid out only with an explicit greeting or
- * sign-off, or when long (EMAIL_LONG_DICTATION_WORDS). Returns the text unchanged when
- * it already contains a line break or has nothing to lay out.
+ * user's name under a dictated sign-off. A sign-off counts only with an explicit greeting
+ * or when long (EMAIL_LONG_DICTATION_WORDS); a spoken "new paragraph" is a break at any
+ * length. Returns the text unchanged when it already contains a line break or has
+ * nothing to lay out.
  */
 export function structureEmail(
   text: string,
@@ -200,9 +204,9 @@ export function structureEmail(
   const greeting = greetingWords > 0 ? spoken.slice(0, greetingWords).join(' ') : null;
   const marked = markBreaks(spoken.slice(greetingWords));
   const hadBreak = marked.includes(BREAK);
-  const signOff = findSignOff(marked);
   const isLong = spoken.length >= EMAIL_LONG_DICTATION_WORDS;
-  if (greeting === null && signOff === null && !isLong) return text;
+  // A sign-off counts only in an email: one with a greeting, or a long dictation.
+  const signOff = greeting !== null || isLong ? findSignOff(marked) : null;
   if (greeting === null && signOff === null && !hadBreak) return text;
 
   const bodyWords = signOff === null ? marked : marked.slice(0, signOff.start);

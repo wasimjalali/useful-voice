@@ -37,6 +37,7 @@ const COMMON_BASENAMES = new Set([
  * joins a spoken slash: "cd ~ slash projects" is `cd ~/projects`.
  */
 function isPathRoot(t: Tok): boolean {
+  if (t.built) return t.built.root;
   const parts = t.core.split('/');
   return parts.every(
     (p, i) => p === '.' || p === '..' || (p === '~' && i === 0) || (p === '' && i > 0 && i === parts.length - 1),
@@ -66,6 +67,29 @@ const NOT_NAMES = new Set([
   'add', 'insert', 'put', 'say',
 ]);
 
+/**
+ * Short lower-case words that are common parts of a snake_case name. A spoken underscore
+ * joins two plain words only when one of them is on this list or otherwise looks like code:
+ * "user underscore id" is `user_id`, "these logs underscore concerns" stays prose.
+ */
+const IDENTIFIER_PARTS = new Set([
+  'id', 'ids', 'name', 'count', 'max', 'min', 'url', 'uri', 'api', 'db', 'var', 'tmp', 'temp', 'user',
+  'config', 'cfg', 'file', 'path', 'key', 'value', 'val', 'index', 'idx', 'num', 'len', 'str', 'obj',
+  'arr', 'dict', 'list', 'src', 'dst', 'dir', 'err', 'msg', 'ctx', 'req', 'res', 'ptr', 'buf', 'env',
+  'fn', 'func', 'init', 'foo', 'bar', 'baz', 'type', 'size', 'utc', 'ms', 'px', 'kb', 'mb',
+]);
+
+/**
+ * Words before a spoken slash that let it start a path: "cd slash usr" is `cd /usr`, "move it
+ * to slash tmp" is `to /tmp`. After any other word the slash stays spoken: "we slash build
+ * times" and "20 slash src" are prose.
+ */
+const SLASH_LEADERS = new Set([
+  'cd', 'ls', 'cat', 'rm', 'mv', 'cp', 'mkdir', 'touch', 'open', 'edit', 'use', 'type', 'press',
+  'add', 'insert', 'put', 'say', 'in', 'into', 'to', 'from', 'at', 'on', 'of', 'under', 'inside',
+  'the', 'a', 'an', 'my', 'your', 'our', 'this', 'that',
+]);
+
 /** Plain lower-case folder names that mark a word as part of a path. */
 const PATH_WORDS = new Set([
   'src', 'lib', 'app', 'bin', 'usr', 'etc', 'var', 'tmp', 'home', 'dist', 'build', 'docs', 'test',
@@ -80,6 +104,21 @@ const LEAD_CHARS = new Set(['"', "'", '(', '[', '{', '`', '<']);
 const TRAIL_CHARS = new Set(['.', ',', ';', ':', '!', '?', ')', ']', '}', '"', "'", '`', '>', '…']);
 const NAME_PUNCT = new Set(['_', '-', '/', '.', '~', '@']);
 
+/**
+ * What is known about a word that convertSymbols built by joining words and symbols. Kept so
+ * a long chain ("src slash src slash ...") never rescans the growing word: linear time.
+ */
+interface Built {
+  /** Holds a letter or digit (so it is a name word). */
+  alnum: boolean;
+  /** Only ASCII letters, digits, "_" and "-". */
+  ident: boolean;
+  /** Only "~", "." and ".." parts (see isPathRoot). */
+  root: boolean;
+  /** Ends in "/". */
+  endsSlash: boolean;
+}
+
 /** One whitespace-separated word, split into the punctuation around it and its core. */
 interface Tok {
   /** The whitespace before the word. */
@@ -89,6 +128,8 @@ interface Tok {
   trail: string;
   /** True when the word is, or ends in, a file name this pass built. */
   file: boolean;
+  /** Set on words convertSymbols built. Such a word always holds a symbol, so it is code-like. */
+  built?: Built;
 }
 
 export function straightenQuotes(text: string): string {
@@ -161,11 +202,12 @@ function isSpokenSymbol(t: Tok): boolean {
 
 /** A word that can sit next to a spoken symbol: a name core that is not an article, verb or symbol. */
 function isNameWord(t: Tok): boolean {
+  if (t.built) return t.built.alnum;
   return isNameCore(t.core) && !NOT_NAMES.has(t.core.toLowerCase()) && !isSpokenSymbol(t);
 }
 
 function isCodeLike(t: Tok): boolean {
-  if (t.file) return true;
+  if (t.file || t.built) return true;
   const cs = chars(t.core);
   for (let i = 0; i < cs.length; i++) {
     const c = cs[i] as string;
@@ -180,6 +222,7 @@ const IDENTIFIER_PUNCT = new Set(['_', '-']);
 
 /** ASCII letters, digits, "_" and "-" only: the shape of a variable, function or flag name. */
 function isIdentifierShaped(t: Tok): boolean {
+  if (t.built) return t.built.ident;
   const cs = chars(t.core);
   return (
     cs.length > 0 &&
@@ -189,11 +232,65 @@ function isIdentifierShaped(t: Tok): boolean {
 
 /** Whether a word can be part of a path. Bare numbers cannot: "slash 20 percent" is prose. */
 function isPathish(t: Tok): boolean {
-  if (t.file) return true;
+  if (t.file || t.built) return true;
   const cs = chars(t.core);
   if (cs.some((c) => c === '/' || c === '.' || c === '_' || c === '~' || c === '@')) return true;
-  if (PATH_WORDS.has(t.core.toLowerCase())) return true;
   return cs.some((c) => !isDigit(c) && isAlnum(c));
+}
+
+/**
+ * Whether a word next to a spoken underscore is clearly part of a code name: it holds a
+ * digit, an underscore or an inner capital, or it is a common identifier part ("id").
+ */
+function isUnderscoreCodeLike(t: Tok): boolean {
+  if (t.built) return true;
+  const cs = chars(t.core);
+  for (let i = 0; i < cs.length; i++) {
+    const c = cs[i] as string;
+    if (c === '_' || isDigit(c)) return true;
+    if (i > 0 && isUpper(c)) return true;
+  }
+  return IDENTIFIER_PARTS.has(t.core);
+}
+
+function hasAlnum(t: Tok): boolean {
+  if (t.built) return t.built.alnum;
+  return chars(t.core).some(isAlnum);
+}
+
+function endsWithSlash(t: Tok): boolean {
+  if (t.built) return t.built.endsSlash;
+  return t.core.endsWith('/');
+}
+
+/**
+ * "Next.js", "Node.js": a capitalised name with ".js" is a product, never a file to mention.
+ * A path ("src/App.js") is still a file.
+ */
+function isProductName(core: string): boolean {
+  const cs = chars(core);
+  const dot = cs.lastIndexOf('.');
+  if (dot <= 0 || cs.slice(dot + 1).join('') !== 'js') return false;
+  return isUpper(cs[0] as string) && !cs.slice(0, dot).includes('/');
+}
+
+/**
+ * A written file name ("src/app.tsx", "my_util.py") clear enough to mention after "at": its
+ * name holds a "/", "_", digit or inner capital, starts in lower case, and has a lower-case
+ * known extension. "meet at index.html" and "looking at Next.js" stay prose.
+ */
+function isCodeFileName(core: string): boolean {
+  if (!looksLikeFileName(core)) return false;
+  const cs = chars(core);
+  const dot = cs.lastIndexOf('.');
+  const ext = cs.slice(dot + 1).join('');
+  if (ext !== ext.toLowerCase() || isUpper(cs[0] as string)) return false;
+  for (let i = 0; i < dot; i++) {
+    const c = cs[i] as string;
+    if (c === '/' || c === '_' || isDigit(c)) return true;
+    if (i > 0 && isUpper(c)) return true;
+  }
+  return false;
 }
 
 /** Whether a name can stand in front of an ambiguous extension such as ".go". */
@@ -329,6 +426,9 @@ function convertSymbols(toks: Tok[]): Tok[] {
       if (left !== null && !isPathish(left)) left = null;
       if (right !== null && !isPathish(right)) right = null;
     }
+    // A spoken "./" or "../" starts a path, so it never joins the word before it:
+    // "run dot slash build" is `run ./build`.
+    if (symbolWord(tok) === 'dot' && slashes > 0) left = null;
     // "copy dot env": a dot file on its own, not joined to the word before it.
     const dotFile =
       dots === 1 &&
@@ -340,12 +440,15 @@ function convertSymbols(toks: Tok[]): Tok[] {
 
     let allowed = false;
     if (underscores === runLength) {
-      // Both sides must look like identifiers: "the underscore key" is prose.
+      // Both sides must look like identifiers, and one side like code: "the underscore key" and
+      // "logs underscore concerns" are prose, "user underscore id" is `user_id`. Two or more
+      // underscores ("underscore underscore init") are code on their own.
       const identifiers =
         (left === null || isIdentifierShaped(left)) && (right === null || isIdentifierShaped(right));
       allowed =
         identifiers &&
-        ((left !== null && right !== null) || (runLength >= 2 && (left !== null || right !== null)));
+        ((left !== null && right !== null && (isUnderscoreCodeLike(left) || isUnderscoreCodeLike(right))) ||
+          (runLength >= 2 && (left !== null || right !== null)));
     } else if (dots > 0 && slashes > 0) {
       allowed = true;
     } else if (dotFile) {
@@ -353,7 +456,12 @@ function convertSymbols(toks: Tok[]): Tok[] {
     } else if (left !== null && right !== null) {
       allowed = isCodeLike(left) || isCodeLike(right);
     } else if (slashes === runLength && left === null && right !== null) {
-      allowed = isCodeLike(right);
+      // A leading slash only where nothing, punctuation or a path-taking word comes before it.
+      const leads =
+        lastOut === undefined ||
+        lastOut.trail !== '' ||
+        (!lastOut.built && SLASH_LEADERS.has(lastOut.core.toLowerCase()));
+      allowed = leads && isCodeLike(right);
     }
 
     if (!allowed) {
@@ -363,19 +471,39 @@ function convertSymbols(toks: Tok[]): Tok[] {
     }
     if (left !== null) out.pop();
     const base = left ?? { sep: tok.sep, lead: '', core: '', trail: '', file: false };
+    const onlyUnderscores = underscores === runLength;
     out.push({
       sep: base.sep,
       lead: base.lead,
       core: base.core + text + (right !== null ? right.core : ''),
       trail: right !== null ? right.trail : '',
       file: right !== null ? right.file : false,
+      built: {
+        alnum: (left !== null && hasAlnum(left)) || (right !== null && hasAlnum(right)),
+        ident:
+          onlyUnderscores &&
+          (left === null || isIdentifierShaped(left)) &&
+          (right === null || isIdentifierShaped(right)),
+        // Root parts joined by one slash: ".." + "/" + ".." is still a root.
+        root:
+          left !== null &&
+          isPathRoot(left) &&
+          !endsWithSlash(left) &&
+          text === '/' &&
+          (right === null || (isPathRoot(right) && !right.core.startsWith('~'))),
+        endsSlash: right !== null ? endsWithSlash(right) : text.endsWith('/'),
+      },
     });
     i = right !== null ? j + 1 : j;
   }
   return out;
 }
 
-/** "at index.ts" and "tag index.ts" become `@index.ts`, only before a file name. */
+/**
+ * "tag index.ts", "at index dot ts" and "at src/app.tsx" become mentions. After "at" a
+ * written name must look like code (isCodeFileName), and a product name ("Next.js") never
+ * becomes one.
+ */
 function convertMentions(toks: Tok[]): Tok[] {
   const out: Tok[] = [];
   let i = 0;
@@ -388,8 +516,9 @@ function convertMentions(toks: Tok[]): Tok[] {
       tok.trail === '' &&
       (word === 'at' || word === 'tag') &&
       next !== undefined &&
-      (next.file || looksLikeFileName(next.core)) &&
-      next.lead === ''
+      next.lead === '' &&
+      (next.file || (word === 'tag' ? looksLikeFileName(next.core) : isCodeFileName(next.core))) &&
+      !isProductName(next.core)
     ) {
       out.push({ sep: tok.sep, lead: '', core: `@${next.core}`, trail: next.trail, file: true });
       i += 2;

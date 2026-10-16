@@ -98,6 +98,7 @@ public enum AutoSendKey: String, CaseIterable, Codable, Sendable {
 /// malformed value is no overrides, and an entry whose category is unknown (written by a
 /// newer or older app version) is dropped. Settings that stored nothing at all decode with
 /// `container.decodeAppCategoryOverrides(forKey:)`, which gives no overrides for a missing key.
+/// Settings structs must decode this field through it, so files saved before overrides existed still load.
 public struct AppCategoryOverrides: Equatable, Sendable, Codable {
     public var byApp: [String: AppCategory]
 

@@ -66,9 +66,11 @@ public enum CategoryContinuation {
             j -= 1
         }
         if j < 0 { return false }
-        // Look through opening quotes and brackets: judge the text before them.
+        // Look through brackets and opening single quotes: judge the text before them.
         while true {
             let c = cs[j]
+            // A quotation starts its own sentence: 'He said "' then "The end." keeps its capital.
+            if c == "\u{201C}" || (c == "\"" && isOpeningQuote(at: j, in: cs)) { return false }
             let opening = openers.contains(c) || ((c == "\"" || c == "'") && isOpeningQuote(at: j, in: cs))
             if !opening { break }
             j -= 1

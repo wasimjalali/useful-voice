@@ -14,7 +14,9 @@ import type { AppCategory } from './appCategory.js';
  * - Claude and ChatGPT (desktop apps, claude.ai, chatgpt.com) are assistants used for
  *   conversation, so they are Work chat (casual, no code rewriting, no email layout).
  * - Coding agents are Coding: Claude Code runs in a terminal (so it is already Coding),
- *   claude.ai/code, chatgpt.com/codex and the Codex desktop app are Coding by address.
+ *   claude.ai/code and chatgpt.com/codex are Coding by address. The macOS ChatGPT and Codex
+ *   desktop apps share one bundle id, com.openai.codex (the Homebrew chatgpt and codex-app
+ *   casks both quit it), so it is Work chat: ChatGPT is never Coding.
  * - Discord is Personal chat, even though servers are sometimes work.
  * - The Dia browser is not listed: its bundle id could not be confirmed from a public source.
  */
@@ -39,7 +41,8 @@ export const WORK_CHAT_APPS: readonly string[] = [
   'com.microsoft.teams', // Microsoft Teams (classic)
   'Mattermost.Desktop', // Mattermost
   'com.anthropic.claudefordesktop', // Claude desktop (see the note above)
-  'com.openai.chat', // ChatGPT desktop (unverified)
+  'com.openai.codex', // ChatGPT and Codex desktop apps (see the note above)
+  'com.openai.chat', // older ChatGPT desktop builds (unverified)
   'slack.exe',
   'ms-teams.exe', // Teams (new)
   'teams.exe', // Teams (classic)
@@ -58,7 +61,7 @@ export const PERSONAL_CHAT_APPS: readonly string[] = [
   'com.hnc.Discord', // Discord
   'com.facebook.archon', // Messenger (unverified)
   'whatsapp.exe',
-  'whatsapp.root.exe',
+  'whatsapp.root.exe', // unverified
   'telegram.exe',
   'signal.exe',
   'discord.exe',
@@ -82,9 +85,8 @@ export const CODING_APPS: readonly string[] = [
   'dev.zed.Zed-Preview',
   'com.apple.dt.Xcode',
   'com.google.android.studio', // Android Studio
-  'com.openai.codex', // Codex desktop app (also the id of the macOS ChatGPT desktop app, per the Homebrew casks)
   'windowsterminal.exe',
-  'openconsole.exe', // Windows Terminal's console host
+  'openconsole.exe', // Windows Terminal's console host (TargetName in microsoft/terminal)
   'wt.exe',
   'powershell.exe',
   'pwsh.exe',
@@ -95,8 +97,8 @@ export const CODING_APPS: readonly string[] = [
   'wezterm-gui.exe',
   'alacritty.exe',
   'code.exe', // VS Code
-  'code - insiders.exe',
-  'vscodium.exe',
+  'code - insiders.exe', // unverified (VS Code names the exe after nameShort; the Insiders value is not public)
+  'vscodium.exe', // nameShort "VSCodium" in VSCodium's build script, exe is nameShort + .exe
   'cursor.exe',
   'windsurf.exe',
   'zed.exe', // unverified

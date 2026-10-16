@@ -24,7 +24,7 @@ Credit here and in the app: **S1-mini by Superwhisper**.
 
 ## whisper.cpp
 
-Runs local transcription on macOS (`whisper.xcframework`, release v1.9.2, from
+Runs local transcription on macOS (embedded as `whisper.framework` from the v1.9.2 `whisper.xcframework` release of
 [ggml-org/whisper.cpp](https://github.com/ggml-org/whisper.cpp)). MIT License, Copyright (c) 2023-2026
 The ggml authors.
 

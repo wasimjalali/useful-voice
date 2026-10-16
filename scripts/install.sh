@@ -102,7 +102,9 @@ codesign --verify --strict "$NEW" || die "the copied app does not verify."
 # The old copy steps aside until the new one is in place, and comes back if
 # the move fails or this run is interrupted (cleanup above).
 OLD="$STAGE/previous"
-if [ -e "$APP" ]; then mv "$APP" "$OLD" || die "could not move the old app aside."; aside=1; fi
+# Armed before the move: a signal can land after the rename but before the next command, and
+# cleanup only restores when $APP is gone and $OLD exists, so arming early is safe.
+if [ -e "$APP" ]; then aside=1; mv "$APP" "$OLD" || die "could not move the old app aside."; fi
 if ! mv "$NEW" "$APP"; then
   if [ -e "$OLD" ] && ! mv "$OLD" "$APP"; then keep_stage=1; die "could not move the new app into place, nor the old one back: it is at $OLD."; fi
   aside=0

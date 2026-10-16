@@ -96,9 +96,6 @@ if (adHoc) {
     if (values[name] === undefined || values[name].startsWith(RELEASES)) fail(`--ad-hoc needs its own --${name}, not the real releases`);
   }
 } else {
-  if (!ED_PUBLIC_KEY) {
-    fail(`there is no update key yet: make it on the release Mac (docs/distribution.md, "The update key") and set ED_PUBLIC_KEY in scripts/release-mac.mjs`);
-  }
   // Installed copies trust only the real key, so a release signed with any
   // other could never update them.
   if (edKeyFile || edAccount !== ED_ACCOUNT || edPublicKey !== ED_PUBLIC_KEY) {

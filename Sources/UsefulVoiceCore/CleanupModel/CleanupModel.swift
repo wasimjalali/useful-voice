@@ -42,4 +42,11 @@ public protocol CleanupTextGenerator: AnyObject, Sendable {
     /// Runs the prompt to the end of the model's turn. Throws when the deadline passes.
     func generate(prompt: CleanupPrompt, deadline: ContinuousClock.Instant) throws -> String
     func unload()
+    /// Asks a load or a run that is in progress on another thread to stop at once, at quit.
+    /// Called from any thread; the call returns without waiting. Nothing to stop by default.
+    func requestStop()
+}
+
+extension CleanupTextGenerator {
+    public func requestStop() {}
 }

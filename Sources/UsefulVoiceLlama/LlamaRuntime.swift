@@ -21,6 +21,8 @@ public final class LlamaRuntime: @unchecked Sendable {
         /// The output filled the room reserved for it without the model ending its turn.
         /// A cut-off answer is never returned: it would drop words.
         case outputTruncated
+        /// `StopSignal` was set (the app is quitting).
+        case stopped
 
         public var description: String {
             switch self {
@@ -31,8 +33,22 @@ public final class LlamaRuntime: @unchecked Sendable {
             case .decodeFailed(let code): return "decode failed (\(code))"
             case .deadlineExceeded: return "deadline exceeded"
             case .outputTruncated: return "output truncated"
+            case .stopped: return "stopped"
             }
         }
+    }
+
+    /// Set from any thread to stop a model load (llama.cpp's progress callback answers false)
+    /// or a running decode (its abort callback answers true) as soon as llama.cpp next asks.
+    /// Used at quit, so the process does not exit with a thread inside llama.cpp. Once set it
+    /// stays set.
+    public final class StopSignal: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stopped = false
+
+        public init() {}
+        public var isSet: Bool { lock.withLock { stopped } }
+        public func set() { lock.withLock { stopped = true } }
     }
 
     public struct Stats: Equatable, Sendable {
@@ -96,13 +112,23 @@ public final class LlamaRuntime: @unchecked Sendable {
     public var threadCount: Int32 { threads }
     public let placement: Placement
     public let modelPath: String
+    private let stop: StopSignal?
 
     /// Loads the weights. See `Placement`; the CPU is the default for the cleanup model, and
     /// llama.cpp can only stop a running decode on the CPU. The PR notes have the numbers.
-    public init(modelPath: String, placement: Placement = .cpuOnly, threads: Int32? = nil, microBatch: UInt32? = nil) throws {
+    public init(modelPath: String, placement: Placement = .cpuOnly, threads: Int32? = nil, microBatch: UInt32? = nil, stop: StopSignal? = nil) throws {
         _ = Self.backendReady
         var params = llama_model_default_params()
         params.n_gpu_layers = placement == .metal ? -1 : 0
+        if let stop {
+            // Returning false makes llama.cpp abandon the load at once. The signal outlives the
+            // load: this initialiser holds it until `llama_model_load_from_file` returns.
+            params.progress_callback = { _, data in
+                guard let data else { return true }
+                return !Unmanaged<StopSignal>.fromOpaque(data).takeUnretainedValue().isSet
+            }
+            params.progress_callback_user_data = Unmanaged.passUnretained(stop).toOpaque()
+        }
         // A list that ends at once is "no devices"; NULL would mean "all of them".
         var noDevices: [ggml_backend_dev_t?] = [nil]
         let loadedModel: OpaquePointer? = noDevices.withUnsafeMutableBufferPointer { list in
@@ -110,6 +136,7 @@ public final class LlamaRuntime: @unchecked Sendable {
             return modelPath.withCString { llama_model_load_from_file($0, params) }
         }
         guard let loaded = loadedModel else {
+            if stop?.isSet == true { throw RuntimeError.stopped }
             throw RuntimeError.modelLoadFailed("llama.cpp could not load \((modelPath as NSString).lastPathComponent)")
         }
         guard let vocab = llama_model_get_vocab(loaded) else {
@@ -122,6 +149,7 @@ public final class LlamaRuntime: @unchecked Sendable {
         self.modelPath = modelPath
         self.threads = threads ?? Self.defaultThreadCount()
         self.microBatch = microBatch
+        self.stop = stop
     }
 
     deinit {
@@ -176,7 +204,7 @@ public final class LlamaRuntime: @unchecked Sendable {
         let outputRoom = promptTokens + promptTokens / 2 + 64
         let contextSize = ((promptTokens + outputRoom + 255) / 256) * 256
 
-        let abortBox = AbortBox(deadline: deadline)
+        let abortBox = AbortBox(deadline: deadline, stop: stop)
         let abortUnmanaged = Unmanaged.passRetained(abortBox)
         defer { abortUnmanaged.release() }
 
@@ -194,7 +222,8 @@ public final class LlamaRuntime: @unchecked Sendable {
         if !Self.debugDisableAbortCallback {
             cparams.abort_callback = { data in
                 guard let data else { return false }
-                return ContinuousClock.now >= Unmanaged<AbortBox>.fromOpaque(data).takeUnretainedValue().deadline
+                let box = Unmanaged<AbortBox>.fromOpaque(data).takeUnretainedValue()
+                return ContinuousClock.now >= box.deadline || box.stop?.isSet == true
             }
             cparams.abort_callback_data = abortUnmanaged.toOpaque()
         }
@@ -214,11 +243,13 @@ public final class LlamaRuntime: @unchecked Sendable {
         var firstTokenAt: ContinuousClock.Instant?
         var pending = tokens
         while true {
+            if stop?.isSet == true { throw RuntimeError.stopped }
             if ContinuousClock.now >= deadline { throw RuntimeError.deadlineExceeded }
             let status = pending.withUnsafeMutableBufferPointer { buf in
                 llama_decode(ctx, llama_batch_get_one(buf.baseAddress, Int32(buf.count)))
             }
             if status != 0 {
+                if stop?.isSet == true { throw RuntimeError.stopped }
                 if ContinuousClock.now >= deadline { throw RuntimeError.deadlineExceeded }
                 throw RuntimeError.decodeFailed(status)
             }
@@ -320,5 +351,9 @@ public final class LlamaRuntime: @unchecked Sendable {
 
 private final class AbortBox {
     let deadline: ContinuousClock.Instant
-    init(deadline: ContinuousClock.Instant) { self.deadline = deadline }
+    let stop: LlamaRuntime.StopSignal?
+    init(deadline: ContinuousClock.Instant, stop: LlamaRuntime.StopSignal?) {
+        self.deadline = deadline
+        self.stop = stop
+    }
 }

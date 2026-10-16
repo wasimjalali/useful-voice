@@ -20,16 +20,43 @@ import Foundation
 /// - A load that fails is remembered for that file (path, size, modification time): the next
 ///   presses do not retry it until the file changes or the app relaunches.
 ///
+/// - `shutDown(timeout:)` is for quit: no new load or run starts, a running one is asked to
+///   stop, and the call waits a bounded time for the dispatch threads to leave the runtime, so
+///   the process does not exit under a live thread inside llama.cpp.
+///
 /// An actor with a small state machine. The blocking load and run happen on dispatch threads,
 /// never on the actor and never on Swift's small cooperative pool; the state guarantees a
 /// load, a run and an unload never overlap.
 public actor LocalCleanupModel: CleanupModel {
     private enum State { case unloaded, loading, loaded }
 
+    /// Counts the dispatch threads that are inside the generator, and refuses new ones once
+    /// `close` has been called. Lock protected, so quit can use it from outside the actor.
+    private final class ThreadGate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var closed = false
+        private let group = DispatchGroup()
+
+        /// False once closed. A true answer must be paired with `leave`.
+        func enter() -> Bool {
+            lock.withLock {
+                if closed { return false }
+                group.enter()
+                return true
+            }
+        }
+
+        func leave() { group.leave() }
+        func close() { lock.withLock { closed = true } }
+        /// True when every thread left within the timeout.
+        func wait(timeout: TimeInterval) -> Bool { group.wait(timeout: .now() + timeout) == .success }
+    }
+
     private let generator: any CleanupTextGenerator
     private let modelURL: URL
     private let idleUnloadAfter: Duration
     private let sleep: @Sendable (Duration) async throws -> Void
+    private let gate = ThreadGate()
     private var state = State.unloaded
     private var loadTask: Task<Void, Never>?
     private var running = false
@@ -57,6 +84,16 @@ public actor LocalCleanupModel: CleanupModel {
     /// Returns when a load that is running has finished (tests, and the real-weights check).
     public func waitForLoad() async {
         await loadTask?.value
+    }
+
+    /// At quit: stops new loads and runs, asks the one in flight to stop and waits up to
+    /// `timeout` seconds for its thread to leave the generator. Returns whether it did.
+    /// Callable from any thread, and does not touch the actor's state.
+    @discardableResult
+    public nonisolated func shutDown(timeout: TimeInterval) -> Bool {
+        gate.close()
+        generator.requestStop()
+        return gate.wait(timeout: timeout)
     }
 
     public func begin() {
@@ -88,13 +125,16 @@ public actor LocalCleanupModel: CleanupModel {
             startLoadIfNeeded()
             return nil
         }
-        guard !running, ContinuousClock.now < deadline else { return nil }
+        guard !running, ContinuousClock.now < deadline, gate.enter() else { return nil }
         running = true
         let generator = self.generator
+        let gate = self.gate
         let prompt = S1MiniModel.promptSegments(controlLine: controlLine, text: text)
         let outcome: Result<String, any Error> = await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                continuation.resume(returning: Result { try generator.generate(prompt: prompt, deadline: deadline) })
+                let result = Result { try generator.generate(prompt: prompt, deadline: deadline) }
+                gate.leave()
+                continuation.resume(returning: result)
             }
         }
         running = false
@@ -115,9 +155,11 @@ public actor LocalCleanupModel: CleanupModel {
         guard state == .unloaded else { return }
         let signature = fileSignature()
         if signature == failedSignature { return }
+        guard gate.enter() else { return }
         state = .loading
         unloadWhenIdle = false
         let generator = self.generator
+        let gate = self.gate
         let url = modelURL
         // The load blocks (disk, weights, a GPU library), so it runs on a dispatch thread and
         // never on Swift's cooperative pool, which a blocked load would starve.
@@ -126,8 +168,10 @@ public actor LocalCleanupModel: CleanupModel {
                 DispatchQueue.global(qos: .userInitiated).async {
                     do {
                         try generator.load(modelAt: url)
+                        gate.leave()
                         continuation.resume(returning: nil)
                     } catch {
+                        gate.leave()
                         continuation.resume(returning: error)
                     }
                 }

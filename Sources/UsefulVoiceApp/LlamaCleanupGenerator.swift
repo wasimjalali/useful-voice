@@ -12,13 +12,14 @@ import UsefulVoiceLlama
 public final class LlamaCleanupGenerator: CleanupTextGenerator, @unchecked Sendable {
     private let placement: LlamaRuntime.Placement
     private var runtime: LlamaRuntime?
+    private let stop = LlamaRuntime.StopSignal()
 
     public init(placement: LlamaRuntime.Placement = .cpuOnly) {
         self.placement = placement
     }
 
     public func load(modelAt url: URL) throws {
-        runtime = try LlamaRuntime(modelPath: url.path, placement: placement)
+        runtime = try LlamaRuntime(modelPath: url.path, placement: placement, stop: stop)
     }
 
     public func generate(prompt: CleanupPrompt, deadline: ContinuousClock.Instant) throws -> String {
@@ -30,12 +31,17 @@ public final class LlamaCleanupGenerator: CleanupTextGenerator, @unchecked Senda
     public func unload() {
         runtime = nil
     }
+
+    public func requestStop() {
+        stop.set()
+    }
 }
 
 /// The hidden cleanup model the dictation controller is given. Nil while the hidden
 /// `UV_CLEANUP_MODEL` flag is off, so a normal launch builds nothing and loads nothing. The
 /// controller preloads it at the press, the pipeline runs it at the cleanup step, and it
-/// unloads itself after `CleanupModelPolicy.defaultIdleUnload`.
+/// unloads itself after `CleanupModelPolicy.defaultIdleUnload`. At quit, `shutDown()` stops a
+/// load or run in flight and `pauseDownloads()` keeps the bytes of a download.
 public enum HiddenCleanupModel {
     public static let shared: LocalCleanupModel? = {
         guard CleanupModelFlag.isOn else { return nil }
@@ -72,6 +78,12 @@ public enum HiddenCleanupModel {
               LocalModelStore().availability(of: S1MiniModel.model) != .usable else { return }
         downloader.recoverCompletePartial(for: S1MiniModel.model)
         downloader.start(model: S1MiniModel.model)
+    }
+
+    /// At quit: stops a load or run in flight and waits up to 2 s for its thread to leave
+    /// llama.cpp, so the process does not exit under a live thread. Does nothing with the flag off.
+    public static func shutDown() {
+        shared?.shutDown(timeout: 2)
     }
 
     /// At quit: keeps the bytes of a download in flight (resume data, written within a bounded

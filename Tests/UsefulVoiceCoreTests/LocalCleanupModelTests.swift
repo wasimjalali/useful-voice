@@ -35,6 +35,18 @@ private final class FakeGenerator: CleanupTextGenerator, @unchecked Sendable {
     }
 
     func unload() { lock.withLock { _unloads += 1 } }
+
+    /// What a real runtime does on `requestStop`: a blocked load or run ends. Off by default.
+    var releaseGatesOnStop = false
+    private var _stops = 0
+    var stops: Int { lock.withLock { _stops } }
+    func requestStop() {
+        lock.withLock { _stops += 1 }
+        if releaseGatesOnStop {
+            loadGate?.signal()
+            generateGate?.signal()
+        }
+    }
 }
 
 /// A sleeper the test controls: each call is a numbered timer that waits until `fireAll`
@@ -373,5 +385,59 @@ struct LocalCleanupModelTests {
         timer.fireAll()
         #expect(await waitUntil { await !model.isLoaded })
         #expect(gen.unloads == 1)
+    }
+
+    @Test func shutDownStopsARunInFlightAndWaitsForItsThread() async {
+        let gen = FakeGenerator()
+        let gate = DispatchSemaphore(value: 0)
+        gen.generateGate = gate
+        gen.releaseGatesOnStop = true
+        let model = LocalCleanupModel(modelURL: url, generator: gen, idleUnloadAfter: .seconds(60))
+        await model.begin()
+        await model.waitForLoad()
+        let run = Task { await model.clean("so um hello", controlLine: line, deadline: soon) }
+        #expect(await waitUntil { gen.prompts.count == 1 })      // the run is inside the generator
+        #expect(model.shutDown(timeout: 5))                       // the stop released it; its thread left
+        #expect(gen.stops == 1)
+        _ = await run.value
+    }
+
+    @Test func shutDownStopsALoadInFlight() async {
+        let gen = FakeGenerator()
+        let gate = DispatchSemaphore(value: 0)
+        gen.loadGate = gate
+        gen.releaseGatesOnStop = true
+        let model = LocalCleanupModel(modelURL: url, generator: gen, idleUnloadAfter: .seconds(60))
+        await model.begin()
+        #expect(await waitUntil { gen.attempts == 1 })           // the load is blocked inside the generator
+        #expect(model.shutDown(timeout: 5))
+        #expect(gen.stops == 1)
+        await model.waitForLoad()
+    }
+
+    @Test func nothingStartsAfterShutDown() async {
+        let gen = FakeGenerator()
+        let model = LocalCleanupModel(modelURL: url, generator: gen, idleUnloadAfter: .seconds(60))
+        #expect(model.shutDown(timeout: 1))                       // nothing running: returns at once
+        await model.begin()
+        await model.waitForLoad()
+        #expect(gen.attempts == 0)
+        #expect(await model.clean("x", controlLine: line, deadline: soon) == nil)
+        #expect(gen.attempts == 0)
+        #expect(gen.prompts.isEmpty)
+    }
+
+    @Test func shutDownWaitsAtMostItsTimeoutForAThreadThatWillNotLeave() async {
+        let gen = FakeGenerator()
+        let gate = DispatchSemaphore(value: 0)
+        gen.generateGate = gate                                   // requestStop does not release it
+        let model = LocalCleanupModel(modelURL: url, generator: gen, idleUnloadAfter: .seconds(60))
+        await model.begin()
+        await model.waitForLoad()
+        let run = Task { await model.clean("x", controlLine: line, deadline: soon) }
+        #expect(await waitUntil { gen.prompts.count == 1 })
+        #expect(!model.shutDown(timeout: 0.2))
+        gate.signal()
+        _ = await run.value
     }
 }

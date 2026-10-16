@@ -358,6 +358,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // hands back resume data, and give the write a bounded moment to land.
         modelManager?.pauseAllDownloads()
         HiddenCleanupModel.pauseDownloads()
+        HiddenCleanupModel.shutDown()
     }
 
     /// Frees the loaded whisper context only when it is no longer the active,

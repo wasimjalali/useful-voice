@@ -41,10 +41,9 @@ final class FocusTracker {
         var elementID: String?
         var url: String?
         if AXIsProcessTrusted() {
+            // Every element read below goes through `element` and `string`, which set
+            // the short timeout on each element first.
             let axApp = AXUIElementCreateApplication(pid)
-            // A cross-process AX call blocks on the target app; keep a busy app from
-            // stalling the hotkey press.
-            AXUIElementSetMessagingTimeout(axApp, 0.3)
             if let window = Self.element(axApp, kAXFocusedWindowAttribute) {
                 let id = "win#\(CFHash(window))"
                 windowID = id
@@ -96,10 +95,10 @@ final class FocusTracker {
         _ = app.activate()
         if AXIsProcessTrusted() {
             let axApp = AXUIElementCreateApplication(pid)
-            AXUIElementSetMessagingTimeout(axApp, 0.3)
+            AXUIElementSetMessagingTimeout(axApp, Self.messagingTimeout)
             AXUIElementSetAttributeValue(axApp, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
             if let id = target.windowID, let window = windows[id] {
-                AXUIElementSetMessagingTimeout(window, 0.3)
+                AXUIElementSetMessagingTimeout(window, Self.messagingTimeout)
                 AXUIElementPerformAction(window, kAXRaiseAction as CFString)
                 AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
             }
@@ -111,7 +110,7 @@ final class FocusTracker {
         }
         guard front else { return false }
         if AXIsProcessTrusted(), let id = target.elementID, let element = elements[id] {
-            AXUIElementSetMessagingTimeout(element, 0.3)
+            AXUIElementSetMessagingTimeout(element, Self.messagingTimeout)
             AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
         }
         // Let the app settle its focus before the caller looks again.
@@ -133,14 +132,23 @@ final class FocusTracker {
         }
     }
 
+    /// A cross-process AX call blocks on the target app until it answers. Each element
+    /// gets this timeout before it is read, so a busy app (or a deep walk up a web
+    /// page) can't stall the hotkey press or a delivery check for the default 6 s.
+    private static let messagingTimeout: Float = 0.3
+
     private static func element(_ parent: AXUIElement, _ attribute: String) -> AXUIElement? {
+        AXUIElementSetMessagingTimeout(parent, messagingTimeout)
         var ref: CFTypeRef?
         guard AXUIElementCopyAttributeValue(parent, attribute as CFString, &ref) == .success,
               let ref, CFGetTypeID(ref) == AXUIElementGetTypeID() else { return nil }
-        return (ref as! AXUIElement)
+        let child = ref as! AXUIElement
+        AXUIElementSetMessagingTimeout(child, messagingTimeout)
+        return child
     }
 
     private static func string(_ element: AXUIElement, _ attribute: String) -> String? {
+        AXUIElementSetMessagingTimeout(element, messagingTimeout)
         var ref: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &ref) == .success
         else { return nil }

@@ -37,6 +37,10 @@ public enum DeliveryResult: Sendable, Equatable {
     /// could not be posted although Accessibility is on. The text is on the
     /// clipboard. Not a permission problem.
     case copiedNotLanded
+    /// Type-out mode, and typing stopped part way (a password field, focus moved,
+    /// a key could not be posted, or it ran out of time). Some of the text went in;
+    /// all of it is on the clipboard.
+    case copiedPartlyTyped
 }
 
 /// Delivery could not put the text where it was meant to go (the clipboard write
@@ -223,13 +227,19 @@ public enum DictationIssue: Equatable, Sendable {
     case copiedNotLanded
     /// A password field had focus, so the text was copied instead. No fix.
     case copiedSecureField
+    /// Typing stopped part way; the full text is on the clipboard. No fix.
+    case copiedPartlyTyped
 
     public var message: String {
         switch self {
         case .error(let error): return error.message
         case .copiedNotPasted, .copiedAppChanged, .copiedSecureField, .copiedNotLanded: return "Copied. Press \u{2318}V to paste."
+        case .copiedPartlyTyped: return Self.partlyTypedMessage
         }
     }
+
+    /// The notice when typing stopped part way.
+    public static let partlyTypedMessage = "Partly typed. The full text is on your clipboard."
 
     /// The fix for the issue. A copied-not-pasted notice points at Accessibility,
     /// the usual reason the paste could not be posted; an app change has none.
@@ -237,7 +247,7 @@ public enum DictationIssue: Equatable, Sendable {
         switch self {
         case .error(let error): return error.fix
         case .copiedNotPasted: return .openAccessibilitySettings
-        case .copiedAppChanged, .copiedSecureField, .copiedNotLanded: return nil
+        case .copiedAppChanged, .copiedSecureField, .copiedNotLanded, .copiedPartlyTyped: return nil
         }
     }
 }
@@ -276,6 +286,7 @@ public struct DictationFeedback: Equatable, Sendable {
             case .copiedAppChanged: issue = .copiedAppChanged
             case .copiedSecureField: issue = .copiedSecureField
             case .copiedNotLanded: issue = .copiedNotLanded
+            case .copiedPartlyTyped: issue = .copiedPartlyTyped
             case .pasted, .copied: break
             }
         }

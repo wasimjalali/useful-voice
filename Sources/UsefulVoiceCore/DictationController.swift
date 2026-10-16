@@ -13,7 +13,15 @@ public enum DictationState: Equatable, Sendable {
 @MainActor
 public final class DictationController {
     public private(set) var state: DictationState = .idle {
-        didSet { onStateChange?(state) }
+        didSet {
+            // The target (with its window title and page address) is for the dictation
+            // in flight only: once it settles, it is dropped.
+            switch state {
+            case .idle, .error: activeTarget = nil
+            case .recording, .transcribing, .delivering: break
+            }
+            onStateChange?(state)
+        }
     }
     public var onStateChange: ((DictationState) -> Void)?
     /// What a dictation ended with. `delivered` fires from the delivery
@@ -82,10 +90,11 @@ public final class DictationController {
     /// True when a failed dictation can be retried on its retained audio.
     public var canRetry: Bool { lastFailedAudio != nil }
 
-    /// The target locked at the hotkey press of the dictation now in flight (or
-    /// the last one), nil for a window dictation. The app layer reads it while
-    /// formatting and delivering, so both use the app the user dictated into, not
-    /// whatever is in front by then.
+    /// The target locked at the hotkey press of the dictation now in flight, nil
+    /// for a window dictation and once the dictation has settled (idle or error):
+    /// its window title and page address are held for that dictation only. The app
+    /// layer reads it while formatting and delivering, so both use the app the
+    /// user dictated into, not whatever is in front by then.
     public var deliveryTarget: DeliveryTarget? { activeTarget }
 
     public init(recorder: AudioRecording,

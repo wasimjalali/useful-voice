@@ -507,16 +507,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case .paste:
                     guard let self else { return }
                     // The target locked at the hotkey press: the controller has
-                    // already brought it back if focus moved. It decides how the
-                    // text goes in (typed for apps the user chose, else pasted) and
-                    // is checked once more right before anything is posted.
+                    // already brought it back if focus moved. Its app picks how the
+                    // text goes in (typed for apps the user chose, else pasted), and
+                    // it is checked once more right before anything is posted (and
+                    // before every typed batch).
                     let target = self.controller?.deliveryTarget
-                    let method = InsertionMethod.method(forAppID: target?.appID,
-                                                        typeOutApps: self.settings.typeOutAppIDs,
-                                                        text: text)
+                    let request = InsertionRequest(
+                        text: text, appID: target?.appID,
+                        typeOutApps: self.settings.typeOutAppIDs,
+                        restorePreviousClipboard: self.settings.restorePreviousClipboard)
                     self.inserter.deliver(
-                        text, method: method,
-                        restorePreviousClipboard: self.settings.restorePreviousClipboard,
+                        request,
                         onTarget: {
                             guard let target else { return false }
                             return TargetLock.matches(target, FocusTracker.shared.snapshot())
@@ -532,6 +533,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             done(.success(AXIsProcessTrusted() ? .copiedNotLanded : .copiedNotPasted))
                         case .secureFieldCopied:
                             done(.success(.copiedSecureField))
+                        case .partlyTyped:
+                            // Some of it went in: say so, or the user pastes a
+                            // second copy blind.
+                            done(.success(.copiedPartlyTyped))
                         case .targetLost:
                             // Focus left the target between the check and the paste:
                             // the same "copied" notice as any unreachable target.
@@ -1041,6 +1046,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .copied: hud.show(.done(.savedAndCopied(words: words)))
             case .copiedNotPasted: hud.show(.copiedNotPasted(fix: .openAccessibilitySettings))
             case .copiedAppChanged, .copiedSecureField, .copiedNotLanded: hud.show(.copiedNotPasted(fix: nil))
+            case .copiedPartlyTyped: hud.show(.partlyTyped)
             }
         }
     }

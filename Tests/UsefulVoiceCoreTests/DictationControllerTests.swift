@@ -1837,6 +1837,60 @@ final class CapturingProvider: TranscriptionProvider {
         #expect(outcomes == [.delivered(words: 2, mode: .copiedAppChanged, appName: "Slack")])
     }
 
+    @Test func testAnotherPageInTheTargetTabCopiesWithoutReactivating() async throws {
+        let page = { (url: String) in
+            DeliveryTarget(appID: "com.google.Chrome", appName: "Chrome", processID: 700,
+                           windowID: "win#7", elementID: "AXWebArea#3", browserURL: url)
+        }
+        focus = page("https://mail.example.com/compose#draft")
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        focus = page("https://news.example.com/")   // the tab navigated while talking
+        await controller.toggleAndWait()
+        #expect(reactivations.isEmpty)
+        #expect(deliveredModes == [.copy])
+        #expect(outcomes == [.delivered(words: 2, mode: .copiedAppChanged, appName: "Chrome")])
+    }
+
+    @Test func testAFragmentChangeInTheTargetTabStillPastes() async throws {
+        let page = { (url: String) in
+            DeliveryTarget(appID: "com.google.Chrome", appName: "Chrome", processID: 700,
+                           windowID: "win#7", elementID: "AXWebArea#3", browserURL: url)
+        }
+        focus = page("https://mail.example.com/compose#draft")
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        focus = page("https://mail.example.com/compose#draft-saved")
+        await controller.toggleAndWait()
+        #expect(deliveredModes == [.paste])
+    }
+
+    @Test func testTheTargetIsDroppedOnceTheDictationSettles() async throws {
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        #expect(controller.deliveryTarget?.windowTitle == "general")
+        await controller.toggleAndWait()
+        #expect(controller.state == .idle)
+        #expect(controller.deliveryTarget == nil)
+    }
+
+    @Test func testTheTargetIsDroppedWhenADictationFails() async throws {
+        let controller = makeLockController(providers: [failingProvider(.http(500, "boom"))])
+        controller.toggle()
+        #expect(controller.deliveryTarget != nil)
+        await controller.toggleAndWait()
+        if case .error = controller.state {} else { Issue.record("expected an error state") }
+        #expect(controller.deliveryTarget == nil)
+    }
+
+    @Test func testPartlyTypedReachesTheOutcomeUnchanged() async throws {
+        deliveryResultOverride = .copiedPartlyTyped
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(outcomes == [.delivered(words: 2, mode: .copiedPartlyTyped, appName: "Slack")])
+    }
+
     @Test func testNoCapturedTargetCopiesRatherThanPastingAnywhere() async throws {
         focus = nil
         let controller = makeLockController(providers: [okProvider()])

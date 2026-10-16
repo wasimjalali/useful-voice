@@ -17,6 +17,8 @@ enum HUDDisplay: Equatable {
     /// The text is on the clipboard but could not be pasted. The fix is Accessibility
     /// when the paste was blocked, none when the user simply moved to another app.
     case copiedNotPasted(fix: DictationFix?)
+    /// Typing stopped part way; the full text is on the clipboard. No fix.
+    case partlyTyped
     case cancelled
     case error(HUDError)
     /// A confirmation that the dictation language was switched.
@@ -133,7 +135,7 @@ extension HUDDisplay {
         case .done: return 1.2
         case .language: return 1.0
         case .cancelled: return 1.5
-        case .copiedNotPasted, .error: return 8
+        case .copiedNotPasted, .partlyTyped, .error: return 8
         }
     }
 
@@ -141,7 +143,7 @@ extension HUDDisplay {
     /// it carries a close button.
     var isPersistent: Bool {
         switch self {
-        case .copiedNotPasted, .error: return true
+        case .copiedNotPasted, .partlyTyped, .error: return true
         default: return false
         }
     }
@@ -172,7 +174,7 @@ extension HUDDisplay {
         case .transcribing(let partial, _): return partial == nil ? 1 : 2
         case .delivering: return 3
         case .done: return 4
-        case .copiedNotPasted: return 5
+        case .copiedNotPasted, .partlyTyped: return 5
         case .cancelled: return 6
         case .error: return 7
         case .language: return 8
@@ -200,6 +202,7 @@ extension HUDDisplay {
             if let words = done.wordsText { return "\(done.label), \(words)" }
             return done.label
         case .copiedNotPasted: return "Copied. Press Command V to paste"
+        case .partlyTyped: return DictationIssue.partlyTypedMessage
         case .cancelled: return "Cancelled"
         case .error(let error): return error.message
         case .language(let pin): return "Language, \(pin.hudName)"

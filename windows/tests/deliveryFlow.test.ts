@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DELIVERY_TIMEOUT,
+  PROOF_READ_MS,
   deliverToTarget,
   type DeliveryEffects,
   type InsertAttempt,
@@ -20,7 +21,9 @@ import { HudModel, hudLabel, type HudFrame } from '../src/core/hudModel.js';
  * page; both pasting and typing; typing text with a line break; sending a keystroke
  * after the deadline or after the service gave up; a cancel that leaves the user's
  * clipboard overwritten; restoring the clipboard after an unproven paste, or when the
- * user turned restoring off; calling a partly typed dictation plain "copied".
+ * user turned restoring off; calling a partly typed dictation plain "copied"; telling
+ * the user to press Ctrl+V after a keystroke went out (the text twice); a paste that
+ * used all its time leaving the proof no time to read the foreground.
  */
 
 const notepad: DeliveryTarget = { appId: 'notepad', processId: 10, windowHandle: 0x100, focusHandle: 0x101 };
@@ -142,19 +145,70 @@ describe('target in front', () => {
     expect(keystrokes(h.calls)).toEqual(['paste']);
   });
 
-  it('does not claim a paste into a window whose text cannot be checked', async () => {
+  it('says inserted after a paste into a window whose text cannot be checked, and never restores', async () => {
     const slack: DeliveryTarget = { appId: 'slack', processId: 40, windowHandle: 0x400 };
     const h = harness({ focus: [slack] });
     const result = await deliverToTarget(input({ target: slack }), h.fx);
-    expect(result).toMatchObject({ delivered: false, clipboardFallback: true, reason: 'unverifiable-target' });
+    expect(result).toMatchObject({ delivered: true, unproven: true, clipboardFallback: false, reason: 'unverifiable-target' });
     expect(h.calls).not.toContain('restore');
+    expect(h.clipboard()).toBe('hello world');
   });
 
-  it('does not restore when nothing consumed the paste', async () => {
+  it('does not restore when nothing consumed the paste, but still says inserted', async () => {
     const h = harness({ focus: [notepad], stillOurs: true });
     const result = await deliverToTarget(input(), h.fx);
-    expect(result).toMatchObject({ delivered: false, reason: 'paste-not-consumed' });
+    expect(result).toMatchObject({ delivered: true, unproven: true, clipboardFallback: false, reason: 'paste-not-consumed' });
     expect(h.clipboard()).toBe('hello world');
+  });
+});
+
+describe('sent, then the proof', () => {
+  it('a sent paste whose focus cannot be read afterwards says inserted, keeps the text and never restores', async () => {
+    const h = harness({ focus: [notepad, null] });
+    const result = await deliverToTarget(input(), h.fx);
+    expect(result).toMatchObject({ delivered: true, unproven: true, clipboardFallback: false, method: 'paste' });
+    expect(h.calls).not.toContain('restore');
+    expect(h.clipboard()).toBe('hello world');
+  });
+
+  it('a sent type-out whose focus cannot be read afterwards counts as typed', async () => {
+    const h = harness({ focus: [terminal, null] });
+    const result = await deliverToTarget(input({ target: terminal }), h.fx);
+    expect(result).toMatchObject({ delivered: true, clipboardFallback: false, method: 'typeOut', reason: 'typed' });
+    expect(result.unproven).toBeUndefined();
+    expect(h.clipboard()).toBe('hello world');
+  });
+
+  it('a sent type-out counts as typed even when another window is in front afterwards', async () => {
+    const h = harness({ focus: [terminal, elsewhere] });
+    const result = await deliverToTarget(input({ target: terminal }), h.fx);
+    expect(result).toMatchObject({ delivered: true, clipboardFallback: false, reason: 'typed' });
+  });
+
+  it('keeps time back from the paste so the proof read always gets some', async () => {
+    let clock = 0;
+    let pasteDeadline = 0;
+    let proofBudget = -1;
+    let reads = 0;
+    const h = harness({ focus: [notepad] });
+    h.fx.now = () => clock;
+    h.fx.wait = async (ms) => {
+      clock += ms;
+    };
+    h.fx.readFocus = async (budget) => {
+      reads += 1;
+      if (reads === 2) proofBudget = budget;
+      return { ...notepad };
+    };
+    h.fx.paste = async (_target, until) => {
+      pasteDeadline = until;
+      clock = until + 100; // the script overran its deadline a little
+      return { result: 'sent' };
+    };
+    const result = await deliverToTarget(input({ deadline: 5000 }), h.fx);
+    expect(pasteDeadline).toBe(5000 - 700 - PROOF_READ_MS);
+    expect(proofBudget).toBeGreaterThanOrEqual(PROOF_READ_MS);
+    expect(result).toMatchObject({ delivered: true, reason: 'restored' });
   });
 });
 
@@ -249,12 +303,6 @@ describe('the last look before the keystroke', () => {
     const outcome = await deliverToTarget(input({ target: terminal }), h.fx);
     expect(outcome.partlyTyped).toBe(true);
   });
-
-  it('does not claim a typed delivery when focus left during typing', async () => {
-    const h = harness({ focus: [terminal, elsewhere] });
-    const outcome = await deliverToTarget(input({ target: terminal }), h.fx);
-    expect(outcome).toMatchObject({ delivered: false, clipboardFallback: true, reason: 'focus-moved' });
-  });
 });
 
 describe('time and cancel', () => {
@@ -297,7 +345,15 @@ describe('time and cancel', () => {
       return { result: 'sent' };
     };
     await deliverToTarget(input({ deadline: 4321 }), h.fx);
-    expect(seen).toBe(4321);
+    expect(seen).toBe(4321 - 700 - PROOF_READ_MS);
+    let typedUntil = 0;
+    const t = harness({ focus: [terminal] });
+    t.fx.typeOut = async (_target, _batches, deadline) => {
+      typedUntil = deadline;
+      return { result: 'sent', typedUnits: 11 };
+    };
+    await deliverToTarget(input({ target: terminal, deadline: 4321 }), t.fx);
+    expect(typedUntil).toBe(4321);
   });
 
   it('a cancel during the lock stops before the clipboard is touched', async () => {

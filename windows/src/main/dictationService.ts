@@ -96,7 +96,10 @@ export interface DeliveryRequest {
 }
 
 export interface DeliveryResult {
-  /** Whether the text provably reached the target. */
+  /**
+   * Whether the text went in: proven, or a keystroke sent that can't be proven (the
+   * text then stays on the clipboard, and the notice is still "Inserted").
+   */
   delivered: boolean;
   /** Whether the dictation is still on the clipboard as a fallback. */
   clipboardFallback: boolean;

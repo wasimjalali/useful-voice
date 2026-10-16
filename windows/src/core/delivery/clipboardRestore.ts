@@ -133,7 +133,7 @@ export type RestoreReason =
   /** The paste landed, and the original clipboard held nothing worth keeping. */
   | 'nothing-to-restore'
   /**
-   * Typed out (type-out mode) with focus held throughout. Counted as delivered, but a
+   * Typed out (type-out mode) to the end. Counted as delivered, but a
    * keystroke never consumes the clipboard, so there is no proof to restore on: the
    * dictation stays on the clipboard.
    */
@@ -185,7 +185,8 @@ export interface PasteObservation {
   restorePreviousClipboard?: boolean;
   /**
    * How the text went in. `typeOut` sent keystrokes instead of Ctrl+V: `pasteSent` then
-   * means every keystroke went out, and the clipboard-consumed proof does not apply.
+   * means every keystroke went out, each with the target in front, and neither the
+   * focus nor the clipboard-consumed proof applies.
    */
   method?: 'paste' | 'typeOut';
 }
@@ -206,11 +207,9 @@ export function decideClipboardRestore(observation: PasteObservation): RestoreDe
 
   if (observation.method === 'typeOut') {
     // Typing is the user's own choice for this app (usually a terminal, which is
-    // unverifiable by design), so the unverifiable list does not apply. Focus must
-    // still have stayed on the window it was aimed at.
-    if (target === null || focusAfter === null || focusAfter.handle !== target.handle) {
-      return { delivered: false, restore: false, reason: 'focus-moved' };
-    }
+    // unverifiable by design), so the unverifiable list does not apply. Every batch
+    // went out with the target in front (the script checks before each one), so a
+    // focus read afterwards proves nothing either way: it is typed.
     return { delivered: true, restore: false, reason: 'typed' };
   }
 

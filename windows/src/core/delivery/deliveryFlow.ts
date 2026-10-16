@@ -12,7 +12,13 @@
  *
  * Time: the delivery has a deadline. Every await is followed by a look at the signal
  * and the clock, and the platform scripts get the deadline too, so a delivery that ran
- * out of time never sends a keystroke afterwards.
+ * out of time never sends a keystroke afterwards. A paste's script gets an earlier
+ * deadline than the delivery: `PROOF_READ_MS` and the settle wait are kept back for
+ * the proof, so a slow paste still leaves time to read the foreground afterwards.
+ *
+ * Once a keystroke went out, the notice is never "Press Ctrl+V": following it would
+ * put the text in twice. A sent paste that can't be proven is reported as inserted and
+ * the dictation stays on the clipboard, the same as the macOS AX-blind case.
  */
 import {
   decideClipboardRestore,
@@ -34,6 +40,9 @@ import {
 
 /** The abort reason the dictation service uses when a delivery runs out of time. */
 export const DELIVERY_TIMEOUT = 'delivery-timeout';
+
+/** Kept back from a paste's deadline, with the settle wait, for the foreground read after it. */
+export const PROOF_READ_MS = 500;
 
 /** How one paste or type-out attempt ended, as the platform script reports it. */
 export type InsertResult = 'sent' | 'moved' | 'secure' | 'failed' | 'timeout';
@@ -88,8 +97,17 @@ export interface PasteDeliveryInput {
 export type DeliveryReason = TargetLossReason | InsertResult | RestoreReason | 'cancelled';
 
 export interface PasteDeliveryResult {
-  /** The text provably reached the target. */
+  /**
+   * The keystroke went out to the target (pasted, or typed to the end), so the user is
+   * told it was inserted. Proven unless `unproven` is set.
+   */
   delivered: boolean;
+  /**
+   * Sent, but the proof could not confirm it (a window whose text can't be checked,
+   * focus unreadable or moved, the clipboard untouched). Still reported as inserted,
+   * never restored: the dictation stays on the clipboard.
+   */
+  unproven?: boolean;
   /** The dictation is on the clipboard as the fallback. */
   clipboardFallback: boolean;
   /** Cancelled before anything was sent. Nothing went in. */
@@ -178,7 +196,7 @@ export async function deliverToTarget<Snapshot extends ClipboardContents>(
   const attempt =
     method === 'typeOut'
       ? await fx.typeOut(target, typeOutChunks(text), input.deadline)
-      : await fx.paste(target, input.deadline);
+      : await fx.paste(target, input.deadline - input.settleMs - PROOF_READ_MS);
   if (attempt.result !== 'sent') {
     const result: PasteDeliveryResult = { delivered: false, clipboardFallback: true, reason: attempt.result, method };
     if (method === 'typeOut' && attempt.typedUnits !== 0) result.partlyTyped = true;
@@ -191,17 +209,16 @@ export async function deliverToTarget<Snapshot extends ClipboardContents>(
     return result;
   }
 
-  // The proof. A typed delivery only needs focus to have stayed; a paste into a window
-  // whose text can't be checked is never claimed; otherwise the clipboard must have
-  // been consumed by the window it was aimed at.
+  // The proof, which only decides the restore. A typed delivery needs none: its script
+  // looked at the foreground before every batch. A paste into a window whose text
+  // can't be checked is never claimed as proven; otherwise the clipboard must have been
+  // consumed by the window it was aimed at. The read always gets its reserved time.
   const aimed = toPasteTarget(target);
   let focusAfter: DeliveryTarget | null = null;
   let stillOurs = false;
-  if (method === 'typeOut') {
-    focusAfter = await fx.readFocus(remaining(), false);
-  } else if (isProbablyVerifiable(aimed)) {
+  if (method === 'paste' && isProbablyVerifiable(aimed)) {
     await fx.wait(input.settleMs);
-    focusAfter = await fx.readFocus(remaining(), false);
+    focusAfter = await fx.readFocus(Math.max(PROOF_READ_MS, remaining()), false);
     stillOurs = fx.clipboardHoldsText(text);
   }
   const decision = decideClipboardRestore({
@@ -217,8 +234,11 @@ export async function deliverToTarget<Snapshot extends ClipboardContents>(
     fx.restoreClipboard(snapshot);
   } else if (decision.reason === 'snapshot-incomplete') {
     fx.log('clipboard', 'not restoring: original could not be captured fully');
-  } else if (decision.reason === 'unverifiable-target') {
-    fx.log('delivery', `unverifiable target (${target.appId ?? 'unknown app'}); left on clipboard`);
   }
-  return { delivered: decision.delivered, clipboardFallback: !decision.delivered, reason: decision.reason, method };
+  if (!decision.delivered) {
+    // Sent but not proven: "Press Ctrl+V" would paste it a second time.
+    fx.log('delivery', `paste sent but not proven (${decision.reason}, ${target.appId ?? 'unknown app'}); left on clipboard`);
+    return { delivered: true, unproven: true, clipboardFallback: false, reason: decision.reason, method };
+  }
+  return { delivered: true, clipboardFallback: false, reason: decision.reason, method };
 }

@@ -121,6 +121,45 @@ import Testing
         #expect(fake.calls.contains("restore"))
     }
 
+    @Test func testGrowthByAnotherAmountThanThePayloadIsNotProofAndNeverRestores() {
+        // "hello world" is 11 units; the field grew by 2.
+        let fake = Fake()
+        fake.probes = [probe(10), probe(12)]
+        fake.run()
+        #expect(fake.outcome == .pasted)
+        #expect(!fake.calls.contains("restore"))
+    }
+
+    @Test func testGrowthReportedByAnotherElementIsNotProofAndNeverRestores() {
+        let fake = Fake()
+        fake.probes = [probe(10), FocusProbe(identifier: "AXTextArea#2", charCount: 21)]
+        fake.run()
+        #expect(fake.outcome == .pasted)
+        #expect(!fake.calls.contains("restore"))
+    }
+
+    @Test func testAPasteThatChangedTheFieldGetsNoAXInsertOnTop() {
+        // The paste landed somewhere we can't measure exactly: an AX insert would be the text twice.
+        let fake = Fake()
+        fake.probes = [probe(10), probe(12), probe(12)]
+        fake.axInsertOK = true
+        fake.run()
+        #expect(!fake.calls.contains("axInsert"))
+        #expect(fake.outcome == .pasted)
+        #expect(!fake.calls.contains("restore"))
+    }
+
+    @Test func testAPostedPasteWhoseFieldCannotBeReadAfterwardsIsPastedNotManual() {
+        // Measurable before, unreadable after: "Press Cmd-V" would put it in twice.
+        let fake = Fake()
+        fake.probes = [probe(10), nil]
+        fake.axInsertOK = true
+        fake.run()
+        #expect(fake.outcome == .pasted)
+        #expect(!fake.calls.contains("axInsert"))
+        #expect(!fake.calls.contains("restore"))
+    }
+
     @Test func testAPasteThatCouldNotBePostedInAnAXBlindAppAsksForAManualPaste() {
         let fake = Fake()
         fake.pasteOK = false
@@ -205,6 +244,15 @@ import Testing
         off.run(long, appID: terminal, restore: false)
         #expect(off.outcome == .pasted)
         #expect(!off.calls.contains("restore"))
+    }
+
+    @Test func testAFullTypeOutWhoseFieldCannotBeReadAfterwardsIsPastedNotManual() {
+        let fake = Fake()
+        fake.probes = [probe(10), nil]
+        fake.run(long, appID: terminal)
+        #expect(fake.typedText == long)
+        #expect(fake.outcome == .pasted)
+        #expect(!fake.calls.contains("restore"))
     }
 
     @Test func testTextWithALineBreakIsPastedEvenForATypeOutApp() {

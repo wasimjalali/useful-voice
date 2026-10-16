@@ -276,11 +276,11 @@ describe('decideClipboardRestore: clipboard setting and type-out', () => {
     expect(decideClipboardRestore(typed)).toEqual({ delivered: true, restore: false, reason: 'typed' });
   });
 
-  it('does not count a typed delivery whose focus moved or could not be read', () => {
+  it('counts a typed delivery as typed whatever the focus afterwards (each batch checked it)', () => {
     const moved = landedPaste({ method: 'typeOut', target: terminal, focusAfter: notepad });
-    expect(decideClipboardRestore(moved)).toEqual({ delivered: false, restore: false, reason: 'focus-moved' });
+    expect(decideClipboardRestore(moved)).toEqual({ delivered: true, restore: false, reason: 'typed' });
     const unread = landedPaste({ method: 'typeOut', target: terminal, focusAfter: null });
-    expect(decideClipboardRestore(unread).delivered).toBe(false);
+    expect(decideClipboardRestore(unread)).toEqual({ delivered: true, restore: false, reason: 'typed' });
   });
 
   it('reports a typing run that failed as paste-failed', () => {

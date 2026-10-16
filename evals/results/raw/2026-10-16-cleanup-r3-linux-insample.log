@@ -1,0 +1,27 @@
+  rules+s1: 25/188
+  rules+s1: 50/188
+  rules+s1: 75/188
+  rules+s1: 100/188
+  rules+s1: 125/188
+  rules+s1: 150/188
+  rules+s1: 175/188
+  rules+sf: 25/188
+  rules+sf: 50/188
+  rules+sf: 75/188
+  rules+sf: 100/188
+  rules+sf: 125/188
+  rules+sf: 150/188
+  rules+sf: 175/188
+variant                  restraint edit acc rules-fix model-need  lost  lost%  added guard rej
+none                         100.0      1.0       2.1        0.0     0    0.0      0          
+rules                        100.0     48.0     100.0        0.0     0    0.0      0          
+rules+s1                      72.7     90.0      97.9       82.7     9    4.3      7          
+rules+s1+guard                92.0     88.0     100.0       76.9     4    2.1      1      69.7
+rules+sf                      89.8     82.0      93.8       71.2    16    3.7      1          
+rules+sf+guard                96.6     83.0      97.9       69.2     7    1.6      0      77.1
+latency rules+s1             median 363.4 ms  p95 648.9 ms  (n=188)
+latency rules+sf             median 609.9 ms  p95 1030.6 ms  (n=188)
+latency pooled s1            median 363.4 ms  p95 648.9 ms  (n=188)
+latency pooled sf            median 609.9 ms  p95 1030.6 ms  (n=188)
+peak RSS s1: 1634.6 MB
+peak RSS sf: 1010.8 MB

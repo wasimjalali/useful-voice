@@ -67,7 +67,20 @@ export class TrayController {
     formattingEnabled: true,
   };
 
-  constructor(private readonly handlers: TrayHandlers) {}
+  constructor(private readonly handlers: TrayHandlers) {
+    // `--e2e` only: the suite never shows a tray icon, so it reads the menu this
+    // controller would show (the same rule as `E2E` in `index.ts`: never when packaged).
+    if (process.argv.includes('--e2e') && !app.isPackaged) {
+      (globalThis as Record<string, unknown>).__uvTray = {
+        menu: () =>
+          buildTrayTemplate(this.state, this.handlers).map((item) => ({
+            label: item.label ?? '',
+            enabled: item.enabled !== false,
+            type: item.type ?? 'normal',
+          })),
+      };
+    }
+  }
 
   create(): void {
     this.tray = new Tray(this.icon(this.state.recording));

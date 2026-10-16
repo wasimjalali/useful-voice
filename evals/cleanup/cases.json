@@ -1,0 +1,2150 @@
+[
+ {
+  "id": "f01",
+  "group": "filler",
+  "topic": "general",
+  "app": "other",
+  "input": "So um I need to send the report today.",
+  "expected": "So I need to send the report today.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "f02",
+  "group": "filler",
+  "topic": "general",
+  "app": "other",
+  "input": "Um, can you check the build?",
+  "expected": "Can you check the build?",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "f03",
+  "group": "filler",
+  "topic": "general",
+  "app": "chat",
+  "input": "Hey, uh, are you free for lunch tomorrow?",
+  "expected": "Hey, are you free for lunch tomorrow?",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "f04",
+  "group": "filler",
+  "topic": "general",
+  "app": "document",
+  "input": "The results, um, show a clear improvement over the baseline.",
+  "expected": "The results, show a clear improvement over the baseline.",
+  "accept": [
+   "The results show a clear improvement over the baseline."
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "f05",
+  "group": "filler",
+  "topic": "general",
+  "app": "chat",
+  "input": "I think we should, uh, wait until Monday.",
+  "expected": "I think we should, wait until Monday.",
+  "accept": [
+   "I think we should wait until Monday."
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "f06",
+  "group": "filler",
+  "topic": "general",
+  "app": "document",
+  "input": "We reviewed the, um, quarterly numbers and found no issues.",
+  "expected": "We reviewed the quarterly numbers and found no issues.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "f07",
+  "group": "filler",
+  "topic": "general",
+  "app": "chat",
+  "input": "Okay, hmm, that makes sense.",
+  "expected": "Okay, that makes sense.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "f08",
+  "group": "filler",
+  "topic": "general",
+  "app": "other",
+  "input": "Er, I forgot what I was going to say.",
+  "expected": "I forgot what I was going to say.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "f09",
+  "group": "filler",
+  "topic": "general",
+  "app": "other",
+  "input": "The meeting is at noon, um.",
+  "expected": "The meeting is at noon.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "f10",
+  "group": "filler",
+  "topic": "general",
+  "app": "chat",
+  "input": "Uh, sure, I can do that.",
+  "expected": "Sure, I can do that.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "f11",
+  "group": "filler",
+  "topic": "general",
+  "app": "document",
+  "input": "The plan has three phases. Um, the first covers discovery.",
+  "expected": "The plan has three phases. The first covers discovery.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "f12",
+  "group": "filler",
+  "topic": "general",
+  "app": "chat",
+  "input": "Thanks, um, I really appreciate it.",
+  "expected": "Thanks, I really appreciate it.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "f13",
+  "group": "filler",
+  "topic": "general",
+  "app": "other",
+  "input": "I went to the store and, uh, bought some milk.",
+  "expected": "I went to the store and bought some milk.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "f14",
+  "group": "filler",
+  "topic": "general",
+  "app": "document",
+  "input": "Our approach is, um, to start small and measure everything.",
+  "expected": "Our approach is to start small and measure everything.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "f15",
+  "group": "filler",
+  "topic": "general",
+  "app": "chat",
+  "input": "Um, uh, hi, it's me again.",
+  "expected": "Hi, it's me again.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "f16",
+  "group": "filler",
+  "topic": "general",
+  "app": "other",
+  "input": "We could ship it Friday, erm, or Monday if needed.",
+  "expected": "We could ship it Friday, or Monday if needed.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "f17",
+  "group": "filler",
+  "topic": "general",
+  "app": "document",
+  "input": "Revenue grew, um, twelve percent year over year.",
+  "expected": "Revenue grew twelve percent year over year.",
+  "accept": [
+   "Revenue grew 12% year over year.",
+   "Revenue grew, twelve percent year over year.",
+   "Revenue grew 12 percent year over year."
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "f18",
+  "group": "filler",
+  "topic": "general",
+  "app": "chat",
+  "input": "Do you want to, uh, grab coffee later?",
+  "expected": "Do you want to grab coffee later?",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "f19",
+  "group": "filler",
+  "topic": "general",
+  "app": "other",
+  "input": "Um. Okay. Let's begin.",
+  "expected": "Okay. Let's begin.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "f20",
+  "group": "filler",
+  "topic": "general",
+  "app": "document",
+  "input": "This is, uh, honestly the best option we have.",
+  "expected": "This is honestly the best option we have.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "f21",
+  "group": "filler",
+  "topic": "general",
+  "app": "chat",
+  "input": "So hmm I'm not sure about that.",
+  "expected": "So I'm not sure about that.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "f22",
+  "group": "filler",
+  "topic": "general",
+  "app": "other",
+  "input": "The invoice, uh, was sent on Tuesday and, um, paid on Thursday.",
+  "expected": "The invoice, was sent on Tuesday and paid on Thursday.",
+  "accept": [
+   "The invoice was sent on Tuesday and paid on Thursday."
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "s01",
+  "group": "stutter",
+  "topic": "general",
+  "app": "chat",
+  "input": "I I think we should go.",
+  "expected": "I think we should go.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "s02",
+  "group": "stutter",
+  "topic": "general",
+  "app": "other",
+  "input": "We need to to finish this today.",
+  "expected": "We need to finish this today.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "s03",
+  "group": "stutter",
+  "topic": "general",
+  "app": "document",
+  "input": "The the report is due Friday.",
+  "expected": "The report is due Friday.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "s04",
+  "group": "stutter",
+  "topic": "general",
+  "app": "chat",
+  "input": "I, I just wanted to say thanks.",
+  "expected": "I just wanted to say thanks.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "s05",
+  "group": "stutter",
+  "topic": "general",
+  "app": "other",
+  "input": "Can you can you send me the file?",
+  "expected": "Can you send me the file?",
+  "accept": [
+   "Can you can you send me the file?"
+  ],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "s06",
+  "group": "stutter",
+  "topic": "general",
+  "app": "document",
+  "input": "It is going going going to be a long week.",
+  "expected": "It is going to be a long week.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "s07",
+  "group": "stutter",
+  "topic": "general",
+  "app": "chat",
+  "input": "I'm I'm not sure about this.",
+  "expected": "I'm not sure about this.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "s08",
+  "group": "stutter",
+  "topic": "general",
+  "app": "other",
+  "input": "Please send it to the the team by noon.",
+  "expected": "Please send it to the team by noon.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "s09",
+  "group": "stutter",
+  "topic": "general",
+  "app": "chat",
+  "input": "And and then we left.",
+  "expected": "And then we left.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "s10",
+  "group": "stutter",
+  "topic": "general",
+  "app": "document",
+  "input": "We we should review the the draft before Monday.",
+  "expected": "We should review the draft before Monday.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "s11",
+  "group": "stutter",
+  "topic": "general",
+  "app": "other",
+  "input": "I um I think that works.",
+  "expected": "I think that works.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "s12",
+  "group": "stutter",
+  "topic": "general",
+  "app": "chat",
+  "input": "It's a a good idea.",
+  "expected": "It's a good idea.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "c01",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "chat",
+  "input": "Let's meet on Monday, no wait, Tuesday.",
+  "expected": "Let's meet on Tuesday.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "c02",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "other",
+  "input": "Let's ship it Thursday, no, Friday.",
+  "expected": "Let's ship it Friday.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "c03",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "chat",
+  "input": "The meeting is at three, I mean four.",
+  "expected": "The meeting is at four.",
+  "accept": [
+   "The meeting is at 4.",
+   "The meeting is at 4 p.m."
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "c04",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "document",
+  "input": "The budget is four thousand, sorry, forty thousand dollars.",
+  "expected": "The budget is forty thousand dollars.",
+  "accept": [
+   "The budget is $40,000.",
+   "The budget is 40,000 dollars."
+  ],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "c05",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "chat",
+  "input": "Send it to Bob, no wait, to Alice.",
+  "expected": "Send it to Alice.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "c06",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "other",
+  "input": "I'll call you at noon, actually, at one.",
+  "expected": "I'll call you at one.",
+  "accept": [
+   "I'll call you at 1.",
+   "I'll call you at 1 p.m."
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "c07",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "chat",
+  "input": "We're meeting in room twelve, scratch that, room fourteen.",
+  "expected": "We're meeting in room fourteen.",
+  "accept": [
+   "We're meeting in room 14."
+  ],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "c08",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "document",
+  "input": "The deadline is the fifth, or rather the sixth of March.",
+  "expected": "The deadline is the sixth of March.",
+  "accept": [
+   "The deadline is March 6.",
+   "The deadline is the 6th of March."
+  ],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "c09",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "other",
+  "input": "I'll be there on Wednesday, no, Thursday morning.",
+  "expected": "I'll be there on Thursday morning.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "c10",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "chat",
+  "input": "Order two pizzas, make that three pizzas.",
+  "expected": "Order three pizzas.",
+  "accept": [
+   "Order 3 pizzas."
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "c11",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "document",
+  "input": "The report was written by John, sorry, by Jane.",
+  "expected": "The report was written by Jane.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "c12",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "chat",
+  "input": "Let's use blue, no wait, green for the button.",
+  "expected": "Let's use green for the button.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "c13",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "other",
+  "input": "The flight leaves at nine, I mean ten.",
+  "expected": "The flight leaves at ten.",
+  "accept": [
+   "The flight leaves at 10."
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "c14",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "chat",
+  "input": "Can you meet Friday? Sorry, Saturday?",
+  "expected": "Can you meet Saturday?",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "c15",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "document",
+  "input": "We have fifty users, actually, sixty users.",
+  "expected": "We have sixty users.",
+  "accept": [
+   "We have 60 users."
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "c16",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "chat",
+  "input": "Take the left turn, no, the right turn at the lights.",
+  "expected": "Take the right turn at the lights.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "c17",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "other",
+  "input": "Call me at five five five, oh wait, five five six.",
+  "expected": "Call me at five five six.",
+  "accept": [
+   "Call me at 556."
+  ],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "c18",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "chat",
+  "input": "I'll bring the salad, no, the dessert.",
+  "expected": "I'll bring the dessert.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "c19",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "document",
+  "input": "The venue is in Berlin, no wait, in Munich.",
+  "expected": "The venue is in Munich.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "c20",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "other",
+  "input": "Um so I need to send the the report by uh Friday, no wait, make that Thursday.",
+  "expected": "So I need to send the report by Thursday.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "c21",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "chat",
+  "input": "Let's go with plan A, I mean plan B.",
+  "expected": "Let's go with plan B.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "c22",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "document",
+  "input": "Section two, no, section three covers pricing.",
+  "expected": "Section three covers pricing.",
+  "accept": [
+   "Section 3 covers pricing."
+  ],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "c23",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "other",
+  "input": "The package weighs five kilos, sorry, fifteen kilos.",
+  "expected": "The package weighs fifteen kilos.",
+  "accept": [
+   "The package weighs 15 kilos.",
+   "The package weighs 15 kg."
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "c24",
+  "group": "self_correction",
+  "topic": "general",
+  "app": "chat",
+  "input": "I'll see you on the tenth, no wait, the twelfth.",
+  "expected": "I'll see you on the twelfth.",
+  "accept": [
+   "I'll see you on the 12th."
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "n01",
+  "group": "format",
+  "topic": "email",
+  "app": "other",
+  "input": "You can reach me at john at example dot com.",
+  "expected": "You can reach me at john@example.com.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "n02",
+  "group": "format",
+  "topic": "email",
+  "app": "other",
+  "input": "Send it to sarah dot lee at example dot org please.",
+  "expected": "Send it to sarah.lee@example.org please.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "n03",
+  "group": "format",
+  "topic": "general",
+  "app": "other",
+  "input": "The site is example dot com slash pricing.",
+  "expected": "The site is example.com/pricing.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "n04",
+  "group": "format",
+  "topic": "general",
+  "app": "document",
+  "input": "The total is twelve hundred dollars.",
+  "expected": "The total is $1,200.",
+  "accept": [
+   "The total is $1200.",
+   "The total is 1,200 dollars."
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "n05",
+  "group": "format",
+  "topic": "general",
+  "app": "other",
+  "input": "The meeting is on March third at two thirty p m.",
+  "expected": "The meeting is on March 3rd at 2:30 p.m.",
+  "accept": [
+   "The meeting is on March 3 at 2:30 PM.",
+   "The meeting is on March 3rd at 2:30 PM.",
+   "The meeting is on March 3 at 2:30 p.m."
+  ],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "n06",
+  "group": "format",
+  "topic": "general",
+  "app": "chat",
+  "input": "My number is five five five, oh one two three.",
+  "expected": "My number is 555-0123.",
+  "accept": [
+   "My number is 555 0123.",
+   "My number is 5550123."
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "n07",
+  "group": "format",
+  "topic": "general",
+  "app": "document",
+  "input": "About twenty five percent of users opted in.",
+  "expected": "About 25% of users opted in.",
+  "accept": [
+   "About 25 percent of users opted in."
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "n08",
+  "group": "format",
+  "topic": "email",
+  "app": "other",
+  "input": "Write to support at help dot example dot com.",
+  "expected": "Write to support@help.example.com.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "n09",
+  "group": "format",
+  "topic": "general",
+  "app": "document",
+  "input": "The event runs from nine a m to five p m.",
+  "expected": "The event runs from 9 a.m. to 5 p.m.",
+  "accept": [
+   "The event runs from 9 AM to 5 PM.",
+   "The event runs from 9 a.m. to 5 p.m"
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "n10",
+  "group": "format",
+  "topic": "general",
+  "app": "other",
+  "input": "The file is two point five gigabytes.",
+  "expected": "The file is 2.5 gigabytes.",
+  "accept": [
+   "The file is 2.5 GB."
+  ],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "n11",
+  "group": "format",
+  "topic": "general",
+  "app": "chat",
+  "input": "Meet me at four thirty.",
+  "expected": "Meet me at 4:30.",
+  "accept": [
+   "Meet me at 4:30 p.m."
+  ],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "n12",
+  "group": "format",
+  "topic": "general",
+  "app": "document",
+  "input": "Revenue was three point two million dollars.",
+  "expected": "Revenue was $3.2 million.",
+  "accept": [
+   "Revenue was 3.2 million dollars."
+  ],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "n13",
+  "group": "format",
+  "topic": "email",
+  "app": "other",
+  "input": "My email is mike underscore jones at example dot com.",
+  "expected": "My email is mike_jones@example.com.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "n14",
+  "group": "format",
+  "topic": "general",
+  "app": "other",
+  "input": "Version two point one is out.",
+  "expected": "Version 2.1 is out.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "m01",
+  "group": "email",
+  "topic": "email",
+  "app": "email",
+  "input": "Hi Sarah, um, can you send the numbers by Friday? Thanks, John.",
+  "expected": "Hi Sarah, can you send the numbers by Friday? Thanks, John.",
+  "accept": [
+   "Hi Sarah,\n\nCan you send the numbers by Friday?\n\nThanks,\nJohn"
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "m02",
+  "group": "email",
+  "topic": "email",
+  "app": "email",
+  "input": "Hello team, uh, the release is delayed until Monday. Best regards, Priya.",
+  "expected": "Hello team, the release is delayed until Monday. Best regards, Priya.",
+  "accept": [
+   "Hello team,\n\nThe release is delayed until Monday.\n\nBest regards,\nPriya"
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "m03",
+  "group": "email",
+  "topic": "email",
+  "app": "email",
+  "input": "Dear Mr. Lee, I I wanted to confirm our meeting on Tuesday. Sincerely, Anna Kim.",
+  "expected": "Dear Mr. Lee, I wanted to confirm our meeting on Tuesday. Sincerely, Anna Kim.",
+  "accept": [
+   "Dear Mr. Lee,\n\nI wanted to confirm our meeting on Tuesday.\n\nSincerely,\nAnna Kim"
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "m04",
+  "group": "email",
+  "topic": "email",
+  "app": "email",
+  "input": "Hi Tom, thanks for the quick reply. Um, I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+  "expected": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+  "accept": [
+   "Hi Tom,\n\nThanks for the quick reply. I'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave"
+  ],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "m05",
+  "group": "email",
+  "topic": "email",
+  "app": "email",
+  "input": "Hi all, the offsite is on Thursday, no wait, Friday. Please confirm by Wednesday. Thanks, Maria.",
+  "expected": "Hi all, the offsite is on Friday. Please confirm by Wednesday. Thanks, Maria.",
+  "accept": [
+   "Hi all,\n\nThe offsite is on Friday. Please confirm by Wednesday.\n\nThanks,\nMaria"
+  ],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "m06",
+  "group": "email",
+  "topic": "email",
+  "app": "email",
+  "input": "Hey Chris, uh, just checking in on the proposal. Talk soon, Lena.",
+  "expected": "Hey Chris, just checking in on the proposal. Talk soon, Lena.",
+  "accept": [
+   "Hey Chris,\n\nJust checking in on the proposal.\n\nTalk soon,\nLena"
+  ],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "g01",
+  "group": "coding_agent",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Um, can you refactor the auth middleware to use async await?",
+  "expected": "Can you refactor the auth middleware to use async await?",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "g02",
+  "group": "coding_agent",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Please add a unit test for the the parseDate function.",
+  "expected": "Please add a unit test for the parseDate function.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "g03",
+  "group": "coding_agent",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Run npm test and, uh, fix any failing specs.",
+  "expected": "Run npm test and fix any failing specs.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "g04",
+  "group": "coding_agent",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Rename the function to fooBar, no wait, bazQux.",
+  "expected": "Rename the function to bazQux.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "g05",
+  "group": "coding_agent",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Open src/app.ts and uh check why the router returns a 404.",
+  "expected": "Open src/app.ts and check why the router returns a 404.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "g06",
+  "group": "coding_agent",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Can you, um, look at the failing CI job on the main branch?",
+  "expected": "Can you look at the failing CI job on the main branch?",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "g07",
+  "group": "coding_agent",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Add a --verbose flag to the CLI, hmm, and document it in the README.",
+  "expected": "Add a --verbose flag to the CLI, and document it in the README.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "g08",
+  "group": "coding_agent",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Er, update the config to use port 8080, sorry, 8081.",
+  "expected": "Update the config to use port 8081.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "g09",
+  "group": "coding_agent",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Create a new branch called feature slash login, uh, from main.",
+  "expected": "Create a new branch called feature/login from main.",
+  "accept": [
+   "Create a new branch called feature/login, from main."
+  ],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "g10",
+  "group": "coding_agent",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Don't change the public API, um, just the internal helpers.",
+  "expected": "Don't change the public API, just the internal helpers.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "g11",
+  "group": "coding_agent",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Use useEffect not not useLayoutEffect in the Header component.",
+  "expected": "Use useEffect not useLayoutEffect in the Header component.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "g12",
+  "group": "coding_agent",
+  "topic": "coding",
+  "app": "coding",
+  "input": "The bug is in the retry logic, I think, uh, in utils/http.ts line 42.",
+  "expected": "The bug is in the retry logic, I think, in utils/http.ts line 42.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "g13",
+  "group": "coding_agent",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Make the query use an index on user_id, scratch that, on created_at.",
+  "expected": "Make the query use an index on created_at.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "g14",
+  "group": "coding_agent",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Write a script that, um, reads the CSV and prints the top ten rows.",
+  "expected": "Write a script that reads the CSV and prints the top ten rows.",
+  "accept": [
+   "Write a script that reads the CSV and prints the top 10 rows."
+  ],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "g15",
+  "group": "coding_agent",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Why does the build fail with ERR_MODULE_NOT_FOUND, uh, after the upgrade?",
+  "expected": "Why does the build fail with ERR_MODULE_NOT_FOUND after the upgrade?",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "g16",
+  "group": "coding_agent",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Delete the unused imports in in src/index.ts.",
+  "expected": "Delete the unused imports in src/index.ts.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "p01",
+  "group": "file_mention",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Look at app dot ts and the readme dot md.",
+  "expected": "Look at app.ts and the readme.md.",
+  "accept": [
+   "Look at app.ts and the README.md."
+  ],
+  "split": "dev",
+  "needs_edit": true
+ },
+ {
+  "id": "p02",
+  "group": "file_mention",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Open the file at src slash utils slash date dot ts.",
+  "expected": "Open the file at src/utils/date.ts.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "p03",
+  "group": "file_mention",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Check package dot json, um, for the test script.",
+  "expected": "Check package.json for the test script.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "p04",
+  "group": "file_mention",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Edit @src/server.ts, uh, to add a health route.",
+  "expected": "Edit @src/server.ts to add a health route.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "p05",
+  "group": "file_mention",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Compare index dot html with the the old version.",
+  "expected": "Compare index.html with the old version.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "p06",
+  "group": "file_mention",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Update docs/setup.md and and the changelog.",
+  "expected": "Update docs/setup.md and the changelog.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": true
+ },
+ {
+  "id": "k01",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "Thanks for the update. I will review it tonight and send notes in the morning.",
+  "expected": "Thanks for the update. I will review it tonight and send notes in the morning.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k02",
+  "group": "clean",
+  "topic": "general",
+  "app": "chat",
+  "input": "Hey, are you free for lunch tomorrow?",
+  "expected": "Hey, are you free for lunch tomorrow?",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k03",
+  "group": "clean",
+  "topic": "general",
+  "app": "document",
+  "input": "The results show a clear improvement over the baseline.",
+  "expected": "The results show a clear improvement over the baseline.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k04",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "Okay.",
+  "expected": "Okay.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k05",
+  "group": "clean",
+  "topic": "general",
+  "app": "chat",
+  "input": "Sounds good, see you then!",
+  "expected": "Sounds good, see you then!",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k06",
+  "group": "clean",
+  "topic": "general",
+  "app": "document",
+  "input": "We reviewed the quarterly numbers and found no issues. The forecast for next year looks stable.",
+  "expected": "We reviewed the quarterly numbers and found no issues. The forecast for next year looks stable.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k07",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "I think we should wait until Monday.",
+  "expected": "I think we should wait until Monday.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k08",
+  "group": "clean",
+  "topic": "general",
+  "app": "chat",
+  "input": "It was, like, really cold outside, you know?",
+  "expected": "It was, like, really cold outside, you know?",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k09",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "He said that that was the last time he would ever help.",
+  "expected": "He said that that was the last time he would ever help.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k10",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "She had had enough of the noise.",
+  "expected": "She had had enough of the noise.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k11",
+  "group": "clean",
+  "topic": "general",
+  "app": "chat",
+  "input": "No, no, I did not say that.",
+  "expected": "No, no, I did not say that.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k12",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "It was a very, very good meal.",
+  "expected": "It was a very, very good meal.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k13",
+  "group": "clean",
+  "topic": "general",
+  "app": "document",
+  "input": "I mean what I said: the plan needs a second review.",
+  "expected": "I mean what I said: the plan needs a second review.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k14",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "Well, it depends on what you mean by ready.",
+  "expected": "Well, it depends on what you mean by ready.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k15",
+  "group": "clean",
+  "topic": "general",
+  "app": "chat",
+  "input": "Can you believe it? Uh-huh, I know.",
+  "expected": "Can you believe it? Uh-huh, I know.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k16",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "The ER was busy last night.",
+  "expected": "The ER was busy last night.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k17",
+  "group": "clean",
+  "topic": "general",
+  "app": "document",
+  "input": "Our strategy has three parts: discovery, delivery and review.",
+  "expected": "Our strategy has three parts: discovery, delivery and review.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k18",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "I'm not sure if we should go, but I'll ask Maria.",
+  "expected": "I'm not sure if we should go, but I'll ask Maria.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k19",
+  "group": "clean",
+  "topic": "general",
+  "app": "chat",
+  "input": "Haha, that's funny.",
+  "expected": "Haha, that's funny.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k20",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "Please send the signed copy to legal by the end of the week.",
+  "expected": "Please send the signed copy to legal by the end of the week.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k21",
+  "group": "clean",
+  "topic": "general",
+  "app": "document",
+  "input": "In 2024 the company opened offices in Lisbon, Madrid and Berlin.",
+  "expected": "In 2024 the company opened offices in Lisbon, Madrid and Berlin.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k22",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "What time does the train leave?",
+  "expected": "What time does the train leave?",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k23",
+  "group": "clean",
+  "topic": "general",
+  "app": "chat",
+  "input": "gonna grab a coffee, back in 10",
+  "expected": "gonna grab a coffee, back in 10",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k24",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "lol ok",
+  "expected": "lol ok",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k25",
+  "group": "clean",
+  "topic": "general",
+  "app": "document",
+  "input": "The committee, which met on Tuesday, approved the budget.",
+  "expected": "The committee, which met on Tuesday, approved the budget.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k26",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "Good morning, everyone. Let's get started.",
+  "expected": "Good morning, everyone. Let's get started.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k27",
+  "group": "clean",
+  "topic": "general",
+  "app": "chat",
+  "input": "I love this song so much.",
+  "expected": "I love this song so much.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k28",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "Do not forget to lock the door when you leave.",
+  "expected": "Do not forget to lock the door when you leave.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k29",
+  "group": "clean",
+  "topic": "general",
+  "app": "document",
+  "input": "The patient reported mild headaches and occasional dizziness.",
+  "expected": "The patient reported mild headaches and occasional dizziness.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k30",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "First, preheat the oven. Second, mix the dry ingredients. Third, add the eggs.",
+  "expected": "First, preheat the oven. Second, mix the dry ingredients. Third, add the eggs.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k31",
+  "group": "clean",
+  "topic": "general",
+  "app": "chat",
+  "input": "Wait, what? When did that happen?",
+  "expected": "Wait, what? When did that happen?",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k32",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "Hmm, interesting question.",
+  "expected": "Hmm, interesting question.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k33",
+  "group": "clean",
+  "topic": "general",
+  "app": "document",
+  "input": "This sentence has no mistakes and should come back exactly as it was.",
+  "expected": "This sentence has no mistakes and should come back exactly as it was.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k34",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "Tomorrow's weather: sunny, with a high of 24 degrees.",
+  "expected": "Tomorrow's weather: sunny, with a high of 24 degrees.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k35",
+  "group": "clean",
+  "topic": "general",
+  "app": "chat",
+  "input": "We should totally do this again sometime.",
+  "expected": "We should totally do this again sometime.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k36",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "I'll send you the link after the call.",
+  "expected": "I'll send you the link after the call.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k37",
+  "group": "clean",
+  "topic": "general",
+  "app": "document",
+  "input": "Please see the attached report for details.",
+  "expected": "Please see the attached report for details.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k38",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "I was like, no way, and she was like, yes way.",
+  "expected": "I was like, no way, and she was like, yes way.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k39",
+  "group": "clean",
+  "topic": "general",
+  "app": "chat",
+  "input": "Thank you so much for your help today!",
+  "expected": "Thank you so much for your help today!",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k40",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "The quick brown fox jumps over the lazy dog.",
+  "expected": "The quick brown fox jumps over the lazy dog.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k41",
+  "group": "clean",
+  "topic": "general",
+  "app": "document",
+  "input": "Customers who bought this item also bought the extended warranty.",
+  "expected": "Customers who bought this item also bought the extended warranty.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k42",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "It's 5 o'clock somewhere.",
+  "expected": "It's 5 o'clock somewhere.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k43",
+  "group": "clean",
+  "topic": "number",
+  "app": "document",
+  "input": "The invoice is $1,240 and it is due on 12 March.",
+  "expected": "The invoice is $1,240 and it is due on 12 March.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k44",
+  "group": "clean",
+  "topic": "number",
+  "app": "other",
+  "input": "Call me at 555-0123 after 4:30 p.m.",
+  "expected": "Call me at 555-0123 after 4:30 p.m.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k45",
+  "group": "clean",
+  "topic": "number",
+  "app": "document",
+  "input": "About 25% of users opted in during the first 7 days.",
+  "expected": "About 25% of users opted in during the first 7 days.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k46",
+  "group": "clean",
+  "topic": "number",
+  "app": "other",
+  "input": "The meeting is on March 3rd at 2:30 PM.",
+  "expected": "The meeting is on March 3rd at 2:30 PM.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k47",
+  "group": "clean",
+  "topic": "number",
+  "app": "chat",
+  "input": "I have 3 cats and 2 dogs.",
+  "expected": "I have 3 cats and 2 dogs.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k48",
+  "group": "clean",
+  "topic": "number",
+  "app": "document",
+  "input": "Revenue was $3.2 million in Q3, up 12% from last year.",
+  "expected": "Revenue was $3.2 million in Q3, up 12% from last year.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k49",
+  "group": "clean",
+  "topic": "number",
+  "app": "other",
+  "input": "Room 14 is on the second floor.",
+  "expected": "Room 14 is on the second floor.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k50",
+  "group": "clean",
+  "topic": "number",
+  "app": "other",
+  "input": "Version 2.1 is out, and version 3 is coming in the spring.",
+  "expected": "Version 2.1 is out, and version 3 is coming in the spring.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k51",
+  "group": "clean",
+  "topic": "number",
+  "app": "document",
+  "input": "The file is 2.5 GB and takes about 10 minutes to download.",
+  "expected": "The file is 2.5 GB and takes about 10 minutes to download.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k52",
+  "group": "clean",
+  "topic": "email",
+  "app": "email",
+  "input": "Hi Sarah, can you send the numbers by Friday? Thanks, John.",
+  "expected": "Hi Sarah, can you send the numbers by Friday? Thanks, John.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k53",
+  "group": "clean",
+  "topic": "email",
+  "app": "email",
+  "input": "Hello team, the release is delayed until Monday. Best regards, Priya.",
+  "expected": "Hello team, the release is delayed until Monday. Best regards, Priya.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k54",
+  "group": "clean",
+  "topic": "email",
+  "app": "email",
+  "input": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+  "expected": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k55",
+  "group": "clean",
+  "topic": "email",
+  "app": "email",
+  "input": "Dear Mr. Lee, I wanted to confirm our meeting on Tuesday. Sincerely, Anna Kim.",
+  "expected": "Dear Mr. Lee, I wanted to confirm our meeting on Tuesday. Sincerely, Anna Kim.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k56",
+  "group": "clean",
+  "topic": "email",
+  "app": "email",
+  "input": "You can reach me at john@example.com.",
+  "expected": "You can reach me at john@example.com.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k57",
+  "group": "clean",
+  "topic": "email",
+  "app": "email",
+  "input": "Hey Chris,\n\nJust checking in on the proposal.\n\nTalk soon,\nLena",
+  "expected": "Hey Chris,\n\nJust checking in on the proposal.\n\nTalk soon,\nLena",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k58",
+  "group": "clean",
+  "topic": "email",
+  "app": "email",
+  "input": "Hi all, the offsite is on Friday. Please confirm by Wednesday. Thanks, Maria.",
+  "expected": "Hi all, the offsite is on Friday. Please confirm by Wednesday. Thanks, Maria.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k59",
+  "group": "clean",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Can you refactor the auth middleware to use async await?",
+  "expected": "Can you refactor the auth middleware to use async await?",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k60",
+  "group": "clean",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Run npm test and fix any failing specs.",
+  "expected": "Run npm test and fix any failing specs.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k61",
+  "group": "clean",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Add a --verbose flag to the CLI and document it in the README.",
+  "expected": "Add a --verbose flag to the CLI and document it in the README.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k62",
+  "group": "clean",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Rename the function to bazQux in src/utils/date.ts.",
+  "expected": "Rename the function to bazQux in src/utils/date.ts.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k63",
+  "group": "clean",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Why does the build fail with ERR_MODULE_NOT_FOUND after the upgrade?",
+  "expected": "Why does the build fail with ERR_MODULE_NOT_FOUND after the upgrade?",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k64",
+  "group": "clean",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Use useEffect, not useLayoutEffect, in the Header component.",
+  "expected": "Use useEffect, not useLayoutEffect, in the Header component.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k65",
+  "group": "clean",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Create a new branch called feature/login from main.",
+  "expected": "Create a new branch called feature/login from main.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k66",
+  "group": "clean",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Don't change the public API, just the internal helpers.",
+  "expected": "Don't change the public API, just the internal helpers.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k67",
+  "group": "clean",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Write a script that reads the CSV and prints the top 10 rows.",
+  "expected": "Write a script that reads the CSV and prints the top 10 rows.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k68",
+  "group": "clean",
+  "topic": "coding",
+  "app": "coding",
+  "input": "The bug is in the retry logic, I think, in utils/http.ts line 42.",
+  "expected": "The bug is in the retry logic, I think, in utils/http.ts line 42.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k69",
+  "group": "clean",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Run git commit --no-verify only if the hook is broken, and tell me first.",
+  "expected": "Run git commit --no-verify only if the hook is broken, and tell me first.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k70",
+  "group": "clean",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Set DEBUG=true and run npm run dev -- --port 8081.",
+  "expected": "Set DEBUG=true and run npm run dev -- --port 8081.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k71",
+  "group": "clean",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Please update the SELECT query to join users on user_id and order by created_at DESC.",
+  "expected": "Please update the SELECT query to join users on user_id and order by created_at DESC.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k72",
+  "group": "clean",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Make sure fooBar_baz and FooBarBaz are not both exported.",
+  "expected": "Make sure fooBar_baz and FooBarBaz are not both exported.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k73",
+  "group": "clean",
+  "topic": "coding",
+  "app": "coding",
+  "input": "Explain what Array.prototype.reduce does with an empty array.",
+  "expected": "Explain what Array.prototype.reduce does with an empty array.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k74",
+  "group": "clean",
+  "topic": "file",
+  "app": "coding",
+  "input": "Look at @src/app.ts and the README.md.",
+  "expected": "Look at @src/app.ts and the README.md.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k75",
+  "group": "clean",
+  "topic": "file",
+  "app": "coding",
+  "input": "Edit @src/server.ts to add a health route.",
+  "expected": "Edit @src/server.ts to add a health route.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k76",
+  "group": "clean",
+  "topic": "file",
+  "app": "coding",
+  "input": "Check package.json for the test script.",
+  "expected": "Check package.json for the test script.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k77",
+  "group": "clean",
+  "topic": "file",
+  "app": "coding",
+  "input": "Compare index.html with docs/old/index.html and list the differences.",
+  "expected": "Compare index.html with docs/old/index.html and list the differences.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k78",
+  "group": "clean",
+  "topic": "file",
+  "app": "coding",
+  "input": "Open ~/projects/useful-voice/Makefile and C:\\Users\\alex\\notes.txt.",
+  "expected": "Open ~/projects/useful-voice/Makefile and C:\\Users\\alex\\notes.txt.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k79",
+  "group": "clean",
+  "topic": "file",
+  "app": "coding",
+  "input": "The config lives in .github/workflows/ci.yml, not in the root.",
+  "expected": "The config lives in .github/workflows/ci.yml, not in the root.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k80",
+  "group": "clean",
+  "topic": "file",
+  "app": "coding",
+  "input": "Update docs/setup.md and the CHANGELOG.md.",
+  "expected": "Update docs/setup.md and the CHANGELOG.md.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k81",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "Dr. Smith will see you at 9 a.m. on Monday; please bring your ID.",
+  "expected": "Dr. Smith will see you at 9 a.m. on Monday; please bring your ID.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k82",
+  "group": "clean",
+  "topic": "general",
+  "app": "chat",
+  "input": "See https://example.com/pricing?plan=pro for the details.",
+  "expected": "See https://example.com/pricing?plan=pro for the details.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k83",
+  "group": "clean",
+  "topic": "general",
+  "app": "document",
+  "input": "\"We will not stop,\" she said. \"Not until it's done.\"",
+  "expected": "\"We will not stop,\" she said. \"Not until it's done.\"",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k84",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "Buy milk, eggs, bread and butter.",
+  "expected": "Buy milk, eggs, bread and butter.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k85",
+  "group": "clean",
+  "topic": "general",
+  "app": "document",
+  "input": "The first paragraph introduces the topic.\n\nThe second paragraph gives an example.",
+  "expected": "The first paragraph introduces the topic.\n\nThe second paragraph gives an example.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k86",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "Yes.",
+  "expected": "Yes.",
+  "accept": [],
+  "split": "test",
+  "needs_edit": false
+ },
+ {
+  "id": "k87",
+  "group": "clean",
+  "topic": "general",
+  "app": "chat",
+  "input": "No problem at all, happy to help.",
+  "expected": "No problem at all, happy to help.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ },
+ {
+  "id": "k88",
+  "group": "clean",
+  "topic": "general",
+  "app": "other",
+  "input": "I can't believe it's already October.",
+  "expected": "I can't believe it's already October.",
+  "accept": [],
+  "split": "dev",
+  "needs_edit": false
+ }
+]

@@ -159,6 +159,8 @@ struct StreamBubble: View {
         if let language = StreamFormat.language(forCode: record.language) { parts.append("\u{2068}\(language.name)\u{2069}") }
         parts.append(StreamFormat.words(DictationOutcome.wordCount(of: record.text)))
         if let seconds = record.durationSeconds { parts.append(StreamFormat.duration(seconds)) }
+        // The kind of app it was made for ("Email"); Other is the default and says nothing.
+        if let category = record.appCategory, category != .other { parts.append(category.displayName) }
         return "\u{2066}" + parts.joined(separator: " \u{00B7} ") + "\u{2069}"
     }
 

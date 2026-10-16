@@ -9,6 +9,7 @@
  */
 
 import type { DictationError } from '../core/models.js';
+import type { AppCategory, AutoSendKey, FormattingStyle } from '../core/apps/appCategory.js';
 
 export type { HudFrame } from '../core/hudModel.js';
 
@@ -87,6 +88,22 @@ export interface SettingsDTO {
   dictionaryBiasBudget: number;
   appearance: 'system' | 'light' | 'dark';
   dailyWordGoal: number;
+  /** Put the previous clipboard back after a proven paste (default on). */
+  restorePreviousClipboard: boolean;
+  /** Apps that get the dictation typed out instead of pasted. */
+  typeOutApps: string[];
+  /** Read-only: apps dictated into this session, newest first. Never saved. */
+  recentTargetApps?: string[];
+  /** Format each dictation for the app it goes into. */
+  appAwareFormatting: boolean;
+  /** The style picked per category; a category without one uses its default. */
+  categoryStyles: Partial<Record<AppCategory, FormattingStyle>>;
+  /** Used for email sign-offs only. */
+  userName: string;
+  /** The key pressed after a landed delivery, per category; absent means off. */
+  autoSend: Partial<Record<AppCategory, AutoSendKey>>;
+  /** Per-app category choices, keyed by executable name. */
+  appCategories: Record<string, AppCategory>;
   hasApiKey: boolean;
 }
 
@@ -96,6 +113,10 @@ export interface HistoryEntryDTO {
   rawText: string;
   language: string;
   appName: string;
+  /** The app's executable name, when the dictation went to a hotkey target. */
+  appID?: string;
+  /** The category it was formatted for. Absent on history from before app-aware formatting. */
+  category?: string;
   durationSeconds: number;
   mode: string;
   createdAt: string;

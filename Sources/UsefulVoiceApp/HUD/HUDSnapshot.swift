@@ -65,6 +65,7 @@ enum HUDSnapshot {
         case "doneSaved": return .done(.savedAndCopied(words: 24))
         case "copied": return .copiedNotPasted(fix: .openAccessibilitySettings)
         case "copiedAppChanged": return .copiedNotPasted(fix: nil)
+        case "lineBreaks": return .lineBreaks
         case "cancelled": return .cancelled
         case "errorNetwork":
             return .error(HUDError(DictationError(kind: .offline, message: "", fix: .retry)))

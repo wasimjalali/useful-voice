@@ -7,6 +7,7 @@ import {
   MAX_SILENCE_TIMEOUT_SECONDS,
   MIN_RECORDING_SECONDS,
   MIN_SILENCE_TIMEOUT_SECONDS,
+  MAX_TYPE_OUT_APPS,
   normaliseSettings,
 } from '../src/core/settings/settingsBounds.js';
 
@@ -133,5 +134,79 @@ describe('normaliseSettings', () => {
       languageSwitchHotkey: { accelerator: 42 as unknown as string, pushToTalk: false },
     });
     expect(result.languageSwitchHotkey?.accelerator).toBe('42');
+  });
+});
+
+describe('delivery settings (B1)', () => {
+  const withSettings = (patch: Record<string, unknown>) =>
+    normaliseSettings({ ...DEFAULT_SETTINGS, ...patch } as typeof DEFAULT_SETTINGS);
+
+  it('defaults to restoring the clipboard and pasting everywhere', () => {
+    expect(DEFAULT_SETTINGS.restorePreviousClipboard).toBe(true);
+    expect(DEFAULT_SETTINGS.typeOutApps).toEqual([]);
+  });
+
+  it('keeps restoring unless the file says false, so an older settings file is unchanged', () => {
+    expect(withSettings({ restorePreviousClipboard: undefined }).restorePreviousClipboard).toBe(true);
+    expect(withSettings({ restorePreviousClipboard: 'no' }).restorePreviousClipboard).toBe(true);
+    expect(withSettings({ restorePreviousClipboard: false }).restorePreviousClipboard).toBe(false);
+  });
+
+  it('normalises the type-out list: app ids, no blanks, no duplicates, capped', () => {
+    expect(withSettings({ typeOutApps: ['WindowsTerminal.exe', '', 'windowsterminal', 'PuTTY', 7] }).typeOutApps)
+      .toEqual(['windowsterminal', 'putty']);
+    expect(withSettings({ typeOutApps: 'putty' }).typeOutApps).toEqual([]);
+    expect(withSettings({ typeOutApps: undefined }).typeOutApps).toEqual([]);
+    const many = Array.from({ length: 80 }, (_, index) => `app${index}`);
+    expect(withSettings({ typeOutApps: many }).typeOutApps).toHaveLength(MAX_TYPE_OUT_APPS);
+  });
+});
+
+describe('app-aware formatting settings', () => {
+  // The merge SettingsStore.load does: defaults, then whatever the file holds.
+  const load = (stored: Record<string, unknown>) =>
+    normaliseSettings({ ...DEFAULT_SETTINGS, ...stored } as typeof DEFAULT_SETTINGS);
+
+  it('defaults: on, no styles, no name, no send key, no app choices', () => {
+    expect(DEFAULT_SETTINGS).toMatchObject({
+      appAwareFormatting: true, categoryStyles: {}, userName: '', autoSend: {}, appCategories: {},
+    });
+  });
+
+  it('an old settings file loads unchanged and survives a save and a reload', () => {
+    const old = {
+      languagePin: 'de', formattingEnabled: false, silenceTimeoutSeconds: 40, maxRecordingSeconds: 300,
+      recordingsToKeep: 7, soundEffectsEnabled: false, launchAtLogin: true,
+      hotkey: { accelerator: 'Control+Alt+D', pushToTalk: true }, dictionaryBiasBudget: 50,
+      appearance: 'dark', dailyWordGoal: 1800, restorePreviousClipboard: false, typeOutApps: ['putty'],
+    };
+    const first = load(old);
+    for (const [key, value] of Object.entries(old)) expect(first[key as keyof typeof first]).toEqual(value);
+    expect(first.appAwareFormatting).toBe(true);
+    expect(first.categoryStyles).toEqual({});
+    expect(first.autoSend).toEqual({});
+    expect(first.appCategories).toEqual({});
+    // Saved as JSON and read back: the same settings.
+    expect(load(JSON.parse(JSON.stringify(first)))).toEqual(first);
+  });
+
+  it('new values round-trip through JSON', () => {
+    const chosen = load({
+      appAwareFormatting: false,
+      categoryStyles: { email: 'casual', personalChat: 'veryCasual' },
+      userName: 'Wasim',
+      autoSend: { workChat: 'return', coding: 'modReturn' },
+      appCategories: { 'slack.exe': 'personalChat' },
+    });
+    expect(chosen.appAwareFormatting).toBe(false);
+    expect(load(JSON.parse(JSON.stringify(chosen)))).toEqual(chosen);
+  });
+
+  it('a value this build cannot read is dropped, never thrown', () => {
+    const odd = load({
+      appAwareFormatting: 'yes', categoryStyles: 'casual', userName: 5, autoSend: [1], appCategories: 'x',
+    });
+    expect(odd).toMatchObject({ appAwareFormatting: true, categoryStyles: {}, userName: '', autoSend: {}, appCategories: {} });
+    expect(load({ autoSend: { email: 'return', docsNotes: 'return' } }).autoSend).toEqual({});
   });
 });

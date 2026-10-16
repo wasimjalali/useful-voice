@@ -11,7 +11,7 @@ enum SidebarSection: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .stream: return "Stream"
+        case .stream: return "Dictations"
         case .notes: return "Notes"
         case .vocabulary: return "Vocabulary"
         case .insights: return "Insights"

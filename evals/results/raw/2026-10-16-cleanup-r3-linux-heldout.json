@@ -1,0 +1,3505 @@
+{
+ "raw": {
+  "cases_ids": [
+   "h01",
+   "h02",
+   "h03",
+   "h04",
+   "h05",
+   "h06",
+   "h07",
+   "h08",
+   "h09",
+   "h10",
+   "h11",
+   "h12",
+   "h13",
+   "h14",
+   "h15",
+   "h16",
+   "h17",
+   "h18",
+   "h19",
+   "h20",
+   "h21",
+   "h22",
+   "h23",
+   "h24",
+   "h25",
+   "h26",
+   "h27",
+   "h28",
+   "h29",
+   "h30",
+   "h31",
+   "h32",
+   "h33",
+   "h34",
+   "h35",
+   "h36",
+   "h37",
+   "h38",
+   "h39",
+   "h40",
+   "h41",
+   "h42",
+   "h43",
+   "h44",
+   "h45",
+   "h46",
+   "h47",
+   "h48",
+   "h49",
+   "h50",
+   "h51",
+   "h52",
+   "h53",
+   "h54",
+   "h55",
+   "h56",
+   "h57",
+   "h58",
+   "h59",
+   "h60",
+   "h61",
+   "h62",
+   "h63",
+   "h64",
+   "h65",
+   "h66",
+   "h67",
+   "h68",
+   "h69",
+   "h70",
+   "h71",
+   "h72",
+   "h73"
+  ],
+  "rules_text": {
+   "h01": "I don't think we should ship this on Friday.",
+   "h02": "Do not give the patient more than 400 mg of ibuprofen in 24 hours.",
+   "h03": "The meeting is in room 214, not room 241.",
+   "h04": "Call me back at 555-0187 after 6 p.m.",
+   "h05": "Transfer $2,500 to the savings account, not the checking account.",
+   "h06": "Never commit the .env file to the repository.",
+   "h07": "She can't attend, and neither can her manager.",
+   "h08": "Alice reports to Bob, and Bob reports to Carol.",
+   "h09": "Take one tablet twice a day with food.",
+   "h10": "We need 3 laptops, 2 monitors and 1 docking station.",
+   "h11": "No, I haven't seen the invoice yet.",
+   "h12": "The flight leaves at 7:45 a.m. from gate B12.",
+   "h13": "Run git rebase --onto main feature-branch, not a merge.",
+   "h14": "Set the timeout to 30 seconds instead of 300.",
+   "h15": "Nobody on the team approved the change.",
+   "h16": "I'm not sure the numbers add up to 1,200.",
+   "h17": "Email the contract to legal@example.com before noon.",
+   "h18": "The dog bit the man, not the other way around.",
+   "h19": "Rename getUserById to findUser in src/users.ts.",
+   "h20": "Our revenue grew 12% in the third quarter.",
+   "h21": "Please don't reply all to this thread.",
+   "h22": "First the backend, then the frontend, then the docs.",
+   "h23": "The apartment is on the 4th floor, unit 4B.",
+   "h24": "Lower the dose from 20 mg to 10 mg starting Monday.",
+   "h25": "Neither option works for me, so let's find a third.",
+   "h26": "Add 2 cups of flour and half a cup of sugar.",
+   "h27": "The password must be at least 12 characters long.",
+   "h28": "Kill the process on port 8080 and restart the server.",
+   "h29": "I said yes to the offer, not no.",
+   "h30": "We won 3 to 2 after extra time.",
+   "h31": "Cancel the order unless it ships by the 15th.",
+   "h32": "Hmm, that's not what I expected.",
+   "h33": "Uh huh, that works for me.",
+   "h34": "The word um shows up a lot in transcripts.",
+   "h35": "Hello team, the release is delayed, not cancelled. We ship on the 3rd.",
+   "h36": "Add a test for the case where the list is empty, not null.",
+   "h37": "The test expects 3 items but gets 2, so the filter drops one.",
+   "h38": "Swap the order: install first, then build, then test.",
+   "h39": "Don't forget to lock the door.",
+   "h40": "The dose is 250 mg twice a day.",
+   "h41": "I can't make it to the 3 p.m. meeting.",
+   "h42": "We should, not deploy on Friday.",
+   "h43": "Call, 555-0142 and ask for Dana.",
+   "h44": "The invoice was never paid.",
+   "h45": "Send it to Maria, not to Tom.",
+   "h46": "The server is in room 101, not 110.",
+   "h47": "Push the fix to the release branch, then tag it.",
+   "h48": "Nobody told me about the deadline.",
+   "h49": "Run npm install, then npm test.",
+   "h50": "Don't, delete the migration files.",
+   "h51": "Refactor the auth middleware, but don't touch the session store.",
+   "h52": "Fix the off by one error in the pagination loop, it skips the last page.",
+   "h53": "Hi Priya, thanks for sending the draft. I'll, review it by Thursday. Best, Omar.",
+   "h54": "Book the table for six, no wait, eight people.",
+   "h55": "The meeting is on Tuesday, sorry, Wednesday at 10.",
+   "h56": "Give her 5 mg, I mean 2.5 mg, of melatonin.",
+   "h57": "Transfer $500, actually, $5,000 to the vendor.",
+   "h58": "Ship it to Berlin, or rather Munich, by Friday.",
+   "h59": "Order four chairs, make that six chairs, for the office.",
+   "h60": "The code is 4471, scratch that, 4417.",
+   "h61": "Meet me in room 12, no, room 21.",
+   "h62": "Don't call the client, no wait, do call the client today.",
+   "h63": "Set the limit to 100, sorry, 1,000 requests per minute.",
+   "h64": "Tell Sam, I mean Alex, that the build is green.",
+   "h65": "My email is j dot park at example dot org.",
+   "h66": "Send the file to support at example dot com.",
+   "h67": "Open src slash api slash routes dot ts.",
+   "h68": "The total is two thousand five hundred dollars.",
+   "h69": "Call five five five, zero one nine eight.",
+   "h70": "Run the script with dash dash dry dash run.",
+   "h71": "Take two hundred milligrams every eight hours.",
+   "h72": "The meeting is in room three oh four.",
+   "h73": "Bump the version from 2.3.1 to 2.4.0, in package dot json."
+  },
+  "runs": {
+   "rules+s1": [
+    {
+     "output": "I don't think we should ship this on Friday.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 518.4,
+     "prompt_tokens": 89,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 212.23,
+      "predicted_ms": 303.027,
+      "predicted_per_second": 36.30039567431285
+     },
+     "id": "h01",
+     "model_input": "I don't think we should ship this on Friday."
+    },
+    {
+     "output": "Do not give the patient more than 400 mg of ibuprofen in 24 hours.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 702.5,
+     "prompt_tokens": 100,
+     "completion_tokens": 23,
+     "timings": {
+      "prompt_ms": 143.304,
+      "predicted_ms": 554.222,
+      "predicted_per_second": 39.69528456106037
+     },
+     "id": "h02",
+     "model_input": "Do not give the patient more than 400 mg of ibuprofen in 24 hours."
+    },
+    {
+     "output": "The meeting is in room 214, not room 241.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 576.8,
+     "prompt_tokens": 95,
+     "completion_tokens": 18,
+     "timings": {
+      "prompt_ms": 120.11,
+      "predicted_ms": 449.789,
+      "predicted_per_second": 37.79549966762193
+     },
+     "id": "h03",
+     "model_input": "The meeting is in room 214, not room 241."
+    },
+    {
+     "output": "Call me back at 5550187 after 6pm.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 558.3,
+     "prompt_tokens": 97,
+     "completion_tokens": 18,
+     "timings": {
+      "prompt_ms": 122.976,
+      "predicted_ms": 432.199,
+      "predicted_per_second": 39.333732840659046
+     },
+     "id": "h04",
+     "model_input": "Call me back at 555-0187 after 6 p.m."
+    },
+    {
+     "output": "Transfer $2,500 to the savings account, not the checking account.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 548.4,
+     "prompt_tokens": 95,
+     "completion_tokens": 18,
+     "timings": {
+      "prompt_ms": 161.24,
+      "predicted_ms": 382.959,
+      "predicted_per_second": 44.39117503440316
+     },
+     "id": "h05",
+     "model_input": "Transfer $2,500 to the savings account, not the checking account."
+    },
+    {
+     "output": "Never commit the .env file to the repository.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 444.1,
+     "prompt_tokens": 88,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 94.23,
+      "predicted_ms": 343.733,
+      "predicted_per_second": 29.09234783974771
+     },
+     "id": "h06",
+     "model_input": "Never commit the .env file to the repository."
+    },
+    {
+     "output": "She can't attend, and neither can her manager.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 351.6,
+     "prompt_tokens": 89,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 85.403,
+      "predicted_ms": 259.705,
+      "predicted_per_second": 42.355749793034406
+     },
+     "id": "h07",
+     "model_input": "She can't attend, and neither can her manager."
+    },
+    {
+     "output": "Alice reports to Bob, and Bob reports to Carol.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 391.2,
+     "prompt_tokens": 89,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 103.617,
+      "predicted_ms": 284.227,
+      "predicted_per_second": 38.70146045238489
+     },
+     "id": "h08",
+     "model_input": "Alice reports to Bob, and Bob reports to Carol."
+    },
+    {
+     "output": "Take one tablet twice a day with food.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 316.4,
+     "prompt_tokens": 87,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 100.312,
+      "predicted_ms": 212.342,
+      "predicted_per_second": 42.38445526556215
+     },
+     "id": "h09",
+     "model_input": "Take one tablet twice a day with food."
+    },
+    {
+     "output": "We need 3 laptops, 2 monitors, and 1 docking station.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 697.2,
+     "prompt_tokens": 93,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 239.793,
+      "predicted_ms": 451.897,
+      "predicted_per_second": 35.406298337895585
+     },
+     "id": "h10",
+     "model_input": "We need 3 laptops, 2 monitors and 1 docking station."
+    },
+    {
+     "output": "No, I haven't seen the invoice yet.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 355.0,
+     "prompt_tokens": 88,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 97.317,
+      "predicted_ms": 254.372,
+      "predicted_per_second": 39.31250294843772
+     },
+     "id": "h11",
+     "model_input": "No, I haven't seen the invoice yet."
+    },
+    {
+     "output": "The flight leaves at 7:45 a.m. from gate B12.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 560.4,
+     "prompt_tokens": 96,
+     "completion_tokens": 19,
+     "timings": {
+      "prompt_ms": 122.795,
+      "predicted_ms": 432.318,
+      "predicted_per_second": 41.63601793124506
+     },
+     "id": "h12",
+     "model_input": "The flight leaves at 7:45 a.m. from gate B12."
+    },
+    {
+     "output": "Run git rebase --onto main feature-branch, not a merge.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 474.3,
+     "prompt_tokens": 93,
+     "completion_tokens": 16,
+     "timings": {
+      "prompt_ms": 98.487,
+      "predicted_ms": 372.606,
+      "predicted_per_second": 40.25700069242041
+     },
+     "id": "h13",
+     "model_input": "Run git rebase --onto main feature-branch, not a merge."
+    },
+    {
+     "output": "Set the timeout to 30 seconds instead of 300.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 789.0,
+     "prompt_tokens": 93,
+     "completion_tokens": 16,
+     "timings": {
+      "prompt_ms": 280.842,
+      "predicted_ms": 496.654,
+      "predicted_per_second": 30.202112537098266
+     },
+     "id": "h14",
+     "model_input": "Set the timeout to 30 seconds instead of 300."
+    },
+    {
+     "output": "Nobody on the team approved the change.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 289.9,
+     "prompt_tokens": 86,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 79.93,
+      "predicted_ms": 206.974,
+      "predicted_per_second": 38.65219786060085
+     },
+     "id": "h15",
+     "model_input": "Nobody on the team approved the change."
+    },
+    {
+     "output": "I'm not sure the numbers add up to 1,200.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 617.6,
+     "prompt_tokens": 94,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 164.494,
+      "predicted_ms": 447.137,
+      "predicted_per_second": 35.78321632967077
+     },
+     "id": "h16",
+     "model_input": "I'm not sure the numbers add up to 1,200."
+    },
+    {
+     "output": "Email the contract to legal@example.com before noon.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 391.7,
+     "prompt_tokens": 88,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 99.417,
+      "predicted_ms": 288.908,
+      "predicted_per_second": 34.61309482603458
+     },
+     "id": "h17",
+     "model_input": "Email the contract to legal@example.com before noon."
+    },
+    {
+     "output": "The dog bit the man, not the other way around.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 546.9,
+     "prompt_tokens": 90,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 97.107,
+      "predicted_ms": 446.803,
+      "predicted_per_second": 26.85747409932342
+     },
+     "id": "h18",
+     "model_input": "The dog bit the man, not the other way around."
+    },
+    {
+     "output": "Rename getUserById to findUser in src/users.ts.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 378.2,
+     "prompt_tokens": 89,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 85.988,
+      "predicted_ms": 285.031,
+      "predicted_per_second": 38.5922934698331
+     },
+     "id": "h19",
+     "model_input": "Rename getUserById to findUser in src/users.ts."
+    },
+    {
+     "output": "Our revenue grew 12% in the third quarter.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 391.3,
+     "prompt_tokens": 90,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 93.547,
+      "predicted_ms": 294.516,
+      "predicted_per_second": 40.744815222262964
+     },
+     "id": "h20",
+     "model_input": "Our revenue grew 12% in the third quarter."
+    },
+    {
+     "output": "Please don't reply all to this thread.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 326.7,
+     "prompt_tokens": 87,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 97.401,
+      "predicted_ms": 226.349,
+      "predicted_per_second": 39.76160707579888
+     },
+     "id": "h21",
+     "model_input": "Please don't reply all to this thread."
+    },
+    {
+     "output": "First, the backend, then the frontend, then the docs.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 655.0,
+     "prompt_tokens": 90,
+     "completion_tokens": 14,
+     "timings": {
+      "prompt_ms": 109.031,
+      "predicted_ms": 543.054,
+      "predicted_per_second": 23.938687497007667
+     },
+     "id": "h22",
+     "model_input": "First the backend, then the frontend, then the docs."
+    },
+    {
+     "output": "The apartment is on the 4th floor, unit 4B.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 954.3,
+     "prompt_tokens": 93,
+     "completion_tokens": 16,
+     "timings": {
+      "prompt_ms": 177.495,
+      "predicted_ms": 772.791,
+      "predicted_per_second": 19.41016393824462
+     },
+     "id": "h23",
+     "model_input": "The apartment is on the 4th floor, unit 4B."
+    },
+    {
+     "output": "Lower the dose from 20 mg to 10 mg starting Monday.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 522.8,
+     "prompt_tokens": 94,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 112.683,
+      "predicted_ms": 407.063,
+      "predicted_per_second": 39.305955097859545
+     },
+     "id": "h24",
+     "model_input": "Lower the dose from 20 mg to 10 mg starting Monday."
+    },
+    {
+     "output": "Neither option works for me, so let's find a third.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 519.9,
+     "prompt_tokens": 91,
+     "completion_tokens": 14,
+     "timings": {
+      "prompt_ms": 203.877,
+      "predicted_ms": 309.791,
+      "predicted_per_second": 41.963775577728214
+     },
+     "id": "h25",
+     "model_input": "Neither option works for me, so let's find a third."
+    },
+    {
+     "output": "Add 2 cups of flour and half a cup of sugar.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 431.5,
+     "prompt_tokens": 91,
+     "completion_tokens": 14,
+     "timings": {
+      "prompt_ms": 105.518,
+      "predicted_ms": 323.058,
+      "predicted_per_second": 40.240452178865716
+     },
+     "id": "h26",
+     "model_input": "Add 2 cups of flour and half a cup of sugar."
+    },
+    {
+     "output": "The password must be at least 12 characters long.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 563.8,
+     "prompt_tokens": 90,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 95.745,
+      "predicted_ms": 464.803,
+      "predicted_per_second": 25.81738930256474
+     },
+     "id": "h27",
+     "model_input": "The password must be at least 12 characters long."
+    },
+    {
+     "output": "Kill the process on port 8080 and restart the server.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 507.8,
+     "prompt_tokens": 93,
+     "completion_tokens": 16,
+     "timings": {
+      "prompt_ms": 109.741,
+      "predicted_ms": 394.53,
+      "predicted_per_second": 38.019922439358226
+     },
+     "id": "h28",
+     "model_input": "Kill the process on port 8080 and restart the server."
+    },
+    {
+     "output": "I said yes to the offer, not no.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 416.7,
+     "prompt_tokens": 88,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 182.315,
+      "predicted_ms": 229.709,
+      "predicted_per_second": 43.53334000844547
+     },
+     "id": "h29",
+     "model_input": "I said yes to the offer, not no."
+    },
+    {
+     "output": "We won 3-2 after extra time.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 337.0,
+     "prompt_tokens": 89,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 80.006,
+      "predicted_ms": 253.861,
+      "predicted_per_second": 39.391635580100925
+     },
+     "id": "h30",
+     "model_input": "We won 3 to 2 after extra time."
+    },
+    {
+     "output": "Cancel the order unless it ships by the 15th.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1525.2,
+     "prompt_tokens": 91,
+     "completion_tokens": 14,
+     "timings": {
+      "prompt_ms": 159.467,
+      "predicted_ms": 1360.924,
+      "predicted_per_second": 9.552333561609613
+     },
+     "id": "h31",
+     "model_input": "Cancel the order unless it ships by the 15th."
+    },
+    {
+     "output": "Hmm, that's not what I expected.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 421.8,
+     "prompt_tokens": 87,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 122.757,
+      "predicted_ms": 295.98,
+      "predicted_per_second": 30.407459963511045
+     },
+     "id": "h32",
+     "model_input": "Hmm, that's not what I expected."
+    },
+    {
+     "output": "Uh huh, that works for me.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 271.6,
+     "prompt_tokens": 86,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 82.41,
+      "predicted_ms": 186.099,
+      "predicted_per_second": 42.98787204659885
+     },
+     "id": "h33",
+     "model_input": "Uh huh, that works for me."
+    },
+    {
+     "output": "The word shows up a lot in transcripts.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 298.4,
+     "prompt_tokens": 88,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 95.023,
+      "predicted_ms": 200.205,
+      "predicted_per_second": 44.95392222971454
+     },
+     "id": "h34",
+     "model_input": "The word um shows up a lot in transcripts."
+    },
+    {
+     "output": "Hello Team,\n\nThe release is delayed, not cancelled. We ship on the 3rd.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1013.2,
+     "prompt_tokens": 97,
+     "completion_tokens": 20,
+     "timings": {
+      "prompt_ms": 270.017,
+      "predicted_ms": 739.922,
+      "predicted_per_second": 25.678382315973845
+     },
+     "id": "h35",
+     "model_input": "Hello team, the release is delayed, not cancelled. We ship on the 3rd."
+    },
+    {
+     "output": "Add a test for the case where the list is empty, not null.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 581.4,
+     "prompt_tokens": 93,
+     "completion_tokens": 16,
+     "timings": {
+      "prompt_ms": 113.417,
+      "predicted_ms": 465.096,
+      "predicted_per_second": 32.25140616130863
+     },
+     "id": "h36",
+     "model_input": "Add a test for the case where the list is empty, not null."
+    },
+    {
+     "output": "The test expects 3 items but gets 2, so the filter drops one.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 642.7,
+     "prompt_tokens": 95,
+     "completion_tokens": 18,
+     "timings": {
+      "prompt_ms": 102.858,
+      "predicted_ms": 534.811,
+      "predicted_per_second": 31.786930336137438
+     },
+     "id": "h37",
+     "model_input": "The test expects 3 items but gets 2, so the filter drops one."
+    },
+    {
+     "output": "Swap the order: install first, then build, then test.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 447.6,
+     "prompt_tokens": 91,
+     "completion_tokens": 14,
+     "timings": {
+      "prompt_ms": 98.663,
+      "predicted_ms": 343.923,
+      "predicted_per_second": 37.79915853257852
+     },
+     "id": "h38",
+     "model_input": "Swap the order: install first, then build, then test."
+    },
+    {
+     "output": "Don't forget to lock the door.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 337.6,
+     "prompt_tokens": 86,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 82.317,
+      "predicted_ms": 249.45,
+      "predicted_per_second": 32.070555221487275
+     },
+     "id": "h39",
+     "model_input": "Don't forget to lock the door."
+    },
+    {
+     "output": "The dose is 250 mg twice a day.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 386.3,
+     "prompt_tokens": 90,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 96.069,
+      "predicted_ms": 287.19,
+      "predicted_per_second": 41.78418468609631
+     },
+     "id": "h40",
+     "model_input": "The dose is 250 mg twice a day."
+    },
+    {
+     "output": "I can't make it to the 3pm meeting.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 467.8,
+     "prompt_tokens": 92,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 106.728,
+      "predicted_ms": 358.142,
+      "predicted_per_second": 33.50626287896979
+     },
+     "id": "h41",
+     "model_input": "I can't make it to the 3 p.m. meeting."
+    },
+    {
+     "output": "We should not deploy on Friday.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 246.0,
+     "prompt_tokens": 86,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 79.801,
+      "predicted_ms": 163.366,
+      "predicted_per_second": 42.848573142514354
+     },
+     "id": "h42",
+     "model_input": "We should, not deploy on Friday."
+    },
+    {
+     "output": "Call 5550142 and ask for Dana.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 532.1,
+     "prompt_tokens": 94,
+     "completion_tokens": 15,
+     "timings": {
+      "prompt_ms": 105.275,
+      "predicted_ms": 422.829,
+      "predicted_per_second": 33.11031173358497
+     },
+     "id": "h43",
+     "model_input": "Call, 555-0142 and ask for Dana."
+    },
+    {
+     "output": "The invoice was never paid.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 241.6,
+     "prompt_tokens": 84,
+     "completion_tokens": 7,
+     "timings": {
+      "prompt_ms": 87.334,
+      "predicted_ms": 148.382,
+      "predicted_per_second": 40.43617150328207
+     },
+     "id": "h44",
+     "model_input": "The invoice was never paid."
+    },
+    {
+     "output": "Send it to Maria, not to Tom.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 303.4,
+     "prompt_tokens": 87,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 90.812,
+      "predicted_ms": 209.659,
+      "predicted_per_second": 42.92684788156006
+     },
+     "id": "h45",
+     "model_input": "Send it to Maria, not to Tom."
+    },
+    {
+     "output": "The server is in room 101, not 110.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 630.5,
+     "prompt_tokens": 94,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 99.992,
+      "predicted_ms": 527.653,
+      "predicted_per_second": 30.322958459442095
+     },
+     "id": "h46",
+     "model_input": "The server is in room 101, not 110."
+    },
+    {
+     "output": "Push the fix to the release branch, then tag it.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 422.7,
+     "prompt_tokens": 90,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 93.21,
+      "predicted_ms": 326.621,
+      "predicted_per_second": 36.739829955820355
+     },
+     "id": "h47",
+     "model_input": "Push the fix to the release branch, then tag it."
+    },
+    {
+     "output": "Nobody told me about the deadline.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 233.0,
+     "prompt_tokens": 85,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 66.084,
+      "predicted_ms": 164.007,
+      "predicted_per_second": 42.68110507478339
+     },
+     "id": "h48",
+     "model_input": "Nobody told me about the deadline."
+    },
+    {
+     "output": "Run npm install, then npm test.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 253.5,
+     "prompt_tokens": 86,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 72.665,
+      "predicted_ms": 177.751,
+      "predicted_per_second": 45.00677914610888
+     },
+     "id": "h49",
+     "model_input": "Run npm install, then npm test."
+    },
+    {
+     "output": "Don't delete the migration files.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 243.7,
+     "prompt_tokens": 86,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 74.389,
+      "predicted_ms": 163.113,
+      "predicted_per_second": 42.915034362681084
+     },
+     "id": "h50",
+     "model_input": "Don't, delete the migration files."
+    },
+    {
+     "output": "Refactor the auth middleware, but don't touch the session store.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 551.5,
+     "prompt_tokens": 92,
+     "completion_tokens": 15,
+     "timings": {
+      "prompt_ms": 95.957,
+      "predicted_ms": 452.538,
+      "predicted_per_second": 30.93662852622321
+     },
+     "id": "h51",
+     "model_input": "Refactor the auth middleware, but don't touch the session store."
+    },
+    {
+     "output": "Fix the off-by-one error in the pagination loop. It skips the last page.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 571.7,
+     "prompt_tokens": 95,
+     "completion_tokens": 18,
+     "timings": {
+      "prompt_ms": 109.6,
+      "predicted_ms": 459.078,
+      "predicted_per_second": 37.03074423082788
+     },
+     "id": "h52",
+     "model_input": "Fix the off by one error in the pagination loop, it skips the last page."
+    },
+    {
+     "output": "Hi Priya,\n\nThanks for sending the draft. I'll review it by Thursday.\n\nBest,\nOmar",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1622.4,
+     "prompt_tokens": 100,
+     "completion_tokens": 22,
+     "timings": {
+      "prompt_ms": 986.167,
+      "predicted_ms": 632.87,
+      "predicted_per_second": 33.18217011392545
+     },
+     "id": "h53",
+     "model_input": "Hi Priya, thanks for sending the draft. I'll, review it by Thursday. Best, Omar."
+    },
+    {
+     "output": "Book the table for eight people.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 672.6,
+     "prompt_tokens": 90,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 514.112,
+      "predicted_ms": 155.512,
+      "predicted_per_second": 45.012603528988116
+     },
+     "id": "h54",
+     "model_input": "Book the table for six, no wait, eight people."
+    },
+    {
+     "output": "The meeting is on Wednesday at 10.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1428.8,
+     "prompt_tokens": 92,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 587.646,
+      "predicted_ms": 836.749,
+      "predicted_per_second": 11.95101517898438
+     },
+     "id": "h55",
+     "model_input": "The meeting is on Tuesday, sorry, Wednesday at 10."
+    },
+    {
+     "output": "Give her 2.5 mg of melatonin.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1432.9,
+     "prompt_tokens": 96,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 241.076,
+      "predicted_ms": 1182.491,
+      "predicted_per_second": 9.30239638187521
+     },
+     "id": "h56",
+     "model_input": "Give her 5 mg, I mean 2.5 mg, of melatonin."
+    },
+    {
+     "output": "Transfer $5,000 to the vendor.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 743.4,
+     "prompt_tokens": 96,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 182.321,
+      "predicted_ms": 553.433,
+      "predicted_per_second": 19.875938008756254
+     },
+     "id": "h57",
+     "model_input": "Transfer $500, actually, $5,000 to the vendor."
+    },
+    {
+     "output": "Ship it to Munich by Friday.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 882.8,
+     "prompt_tokens": 90,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 667.567,
+      "predicted_ms": 210.059,
+      "predicted_per_second": 33.32397088437058
+     },
+     "id": "h58",
+     "model_input": "Ship it to Berlin, or rather Munich, by Friday."
+    },
+    {
+     "output": "Order six chairs for the office.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 285.6,
+     "prompt_tokens": 91,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 109.3,
+      "predicted_ms": 173.253,
+      "predicted_per_second": 40.40334077909185
+     },
+     "id": "h59",
+     "model_input": "Order four chairs, make that six chairs, for the office."
+    },
+    {
+     "output": "The code is 4417.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 350.8,
+     "prompt_tokens": 96,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 133.122,
+      "predicted_ms": 212.578,
+      "predicted_per_second": 42.337400859919654
+     },
+     "id": "h60",
+     "model_input": "The code is 4471, scratch that, 4417."
+    },
+    {
+     "output": "Meet me in room 21.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 311.7,
+     "prompt_tokens": 93,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 118.359,
+      "predicted_ms": 186.762,
+      "predicted_per_second": 42.83526627472398
+     },
+     "id": "h61",
+     "model_input": "Meet me in room 12, no, room 21."
+    },
+    {
+     "output": "Do call the client today.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 254.8,
+     "prompt_tokens": 93,
+     "completion_tokens": 7,
+     "timings": {
+      "prompt_ms": 104.764,
+      "predicted_ms": 146.719,
+      "predicted_per_second": 40.8944990083084
+     },
+     "id": "h62",
+     "model_input": "Don't call the client, no wait, do call the client today."
+    },
+    {
+     "output": "Set the limit to 1,000 requests per minute.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 609.8,
+     "prompt_tokens": 99,
+     "completion_tokens": 15,
+     "timings": {
+      "prompt_ms": 134.688,
+      "predicted_ms": 472.117,
+      "predicted_per_second": 29.65366635812733
+     },
+     "id": "h63",
+     "model_input": "Set the limit to 100, sorry, 1,000 requests per minute."
+    },
+    {
+     "output": "Tell Alex that the build is green.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 291.2,
+     "prompt_tokens": 91,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 104.249,
+      "predicted_ms": 183.942,
+      "predicted_per_second": 43.491970294984284
+     },
+     "id": "h64",
+     "model_input": "Tell Sam, I mean Alex, that the build is green."
+    },
+    {
+     "output": "My email is j.park@example.org.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 308.0,
+     "prompt_tokens": 89,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 91.608,
+      "predicted_ms": 210.478,
+      "predicted_per_second": 42.75981337717006
+     },
+     "id": "h65",
+     "model_input": "My email is j dot park at example dot org."
+    },
+    {
+     "output": "Send the file to support@example.com.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 296.2,
+     "prompt_tokens": 88,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 104.708,
+      "predicted_ms": 188.35,
+      "predicted_per_second": 42.47411733474914
+     },
+     "id": "h66",
+     "model_input": "Send the file to support at example dot com."
+    },
+    {
+     "output": "Open src/api/routes.ts.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 254.2,
+     "prompt_tokens": 87,
+     "completion_tokens": 7,
+     "timings": {
+      "prompt_ms": 85.354,
+      "predicted_ms": 165.786,
+      "predicted_per_second": 36.191234483008216
+     },
+     "id": "h67",
+     "model_input": "Open src slash api slash routes dot ts."
+    },
+    {
+     "output": "The total is $2,500.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 326.0,
+     "prompt_tokens": 87,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 81.896,
+      "predicted_ms": 241.15,
+      "predicted_per_second": 41.467965996267885
+     },
+     "id": "h68",
+     "model_input": "The total is two thousand five hundred dollars."
+    },
+    {
+     "output": "Call 5550198.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 492.7,
+     "prompt_tokens": 88,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 229.504,
+      "predicted_ms": 260.206,
+      "predicted_per_second": 38.4310892139305
+     },
+     "id": "h69",
+     "model_input": "Call five five five, zero one nine eight."
+    },
+    {
+     "output": "Run the script with dry-run.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 418.2,
+     "prompt_tokens": 88,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 245.666,
+      "predicted_ms": 167.524,
+      "predicted_per_second": 41.785057663379575
+     },
+     "id": "h70",
+     "model_input": "Run the script with dash dash dry dash run."
+    },
+    {
+     "output": "Take 200 milligrams every 8 hours.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 367.6,
+     "prompt_tokens": 87,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 83.41,
+      "predicted_ms": 281.145,
+      "predicted_per_second": 42.68260150456171
+     },
+     "id": "h71",
+     "model_input": "Take two hundred milligrams every eight hours."
+    },
+    {
+     "output": "The meeting is in room 304.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 326.8,
+     "prompt_tokens": 87,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 86.314,
+      "predicted_ms": 237.633,
+      "predicted_per_second": 42.08169740734662
+     },
+     "id": "h72",
+     "model_input": "The meeting is in room three oh four."
+    },
+    {
+     "output": "Bump the version from 2.3.1 to 2.4.0, in package.json.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 725.2,
+     "prompt_tokens": 102,
+     "completion_tokens": 24,
+     "timings": {
+      "prompt_ms": 147.064,
+      "predicted_ms": 574.554,
+      "predicted_per_second": 40.03105017108923
+     },
+     "id": "h73",
+     "model_input": "Bump the version from 2.3.1 to 2.4.0, in package dot json."
+    }
+   ],
+   "rules+sf": [
+    {
+     "output": "I don't think we should ship this on Friday.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 615.1,
+     "prompt_tokens": 265,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 194.966,
+      "predicted_ms": 412.415,
+      "predicted_per_second": 26.672162748687605
+     },
+     "id": "h01",
+     "model_input": "I don't think we should ship this on Friday."
+    },
+    {
+     "output": "Do not give the patient more than 400 mg of ibuprofen in 24 hours.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1104.6,
+     "prompt_tokens": 276,
+     "completion_tokens": 23,
+     "timings": {
+      "prompt_ms": 288.012,
+      "predicted_ms": 809.408,
+      "predicted_per_second": 27.180358978413853
+     },
+     "id": "h02",
+     "model_input": "Do not give the patient more than 400 mg of ibuprofen in 24 hours."
+    },
+    {
+     "output": "The meeting is in room 214, not room 241.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 846.9,
+     "prompt_tokens": 271,
+     "completion_tokens": 18,
+     "timings": {
+      "prompt_ms": 224.418,
+      "predicted_ms": 618.384,
+      "predicted_per_second": 27.491008822996715
+     },
+     "id": "h03",
+     "model_input": "The meeting is in room 214, not room 241."
+    },
+    {
+     "output": "Call me back at 555-0187 after 6 p.m.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1009.4,
+     "prompt_tokens": 273,
+     "completion_tokens": 20,
+     "timings": {
+      "prompt_ms": 234.914,
+      "predicted_ms": 770.549,
+      "predicted_per_second": 24.65774402406596
+     },
+     "id": "h04",
+     "model_input": "Call me back at 555-0187 after 6 p.m."
+    },
+    {
+     "output": "Transfer $2,500 to the savings account, not the checking account.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 878.8,
+     "prompt_tokens": 271,
+     "completion_tokens": 18,
+     "timings": {
+      "prompt_ms": 230.037,
+      "predicted_ms": 644.448,
+      "predicted_per_second": 26.379164804607974
+     },
+     "id": "h05",
+     "model_input": "Transfer $2,500 to the savings account, not the checking account."
+    },
+    {
+     "output": "Never commit the .env file to the repository.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 627.3,
+     "prompt_tokens": 264,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 201.603,
+      "predicted_ms": 421.824,
+      "predicted_per_second": 23.706569564557732
+     },
+     "id": "h06",
+     "model_input": "Never commit the .env file to the repository."
+    },
+    {
+     "output": "She can't attend, and neither can her manager.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 738.3,
+     "prompt_tokens": 265,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 330.626,
+      "predicted_ms": 403.479,
+      "predicted_per_second": 27.262881091704898
+     },
+     "id": "h07",
+     "model_input": "She can't attend, and neither can her manager."
+    },
+    {
+     "output": "Alice reports to Bob, and Bob reports to Carol.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 683.0,
+     "prompt_tokens": 265,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 256.935,
+      "predicted_ms": 422.12,
+      "predicted_per_second": 26.058940585615467
+     },
+     "id": "h08",
+     "model_input": "Alice reports to Bob, and Bob reports to Carol."
+    },
+    {
+     "output": "Take one tablet twice a day with food.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 557.8,
+     "prompt_tokens": 263,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 215.11,
+      "predicted_ms": 338.585,
+      "predicted_per_second": 26.581212989352746
+     },
+     "id": "h09",
+     "model_input": "Take one tablet twice a day with food."
+    },
+    {
+     "output": "We need 3 laptops, 2 monitors and 1 docking station.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 800.1,
+     "prompt_tokens": 269,
+     "completion_tokens": 16,
+     "timings": {
+      "prompt_ms": 223.718,
+      "predicted_ms": 572.088,
+      "predicted_per_second": 26.219742417250494
+     },
+     "id": "h10",
+     "model_input": "We need 3 laptops, 2 monitors and 1 docking station."
+    },
+    {
+     "output": "No, I haven't seen the invoice yet.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 551.9,
+     "prompt_tokens": 264,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 181.979,
+      "predicted_ms": 365.816,
+      "predicted_per_second": 27.336147134078335
+     },
+     "id": "h11",
+     "model_input": "No, I haven't seen the invoice yet."
+    },
+    {
+     "output": "The flight leaves at 7:45 a.m. from gate B12.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 912.8,
+     "prompt_tokens": 272,
+     "completion_tokens": 19,
+     "timings": {
+      "prompt_ms": 248.239,
+      "predicted_ms": 660.546,
+      "predicted_per_second": 27.250183938741586
+     },
+     "id": "h12",
+     "model_input": "The flight leaves at 7:45 a.m. from gate B12."
+    },
+    {
+     "output": "Run git rebase --onto main --feature-branch, not a merge.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 776.1,
+     "prompt_tokens": 269,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 200.024,
+      "predicted_ms": 572.199,
+      "predicted_per_second": 27.96229982925521
+     },
+     "id": "h13",
+     "model_input": "Run git rebase --onto main feature-branch, not a merge."
+    },
+    {
+     "output": "Set the timeout to 30 seconds instead of 300.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 747.5,
+     "prompt_tokens": 269,
+     "completion_tokens": 16,
+     "timings": {
+      "prompt_ms": 212.469,
+      "predicted_ms": 527.969,
+      "predicted_per_second": 28.41075896501499
+     },
+     "id": "h14",
+     "model_input": "Set the timeout to 30 seconds instead of 300."
+    },
+    {
+     "output": "Nobody on the team approved the change.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 484.6,
+     "prompt_tokens": 262,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 199.113,
+      "predicted_ms": 281.409,
+      "predicted_per_second": 28.428372937610384
+     },
+     "id": "h15",
+     "model_input": "Nobody on the team approved the change."
+    },
+    {
+     "output": "I'm not sure the numbers add up to 1,200.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 786.7,
+     "prompt_tokens": 270,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 208.056,
+      "predicted_ms": 574.614,
+      "predicted_per_second": 27.84477927791526
+     },
+     "id": "h16",
+     "model_input": "I'm not sure the numbers add up to 1,200."
+    },
+    {
+     "output": "Email the contract to legal@example.com before noon.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 556.9,
+     "prompt_tokens": 264,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 192.167,
+      "predicted_ms": 360.67,
+      "predicted_per_second": 27.726176283028806
+     },
+     "id": "h17",
+     "model_input": "Email the contract to legal@example.com before noon."
+    },
+    {
+     "output": "The dog bit the man, not the other way around.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 796.2,
+     "prompt_tokens": 266,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 199.114,
+      "predicted_ms": 593.102,
+      "predicted_per_second": 20.232607544739352
+     },
+     "id": "h18",
+     "model_input": "The dog bit the man, not the other way around."
+    },
+    {
+     "output": "Rename getUserById to findUser in src/users.ts.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 863.2,
+     "prompt_tokens": 265,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 416.44,
+      "predicted_ms": 439.544,
+      "predicted_per_second": 25.02593597000528
+     },
+     "id": "h19",
+     "model_input": "Rename getUserById to findUser in src/users.ts."
+    },
+    {
+     "output": "Our revenue grew 12% in the third quarter.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 668.5,
+     "prompt_tokens": 266,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 200.199,
+      "predicted_ms": 462.562,
+      "predicted_per_second": 25.942468252904476
+     },
+     "id": "h20",
+     "model_input": "Our revenue grew 12% in the third quarter."
+    },
+    {
+     "output": "Please don't reply all to this thread.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 600.0,
+     "prompt_tokens": 263,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 204.27,
+      "predicted_ms": 386.385,
+      "predicted_per_second": 23.292829690593578
+     },
+     "id": "h21",
+     "model_input": "Please don't reply all to this thread."
+    },
+    {
+     "output": "1. The backend\n2. The frontend\n3. The docs",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 781.1,
+     "prompt_tokens": 266,
+     "completion_tokens": 15,
+     "timings": {
+      "prompt_ms": 200.119,
+      "predicted_ms": 576.997,
+      "predicted_per_second": 24.263557696140538
+     },
+     "id": "h22",
+     "model_input": "First the backend, then the frontend, then the docs."
+    },
+    {
+     "output": "The apartment is on the 4th floor, unit 4B.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 815.0,
+     "prompt_tokens": 269,
+     "completion_tokens": 16,
+     "timings": {
+      "prompt_ms": 227.244,
+      "predicted_ms": 583.688,
+      "predicted_per_second": 25.698660928441225
+     },
+     "id": "h23",
+     "model_input": "The apartment is on the 4th floor, unit 4B."
+    },
+    {
+     "output": "Lower the dose from 20 mg to 10 mg starting Monday.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1251.2,
+     "prompt_tokens": 270,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 397.006,
+      "predicted_ms": 850.234,
+      "predicted_per_second": 18.81834883102769
+     },
+     "id": "h24",
+     "model_input": "Lower the dose from 20 mg to 10 mg starting Monday."
+    },
+    {
+     "output": "Neither option works for me, so let's find a third.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 705.5,
+     "prompt_tokens": 267,
+     "completion_tokens": 14,
+     "timings": {
+      "prompt_ms": 221.237,
+      "predicted_ms": 480.313,
+      "predicted_per_second": 27.065684251727518
+     },
+     "id": "h25",
+     "model_input": "Neither option works for me, so let's find a third."
+    },
+    {
+     "output": "Add 2 cups of flour and half a cup of sugar.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 710.0,
+     "prompt_tokens": 267,
+     "completion_tokens": 14,
+     "timings": {
+      "prompt_ms": 220.934,
+      "predicted_ms": 485.098,
+      "predicted_per_second": 26.798708714527784
+     },
+     "id": "h26",
+     "model_input": "Add 2 cups of flour and half a cup of sugar."
+    },
+    {
+     "output": "The password must be at least 12 characters long.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 639.3,
+     "prompt_tokens": 266,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 197.921,
+      "predicted_ms": 437.443,
+      "predicted_per_second": 27.43214544523515
+     },
+     "id": "h27",
+     "model_input": "The password must be at least 12 characters long."
+    },
+    {
+     "output": "Kill the process on port 8080 and restart the server.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 997.4,
+     "prompt_tokens": 269,
+     "completion_tokens": 16,
+     "timings": {
+      "prompt_ms": 336.806,
+      "predicted_ms": 656.775,
+      "predicted_per_second": 22.83887175973507
+     },
+     "id": "h28",
+     "model_input": "Kill the process on port 8080 and restart the server."
+    },
+    {
+     "output": "I said yes to the offer, not no.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 823.2,
+     "prompt_tokens": 264,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 212.498,
+      "predicted_ms": 605.7,
+      "predicted_per_second": 16.509823344890208
+     },
+     "id": "h29",
+     "model_input": "I said yes to the offer, not no."
+    },
+    {
+     "output": "We won 3 to 2 after extra time.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 639.7,
+     "prompt_tokens": 265,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 238.678,
+      "predicted_ms": 393.857,
+      "predicted_per_second": 27.928918363771622
+     },
+     "id": "h30",
+     "model_input": "We won 3 to 2 after extra time."
+    },
+    {
+     "output": "Cancel the order unless it ships by the 15th.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 845.1,
+     "prompt_tokens": 267,
+     "completion_tokens": 14,
+     "timings": {
+      "prompt_ms": 208.732,
+      "predicted_ms": 631.909,
+      "predicted_per_second": 20.572582444624146
+     },
+     "id": "h31",
+     "model_input": "Cancel the order unless it ships by the 15th."
+    },
+    {
+     "output": "Hmm, that's not what I expected.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 527.4,
+     "prompt_tokens": 263,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 186.858,
+      "predicted_ms": 336.555,
+      "predicted_per_second": 26.741542987030353
+     },
+     "id": "h32",
+     "model_input": "Hmm, that's not what I expected."
+    },
+    {
+     "output": "Uh huh, that works for me.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 623.7,
+     "prompt_tokens": 262,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 201.141,
+      "predicted_ms": 413.268,
+      "predicted_per_second": 19.35789850653813
+     },
+     "id": "h33",
+     "model_input": "Uh huh, that works for me."
+    },
+    {
+     "output": "The word um shows up a lot in transcripts.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 690.2,
+     "prompt_tokens": 264,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 199.126,
+      "predicted_ms": 486.874,
+      "predicted_per_second": 20.539194945714904
+     },
+     "id": "h34",
+     "model_input": "The word um shows up a lot in transcripts."
+    },
+    {
+     "output": "Hello team, the release is delayed, not cancelled. We ship on the 3rd.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 970.5,
+     "prompt_tokens": 273,
+     "completion_tokens": 20,
+     "timings": {
+      "prompt_ms": 240.084,
+      "predicted_ms": 726.375,
+      "predicted_per_second": 26.157287902254346
+     },
+     "id": "h35",
+     "model_input": "Hello team, the release is delayed, not cancelled. We ship on the 3rd."
+    },
+    {
+     "output": "Add a test for the case where the list is empty, not null.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 785.8,
+     "prompt_tokens": 269,
+     "completion_tokens": 16,
+     "timings": {
+      "prompt_ms": 211.476,
+      "predicted_ms": 567.298,
+      "predicted_per_second": 26.441129706080403
+     },
+     "id": "h36",
+     "model_input": "Add a test for the case where the list is empty, not null."
+    },
+    {
+     "output": "The test expects 3 items but gets 2, so the filter drops one.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 914.4,
+     "prompt_tokens": 271,
+     "completion_tokens": 18,
+     "timings": {
+      "prompt_ms": 233.725,
+      "predicted_ms": 676.874,
+      "predicted_per_second": 25.11545723428585
+     },
+     "id": "h37",
+     "model_input": "The test expects 3 items but gets 2, so the filter drops one."
+    },
+    {
+     "output": "Install first, then build, then test.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 644.7,
+     "prompt_tokens": 267,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 302.067,
+      "predicted_ms": 338.151,
+      "predicted_per_second": 26.615328654950005
+     },
+     "id": "h38",
+     "model_input": "Swap the order: install first, then build, then test."
+    },
+    {
+     "output": "Don't forget to lock the door.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 483.8,
+     "prompt_tokens": 262,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 179.793,
+      "predicted_ms": 299.707,
+      "predicted_per_second": 26.692736572719358
+     },
+     "id": "h39",
+     "model_input": "Don't forget to lock the door."
+    },
+    {
+     "output": "The dose is 250 mg twice a day.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 772.0,
+     "prompt_tokens": 266,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 244.28,
+      "predicted_ms": 523.054,
+      "predicted_per_second": 22.942181877970537
+     },
+     "id": "h40",
+     "model_input": "The dose is 250 mg twice a day."
+    },
+    {
+     "output": "I can't make it to the 3 p.m. meeting.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 722.7,
+     "prompt_tokens": 268,
+     "completion_tokens": 15,
+     "timings": {
+      "prompt_ms": 209.877,
+      "predicted_ms": 509.007,
+      "predicted_per_second": 27.504533336476708
+     },
+     "id": "h41",
+     "model_input": "I can't make it to the 3 p.m. meeting."
+    },
+    {
+     "output": "We should not deploy on Friday.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 454.5,
+     "prompt_tokens": 262,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 175.333,
+      "predicted_ms": 275.194,
+      "predicted_per_second": 25.436601088686526
+     },
+     "id": "h42",
+     "model_input": "We should, not deploy on Friday."
+    },
+    {
+     "output": "Call, 555-0142 and ask for Dana.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 850.1,
+     "prompt_tokens": 270,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 246.515,
+      "predicted_ms": 599.76,
+      "predicted_per_second": 26.67733760170735
+     },
+     "id": "h43",
+     "model_input": "Call, 555-0142 and ask for Dana."
+    },
+    {
+     "output": "The invoice was never paid.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 445.6,
+     "prompt_tokens": 260,
+     "completion_tokens": 7,
+     "timings": {
+      "prompt_ms": 187.268,
+      "predicted_ms": 251.965,
+      "predicted_per_second": 23.81283114718314
+     },
+     "id": "h44",
+     "model_input": "The invoice was never paid."
+    },
+    {
+     "output": "Send it to Maria, not to Tom.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 747.4,
+     "prompt_tokens": 263,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 198.218,
+      "predicted_ms": 544.806,
+      "predicted_per_second": 16.5196418541646
+     },
+     "id": "h45",
+     "model_input": "Send it to Maria, not to Tom."
+    },
+    {
+     "output": "The server is in room 101, not 110.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 835.5,
+     "prompt_tokens": 270,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 231.021,
+      "predicted_ms": 600.391,
+      "predicted_per_second": 26.649300206032404
+     },
+     "id": "h46",
+     "model_input": "The server is in room 101, not 110."
+    },
+    {
+     "output": "Push the fix to the release branch, then tag it.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 725.6,
+     "prompt_tokens": 266,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 254.877,
+      "predicted_ms": 466.101,
+      "predicted_per_second": 25.745492929644005
+     },
+     "id": "h47",
+     "model_input": "Push the fix to the release branch, then tag it."
+    },
+    {
+     "output": "Nobody told me about the deadline.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 603.7,
+     "prompt_tokens": 261,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 331.575,
+      "predicted_ms": 267.132,
+      "predicted_per_second": 26.204273542668044
+     },
+     "id": "h48",
+     "model_input": "Nobody told me about the deadline."
+    },
+    {
+     "output": "Run npm install, then npm test.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 484.9,
+     "prompt_tokens": 262,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 174.644,
+      "predicted_ms": 306.157,
+      "predicted_per_second": 26.130384083983056
+     },
+     "id": "h49",
+     "model_input": "Run npm install, then npm test."
+    },
+    {
+     "output": "Don't, delete the migration files.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 485.7,
+     "prompt_tokens": 262,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 174.685,
+      "predicted_ms": 306.912,
+      "predicted_per_second": 26.06610363882807
+     },
+     "id": "h50",
+     "model_input": "Don't, delete the migration files."
+    },
+    {
+     "output": "Refactor the auth middleware, but don't touch the session store.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 775.0,
+     "prompt_tokens": 268,
+     "completion_tokens": 15,
+     "timings": {
+      "prompt_ms": 214.343,
+      "predicted_ms": 556.493,
+      "predicted_per_second": 25.157549151561653
+     },
+     "id": "h51",
+     "model_input": "Refactor the auth middleware, but don't touch the session store."
+    },
+    {
+     "output": "Fix the off by one error in the pagination loop, it skips the last page.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 914.7,
+     "prompt_tokens": 271,
+     "completion_tokens": 18,
+     "timings": {
+      "prompt_ms": 237.786,
+      "predicted_ms": 672.912,
+      "predicted_per_second": 25.263333095560785
+     },
+     "id": "h52",
+     "model_input": "Fix the off by one error in the pagination loop, it skips the last page."
+    },
+    {
+     "output": "Hi Priya,\n\nThanks for sending the draft.\n\nI'll review it by Thursday.\n\nBest,\nOmar",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1457.3,
+     "prompt_tokens": 276,
+     "completion_tokens": 26,
+     "timings": {
+      "prompt_ms": 462.775,
+      "predicted_ms": 990.429,
+      "predicted_per_second": 25.241587231391648
+     },
+     "id": "h53",
+     "model_input": "Hi Priya, thanks for sending the draft. I'll, review it by Thursday. Best, Omar."
+    },
+    {
+     "output": "Book the table for eight people.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 500.3,
+     "prompt_tokens": 266,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 232.778,
+      "predicted_ms": 263.46,
+      "predicted_per_second": 26.56949821604798
+     },
+     "id": "h54",
+     "model_input": "Book the table for six, no wait, eight people."
+    },
+    {
+     "output": "The meeting is on Wednesday at 10.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 594.5,
+     "prompt_tokens": 268,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 211.395,
+      "predicted_ms": 379.154,
+      "predicted_per_second": 26.37450745607326
+     },
+     "id": "h55",
+     "model_input": "The meeting is on Tuesday, sorry, Wednesday at 10."
+    },
+    {
+     "output": "Give her 2.5 mg of melatonin.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 803.5,
+     "prompt_tokens": 272,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 241.87,
+      "predicted_ms": 557.402,
+      "predicted_per_second": 19.734410712555746
+     },
+     "id": "h56",
+     "model_input": "Give her 5 mg, I mean 2.5 mg, of melatonin."
+    },
+    {
+     "output": "Transfer $5,000 to the vendor.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 738.8,
+     "prompt_tokens": 272,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 257.351,
+      "predicted_ms": 472.948,
+      "predicted_per_second": 23.258370899126334
+     },
+     "id": "h57",
+     "model_input": "Transfer $500, actually, $5,000 to the vendor."
+    },
+    {
+     "output": "Ship it to Munich by Friday.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 452.7,
+     "prompt_tokens": 266,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 201.734,
+      "predicted_ms": 243.976,
+      "predicted_per_second": 28.69134668983834
+     },
+     "id": "h58",
+     "model_input": "Ship it to Berlin, or rather Munich, by Friday."
+    },
+    {
+     "output": "Order six chairs for the office.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 563.2,
+     "prompt_tokens": 267,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 225.892,
+      "predicted_ms": 333.157,
+      "predicted_per_second": 21.0111148797714
+     },
+     "id": "h59",
+     "model_input": "Order four chairs, make that six chairs, for the office."
+    },
+    {
+     "output": "The code is 4417.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 592.0,
+     "prompt_tokens": 272,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 233.49,
+      "predicted_ms": 354.444,
+      "predicted_per_second": 25.391881369130243
+     },
+     "id": "h60",
+     "model_input": "The code is 4471, scratch that, 4417."
+    },
+    {
+     "output": "Meet me in room 21.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 748.0,
+     "prompt_tokens": 269,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 234.295,
+      "predicted_ms": 509.8,
+      "predicted_per_second": 15.692428403295409
+     },
+     "id": "h61",
+     "model_input": "Meet me in room 12, no, room 21."
+    },
+    {
+     "output": "Do call the client today.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 567.8,
+     "prompt_tokens": 269,
+     "completion_tokens": 7,
+     "timings": {
+      "prompt_ms": 344.055,
+      "predicted_ms": 216.189,
+      "predicted_per_second": 27.753493470990662
+     },
+     "id": "h62",
+     "model_input": "Don't call the client, no wait, do call the client today."
+    },
+    {
+     "output": "Set the limit to 1000 requests per minute.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 752.4,
+     "prompt_tokens": 275,
+     "completion_tokens": 14,
+     "timings": {
+      "prompt_ms": 254.742,
+      "predicted_ms": 490.631,
+      "predicted_per_second": 26.4964912531006
+     },
+     "id": "h63",
+     "model_input": "Set the limit to 100, sorry, 1,000 requests per minute."
+    },
+    {
+     "output": "Tell Alex, that the build is green.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 603.0,
+     "prompt_tokens": 267,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 245.253,
+      "predicted_ms": 350.911,
+      "predicted_per_second": 25.64752886059428
+     },
+     "id": "h64",
+     "model_input": "Tell Sam, I mean Alex, that the build is green."
+    },
+    {
+     "output": "My email is j.park@example.org.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 552.5,
+     "prompt_tokens": 265,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 187.525,
+      "predicted_ms": 360.95,
+      "predicted_per_second": 24.934201412938084
+     },
+     "id": "h65",
+     "model_input": "My email is j dot park at example dot org."
+    },
+    {
+     "output": "Send the file to support@example.com.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 525.4,
+     "prompt_tokens": 264,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 218.834,
+      "predicted_ms": 302.698,
+      "predicted_per_second": 26.42898202168498
+     },
+     "id": "h66",
+     "model_input": "Send the file to support at example dot com."
+    },
+    {
+     "output": "Open src/api/routes.ts.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 568.2,
+     "prompt_tokens": 263,
+     "completion_tokens": 7,
+     "timings": {
+      "prompt_ms": 193.693,
+      "predicted_ms": 368.242,
+      "predicted_per_second": 16.29363299134808
+     },
+     "id": "h67",
+     "model_input": "Open src slash api slash routes dot ts."
+    },
+    {
+     "output": "The total is two thousand five hundred dollars.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 593.7,
+     "prompt_tokens": 263,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 219.196,
+      "predicted_ms": 368.036,
+      "predicted_per_second": 24.45412948733276
+     },
+     "id": "h68",
+     "model_input": "The total is two thousand five hundred dollars."
+    },
+    {
+     "output": "Call five five five, zero one nine eight.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 578.0,
+     "prompt_tokens": 264,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 183.572,
+      "predicted_ms": 390.258,
+      "predicted_per_second": 25.624074330314816
+     },
+     "id": "h69",
+     "model_input": "Call five five five, zero one nine eight."
+    },
+    {
+     "output": "Run the script with --dry-run.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 555.6,
+     "prompt_tokens": 264,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 220.945,
+      "predicted_ms": 327.333,
+      "predicted_per_second": 24.439943421530977
+     },
+     "id": "h70",
+     "model_input": "Run the script with dash dash dry dash run."
+    },
+    {
+     "output": "Take two hundred milligrams every eight hours.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 584.6,
+     "prompt_tokens": 263,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 204.955,
+      "predicted_ms": 375.557,
+      "predicted_per_second": 23.964404870632155
+     },
+     "id": "h71",
+     "model_input": "Take two hundred milligrams every eight hours."
+    },
+    {
+     "output": "The meeting is in room three and four.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 548.7,
+     "prompt_tokens": 263,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 188.837,
+      "predicted_ms": 354.176,
+      "predicted_per_second": 25.411095048789306
+     },
+     "id": "h72",
+     "model_input": "The meeting is in room three oh four."
+    },
+    {
+     "output": "Bump the version from 2.3.1 to 2.4.0, in package.json.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1425.9,
+     "prompt_tokens": 278,
+     "completion_tokens": 24,
+     "timings": {
+      "prompt_ms": 235.288,
+      "predicted_ms": 1185.672,
+      "predicted_per_second": 19.398282155604583
+     },
+     "id": "h73",
+     "model_input": "Bump the version from 2.3.1 to 2.4.0, in package dot json."
+    }
+   ]
+  },
+  "servers": {
+   "s1": {
+    "cmd": [
+     "/home/user/cleanup-eval-work/llama-b11669/llama-server",
+     "-m",
+     "/home/user/cleanup-eval-work/models/s1-mini-q4_k_m.gguf",
+     "--jinja",
+     "--chat-template-kwargs",
+     "{\"enable_thinking\":false}",
+     "--temp",
+     "0",
+     "-c",
+     "8192",
+     "-np",
+     "1",
+     "--port",
+     "8090",
+     "--host",
+     "127.0.0.1"
+    ],
+    "peak_rss_mb": 1635.0,
+    "model": {
+     "name": "S1-mini by Superwhisper",
+     "repo": "superwhisper/s1-mini-GGUF",
+     "revision": "34add00a48a2e5d24e5a4ee5405a99620a3a240c",
+     "file": "s1-mini-q4_k_m.gguf",
+     "sha256": "3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634",
+     "size": 484219808
+    }
+   },
+   "sf": {
+    "cmd": [
+     "/home/user/cleanup-eval-work/llama-b11669/llama-server",
+     "-m",
+     "/home/user/cleanup-eval-work/models/SpeakoFlow-Mini-0.8B-Q4_K_M.gguf",
+     "--jinja",
+     "--chat-template-kwargs",
+     "{\"enable_thinking\":false}",
+     "--temp",
+     "0",
+     "-c",
+     "8192",
+     "-np",
+     "1",
+     "--port",
+     "8091",
+     "--host",
+     "127.0.0.1"
+    ],
+    "peak_rss_mb": 1010.8,
+    "model": {
+     "name": "SpeakoFlow Mini 0.8B",
+     "repo": "SpeakoFlow/speakoflow-mini",
+     "revision": "835431771f72820251fe6c6b4b07f12b000e2647",
+     "file": "SpeakoFlow-Mini-0.8B-Q4_K_M.gguf",
+     "sha256": "530e0a5d4e9314e3bae2c92aecf3ab39ca48e8cfecac41372058f9fcb742329d",
+     "size": 541903616
+    }
+   }
+  },
+  "meta": {
+   "date": "2026-10-16",
+   "platform": "Linux-6.18.44-fc-v114-x86_64-with-glibc2.39",
+   "machine": "x86_64",
+   "cpu_count": 4,
+   "python": "3.13.16",
+   "llama_cpp": "b11669",
+   "ngl": null,
+   "threads": null,
+   "ctx": 8192,
+   "warmup": 3,
+   "subset": 0,
+   "label": "linux-4vcpu-heldout-r3",
+   "cases_file": "heldout.json",
+   "cases_sha256": "55e5a6d60a7d3bc0cb74c34198ea074ce10be3a6bf2f0ebe6f746eed85ebfaca",
+   "node": "v22.22.0"
+  }
+ },
+ "result": {
+  "summary": {
+   "none": {
+    "all": {
+     "n": 73,
+     "n_clean": 38,
+     "n_edit": 35,
+     "restraint": 100.0,
+     "edit_accuracy": 0.0,
+     "edit_accuracy_rules_fixable": 0.0,
+     "edit_accuracy_model_needed": 0.0,
+     "n_rules_fixable": 11,
+     "n_model_needed": 24,
+     "words_lost": 0,
+     "words_lost_clean": 0,
+     "words_lost_dirty": 0,
+     "lost_cases": 0.0,
+     "lost_cases_clean": 0.0,
+     "lost_cases_dirty": 0.0,
+     "words_added": 0,
+     "added_cases": 0.0,
+     "lost_ids": {},
+     "added_ids": {},
+     "content_loss_v1": 1.4,
+     "content_add_v1": 0.0,
+     "clean_wrong": []
+    },
+    "by_group": {
+     "clean": {
+      "n": 38,
+      "exact": 100.0
+     },
+     "coding_agent": {
+      "n": 2,
+      "exact": 0.0
+     },
+     "email": {
+      "n": 1,
+      "exact": 0.0
+     },
+     "file_mention": {
+      "n": 1,
+      "exact": 0.0
+     },
+     "filler": {
+      "n": 11,
+      "exact": 0.0
+     },
+     "format": {
+      "n": 6,
+      "exact": 0.0
+     },
+     "self_correction": {
+      "n": 11,
+      "exact": 0.0
+     },
+     "stutter": {
+      "n": 3,
+      "exact": 0.0
+     }
+    }
+   },
+   "rules": {
+    "all": {
+     "n": 73,
+     "n_clean": 38,
+     "n_edit": 35,
+     "restraint": 100.0,
+     "edit_accuracy": 31.4,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 0.0,
+     "n_rules_fixable": 11,
+     "n_model_needed": 24,
+     "words_lost": 0,
+     "words_lost_clean": 0,
+     "words_lost_dirty": 0,
+     "lost_cases": 0.0,
+     "lost_cases_clean": 0.0,
+     "lost_cases_dirty": 0.0,
+     "words_added": 0,
+     "added_cases": 0.0,
+     "lost_ids": {},
+     "added_ids": {},
+     "content_loss_v1": 1.4,
+     "content_add_v1": 0.0,
+     "clean_wrong": []
+    },
+    "by_group": {
+     "clean": {
+      "n": 38,
+      "exact": 100.0
+     },
+     "coding_agent": {
+      "n": 2,
+      "exact": 0.0
+     },
+     "email": {
+      "n": 1,
+      "exact": 0.0
+     },
+     "file_mention": {
+      "n": 1,
+      "exact": 0.0
+     },
+     "filler": {
+      "n": 11,
+      "exact": 72.7
+     },
+     "format": {
+      "n": 6,
+      "exact": 0.0
+     },
+     "self_correction": {
+      "n": 11,
+      "exact": 0.0
+     },
+     "stutter": {
+      "n": 3,
+      "exact": 100.0
+     }
+    }
+   },
+   "rules+s1": {
+    "all": {
+     "n": 73,
+     "n_clean": 38,
+     "n_edit": 35,
+     "restraint": 84.2,
+     "edit_accuracy": 82.9,
+     "edit_accuracy_rules_fixable": 81.8,
+     "edit_accuracy_model_needed": 83.3,
+     "n_rules_fixable": 11,
+     "n_model_needed": 24,
+     "words_lost": 4,
+     "words_lost_clean": 4,
+     "words_lost_dirty": 0,
+     "lost_cases": 2.7,
+     "lost_cases_clean": 5.3,
+     "lost_cases_dirty": 0.0,
+     "words_added": 1,
+     "added_cases": 1.4,
+     "lost_ids": {
+      "h30": 3,
+      "h34": 1
+     },
+     "added_ids": {
+      "h30": 1
+     },
+     "content_loss_v1": 1.4,
+     "content_add_v1": 0.0,
+     "clean_wrong": [
+      "h04",
+      "h10",
+      "h22",
+      "h30",
+      "h34",
+      "h35"
+     ]
+    },
+    "by_group": {
+     "clean": {
+      "n": 38,
+      "exact": 84.2
+     },
+     "coding_agent": {
+      "n": 2,
+      "exact": 0.0
+     },
+     "email": {
+      "n": 1,
+      "exact": 0.0
+     },
+     "file_mention": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "filler": {
+      "n": 11,
+      "exact": 81.8
+     },
+     "format": {
+      "n": 6,
+      "exact": 100.0
+     },
+     "self_correction": {
+      "n": 11,
+      "exact": 100.0
+     },
+     "stutter": {
+      "n": 3,
+      "exact": 66.7
+     }
+    }
+   },
+   "rules+s1+guard": {
+    "all": {
+     "n": 73,
+     "n_clean": 38,
+     "n_edit": 35,
+     "restraint": 92.1,
+     "edit_accuracy": 74.3,
+     "edit_accuracy_rules_fixable": 90.9,
+     "edit_accuracy_model_needed": 66.7,
+     "n_rules_fixable": 11,
+     "n_model_needed": 24,
+     "words_lost": 4,
+     "words_lost_clean": 4,
+     "words_lost_dirty": 0,
+     "lost_cases": 2.7,
+     "lost_cases_clean": 5.3,
+     "lost_cases_dirty": 0.0,
+     "words_added": 1,
+     "added_cases": 1.4,
+     "lost_ids": {
+      "h30": 3,
+      "h34": 1
+     },
+     "added_ids": {
+      "h30": 1
+     },
+     "content_loss_v1": 1.4,
+     "content_add_v1": 0.0,
+     "clean_wrong": [
+      "h04",
+      "h30",
+      "h34"
+     ],
+     "guard_reject": 68.5
+    },
+    "by_group": {
+     "clean": {
+      "n": 38,
+      "exact": 92.1
+     },
+     "coding_agent": {
+      "n": 2,
+      "exact": 0.0
+     },
+     "email": {
+      "n": 1,
+      "exact": 0.0
+     },
+     "file_mention": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "filler": {
+      "n": 11,
+      "exact": 72.7
+     },
+     "format": {
+      "n": 6,
+      "exact": 83.3
+     },
+     "self_correction": {
+      "n": 11,
+      "exact": 90.9
+     },
+     "stutter": {
+      "n": 3,
+      "exact": 66.7
+     }
+    }
+   },
+   "rules+sf": {
+    "all": {
+     "n": 73,
+     "n_clean": 38,
+     "n_edit": 35,
+     "restraint": 92.1,
+     "edit_accuracy": 71.4,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 58.3,
+     "n_rules_fixable": 11,
+     "n_model_needed": 24,
+     "words_lost": 5,
+     "words_lost_clean": 5,
+     "words_lost_dirty": 0,
+     "lost_cases": 2.7,
+     "lost_cases_clean": 5.3,
+     "lost_cases_dirty": 0.0,
+     "words_added": 3,
+     "added_cases": 2.7,
+     "lost_ids": {
+      "h22": 2,
+      "h38": 3
+     },
+     "added_ids": {
+      "h22": 2,
+      "h72": 1
+     },
+     "content_loss_v1": 2.7,
+     "content_add_v1": 0.0,
+     "clean_wrong": [
+      "h13",
+      "h22",
+      "h38"
+     ]
+    },
+    "by_group": {
+     "clean": {
+      "n": 38,
+      "exact": 92.1
+     },
+     "coding_agent": {
+      "n": 2,
+      "exact": 50.0
+     },
+     "email": {
+      "n": 1,
+      "exact": 0.0
+     },
+     "file_mention": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "filler": {
+      "n": 11,
+      "exact": 81.8
+     },
+     "format": {
+      "n": 6,
+      "exact": 33.3
+     },
+     "self_correction": {
+      "n": 11,
+      "exact": 81.8
+     },
+     "stutter": {
+      "n": 3,
+      "exact": 100.0
+     }
+    }
+   },
+   "rules+sf+guard": {
+    "all": {
+     "n": 73,
+     "n_clean": 38,
+     "n_edit": 35,
+     "restraint": 100.0,
+     "edit_accuracy": 65.7,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 50.0,
+     "n_rules_fixable": 11,
+     "n_model_needed": 24,
+     "words_lost": 0,
+     "words_lost_clean": 0,
+     "words_lost_dirty": 0,
+     "lost_cases": 0.0,
+     "lost_cases_clean": 0.0,
+     "lost_cases_dirty": 0.0,
+     "words_added": 1,
+     "added_cases": 1.4,
+     "lost_ids": {},
+     "added_ids": {
+      "h72": 1
+     },
+     "content_loss_v1": 1.4,
+     "content_add_v1": 0.0,
+     "clean_wrong": [],
+     "guard_reject": 78.1
+    },
+    "by_group": {
+     "clean": {
+      "n": 38,
+      "exact": 100.0
+     },
+     "coding_agent": {
+      "n": 2,
+      "exact": 50.0
+     },
+     "email": {
+      "n": 1,
+      "exact": 0.0
+     },
+     "file_mention": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "filler": {
+      "n": 11,
+      "exact": 72.7
+     },
+     "format": {
+      "n": 6,
+      "exact": 33.3
+     },
+     "self_correction": {
+      "n": 11,
+      "exact": 72.7
+     },
+     "stutter": {
+      "n": 3,
+      "exact": 100.0
+     }
+    }
+   }
+  },
+  "latency": {
+   "rules+s1": {
+    "n": 73,
+    "median_ms": 444.1,
+    "p95_ms": 1013.2,
+    "mean_ms": 522.7,
+    "max_ms": 1622.4,
+    "share_over_1s": 6.8,
+    "share_over_2s": 0.0,
+    "share_over_3s": 0.0,
+    "reasoning_outputs": 0,
+    "think_tag_outputs": 0
+   },
+   "rules+sf": {
+    "n": 73,
+    "median_ms": 705.5,
+    "p95_ms": 1009.4,
+    "mean_ms": 720.2,
+    "max_ms": 1457.3,
+    "share_over_1s": 6.8,
+    "share_over_2s": 0.0,
+    "share_over_3s": 0.0,
+    "reasoning_outputs": 0,
+    "think_tag_outputs": 0
+   }
+  },
+  "latency_pooled": {
+   "s1": {
+    "n": 73,
+    "median_ms": 444.1,
+    "p95_ms": 1013.2,
+    "mean_ms": 522.7,
+    "max_ms": 1622.4
+   },
+   "sf": {
+    "n": 73,
+    "median_ms": 705.5,
+    "p95_ms": 1009.4,
+    "mean_ms": 720.2,
+    "max_ms": 1457.3
+   }
+  },
+  "guard": {
+   "rules+s1+guard": {
+    "rejects": 50,
+    "reasons": {
+     "noWordChange": 48,
+     "negation": 1,
+     "changedNumber": 1
+    },
+    "reject_of_exact_output": 45,
+    "reject_of_inexact_output": 5,
+    "ids": {
+     "h01": "noWordChange",
+     "h02": "noWordChange",
+     "h03": "noWordChange",
+     "h05": "noWordChange",
+     "h06": "noWordChange",
+     "h07": "noWordChange",
+     "h08": "noWordChange",
+     "h09": "noWordChange",
+     "h10": "noWordChange",
+     "h11": "noWordChange",
+     "h12": "noWordChange",
+     "h13": "noWordChange",
+     "h14": "noWordChange",
+     "h15": "noWordChange",
+     "h16": "noWordChange",
+     "h17": "noWordChange",
+     "h18": "noWordChange",
+     "h19": "noWordChange",
+     "h20": "noWordChange",
+     "h21": "noWordChange",
+     "h22": "noWordChange",
+     "h23": "noWordChange",
+     "h24": "noWordChange",
+     "h25": "noWordChange",
+     "h26": "noWordChange",
+     "h27": "noWordChange",
+     "h28": "noWordChange",
+     "h29": "noWordChange",
+     "h31": "noWordChange",
+     "h32": "noWordChange",
+     "h33": "noWordChange",
+     "h35": "noWordChange",
+     "h36": "noWordChange",
+     "h37": "noWordChange",
+     "h38": "noWordChange",
+     "h39": "noWordChange",
+     "h40": "noWordChange",
+     "h42": "noWordChange",
+     "h44": "noWordChange",
+     "h45": "noWordChange",
+     "h46": "noWordChange",
+     "h47": "noWordChange",
+     "h48": "noWordChange",
+     "h49": "noWordChange",
+     "h50": "noWordChange",
+     "h51": "noWordChange",
+     "h52": "noWordChange",
+     "h53": "noWordChange",
+     "h62": "negation",
+     "h72": "changedNumber"
+    }
+   },
+   "rules+sf+guard": {
+    "rejects": 57,
+    "reasons": {
+     "noWordChange": 54,
+     "changedNumber": 1,
+     "droppedContent": 1,
+     "negation": 1
+    },
+    "reject_of_exact_output": 48,
+    "reject_of_inexact_output": 9,
+    "ids": {
+     "h01": "noWordChange",
+     "h02": "noWordChange",
+     "h03": "noWordChange",
+     "h04": "noWordChange",
+     "h05": "noWordChange",
+     "h06": "noWordChange",
+     "h07": "noWordChange",
+     "h08": "noWordChange",
+     "h09": "noWordChange",
+     "h10": "noWordChange",
+     "h11": "noWordChange",
+     "h12": "noWordChange",
+     "h13": "noWordChange",
+     "h14": "noWordChange",
+     "h15": "noWordChange",
+     "h16": "noWordChange",
+     "h17": "noWordChange",
+     "h18": "noWordChange",
+     "h19": "noWordChange",
+     "h20": "noWordChange",
+     "h21": "noWordChange",
+     "h22": "changedNumber",
+     "h23": "noWordChange",
+     "h24": "noWordChange",
+     "h25": "noWordChange",
+     "h26": "noWordChange",
+     "h27": "noWordChange",
+     "h28": "noWordChange",
+     "h29": "noWordChange",
+     "h30": "noWordChange",
+     "h31": "noWordChange",
+     "h32": "noWordChange",
+     "h33": "noWordChange",
+     "h34": "noWordChange",
+     "h35": "noWordChange",
+     "h36": "noWordChange",
+     "h37": "noWordChange",
+     "h38": "droppedContent",
+     "h39": "noWordChange",
+     "h40": "noWordChange",
+     "h41": "noWordChange",
+     "h42": "noWordChange",
+     "h43": "noWordChange",
+     "h44": "noWordChange",
+     "h45": "noWordChange",
+     "h46": "noWordChange",
+     "h47": "noWordChange",
+     "h48": "noWordChange",
+     "h49": "noWordChange",
+     "h50": "noWordChange",
+     "h51": "noWordChange",
+     "h52": "noWordChange",
+     "h53": "noWordChange",
+     "h62": "negation",
+     "h68": "noWordChange",
+     "h69": "noWordChange",
+     "h71": "noWordChange"
+    }
+   }
+  },
+  "rules_ok_ids": [
+   "h01",
+   "h02",
+   "h03",
+   "h04",
+   "h05",
+   "h06",
+   "h07",
+   "h08",
+   "h09",
+   "h10",
+   "h11",
+   "h12",
+   "h13",
+   "h14",
+   "h15",
+   "h16",
+   "h17",
+   "h18",
+   "h19",
+   "h20",
+   "h21",
+   "h22",
+   "h23",
+   "h24",
+   "h25",
+   "h26",
+   "h27",
+   "h28",
+   "h29",
+   "h30",
+   "h31",
+   "h32",
+   "h33",
+   "h34",
+   "h35",
+   "h36",
+   "h37",
+   "h38",
+   "h39",
+   "h40",
+   "h41",
+   "h44",
+   "h45",
+   "h46",
+   "h47",
+   "h48",
+   "h49",
+   "h51",
+   "h52"
+  ]
+ },
+ "finals": {
+  "none": {
+   "h01": "I don't think we should ship this on Friday.",
+   "h02": "Do not give the patient more than 400 mg of ibuprofen in 24 hours.",
+   "h03": "The meeting is in room 214, not room 241.",
+   "h04": "Call me back at 555-0187 after 6 p.m.",
+   "h05": "Transfer $2,500 to the savings account, not the checking account.",
+   "h06": "Never commit the .env file to the repository.",
+   "h07": "She can't attend, and neither can her manager.",
+   "h08": "Alice reports to Bob, and Bob reports to Carol.",
+   "h09": "Take one tablet twice a day with food.",
+   "h10": "We need 3 laptops, 2 monitors and 1 docking station.",
+   "h11": "No, I haven't seen the invoice yet.",
+   "h12": "The flight leaves at 7:45 a.m. from gate B12.",
+   "h13": "Run git rebase --onto main feature-branch, not a merge.",
+   "h14": "Set the timeout to 30 seconds instead of 300.",
+   "h15": "Nobody on the team approved the change.",
+   "h16": "I'm not sure the numbers add up to 1,200.",
+   "h17": "Email the contract to legal@example.com before noon.",
+   "h18": "The dog bit the man, not the other way around.",
+   "h19": "Rename getUserById to findUser in src/users.ts.",
+   "h20": "Our revenue grew 12% in the third quarter.",
+   "h21": "Please don't reply all to this thread.",
+   "h22": "First the backend, then the frontend, then the docs.",
+   "h23": "The apartment is on the 4th floor, unit 4B.",
+   "h24": "Lower the dose from 20 mg to 10 mg starting Monday.",
+   "h25": "Neither option works for me, so let's find a third.",
+   "h26": "Add 2 cups of flour and half a cup of sugar.",
+   "h27": "The password must be at least 12 characters long.",
+   "h28": "Kill the process on port 8080 and restart the server.",
+   "h29": "I said yes to the offer, not no.",
+   "h30": "We won 3 to 2 after extra time.",
+   "h31": "Cancel the order unless it ships by the 15th.",
+   "h32": "Hmm, that's not what I expected.",
+   "h33": "Uh huh, that works for me.",
+   "h34": "The word um shows up a lot in transcripts.",
+   "h35": "Hello team, the release is delayed, not cancelled. We ship on the 3rd.",
+   "h36": "Add a test for the case where the list is empty, not null.",
+   "h37": "The test expects 3 items but gets 2, so the filter drops one.",
+   "h38": "Swap the order: install first, then build, then test.",
+   "h39": "Um, don't forget to lock the door.",
+   "h40": "The dose is, uh, 250 mg twice a day.",
+   "h41": "I I can't make it to the 3 p.m. meeting.",
+   "h42": "We should, um, not deploy on Friday.",
+   "h43": "Call, uh, 555-0142 and ask for, um, Dana.",
+   "h44": "The the invoice was never paid.",
+   "h45": "Send it to to Maria, not to Tom.",
+   "h46": "Uh, the server is in room 101, not 110.",
+   "h47": "Push the fix to, um, the release branch, then tag it.",
+   "h48": "Erm, nobody told me about the deadline.",
+   "h49": "Run npm install, uh, then npm test.",
+   "h50": "Don't, um, delete the migration files.",
+   "h51": "Uh, refactor the auth middleware, but don't touch the session store.",
+   "h52": "Fix the off by one error in the pagination loop, um, it skips the last page.",
+   "h53": "Hi Priya, um, thanks for sending the draft. I'll, uh, review it by Thursday. Best, Omar.",
+   "h54": "Book the table for six, no wait, eight people.",
+   "h55": "The meeting is on Tuesday, sorry, Wednesday at 10.",
+   "h56": "Give her 5 mg, I mean 2.5 mg, of melatonin.",
+   "h57": "Transfer $500, actually, $5,000 to the vendor.",
+   "h58": "Ship it to Berlin, or rather Munich, by Friday.",
+   "h59": "Order four chairs, make that six chairs, for the office.",
+   "h60": "The code is 4471, scratch that, 4417.",
+   "h61": "Meet me in room 12, no, room 21.",
+   "h62": "Don't call the client, no wait, do call the client today.",
+   "h63": "Set the limit to 100, sorry, 1,000 requests per minute.",
+   "h64": "Tell Sam, I mean Alex, that the build is green.",
+   "h65": "My email is j dot park at example dot org.",
+   "h66": "Send the file to support at example dot com.",
+   "h67": "Open src slash api slash routes dot ts.",
+   "h68": "The total is two thousand five hundred dollars.",
+   "h69": "Call five five five, zero one nine eight.",
+   "h70": "Run the script with dash dash dry dash run.",
+   "h71": "Take two hundred milligrams every eight hours.",
+   "h72": "The meeting is in room three oh four.",
+   "h73": "Bump the version from 2.3.1 to 2.4.0, uh, in package dot json."
+  },
+  "rules": {
+   "h01": "I don't think we should ship this on Friday.",
+   "h02": "Do not give the patient more than 400 mg of ibuprofen in 24 hours.",
+   "h03": "The meeting is in room 214, not room 241.",
+   "h04": "Call me back at 555-0187 after 6 p.m.",
+   "h05": "Transfer $2,500 to the savings account, not the checking account.",
+   "h06": "Never commit the .env file to the repository.",
+   "h07": "She can't attend, and neither can her manager.",
+   "h08": "Alice reports to Bob, and Bob reports to Carol.",
+   "h09": "Take one tablet twice a day with food.",
+   "h10": "We need 3 laptops, 2 monitors and 1 docking station.",
+   "h11": "No, I haven't seen the invoice yet.",
+   "h12": "The flight leaves at 7:45 a.m. from gate B12.",
+   "h13": "Run git rebase --onto main feature-branch, not a merge.",
+   "h14": "Set the timeout to 30 seconds instead of 300.",
+   "h15": "Nobody on the team approved the change.",
+   "h16": "I'm not sure the numbers add up to 1,200.",
+   "h17": "Email the contract to legal@example.com before noon.",
+   "h18": "The dog bit the man, not the other way around.",
+   "h19": "Rename getUserById to findUser in src/users.ts.",
+   "h20": "Our revenue grew 12% in the third quarter.",
+   "h21": "Please don't reply all to this thread.",
+   "h22": "First the backend, then the frontend, then the docs.",
+   "h23": "The apartment is on the 4th floor, unit 4B.",
+   "h24": "Lower the dose from 20 mg to 10 mg starting Monday.",
+   "h25": "Neither option works for me, so let's find a third.",
+   "h26": "Add 2 cups of flour and half a cup of sugar.",
+   "h27": "The password must be at least 12 characters long.",
+   "h28": "Kill the process on port 8080 and restart the server.",
+   "h29": "I said yes to the offer, not no.",
+   "h30": "We won 3 to 2 after extra time.",
+   "h31": "Cancel the order unless it ships by the 15th.",
+   "h32": "Hmm, that's not what I expected.",
+   "h33": "Uh huh, that works for me.",
+   "h34": "The word um shows up a lot in transcripts.",
+   "h35": "Hello team, the release is delayed, not cancelled. We ship on the 3rd.",
+   "h36": "Add a test for the case where the list is empty, not null.",
+   "h37": "The test expects 3 items but gets 2, so the filter drops one.",
+   "h38": "Swap the order: install first, then build, then test.",
+   "h39": "Don't forget to lock the door.",
+   "h40": "The dose is 250 mg twice a day.",
+   "h41": "I can't make it to the 3 p.m. meeting.",
+   "h42": "We should, not deploy on Friday.",
+   "h43": "Call, 555-0142 and ask for Dana.",
+   "h44": "The invoice was never paid.",
+   "h45": "Send it to Maria, not to Tom.",
+   "h46": "The server is in room 101, not 110.",
+   "h47": "Push the fix to the release branch, then tag it.",
+   "h48": "Nobody told me about the deadline.",
+   "h49": "Run npm install, then npm test.",
+   "h50": "Don't, delete the migration files.",
+   "h51": "Refactor the auth middleware, but don't touch the session store.",
+   "h52": "Fix the off by one error in the pagination loop, it skips the last page.",
+   "h53": "Hi Priya, thanks for sending the draft. I'll, review it by Thursday. Best, Omar.",
+   "h54": "Book the table for six, no wait, eight people.",
+   "h55": "The meeting is on Tuesday, sorry, Wednesday at 10.",
+   "h56": "Give her 5 mg, I mean 2.5 mg, of melatonin.",
+   "h57": "Transfer $500, actually, $5,000 to the vendor.",
+   "h58": "Ship it to Berlin, or rather Munich, by Friday.",
+   "h59": "Order four chairs, make that six chairs, for the office.",
+   "h60": "The code is 4471, scratch that, 4417.",
+   "h61": "Meet me in room 12, no, room 21.",
+   "h62": "Don't call the client, no wait, do call the client today.",
+   "h63": "Set the limit to 100, sorry, 1,000 requests per minute.",
+   "h64": "Tell Sam, I mean Alex, that the build is green.",
+   "h65": "My email is j dot park at example dot org.",
+   "h66": "Send the file to support at example dot com.",
+   "h67": "Open src slash api slash routes dot ts.",
+   "h68": "The total is two thousand five hundred dollars.",
+   "h69": "Call five five five, zero one nine eight.",
+   "h70": "Run the script with dash dash dry dash run.",
+   "h71": "Take two hundred milligrams every eight hours.",
+   "h72": "The meeting is in room three oh four.",
+   "h73": "Bump the version from 2.3.1 to 2.4.0, in package dot json."
+  },
+  "rules+s1": {
+   "h01": "I don't think we should ship this on Friday.",
+   "h02": "Do not give the patient more than 400 mg of ibuprofen in 24 hours.",
+   "h03": "The meeting is in room 214, not room 241.",
+   "h04": "Call me back at 5550187 after 6pm.",
+   "h05": "Transfer $2,500 to the savings account, not the checking account.",
+   "h06": "Never commit the .env file to the repository.",
+   "h07": "She can't attend, and neither can her manager.",
+   "h08": "Alice reports to Bob, and Bob reports to Carol.",
+   "h09": "Take one tablet twice a day with food.",
+   "h10": "We need 3 laptops, 2 monitors, and 1 docking station.",
+   "h11": "No, I haven't seen the invoice yet.",
+   "h12": "The flight leaves at 7:45 a.m. from gate B12.",
+   "h13": "Run git rebase --onto main feature-branch, not a merge.",
+   "h14": "Set the timeout to 30 seconds instead of 300.",
+   "h15": "Nobody on the team approved the change.",
+   "h16": "I'm not sure the numbers add up to 1,200.",
+   "h17": "Email the contract to legal@example.com before noon.",
+   "h18": "The dog bit the man, not the other way around.",
+   "h19": "Rename getUserById to findUser in src/users.ts.",
+   "h20": "Our revenue grew 12% in the third quarter.",
+   "h21": "Please don't reply all to this thread.",
+   "h22": "First, the backend, then the frontend, then the docs.",
+   "h23": "The apartment is on the 4th floor, unit 4B.",
+   "h24": "Lower the dose from 20 mg to 10 mg starting Monday.",
+   "h25": "Neither option works for me, so let's find a third.",
+   "h26": "Add 2 cups of flour and half a cup of sugar.",
+   "h27": "The password must be at least 12 characters long.",
+   "h28": "Kill the process on port 8080 and restart the server.",
+   "h29": "I said yes to the offer, not no.",
+   "h30": "We won 3-2 after extra time.",
+   "h31": "Cancel the order unless it ships by the 15th.",
+   "h32": "Hmm, that's not what I expected.",
+   "h33": "Uh huh, that works for me.",
+   "h34": "The word shows up a lot in transcripts.",
+   "h35": "Hello Team,\n\nThe release is delayed, not cancelled. We ship on the 3rd.",
+   "h36": "Add a test for the case where the list is empty, not null.",
+   "h37": "The test expects 3 items but gets 2, so the filter drops one.",
+   "h38": "Swap the order: install first, then build, then test.",
+   "h39": "Don't forget to lock the door.",
+   "h40": "The dose is 250 mg twice a day.",
+   "h41": "I can't make it to the 3pm meeting.",
+   "h42": "We should not deploy on Friday.",
+   "h43": "Call 5550142 and ask for Dana.",
+   "h44": "The invoice was never paid.",
+   "h45": "Send it to Maria, not to Tom.",
+   "h46": "The server is in room 101, not 110.",
+   "h47": "Push the fix to the release branch, then tag it.",
+   "h48": "Nobody told me about the deadline.",
+   "h49": "Run npm install, then npm test.",
+   "h50": "Don't delete the migration files.",
+   "h51": "Refactor the auth middleware, but don't touch the session store.",
+   "h52": "Fix the off-by-one error in the pagination loop. It skips the last page.",
+   "h53": "Hi Priya,\n\nThanks for sending the draft. I'll review it by Thursday.\n\nBest,\nOmar",
+   "h54": "Book the table for eight people.",
+   "h55": "The meeting is on Wednesday at 10.",
+   "h56": "Give her 2.5 mg of melatonin.",
+   "h57": "Transfer $5,000 to the vendor.",
+   "h58": "Ship it to Munich by Friday.",
+   "h59": "Order six chairs for the office.",
+   "h60": "The code is 4417.",
+   "h61": "Meet me in room 21.",
+   "h62": "Do call the client today.",
+   "h63": "Set the limit to 1,000 requests per minute.",
+   "h64": "Tell Alex that the build is green.",
+   "h65": "My email is j.park@example.org.",
+   "h66": "Send the file to support@example.com.",
+   "h67": "Open src/api/routes.ts.",
+   "h68": "The total is $2,500.",
+   "h69": "Call 5550198.",
+   "h70": "Run the script with dry-run.",
+   "h71": "Take 200 milligrams every 8 hours.",
+   "h72": "The meeting is in room 304.",
+   "h73": "Bump the version from 2.3.1 to 2.4.0, in package.json."
+  },
+  "rules+s1+guard": {
+   "h01": "I don't think we should ship this on Friday.",
+   "h02": "Do not give the patient more than 400 mg of ibuprofen in 24 hours.",
+   "h03": "The meeting is in room 214, not room 241.",
+   "h04": "Call me back at 5550187 after 6pm.",
+   "h05": "Transfer $2,500 to the savings account, not the checking account.",
+   "h06": "Never commit the .env file to the repository.",
+   "h07": "She can't attend, and neither can her manager.",
+   "h08": "Alice reports to Bob, and Bob reports to Carol.",
+   "h09": "Take one tablet twice a day with food.",
+   "h10": "We need 3 laptops, 2 monitors and 1 docking station.",
+   "h11": "No, I haven't seen the invoice yet.",
+   "h12": "The flight leaves at 7:45 a.m. from gate B12.",
+   "h13": "Run git rebase --onto main feature-branch, not a merge.",
+   "h14": "Set the timeout to 30 seconds instead of 300.",
+   "h15": "Nobody on the team approved the change.",
+   "h16": "I'm not sure the numbers add up to 1,200.",
+   "h17": "Email the contract to legal@example.com before noon.",
+   "h18": "The dog bit the man, not the other way around.",
+   "h19": "Rename getUserById to findUser in src/users.ts.",
+   "h20": "Our revenue grew 12% in the third quarter.",
+   "h21": "Please don't reply all to this thread.",
+   "h22": "First the backend, then the frontend, then the docs.",
+   "h23": "The apartment is on the 4th floor, unit 4B.",
+   "h24": "Lower the dose from 20 mg to 10 mg starting Monday.",
+   "h25": "Neither option works for me, so let's find a third.",
+   "h26": "Add 2 cups of flour and half a cup of sugar.",
+   "h27": "The password must be at least 12 characters long.",
+   "h28": "Kill the process on port 8080 and restart the server.",
+   "h29": "I said yes to the offer, not no.",
+   "h30": "We won 3-2 after extra time.",
+   "h31": "Cancel the order unless it ships by the 15th.",
+   "h32": "Hmm, that's not what I expected.",
+   "h33": "Uh huh, that works for me.",
+   "h34": "The word shows up a lot in transcripts.",
+   "h35": "Hello team, the release is delayed, not cancelled. We ship on the 3rd.",
+   "h36": "Add a test for the case where the list is empty, not null.",
+   "h37": "The test expects 3 items but gets 2, so the filter drops one.",
+   "h38": "Swap the order: install first, then build, then test.",
+   "h39": "Don't forget to lock the door.",
+   "h40": "The dose is 250 mg twice a day.",
+   "h41": "I can't make it to the 3pm meeting.",
+   "h42": "We should, not deploy on Friday.",
+   "h43": "Call 5550142 and ask for Dana.",
+   "h44": "The invoice was never paid.",
+   "h45": "Send it to Maria, not to Tom.",
+   "h46": "The server is in room 101, not 110.",
+   "h47": "Push the fix to the release branch, then tag it.",
+   "h48": "Nobody told me about the deadline.",
+   "h49": "Run npm install, then npm test.",
+   "h50": "Don't, delete the migration files.",
+   "h51": "Refactor the auth middleware, but don't touch the session store.",
+   "h52": "Fix the off by one error in the pagination loop, it skips the last page.",
+   "h53": "Hi Priya, thanks for sending the draft. I'll, review it by Thursday. Best, Omar.",
+   "h54": "Book the table for eight people.",
+   "h55": "The meeting is on Wednesday at 10.",
+   "h56": "Give her 2.5 mg of melatonin.",
+   "h57": "Transfer $5,000 to the vendor.",
+   "h58": "Ship it to Munich by Friday.",
+   "h59": "Order six chairs for the office.",
+   "h60": "The code is 4417.",
+   "h61": "Meet me in room 21.",
+   "h62": "Don't call the client, no wait, do call the client today.",
+   "h63": "Set the limit to 1,000 requests per minute.",
+   "h64": "Tell Alex that the build is green.",
+   "h65": "My email is j.park@example.org.",
+   "h66": "Send the file to support@example.com.",
+   "h67": "Open src/api/routes.ts.",
+   "h68": "The total is $2,500.",
+   "h69": "Call 5550198.",
+   "h70": "Run the script with dry-run.",
+   "h71": "Take 200 milligrams every 8 hours.",
+   "h72": "The meeting is in room three oh four.",
+   "h73": "Bump the version from 2.3.1 to 2.4.0, in package.json."
+  },
+  "rules+sf": {
+   "h01": "I don't think we should ship this on Friday.",
+   "h02": "Do not give the patient more than 400 mg of ibuprofen in 24 hours.",
+   "h03": "The meeting is in room 214, not room 241.",
+   "h04": "Call me back at 555-0187 after 6 p.m.",
+   "h05": "Transfer $2,500 to the savings account, not the checking account.",
+   "h06": "Never commit the .env file to the repository.",
+   "h07": "She can't attend, and neither can her manager.",
+   "h08": "Alice reports to Bob, and Bob reports to Carol.",
+   "h09": "Take one tablet twice a day with food.",
+   "h10": "We need 3 laptops, 2 monitors and 1 docking station.",
+   "h11": "No, I haven't seen the invoice yet.",
+   "h12": "The flight leaves at 7:45 a.m. from gate B12.",
+   "h13": "Run git rebase --onto main --feature-branch, not a merge.",
+   "h14": "Set the timeout to 30 seconds instead of 300.",
+   "h15": "Nobody on the team approved the change.",
+   "h16": "I'm not sure the numbers add up to 1,200.",
+   "h17": "Email the contract to legal@example.com before noon.",
+   "h18": "The dog bit the man, not the other way around.",
+   "h19": "Rename getUserById to findUser in src/users.ts.",
+   "h20": "Our revenue grew 12% in the third quarter.",
+   "h21": "Please don't reply all to this thread.",
+   "h22": "1. The backend\n2. The frontend\n3. The docs",
+   "h23": "The apartment is on the 4th floor, unit 4B.",
+   "h24": "Lower the dose from 20 mg to 10 mg starting Monday.",
+   "h25": "Neither option works for me, so let's find a third.",
+   "h26": "Add 2 cups of flour and half a cup of sugar.",
+   "h27": "The password must be at least 12 characters long.",
+   "h28": "Kill the process on port 8080 and restart the server.",
+   "h29": "I said yes to the offer, not no.",
+   "h30": "We won 3 to 2 after extra time.",
+   "h31": "Cancel the order unless it ships by the 15th.",
+   "h32": "Hmm, that's not what I expected.",
+   "h33": "Uh huh, that works for me.",
+   "h34": "The word um shows up a lot in transcripts.",
+   "h35": "Hello team, the release is delayed, not cancelled. We ship on the 3rd.",
+   "h36": "Add a test for the case where the list is empty, not null.",
+   "h37": "The test expects 3 items but gets 2, so the filter drops one.",
+   "h38": "Install first, then build, then test.",
+   "h39": "Don't forget to lock the door.",
+   "h40": "The dose is 250 mg twice a day.",
+   "h41": "I can't make it to the 3 p.m. meeting.",
+   "h42": "We should not deploy on Friday.",
+   "h43": "Call, 555-0142 and ask for Dana.",
+   "h44": "The invoice was never paid.",
+   "h45": "Send it to Maria, not to Tom.",
+   "h46": "The server is in room 101, not 110.",
+   "h47": "Push the fix to the release branch, then tag it.",
+   "h48": "Nobody told me about the deadline.",
+   "h49": "Run npm install, then npm test.",
+   "h50": "Don't, delete the migration files.",
+   "h51": "Refactor the auth middleware, but don't touch the session store.",
+   "h52": "Fix the off by one error in the pagination loop, it skips the last page.",
+   "h53": "Hi Priya,\n\nThanks for sending the draft.\n\nI'll review it by Thursday.\n\nBest,\nOmar",
+   "h54": "Book the table for eight people.",
+   "h55": "The meeting is on Wednesday at 10.",
+   "h56": "Give her 2.5 mg of melatonin.",
+   "h57": "Transfer $5,000 to the vendor.",
+   "h58": "Ship it to Munich by Friday.",
+   "h59": "Order six chairs for the office.",
+   "h60": "The code is 4417.",
+   "h61": "Meet me in room 21.",
+   "h62": "Do call the client today.",
+   "h63": "Set the limit to 1000 requests per minute.",
+   "h64": "Tell Alex, that the build is green.",
+   "h65": "My email is j.park@example.org.",
+   "h66": "Send the file to support@example.com.",
+   "h67": "Open src/api/routes.ts.",
+   "h68": "The total is two thousand five hundred dollars.",
+   "h69": "Call five five five, zero one nine eight.",
+   "h70": "Run the script with --dry-run.",
+   "h71": "Take two hundred milligrams every eight hours.",
+   "h72": "The meeting is in room three and four.",
+   "h73": "Bump the version from 2.3.1 to 2.4.0, in package.json."
+  },
+  "rules+sf+guard": {
+   "h01": "I don't think we should ship this on Friday.",
+   "h02": "Do not give the patient more than 400 mg of ibuprofen in 24 hours.",
+   "h03": "The meeting is in room 214, not room 241.",
+   "h04": "Call me back at 555-0187 after 6 p.m.",
+   "h05": "Transfer $2,500 to the savings account, not the checking account.",
+   "h06": "Never commit the .env file to the repository.",
+   "h07": "She can't attend, and neither can her manager.",
+   "h08": "Alice reports to Bob, and Bob reports to Carol.",
+   "h09": "Take one tablet twice a day with food.",
+   "h10": "We need 3 laptops, 2 monitors and 1 docking station.",
+   "h11": "No, I haven't seen the invoice yet.",
+   "h12": "The flight leaves at 7:45 a.m. from gate B12.",
+   "h13": "Run git rebase --onto main feature-branch, not a merge.",
+   "h14": "Set the timeout to 30 seconds instead of 300.",
+   "h15": "Nobody on the team approved the change.",
+   "h16": "I'm not sure the numbers add up to 1,200.",
+   "h17": "Email the contract to legal@example.com before noon.",
+   "h18": "The dog bit the man, not the other way around.",
+   "h19": "Rename getUserById to findUser in src/users.ts.",
+   "h20": "Our revenue grew 12% in the third quarter.",
+   "h21": "Please don't reply all to this thread.",
+   "h22": "First the backend, then the frontend, then the docs.",
+   "h23": "The apartment is on the 4th floor, unit 4B.",
+   "h24": "Lower the dose from 20 mg to 10 mg starting Monday.",
+   "h25": "Neither option works for me, so let's find a third.",
+   "h26": "Add 2 cups of flour and half a cup of sugar.",
+   "h27": "The password must be at least 12 characters long.",
+   "h28": "Kill the process on port 8080 and restart the server.",
+   "h29": "I said yes to the offer, not no.",
+   "h30": "We won 3 to 2 after extra time.",
+   "h31": "Cancel the order unless it ships by the 15th.",
+   "h32": "Hmm, that's not what I expected.",
+   "h33": "Uh huh, that works for me.",
+   "h34": "The word um shows up a lot in transcripts.",
+   "h35": "Hello team, the release is delayed, not cancelled. We ship on the 3rd.",
+   "h36": "Add a test for the case where the list is empty, not null.",
+   "h37": "The test expects 3 items but gets 2, so the filter drops one.",
+   "h38": "Swap the order: install first, then build, then test.",
+   "h39": "Don't forget to lock the door.",
+   "h40": "The dose is 250 mg twice a day.",
+   "h41": "I can't make it to the 3 p.m. meeting.",
+   "h42": "We should, not deploy on Friday.",
+   "h43": "Call, 555-0142 and ask for Dana.",
+   "h44": "The invoice was never paid.",
+   "h45": "Send it to Maria, not to Tom.",
+   "h46": "The server is in room 101, not 110.",
+   "h47": "Push the fix to the release branch, then tag it.",
+   "h48": "Nobody told me about the deadline.",
+   "h49": "Run npm install, then npm test.",
+   "h50": "Don't, delete the migration files.",
+   "h51": "Refactor the auth middleware, but don't touch the session store.",
+   "h52": "Fix the off by one error in the pagination loop, it skips the last page.",
+   "h53": "Hi Priya, thanks for sending the draft. I'll, review it by Thursday. Best, Omar.",
+   "h54": "Book the table for eight people.",
+   "h55": "The meeting is on Wednesday at 10.",
+   "h56": "Give her 2.5 mg of melatonin.",
+   "h57": "Transfer $5,000 to the vendor.",
+   "h58": "Ship it to Munich by Friday.",
+   "h59": "Order six chairs for the office.",
+   "h60": "The code is 4417.",
+   "h61": "Meet me in room 21.",
+   "h62": "Don't call the client, no wait, do call the client today.",
+   "h63": "Set the limit to 1000 requests per minute.",
+   "h64": "Tell Alex, that the build is green.",
+   "h65": "My email is j.park@example.org.",
+   "h66": "Send the file to support@example.com.",
+   "h67": "Open src/api/routes.ts.",
+   "h68": "The total is two thousand five hundred dollars.",
+   "h69": "Call five five five, zero one nine eight.",
+   "h70": "Run the script with --dry-run.",
+   "h71": "Take two hundred milligrams every eight hours.",
+   "h72": "The meeting is in room three and four.",
+   "h73": "Bump the version from 2.3.1 to 2.4.0, in package.json."
+  }
+ }
+}

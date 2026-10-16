@@ -70,6 +70,9 @@
  *  34. Clearing history leaves failed audio that "Retry last recording" can still use.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { DeliveryTarget } from '../src/core/delivery/deliveryTarget.js';
+import { DELIVERY_TIMEOUT } from '../src/core/delivery/deliveryFlow.js';
+import { LINE_BREAKS, PARTLY_TYPED } from '../src/core/hudModel.js';
 import {
   DictationService,
   classifyRecordingFailure,
@@ -80,6 +83,7 @@ import {
   type CapturedAudio,
   type DictationOutcome,
   type DictationStatus,
+  type CleanupPort,
   type FormatterPort,
   type RecorderPort,
   type TextSinkPort,
@@ -162,8 +166,8 @@ class FakeTranscriber implements TranscriberPort {
 
 class FakeSink implements TextSinkPort {
   delivered: string[] = [];
-  requests: Array<{ text: string; targetApp?: string; targetHandle?: number; mode: string; signal?: AbortSignal }> = [];
-  result: { delivered: boolean; clipboardFallback: boolean; cancelled?: boolean } = { delivered: true, clipboardFallback: false };
+  requests: Array<{ text: string; targetApp?: string; targetHandle?: number; target?: DeliveryTarget; mode: string; signal?: AbortSignal }> = [];
+  result: { delivered: boolean; clipboardFallback: boolean; cancelled?: boolean; partlyTyped?: boolean; lineBreaks?: boolean; pasteFailed?: boolean } = { delivered: true, clipboardFallback: false };
   /** Never resolves, to exercise the delivery timeout. */
   hang = false;
   /** Waits for the abort signal and reports it stopped before pasting, like the real sink. */
@@ -172,7 +176,7 @@ class FakeSink implements TextSinkPort {
   gate: Promise<void> | null = null;
   error: Error | null = null;
 
-  async deliver(request: { text: string; targetApp?: string; targetHandle?: number; mode: string; signal?: AbortSignal }): Promise<{ delivered: boolean; clipboardFallback: boolean; cancelled?: boolean }> {
+  async deliver(request: { text: string; targetApp?: string; targetHandle?: number; target?: DeliveryTarget; mode: string; signal?: AbortSignal }): Promise<{ delivered: boolean; clipboardFallback: boolean; cancelled?: boolean; partlyTyped?: boolean; lineBreaks?: boolean; pasteFailed?: boolean }> {
     this.delivered.push(request.text);
     this.requests.push(request);
     if (this.error) throw this.error;
@@ -210,7 +214,9 @@ function setup(options: {
   memory?: Partial<LanguageMemorySnapshot>;
   apiKey?: string | null;
   formatter?: FormatterPort;
+  cleanup?: CleanupPort;
   tickMs?: number;
+  deliveryTimeoutMs?: number;
 } = {}) {
   const recorder = new FakeRecorder();
   const transcriber = new FakeTranscriber();
@@ -252,7 +258,8 @@ function setup(options: {
     onDiagnostic: (category, message) => diagnostics.push({ category, message }),
     idFactory,
     formatter: options.formatter,
-    deliveryTimeoutMs: 200,
+    ...(options.cleanup ? { cleanup: options.cleanup } : {}),
+    deliveryTimeoutMs: options.deliveryTimeoutMs ?? 200,
     tickMs: options.tickMs,
   });
 
@@ -601,6 +608,43 @@ describe('delivery that never calls back', () => {
     // The service must accept a new dictation.
     await ctx.service.toggle({ source: 'hotkey' });
     expect(ctx.service.currentState).toBe('recording');
+  });
+
+  it('stops the sink when it times out, so no keystroke follows', async () => {
+    const ctx = setup();
+    let keystrokes = 0;
+    let seen: AbortSignal | undefined;
+    ctx.sink.deliver = async (request) => {
+      seen = request.signal;
+      // A sink stuck past the timeout (a slow script), then about to press Ctrl+V.
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      if (!request.signal?.aborted) keystrokes += 1;
+      return { delivered: true, clipboardFallback: false };
+    };
+    await ctx.service.startRecording({ source: 'hotkey', target: { appId: 'notepad', windowHandle: 7 } });
+    await ctx.service.stopAndProcess();
+    expect(ctx.service.currentState).toBe('idle');
+    expect(seen?.aborted).toBe(true);
+    expect(seen?.reason).toBe(DELIVERY_TIMEOUT);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(keystrokes).toBe(0);
+    expect(ctx.diagnostics).toContainEqual({ category: 'delivery', message: 'timed out; stopped the sink' });
+  });
+
+  it('gives the sink a time budget that ends before the service gives up', async () => {
+    const ctx = setup();
+    await ctx.service.startRecording({ source: 'hotkey' });
+    await ctx.service.stopAndProcess();
+    const budget = (ctx.sink.requests[0] as { timeBudgetMs?: number }).timeBudgetMs;
+    expect(budget).toBeGreaterThan(0);
+    expect(budget).toBeLessThan(200);
+  });
+
+  it('gives whole milliseconds for an odd timeout', async () => {
+    const ctx = setup({ deliveryTimeoutMs: 201 });
+    await ctx.service.startRecording({ source: 'hotkey' });
+    await ctx.service.stopAndProcess();
+    expect((ctx.sink.requests[0] as { timeBudgetMs?: number }).timeBudgetMs).toBe(100);
   });
 
   it('treats a throwing sink as delivered-to-clipboard, not as a lost dictation', async () => {
@@ -1254,6 +1298,51 @@ describe('outcomes', () => {
     expect(ctx.outcomes).toEqual([{ kind: 'delivered', words: 2, result: 'copiedNotPasted', appName: 'Notepad' }]);
   });
 
+  it('says "partly typed" when typing stopped part way, never plain "copied"', async () => {
+    const ctx = setup();
+    ctx.sink.result = { delivered: false, clipboardFallback: true, partlyTyped: true };
+    await ctx.service.toggle({ source: 'hotkey', targetApp: 'Terminal' });
+    await ctx.service.toggle({ source: 'hotkey' });
+    expect(ctx.outcomes).toEqual([
+      { kind: 'delivered', words: 2, result: 'copiedNotPasted', appName: 'Terminal', partlyTyped: true },
+    ]);
+    expect(ctx.statuses.at(-1)?.message).toBe(PARTLY_TYPED);
+    expect(PARTLY_TYPED).toBe('Partly typed. The full text is on your clipboard.');
+  });
+
+  it('flags the outcome as blocked only when the paste script failed', async () => {
+    const blocked = setup();
+    blocked.sink.result = { delivered: false, clipboardFallback: true, pasteFailed: true };
+    await blocked.service.toggle({ source: 'hotkey', targetApp: 'Admin tool' });
+    await blocked.service.toggle({ source: 'hotkey' });
+    expect(blocked.outcomes).toEqual([
+      { kind: 'delivered', words: 2, result: 'copiedNotPasted', appName: 'Admin tool', pasteBlocked: true },
+    ]);
+    for (const result of [
+      { delivered: false, clipboardFallback: true },
+      { delivered: false, clipboardFallback: true, lineBreaks: true },
+      { delivered: false, clipboardFallback: true, partlyTyped: true },
+    ]) {
+      const ctx = setup();
+      ctx.sink.result = result;
+      await ctx.service.toggle({ source: 'hotkey', targetApp: 'Notepad' });
+      await ctx.service.toggle({ source: 'hotkey' });
+      expect(ctx.outcomes[0]).not.toHaveProperty('pasteBlocked');
+    }
+  });
+
+  it('says why when text with a line break was copied instead of typed', async () => {
+    const ctx = setup();
+    ctx.sink.result = { delivered: false, clipboardFallback: true, lineBreaks: true };
+    await ctx.service.toggle({ source: 'hotkey', targetApp: 'Terminal' });
+    await ctx.service.toggle({ source: 'hotkey' });
+    expect(ctx.outcomes).toEqual([
+      { kind: 'delivered', words: 2, result: 'copiedNotPasted', appName: 'Terminal', lineBreaks: true },
+    ]);
+    expect(ctx.statuses.at(-1)?.message).toBe(LINE_BREAKS);
+    expect(LINE_BREAKS).toBe("Copied. It has line breaks, so it wasn't typed. Press Ctrl+V.");
+  });
+
   it('emits no outcome for a failure', async () => {
     const ctx = setup();
     ctx.recorder.audio = capturedAudio({ hadSpeech: false });
@@ -1866,6 +1955,19 @@ describe('review round 1: delivery target and failures', () => {
     expect(window.sink.requests[0]?.targetHandle).toBeUndefined();
   });
 
+  it('hands the target locked at the hotkey press to the sink, and none for a window dictation', async () => {
+    const target: DeliveryTarget = { appId: 'slack', processId: 501, windowHandle: 4242, focusHandle: 7 };
+    const hotkey = setup();
+    await hotkey.service.toggle({ source: 'hotkey', targetApp: 'Slack', targetHandle: 4242, target });
+    await hotkey.service.toggle({ source: 'hotkey' });
+    expect(hotkey.sink.requests[0]?.target).toEqual(target);
+
+    const window = setup();
+    await window.service.toggle({ source: 'window', target });
+    await window.service.toggle({ source: 'window' });
+    expect(window.sink.requests[0]?.target).toBeUndefined();
+  });
+
   it('reports a sink that moved the paste to the clipboard as copied-not-pasted', async () => {
     // What the real sink answers when the window in front at delivery is not the start window.
     const ctx = setup();
@@ -2058,5 +2160,445 @@ describe('review round 2: failure after the text was delivered', () => {
     await service.toggle({ source: 'hotkey' });
     await service.toggle({ source: 'hotkey' });
     expect(statuses.at(-1)?.error?.kind).toBe('providerFailed');
+  });
+});
+
+/**
+ * App-aware formatting in the pipeline. Ways it could fail, each pinned below:
+ *  - the category comes from anywhere but the context captured at the press;
+ *  - a window dictation (or a press with no target) is formatted for anything but Other;
+ *  - raw mode, "Auto-format transcript" off, or "Format for the app" off still format;
+ *  - the formatter runs after the user's rules and snippets, so their rule loses;
+ *  - the formatter breaks, and the dictation goes with it;
+ *  - a late page or text-before-cursor read holds the dictation up for good;
+ *  - the text before the cursor reaches History, an outcome or a diagnostic line;
+ *  - the send key is requested for Email or Docs and notes, for a copy, or when it is off.
+ */
+describe('app-aware formatting', () => {
+  const capture = (category: 'email' | 'workChat' | 'personalChat' | 'coding' | 'docsNotes' | 'other', before: string | null = null, appID = 'slack.exe') => {
+    const context = { appID, category, textBeforeCursor: before };
+    return { initial: { appID, category, textBeforeCursor: null }, settled: Promise.resolve(context) };
+  };
+
+  async function dictate(ctx: ReturnType<typeof setup>, text: string, options: Parameters<DictationService['startRecording']>[0]) {
+    ctx.transcriber.transcript = { text, durationSeconds: 1, detectedLanguage: null };
+    await ctx.service.startRecording(options);
+    await ctx.service.stopAndProcess();
+  }
+
+  it('formats for the captured category, records it, and marks the dictation formatted', async () => {
+    const ctx = setup();
+    await dictate(ctx, 'Sounds good, see you at five.', { source: 'hotkey', context: capture('workChat') });
+    expect(ctx.sink.delivered).toEqual(['Sounds good, see you at five']);
+    expect(ctx.last()).toMatchObject({ category: 'workChat', appID: 'slack.exe', mode: 'formatted', rawText: 'Sounds good, see you at five.' });
+  });
+
+  it('an email gets its layout and the name from Settings', async () => {
+    const ctx = setup({ settings: { userName: 'Wasim' } });
+    await dictate(ctx, 'Hi Sam, thanks for the update. I will send the report tomorrow. Best regards.', {
+      source: 'hotkey',
+      context: capture('email', null, 'olk.exe'),
+    });
+    expect(ctx.sink.delivered).toEqual(['Hi Sam,\n\nThanks for the update. I will send the report tomorrow.\n\nBest regards,\nWasim']);
+  });
+
+  it('uses the style the user picked for the category', async () => {
+    const ctx = setup({ settings: { categoryStyles: { workChat: 'formal' } } });
+    await dictate(ctx, 'See you at five.', { source: 'hotkey', context: capture('workChat') });
+    expect(ctx.sink.delivered).toEqual(['See you at five.']);
+  });
+
+  it('a window dictation, and a press with no target, are filed under no app, and a window dictation is not category formatted', async () => {
+    const window = setup({ settings: { categoryStyles: { other: 'casual' } } });
+    await dictate(window, 'See you at five.', { source: 'window', context: capture('workChat') });
+    // The window source drops the context and has no app to fit the text to: no category formatting.
+    expect(window.sink.delivered).toEqual(['See you at five.']);
+    expect(window.last()?.appID).toBeUndefined();
+    expect(window.last()?.category).toBeUndefined();
+
+    const none = setup();
+    await dictate(none, 'See you at five.', { source: 'hotkey' });
+    expect(none.last()?.appID).toBeUndefined();
+    expect(none.last()?.category).toBeUndefined();
+  });
+
+  it('stores the category only with an app, whether or not formatting was on', async () => {
+    const off = setup({ settings: { appAwareFormatting: false } });
+    await dictate(off, 'See you at five.', { source: 'hotkey', context: capture('workChat') });
+    expect(off.last()).toMatchObject({ appID: 'slack.exe', category: 'workChat' });
+  });
+
+  it('skips the formatter in raw mode, with Auto-format off, and with Format for the app off', async () => {
+    for (const [settings, rawMode] of [[{}, true], [{ formattingEnabled: false }, false], [{ appAwareFormatting: false }, false]] as const) {
+      const ctx = setup({ settings });
+      await dictate(ctx, 'See you at five.', { source: 'hotkey', rawMode, context: capture('workChat') });
+      expect(ctx.sink.delivered).toEqual(['See you at five.']);
+      expect(ctx.last()).toMatchObject({ mode: 'raw', category: 'workChat' });
+    }
+  });
+
+  it("the user's own rules run after it and win: a rule's own full stop and capital survive Casual and Very casual", async () => {
+    const rule = (id: string, match: string, replacement: string) => ({
+      id, match, replacement, matchMode: 'wordBoundaryPhrase' as const, language: 'auto', isEnabled: true,
+      usageCount: 0, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    // Casual drops the closing full stop of a one-sentence message. Formatting after the
+    // rule would strip the one the rule wrote.
+    const casual = setup({ memory: { replacements: [rule('r1', 'see you soon', 'Catch you soon.')] } });
+    await dictate(casual, 'See you soon.', { source: 'hotkey', context: capture('workChat') });
+    expect(casual.sink.delivered).toEqual(['Catch you soon.']);
+
+    // Very casual lowercases the first word. Formatting after the rule would lowercase "Hello".
+    const veryCasual = setup({
+      settings: { categoryStyles: { personalChat: 'veryCasual' } },
+      memory: { replacements: [rule('r2', 'hello there', 'Hello Team')] },
+    });
+    await dictate(veryCasual, 'Hello there.', { source: 'hotkey', context: capture('personalChat', null, 'whatsapp.exe') });
+    expect(veryCasual.sink.delivered).toEqual(['Hello Team']);
+  });
+
+  it("a snippet's expansion is not re-cased by the formatting", async () => {
+    const ctx = setup({
+      memory: {
+        snippets: [{
+          id: 's1', trigger: 'my sign off', expansion: 'Cheers, Wasim.', language: 'auto', isEnabled: true,
+          usageCount: 0, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+        }],
+      },
+    });
+    await dictate(ctx, 'my sign off', { source: 'hotkey', context: capture('personalChat', null, 'whatsapp.exe') });
+    expect(ctx.sink.delivered).toEqual(['Cheers, Wasim.']);
+  });
+
+  it('delivers the text as it was when the formatter throws', async () => {
+    const ctx = setup();
+    // The settings of this dictation, with a style lookup that blows up.
+    const press = {
+      formattingEnabled: true, appAwareFormatting: true, userName: '', autoSend: {}, appCategories: {},
+      get categoryStyles(): never {
+        throw new Error('boom');
+      },
+    };
+    await dictate(ctx, 'See you at five.', { source: 'hotkey', context: capture('workChat'), press });
+    expect(ctx.sink.delivered).toEqual(['See you at five.']);
+    expect(ctx.last()).toMatchObject({ mode: 'raw' });
+  });
+
+  describe('cleanup rules and the press snapshot', () => {
+    const english = (text: string) => ({ text, durationSeconds: 1, detectedLanguage: 'en' });
+
+    it('a dictation into our own field gets cleanup and the user rules but no category formatting, retry included', async () => {
+      const memory = {
+        replacements: [{
+          id: 'r1', match: 'ship it', replacement: 'Ship it', matchMode: 'wordBoundaryPhrase' as const, language: 'auto',
+          isEnabled: true, usageCount: 0, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+        }],
+      };
+      // Casual for Other would drop the full stop.
+      const ctx = setup({ settings: { categoryStyles: { other: 'casual' } }, memory });
+      ctx.transcriber.transcript = english('Um, so we should, uh, ship it.');
+      await ctx.service.startRecording({ source: 'hotkey', ownField: true });
+      await ctx.service.stopAndProcess();
+      expect(ctx.sink.delivered).toEqual(['So we should Ship it.']);
+      expect(ctx.last()?.appID).toBeUndefined();
+
+      // A failed upload of the same kind of dictation is retried the same way.
+      const failing = setup({ settings: { categoryStyles: { other: 'casual' } } });
+      failing.transcriber.error = new ProviderError('transport', 'down');
+      await failing.service.startRecording({ source: 'hotkey', ownField: true });
+      await failing.service.stopAndProcess();
+      failing.transcriber.error = null;
+      failing.transcriber.transcript = english('See you at five.');
+      await failing.service.retryLast();
+      expect(failing.sink.delivered).toEqual(['See you at five.']);
+
+      // The same press into another app is formatted for it.
+      const other = setup({ settings: { categoryStyles: { other: 'casual' } } });
+      other.transcriber.transcript = english('See you at five.');
+      await other.service.startRecording({ source: 'hotkey', context: capture('other', null, 'notepad.exe') });
+      await other.service.stopAndProcess();
+      expect(other.sink.delivered).toEqual(['See you at five']);
+    });
+
+    it('when the formatter throws, delivers the transcript as it came with only the user rules, as raw', async () => {
+      const memory = {
+        replacements: [{
+          id: 'r1', match: 'ship it', replacement: 'Ship it', matchMode: 'wordBoundaryPhrase' as const, language: 'auto',
+          isEnabled: true, usageCount: 0, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+        }],
+      };
+      const ctx = setup({
+        memory,
+        formatter: async () => {
+          throw new Error('formatter exploded');
+        },
+      });
+      ctx.transcriber.transcript = english('Um, so we should, uh, ship it.');
+      await ctx.service.startRecording({ source: 'hotkey', context: capture('workChat') });
+      await ctx.service.stopAndProcess();
+      // No cleanup, no casual: the transcript, with the user's own rule.
+      expect(ctx.sink.delivered).toEqual(['Um, so we should, uh, Ship it.']);
+      expect(ctx.last()).toMatchObject({ mode: 'raw' });
+    });
+
+    it('cleans fillers and stutters first, then formats for the app, then runs the user rules', async () => {
+      const ctx = setup({
+        memory: {
+          replacements: [{
+            id: 'r1', match: 'ship it', replacement: 'Ship it.', matchMode: 'wordBoundaryPhrase', language: 'auto',
+            isEnabled: true, usageCount: 0, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+          }],
+        },
+      });
+      ctx.transcriber.transcript = english('Um, so we should, uh, ship it.');
+      await ctx.service.startRecording({ source: 'hotkey', context: capture('workChat') });
+      await ctx.service.stopAndProcess();
+      // Cleaned ("So we should ship it."), casual dropped the full stop, the user's rule wrote its own.
+      expect(ctx.sink.delivered).toEqual(['So we should Ship it.']);
+      expect(ctx.last()).toMatchObject({ mode: 'formatted', rawText: 'Um, so we should, uh, ship it.' });
+    });
+
+    it('cleans for an app that has no category formatting, and with Format for the app off', async () => {
+      for (const settings of [{ appAwareFormatting: false }, {}]) {
+        const ctx = setup({ settings });
+        ctx.transcriber.transcript = english('Um, so we should, uh, ship it.');
+        await ctx.service.startRecording({ source: 'hotkey', context: capture('docsNotes') });
+        await ctx.service.stopAndProcess();
+        expect(ctx.sink.delivered).toEqual(['So we should ship it.']);
+        expect(ctx.last()?.mode).toBe('formatted');
+      }
+    });
+
+    it('is skipped in raw mode and with Auto-format transcript off', async () => {
+      for (const [settings, rawMode] of [[{}, true], [{ formattingEnabled: false }, false]] as const) {
+        const ctx = setup({ settings });
+        ctx.transcriber.transcript = english('Um, so we should, uh, ship it.');
+        await ctx.service.startRecording({ source: 'hotkey', rawMode, context: capture('workChat') });
+        await ctx.service.stopAndProcess();
+        expect(ctx.sink.delivered).toEqual(['Um, so we should, uh, ship it.']);
+        expect(ctx.last()?.mode).toBe('raw');
+      }
+    });
+
+    it('keeps the transcript when the cleaned text is empty, and leaves other languages alone', async () => {
+      const filler = setup();
+      filler.transcriber.transcript = english('Um.');
+      await filler.service.startRecording({ source: 'window' });
+      await filler.service.stopAndProcess();
+      expect(filler.sink.delivered).toEqual(['Um.']);
+
+      const german = setup();
+      german.transcriber.transcript = { text: 'Um, ich glaube es geht.', durationSeconds: 1, detectedLanguage: 'de' };
+      await german.service.startRecording({ source: 'window' });
+      await german.service.stopAndProcess();
+      expect(german.sink.delivered).toEqual(['Um, ich glaube es geht.']);
+    });
+
+    it('uses the settings of the press, not the ones changed while it ran', async () => {
+      const ctx = setup({ settings: { userName: 'Wasim' } });
+      ctx.transcriber.transcript = { text: 'See you at five.', durationSeconds: 1, detectedLanguage: null };
+      await ctx.service.startRecording({ source: 'hotkey', context: capture('workChat') });
+      // Settings changed while recording: Formal for Work chat, a send key, the switch off.
+      Object.assign(ctx.settings, { categoryStyles: { workChat: 'formal' }, autoSend: { workChat: 'return' }, appAwareFormatting: false });
+      await ctx.service.stopAndProcess();
+      expect(ctx.sink.delivered).toEqual(['See you at five']);
+      expect((ctx.sink.requests.at(-1) as { autoSend?: string }).autoSend).toBeUndefined();
+    });
+
+    it('a retry keeps the app, the category and the settings of the dictation that failed, and stays a copy', async () => {
+      const ctx = setup({ settings: { categoryStyles: { workChat: 'casual' }, autoSend: { workChat: 'return' } } });
+      ctx.transcriber.error = new ProviderError('transport', 'down');
+      await ctx.service.startRecording({ source: 'hotkey', context: capture('workChat', 'We agreed, ') });
+      await ctx.service.stopAndProcess();
+      expect(ctx.service.canRetry).toBe(true);
+      // The user changes Settings, and the network comes back.
+      Object.assign(ctx.settings, { categoryStyles: { workChat: 'formal' }, autoSend: {} });
+      ctx.transcriber.error = null;
+      ctx.transcriber.transcript = { text: 'See you at five.', durationSeconds: 1, detectedLanguage: null };
+      await ctx.service.retryLast();
+      // Casual from the press, no continuation (the text before the cursor is never kept), copied not pasted.
+      expect(ctx.sink.delivered).toEqual(['See you at five']);
+      expect((ctx.sink.requests.at(-1) as { mode: string; autoSend?: string })).toMatchObject({ mode: 'copy' });
+      expect((ctx.sink.requests.at(-1) as { autoSend?: string }).autoSend).toBeUndefined();
+      expect(ctx.last()).toMatchObject({ appID: 'slack.exe', category: 'workChat' });
+    });
+  });
+
+  describe('a late read', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('falls back to the category from the app alone, and still delivers', async () => {
+      vi.useFakeTimers();
+      const ctx = setup({ deliveryTimeoutMs: 60_000 });
+      const late = {
+        initial: { appID: 'slack.exe', category: 'workChat' as const, textBeforeCursor: null },
+        settled: new Promise<never>(() => undefined),
+      };
+      ctx.transcriber.transcript = { text: 'See you at five.', durationSeconds: 1, detectedLanguage: null };
+      await ctx.service.startRecording({ source: 'hotkey', context: late });
+      const done = ctx.service.stopAndProcess();
+      await vi.advanceTimersByTimeAsync(2000);
+      await done;
+      expect(ctx.sink.delivered).toEqual(['See you at five']);
+      expect(ctx.last()).toMatchObject({ category: 'workChat' });
+    });
+  });
+
+  it('keeps the text before the cursor out of History, the outcome and the diagnostics', async () => {
+    const secret = 'The merger closes on Friday, ';
+    const ctx = setup();
+    await dictate(ctx, 'And then we tell the board.', { source: 'hotkey', context: capture('workChat', secret) });
+    // Used: the continuation lowercases the start.
+    expect(ctx.sink.delivered).toEqual(['and then we tell the board']);
+    const everything = JSON.stringify({ last: ctx.last(), records: ctx.records, outcomes: ctx.outcomes, diagnostics: ctx.diagnostics, statuses: ctx.statuses });
+    expect(everything).not.toContain('merger');
+    expect(everything).not.toContain('textBeforeCursor');
+  });
+
+  describe('the send key', () => {
+    const autoSendOf = (ctx: ReturnType<typeof setup>): unknown => (ctx.sink.requests.at(-1) as { autoSend?: string } | undefined)?.autoSend;
+
+    it('asks the sink for the key of the category, only for a hotkey paste', async () => {
+      const ctx = setup({ settings: { autoSend: { workChat: 'shiftReturn' } } });
+      await dictate(ctx, 'See you at five.', { source: 'hotkey', context: capture('workChat') });
+      expect(autoSendOf(ctx)).toBe('shiftReturn');
+    });
+
+    it('asks for nothing when the key is off, for another category, for a window dictation, or for Email and Docs and notes', async () => {
+      const settings = { autoSend: { workChat: 'return', email: 'return', docsNotes: 'return' } } as Partial<AppSettings>;
+      const cases: Array<[string, Parameters<DictationService['startRecording']>[0]]> = [
+        ['off', { source: 'hotkey', context: capture('personalChat') }],
+        ['window', { source: 'window', context: capture('workChat') }],
+        ['none', { source: 'hotkey' }],
+        ['email', { source: 'hotkey', context: capture('email') }],
+        ['docs', { source: 'hotkey', context: capture('docsNotes') }],
+      ];
+      for (const [name, options] of cases) {
+        const ctx = setup({ settings });
+        await dictate(ctx, 'See you at five.', options);
+        expect(autoSendOf(ctx), name).toBeUndefined();
+      }
+    });
+
+    it('never asks for a key without an app, even when Other has one (a field of our own window)', async () => {
+      const ctx = setup({ settings: { autoSend: { other: 'return' } } });
+      await dictate(ctx, 'See you at five.', { source: 'hotkey' });
+      expect(autoSendOf(ctx)).toBeUndefined();
+      const known = setup({ settings: { autoSend: { other: 'return' } } });
+      await dictate(known, 'See you at five.', { source: 'hotkey', context: capture('other') });
+      expect(autoSendOf(known)).toBe('return');
+    });
+  });
+});
+
+describe('hidden S1-mini cleanup port', () => {
+  const english = (text: string) => ({ text, durationSeconds: 1, detectedLanguage: 'en' });
+  const capture = (category: 'email' | 'workChat' | 'other') => {
+    const context = { appID: 'app.exe', category, textBeforeCursor: null };
+    return { initial: { ...context }, settled: Promise.resolve(context) };
+  };
+  const calls: Array<{ raw: string; language: string | null; category: string | null; style: string | null }> = [];
+  const port = (answer: (raw: string) => Promise<{ text: string }>): CleanupPort => ({
+    run: (input) => {
+      calls.push(input);
+      return answer(input.raw);
+    },
+  });
+
+  it('replaces the rules step: the model text is formatted for the app and goes through the user rules', async () => {
+    calls.length = 0;
+    const ctx = setup({
+      settings: { categoryStyles: { workChat: 'casual' } },
+      cleanup: port(async () => ({ text: 'I need to send the report by Thursday.' })),
+    });
+    ctx.transcriber.transcript = english('So um I need to send the report by Friday, no wait, Thursday.');
+    await ctx.service.startRecording({ source: 'hotkey', context: capture('workChat') });
+    await ctx.service.stopAndProcess();
+    // Casual drops the full stop: the model text went on to category formatting.
+    expect(ctx.sink.delivered).toEqual(['I need to send the report by Thursday']);
+    expect(calls).toEqual([
+      // Casual is Work chat's default, so no style goes to the model.
+      { raw: 'So um I need to send the report by Friday, no wait, Thursday.', language: 'en', category: 'workChat', style: null },
+    ]);
+  });
+
+  it('passes the category and style captured at the press', async () => {
+    calls.length = 0;
+    const ctx = setup({ cleanup: port(async (raw) => ({ text: raw })) });
+    await ctx.service.startRecording({ source: 'hotkey', context: capture('email') });
+    await ctx.service.stopAndProcess();
+    expect(calls[0]).toMatchObject({ category: 'email', style: null });
+  });
+
+  it('a pick that equals the category default is no pick: the model gets a null style, like macOS', async () => {
+    calls.length = 0;
+    const casualInWork = setup({ settings: { categoryStyles: { workChat: 'casual' } }, cleanup: port(async (raw) => ({ text: raw })) });
+    await casualInWork.service.startRecording({ source: 'hotkey', context: capture('workChat') });
+    await casualInWork.service.stopAndProcess();
+    const formalInEmail = setup({ settings: { categoryStyles: { email: 'formal' } }, cleanup: port(async (raw) => ({ text: raw })) });
+    await formalInEmail.service.startRecording({ source: 'hotkey', context: capture('email') });
+    await formalInEmail.service.stopAndProcess();
+    // Non-default picks still go through.
+    const formalInWork = setup({ settings: { categoryStyles: { workChat: 'formal' } }, cleanup: port(async (raw) => ({ text: raw })) });
+    await formalInWork.service.startRecording({ source: 'hotkey', context: capture('workChat') });
+    await formalInWork.service.stopAndProcess();
+    expect(calls.map((c) => [c.category, c.style])).toEqual([
+      ['workChat', null],
+      ['email', null],
+      ['workChat', 'formal'],
+    ]);
+  });
+
+  it('a dictation made in our own window has no category and no style, like the macOS app', async () => {
+    calls.length = 0;
+    const ctx = setup({
+      settings: { categoryStyles: { other: 'formal' } },
+      cleanup: port(async (raw) => ({ text: raw })),
+    });
+    await ctx.service.startRecording({ source: 'window', context: capture('other') });
+    await ctx.service.stopAndProcess();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ category: null, style: null });
+  });
+
+  it('keeps the transcript when the port throws or answers with nothing', async () => {
+    for (const answer of [
+      async () => {
+        throw new Error('model exploded');
+      },
+      async () => ({ text: '   ' }),
+    ]) {
+      const ctx = setup({ cleanup: port(answer) });
+      ctx.transcriber.transcript = english('See you at five.');
+      await ctx.service.startRecording({ source: 'hotkey', context: capture('other') });
+      await ctx.service.stopAndProcess();
+      expect(ctx.sink.delivered).toEqual(['See you at five.']);
+    }
+  });
+
+  it('does not run in raw mode or with Auto-format transcript off', async () => {
+    calls.length = 0;
+    const raw = setup({ cleanup: port(async () => ({ text: 'x' })) });
+    await raw.service.startRecording({ source: 'hotkey', rawMode: true, context: capture('other') });
+    await raw.service.stopAndProcess();
+    const off = setup({ settings: { formattingEnabled: false }, cleanup: port(async () => ({ text: 'x' })) });
+    await off.service.startRecording({ source: 'hotkey', context: capture('other') });
+    await off.service.stopAndProcess();
+    expect(calls).toEqual([]);
+    expect(raw.sink.delivered).toEqual(['hello world']);
+  });
+
+  it('a Cancel during the model step drops the dictation without delivering', async () => {
+    let release: (value: { text: string }) => void = () => undefined;
+    const ctx = setup({ cleanup: port(() => new Promise((resolve) => (release = resolve))) });
+    await ctx.service.startRecording({ source: 'hotkey', context: capture('other') });
+    const processing = ctx.service.stopAndProcess();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await ctx.service.cancel();
+    release({ text: 'late answer' });
+    await processing;
+    expect(ctx.sink.delivered).toEqual([]);
   });
 });

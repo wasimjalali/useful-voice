@@ -77,6 +77,25 @@ Artifacts land in `release/`:
 - `Useful Voice-0.1.0-x64.exe`: per-user installer (no admin prompt) with a
   Start-menu shortcut and an uninstaller that **keeps your data**.
 - `Useful Voice-0.1.0-portable.exe`: single file, no installation.
+- `latest.yml`: the update feed the installed app reads (see below).
+
+Releases are built by CI, not by hand: the `Windows release` workflow builds these, runs
+`scripts/release.mjs` to make the release set (dashed file names, `install.ps1` pinned to the
+installer's SHA-256, `SHA256SUMS-windows.txt`) and tests the one-line installer and an update
+from an older build. Publishing is manual; see "Windows release" in
+[docs/distribution.md](../docs/distribution.md).
+
+### Updates
+
+The installed app uses `electron-updater` with the GitHub provider: it reads `latest.yml` from
+the newest release of `wasimjalali/useful-voice-releases` a minute after launch and then every
+12 hours, downloads the installer in the background, checks its SHA-512 and installs it
+silently when the app quits, or at once from the tray's "Restart to update". The portable exe,
+development runs, `release/win-unpacked` (no uninstaller beside the exe), per-machine installs
+under Program Files (they update by re-running the installer) and `--e2e` runs never check. "Restart to update" is greyed out while a dictation is running or held for retry; the
+update still installs on the next Quit. Each install attempt is appended to `update.log` beside
+`diagnostics.log`, so it survives the restart. Log lines go to `diagnostics.log` under
+`[update]`.
 
 ### Code signing
 
@@ -85,6 +104,11 @@ unsigned installer. To sign, set `CSC_LINK` and `CSC_KEY_PASSWORD` (or
 `WIN_CSC_LINK`/`WIN_CSC_KEY_PASSWORD`) and electron-builder will sign
 automatically. `build.win.signtoolOptions.publisherName` is already set to
 `Useful Build`.
+
+`build.win.verifyUpdateCodeSignature` is `false` while builds are unsigned: with it on,
+`app-update.yml` carries that publisher name and electron-updater refuses every unsigned
+update. Turn it back on in the first signed release, never before: an installed build with it
+on refuses every later update that is not signed by `Useful Build`.
 
 ---
 

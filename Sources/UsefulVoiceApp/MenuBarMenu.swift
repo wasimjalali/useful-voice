@@ -37,6 +37,7 @@ final class MenuBarMenu: NSObject, NSMenuDelegate {
     private let formattingItem = NSMenuItem()
     private let settingsItem = NSMenuItem()
     private var languageItems: [NSMenuItem] = []
+    private var updateItem: NSMenuItem?
 
     init(settings: AppSettings, viewModel: UsefulVoiceViewModel, actions: Actions) {
         self.settings = settings
@@ -97,6 +98,13 @@ final class MenuBarMenu: NSObject, NSMenuDelegate {
         menu.addItem(fixItem)
         configure(settingsItem, title: "Open settings", action: #selector(openSettings), key: ",")
         menu.addItem(settingsItem)
+        // Only release builds have an update feed (Updater.swift).
+        if AppUpdater.shared.isAvailable {
+            let item = NSMenuItem()
+            configure(item, title: Self.updateTitle(), action: #selector(checkForUpdates))
+            menu.addItem(item)
+            updateItem = item
+        }
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(title: "Quit Useful Voice",
@@ -195,6 +203,8 @@ final class MenuBarMenu: NSObject, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         isOpen = true
         header.copied = false
+        updateItem?.title = Self.updateTitle()
+        updateItem?.isEnabled = AppUpdater.shared.canCheckForUpdates
         refresh()
     }
 
@@ -237,6 +247,13 @@ final class MenuBarMenu: NSObject, NSMenuDelegate {
     }
 
     @objc private func openMainWindow() { actions.openMainWindow() }
+
+    @objc private func checkForUpdates() { AppUpdater.shared.checkForUpdates() }
+
+    /// A scheduled check that found an update offers it here (Updater.swift).
+    private static func updateTitle() -> String {
+        AppUpdater.shared.pendingVersion.map { "Install update \($0)…" } ?? "Check for updates…"
+    }
 
     /// Opens Settings. When the last issue needs the engine set up, the window
     /// scrolls to the Engine group, which is that issue's fix.

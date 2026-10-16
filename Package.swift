@@ -4,6 +4,11 @@ import PackageDescription
 let package = Package(
     name: "UsefulVoice",
     platforms: [.macOS(.v14)],
+    dependencies: [
+        // In-app updates for release builds (see the Makefile's bundle target and
+        // scripts/release-mac.mjs). Same pin as Useful Bot.
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
+    ],
     targets: [
         // whisper.cpp, precompiled by the upstream project (Metal backend
         // included). v1.9.2 is the newest versioned release that publishes an
@@ -18,7 +23,13 @@ let package = Package(
             name: "UsefulVoiceCore",
             dependencies: ["whisper"]
         ),
-        .executableTarget(name: "UsefulVoiceApp", dependencies: ["UsefulVoiceCore"]),
+        .executableTarget(
+            name: "UsefulVoiceApp",
+            dependencies: [
+                "UsefulVoiceCore",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ]
+        ),
         .testTarget(name: "UsefulVoiceCoreTests", dependencies: ["UsefulVoiceCore"]),
         // The app's own display rules (what the HUD says to VoiceOver). The executable
         // target is imported with `@testable`, which SwiftPM supports on macOS.

@@ -1,0 +1,165 @@
+name: Windows release
+
+# Builds the files one Windows release carries and proves them end to end, without
+# publishing anything. Publishing is a manual step (docs/distribution.md, "Windows
+# release"): download the `useful-voice-windows-release` artifact from a run on `main`
+# and attach its files to the release in wasimjalali/useful-voice-releases.
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'windows/**'
+      - '.github/workflows/release-windows.yml'
+  pull_request:
+    paths:
+      - 'windows/**'
+      - '.github/workflows/release-windows.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: release-windows-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: windows
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: windows/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Generate icon and build
+        run: |
+          npm run build:icon
+          npm run build
+
+      # NSIS installer, its blockmap, the portable exe and latest.yml. The `publish`
+      # config only shapes latest.yml and app-update.yml; `never` uploads nothing.
+      - name: Package
+        run: |
+          npx electron-builder --win --publish never
+          if ($LASTEXITCODE -ne 0) { throw "electron-builder failed: $LASTEXITCODE" }
+
+      - name: Show app-update.yml
+        run: Get-Content 'release\win-unpacked\resources\app-update.yml'
+
+      # The release set, and a copy whose install.ps1 points at 127.0.0.1 for the tests.
+      - name: Prepare release files
+        run: |
+          node scripts/release.mjs --publish release/publish
+          if ($LASTEXITCODE -ne 0) { throw "release.mjs failed: $LASTEXITCODE" }
+          node scripts/release.mjs --publish release/publish-local --base-url http://127.0.0.1:8719
+          if ($LASTEXITCODE -ne 0) { throw "release.mjs (local) failed: $LASTEXITCODE" }
+          Get-ChildItem release/publish | Format-Table Name, Length
+          Get-Content release/publish/SHA256SUMS-windows.txt
+          Get-Content release/publish/latest.yml
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: useful-voice-windows-release
+          path: windows/release/publish
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: useful-voice-windows-release-localtest
+          path: windows/release/publish-local
+          if-no-files-found: error
+          retention-days: 7
+
+  # `irm .../install.ps1 | iex` on a clean runner: a tampered installer is refused, the
+  # real one installs under Windows PowerShell 5.1 and again under PowerShell 7.
+  install-script:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: windows
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: useful-voice-windows-release-localtest
+          path: windows/publish-local
+
+      - name: Run install.ps1 end to end
+        run: pwsh -NoProfile -File e2e/installer/install-script.ps1 publish-local e2e-installer-results
+
+      - name: Report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-install-script
+          path: windows/e2e-installer-results
+          if-no-files-found: ignore
+
+  # An older build updates itself to this one through electron-updater, reading the
+  # release's real latest.yml from a local copy of the release.
+  update:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: windows
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: windows/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Generate icon and build
+        run: |
+          npm run build:icon
+          npm run build
+
+      # Same code and config, version 0.0.9, its feed at the local copy of the release.
+      - name: Build the old version (0.0.9)
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cfg = (Get-Content package.json -Raw | ConvertFrom-Json).build
+          $cfg.extraMetadata | Add-Member -NotePropertyName version -NotePropertyValue '0.0.9' -Force
+          $cfg.publish = @(@{ provider = 'generic'; url = 'http://127.0.0.1:8720/' })
+          $cfg.directories.output = 'release-old'
+          $cfg | ConvertTo-Json -Depth 20 | Set-Content old-builder.json -Encoding utf8
+          npx electron-builder --win nsis --publish never --config old-builder.json
+          if ($LASTEXITCODE -ne 0) { throw "electron-builder failed: $LASTEXITCODE" }
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: useful-voice-windows-release
+          path: windows/publish
+
+      - name: Update 0.0.9 to this build
+        run: pwsh -NoProfile -File e2e/installer/update.ps1 publish release-old e2e-installer-results
+
+      - name: Report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-update
+          path: windows/e2e-installer-results
+          if-no-files-found: ignore

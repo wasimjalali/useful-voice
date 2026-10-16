@@ -11,6 +11,12 @@
 
 import { APPEARANCES, DEFAULT_SETTINGS, normaliseMemoryLanguage, type AppSettings } from '../models.js';
 import { appIdFor } from '../delivery/deliveryTarget.js';
+import {
+  normaliseAppCategories,
+  normaliseAutoSend,
+  normaliseCategoryStyles,
+  normaliseUserName,
+} from '../apps/appAwareness.js';
 
 /**
  * Longest recording the user may choose.
@@ -91,6 +97,13 @@ export function normaliseSettings(settings: AppSettings): AppSettings {
     // Anything but an explicit false keeps the old behaviour (restore after a proven paste).
     restorePreviousClipboard: settings.restorePreviousClipboard !== false,
     typeOutApps: normaliseTypeOutApps(settings.typeOutApps),
+    // App-aware formatting is on unless a file says false. The rest are read leniently, so
+    // a file from before they existed, or one with a value this build can't read, loads.
+    appAwareFormatting: settings.appAwareFormatting !== false,
+    categoryStyles: normaliseCategoryStyles(settings.categoryStyles),
+    userName: normaliseUserName(settings.userName),
+    autoSend: normaliseAutoSend(settings.autoSend),
+    appCategories: normaliseAppCategories(settings.appCategories),
     languageSwitchHotkey: settings.languageSwitchHotkey
       ? {
           accelerator: String(settings.languageSwitchHotkey.accelerator ?? ''),

@@ -214,6 +214,7 @@ function setup(options: {
   apiKey?: string | null;
   formatter?: FormatterPort;
   tickMs?: number;
+  deliveryTimeoutMs?: number;
 } = {}) {
   const recorder = new FakeRecorder();
   const transcriber = new FakeTranscriber();
@@ -255,7 +256,7 @@ function setup(options: {
     onDiagnostic: (category, message) => diagnostics.push({ category, message }),
     idFactory,
     formatter: options.formatter,
-    deliveryTimeoutMs: 200,
+    deliveryTimeoutMs: options.deliveryTimeoutMs ?? 200,
     tickMs: options.tickMs,
   });
 
@@ -634,6 +635,13 @@ describe('delivery that never calls back', () => {
     const budget = (ctx.sink.requests[0] as { timeBudgetMs?: number }).timeBudgetMs;
     expect(budget).toBeGreaterThan(0);
     expect(budget).toBeLessThan(200);
+  });
+
+  it('gives whole milliseconds for an odd timeout', async () => {
+    const ctx = setup({ deliveryTimeoutMs: 201 });
+    await ctx.service.startRecording({ source: 'hotkey' });
+    await ctx.service.stopAndProcess();
+    expect((ctx.sink.requests[0] as { timeBudgetMs?: number }).timeBudgetMs).toBe(100);
   });
 
   it('treats a throwing sink as delivered-to-clipboard, not as a lost dictation', async () => {

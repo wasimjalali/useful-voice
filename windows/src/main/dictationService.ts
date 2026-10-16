@@ -834,7 +834,8 @@ export class DictationService {
     if (cancel?.aborted) onCancel();
     else cancel?.addEventListener('abort', onCancel, { once: true });
     try {
-      const timeBudgetMs = Math.max(timeoutMs / 2, timeoutMs - DELIVERY_TIMEOUT_MARGIN_MS);
+      // Whole milliseconds: the platform scripts take an integer deadline.
+      const timeBudgetMs = Math.floor(Math.max(timeoutMs / 2, timeoutMs - DELIVERY_TIMEOUT_MARGIN_MS));
       const request: DeliveryRequest =
         mode === 'paste'
           ? {

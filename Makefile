@@ -94,12 +94,6 @@ define copy_notices
 	cp -R licenses $(APP)/Contents/Resources/licenses
 endef
 
-# The license notices ship inside the app (before signing, so the seal covers them).
-define copy_notices
-	cp THIRD_PARTY_NOTICES.md LICENSE $(APP)/Contents/Resources/
-	cp -R licenses $(APP)/Contents/Resources/licenses
-endef
-
 bundle: build
 	rm -rf $(APP)
 	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources $(APP)/Contents/Frameworks

@@ -176,7 +176,7 @@ struct LlamaWhisperCoexistenceTests {
             raw: cardInput, language: "en", category: nil, style: nil,
             gates: gates, model: model, deadline: .seconds(20))
         print("COEXIST pipeline -> \(result)")
-        #expect(result.model != nil)
+        #expect(result.model == .accepted)
         let off = await CleanupPipeline.run(
             raw: cardInput, language: "en", category: nil, style: nil,
             gates: .init(flagOn: false, modelInstalled: true, physicalMemoryBytes: 16 << 30),

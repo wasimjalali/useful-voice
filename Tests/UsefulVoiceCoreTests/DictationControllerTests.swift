@@ -1687,4 +1687,290 @@ final class CapturingProvider: TranscriptionProvider {
         #expect(outcomes == [.delivered(words: 2, mode: .copiedSecureField, appName: "Slack")])
         #expect(controller.state == .idle)
     }
+
+    // MARK: - Target lock (B1): the paste goes to the target captured at the press
+
+    /// What the fake system reports as focused, in full, when a test uses
+    /// `focusTarget`. Changed mid-dictation to model the user clicking away.
+    private var focus: DeliveryTarget? = DeliveryTarget(
+        appID: "com.tinyspeck.slackmacgap", appName: "Slack", processID: 501,
+        windowID: "win#1", windowTitle: "general", elementID: "AXTextArea#9")
+    private var targetRunning = true
+    private var reactivations: [DeliveryTarget] = []
+    /// What the fake reactivation does: report success and, optionally, put a
+    /// focus back in front.
+    private var reactivationResult = true
+    private var focusAfterReactivation: DeliveryTarget??
+
+    private var typeOutApps: [String] = []
+
+    private func makeLockController(providers: [TranscriptionProvider]) -> DictationController {
+        let controller = DictationController(
+            recorder: recorder,
+            providers: { providers },
+            store: store,
+            hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
+            recordingsToKeep: 10,
+            deliver: { [weak self] text, mode, done in self?.fakeDeliver(text, mode, done) },
+            diagnostics: .memoryOnly,
+            focusTarget: { [weak self] in self?.focus },
+            isTargetRunning: { [weak self] _ in self?.targetRunning ?? false },
+            reactivate: { [weak self] target in
+                guard let self else { return false }
+                self.reactivations.append(target)
+                // Delivery is still in flight while the app comes forward.
+                #expect(self.controllerStateDuringReactivation() == .delivering)
+                if let next = self.focusAfterReactivation { self.focus = next }
+                return self.reactivationResult
+            },
+            typeOutApps: { [weak self] in self?.typeOutApps ?? [] })
+        wire(controller)
+        lockController = controller
+        return controller
+    }
+
+    private weak var lockController: DictationController?
+    private func controllerStateDuringReactivation() -> DictationState? { lockController?.state }
+
+    private var slackComposer: DeliveryTarget {
+        DeliveryTarget(appID: "com.tinyspeck.slackmacgap", appName: "Slack", processID: 501,
+                       windowID: "win#1", windowTitle: "general", elementID: "AXTextArea#9")
+    }
+
+    private var mailWindow: DeliveryTarget {
+        DeliveryTarget(appID: "com.apple.mail", appName: "Mail", processID: 900,
+                       windowID: "win#5", elementID: "AXTextArea#2")
+    }
+
+    @Test func testTargetStillInFrontPastesWithoutReactivating() async throws {
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(deliveredModes == [.paste])
+        #expect(outcomes == [.delivered(words: 2, mode: .pasted, appName: "Slack")])
+        #expect(reactivations.isEmpty)
+    }
+
+    @Test func testTheTargetIsCapturedAtThePressNotAtDelivery() async throws {
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        #expect(controller.deliveryTarget == slackComposer)
+        focus = mailWindow                       // clicked into Mail while talking
+        #expect(controller.deliveryTarget == slackComposer)
+        focusAfterReactivation = .some(slackComposer)
+        await controller.toggleAndWait()
+        #expect(reactivations == [slackComposer])
+    }
+
+    @Test func testFocusMovedToAnotherAppReactivatesTheTargetThenPastes() async throws {
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        focus = mailWindow
+        focusAfterReactivation = .some(slackComposer)
+        await controller.toggleAndWait()
+        #expect(reactivations == [slackComposer])
+        #expect(deliveredModes == [.paste])
+        #expect(outcomes == [.delivered(words: 2, mode: .pasted, appName: "Slack")])
+    }
+
+    @Test func testStoppedFromUsefulVoiceReactivatesTheTarget() async throws {
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        focus = DeliveryTarget(appID: "ai.useful.voice", appName: "Useful Voice", processID: 42,
+                               windowID: "win#main", elementID: nil)
+        focusAfterReactivation = .some(slackComposer)
+        controller.toggle(source: .window)       // the dock's stop: still a hotkey dictation
+        await controller.awaitProcessing()
+        #expect(deliveredModes == [.paste])
+        #expect(outcomes == [.delivered(words: 2, mode: .pasted, appName: "Slack")])
+    }
+
+    @Test func testFocusMovedToAnotherComposerInTheSameWindowReactivatesTheElement() async throws {
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        focus = DeliveryTarget(appID: "com.tinyspeck.slackmacgap", appName: "Slack", processID: 501,
+                               windowID: "win#1", elementID: "AXTextField#search")
+        focusAfterReactivation = .some(slackComposer)
+        await controller.toggleAndWait()
+        #expect(reactivations.count == 1)
+        #expect(deliveredModes == [.paste])
+    }
+
+    @Test func testReactivationThatFailsCopiesWithTheAppChangedNotice() async throws {
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        focus = mailWindow
+        reactivationResult = false
+        await controller.toggleAndWait()
+        #expect(reactivations.count == 1)
+        #expect(deliveredModes == [.copy])
+        #expect(outcomes == [.delivered(words: 2, mode: .copiedAppChanged, appName: "Slack")])
+    }
+
+    @Test func testReactivationThatClaimsSuccessButLeavesFocusElsewhereCopies() async throws {
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        focus = mailWindow
+        reactivationResult = true                // the app said yes, focus stayed in Mail
+        await controller.toggleAndWait()
+        #expect(deliveredModes == [.copy])
+        #expect(outcomes == [.delivered(words: 2, mode: .copiedAppChanged, appName: "Slack")])
+    }
+
+    @Test func testReactivationThatBringsBackTheWrongElementCopies() async throws {
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        focus = mailWindow
+        focusAfterReactivation = .some(DeliveryTarget(
+            appID: "com.tinyspeck.slackmacgap", appName: "Slack", processID: 501,
+            windowID: "win#1", elementID: "AXTextArea#recreated"))
+        await controller.toggleAndWait()
+        #expect(deliveredModes == [.copy])
+        #expect(outcomes == [.delivered(words: 2, mode: .copiedAppChanged, appName: "Slack")])
+    }
+
+    @Test func testATargetThatQuitIsNeverReactivatedAndTheTextIsCopied() async throws {
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        focus = mailWindow
+        targetRunning = false
+        await controller.toggleAndWait()
+        #expect(reactivations.isEmpty)
+        #expect(deliveredModes == [.copy])
+        #expect(outcomes == [.delivered(words: 2, mode: .copiedAppChanged, appName: "Slack")])
+    }
+
+    @Test func testAnotherPageInTheTargetTabCopiesWithoutReactivating() async throws {
+        let page = { (url: String) in
+            DeliveryTarget(appID: "com.google.Chrome", appName: "Chrome", processID: 700,
+                           windowID: "win#7", elementID: "AXWebArea#3", browserURL: url)
+        }
+        focus = page("https://mail.example.com/compose#draft")
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        focus = page("https://news.example.com/")   // the tab navigated while talking
+        await controller.toggleAndWait()
+        #expect(reactivations.isEmpty)
+        #expect(deliveredModes == [.copy])
+        #expect(outcomes == [.delivered(words: 2, mode: .copiedAppChanged, appName: "Chrome")])
+    }
+
+    @Test func testAFragmentChangeInTheTargetTabStillPastes() async throws {
+        let page = { (url: String) in
+            DeliveryTarget(appID: "com.google.Chrome", appName: "Chrome", processID: 700,
+                           windowID: "win#7", elementID: "AXWebArea#3", browserURL: url)
+        }
+        focus = page("https://mail.example.com/compose#draft")
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        focus = page("https://mail.example.com/compose#draft-saved")
+        await controller.toggleAndWait()
+        #expect(deliveredModes == [.paste])
+    }
+
+    @Test func testTheTargetIsDroppedOnceTheDictationSettles() async throws {
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        #expect(controller.deliveryTarget?.windowTitle == "general")
+        await controller.toggleAndWait()
+        #expect(controller.state == .idle)
+        #expect(controller.deliveryTarget == nil)
+    }
+
+    @Test func testTheTargetIsDroppedWhenADictationFails() async throws {
+        let controller = makeLockController(providers: [failingProvider(.http(500, "boom"))])
+        controller.toggle()
+        #expect(controller.deliveryTarget != nil)
+        await controller.toggleAndWait()
+        if case .error = controller.state {} else { Issue.record("expected an error state") }
+        #expect(controller.deliveryTarget == nil)
+    }
+
+    @Test func testPartlyTypedReachesTheOutcomeUnchanged() async throws {
+        deliveryResultOverride = .copiedPartlyTyped
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(outcomes == [.delivered(words: 2, mode: .copiedPartlyTyped, appName: "Slack")])
+    }
+
+    @Test func testNoCapturedTargetCopiesRatherThanPastingAnywhere() async throws {
+        focus = nil
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        #expect(controller.deliveryTarget == nil)
+        focus = mailWindow
+        await controller.toggleAndWait()
+        #expect(reactivations.isEmpty)
+        #expect(deliveredModes == [.copy])
+        #expect(outcomes == [.delivered(words: 2, mode: .copiedAppChanged, appName: nil)])
+    }
+
+    @Test func testWindowDictationHasNoTargetAndNeverReactivates() async throws {
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle(source: .window)
+        #expect(controller.deliveryTarget == nil)
+        focus = mailWindow
+        await controller.toggleAndWait()
+        #expect(reactivations.isEmpty)
+        #expect(deliveredModes == [.copy])
+        #expect(outcomes == [.delivered(words: 2, mode: .copied, appName: nil)])
+    }
+
+    @Test func testRetryNeverReactivatesOrPastes() async throws {
+        var attempt = 0
+        let controller = DictationController(
+            recorder: recorder,
+            providers: {
+                attempt += 1
+                return attempt == 1 ? [self.failingProvider(.http(500, "boom"))] : [self.okProvider()]
+            },
+            store: store,
+            hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
+            recordingsToKeep: 10,
+            deliver: { [weak self] text, mode, done in self?.fakeDeliver(text, mode, done) },
+            focusTarget: { [weak self] in self?.focus },
+            reactivate: { [weak self] target in self?.reactivations.append(target); return true })
+        wire(controller)
+        controller.toggle()
+        await controller.toggleAndWait()
+        focus = mailWindow
+        await controller.retryLastAndWait()
+        #expect(reactivations.isEmpty)
+        #expect(deliveredModes == [.copy])
+    }
+
+    @Test func testLineBreaksForATypeOutAppAreCopiedWithoutTheLockOrAReactivation() async throws {
+        typeOutApps = ["com.tinyspeck.slackmacgap"]
+        let controller = makeLockController(providers: [okProvider("git add .\ngit commit")])
+        controller.toggle()
+        focus = mailWindow                       // moved away: would reactivate
+        reactivationResult = false
+        await controller.toggleAndWait()
+        #expect(reactivations.isEmpty)
+        #expect(deliveredModes == [.copy])
+        #expect(outcomes.count == 1)
+        if case .delivered(_, let mode, _) = outcomes.first { #expect(mode == .copiedHasLineBreaks) }
+    }
+
+    @Test func testLineBreaksForAPasteAppStillLockAndPaste() async throws {
+        typeOutApps = ["com.apple.Terminal"]
+        let controller = makeLockController(providers: [okProvider("one\ntwo")])
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(deliveredModes == [.paste])
+    }
+
+    @Test func testCopiedPasteIsReportedOnceAndOnlyOneDeliveryRuns() async throws {
+        // A reactivation that fails must not lead to a paste AND a copy: exactly one
+        // delivery call per dictation.
+        let controller = makeLockController(providers: [okProvider()])
+        controller.toggle()
+        focus = mailWindow
+        reactivationResult = false
+        await controller.toggleAndWait()
+        #expect(delivered.count == 1)
+        #expect(outcomes.count == 1)
+        #expect(controller.state == .idle)
+    }
 }

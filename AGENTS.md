@@ -83,7 +83,7 @@ Snapshot-only state hooks (they act only when `UV_SNAPSHOT` is set):
 | `UV_VOCAB_FILTER` | `all`, `words`, `fixes`, `snippets`, `suggestions` |
 | `UV_INSIGHTS_RANGE`, `UV_INSIGHTS_FIXTURE` | `7d`/`30d`/`all`; `empty`/`firstWeek`/`full` |
 | `UV_SETTINGS_ANCHOR`, `UV_SETTINGS_STATE` | a group id; `noKey`, `invalidKey`, `confirmDelete` |
-| `UV_HUD_STATE` | `recording`, `recordingLoud`, `silence`, `transcribing`, `local`, `localFa`, `inserting`, `done`, `doneSaved`, `copied`, `cancelled`, `errorNetwork`, `errorMic`, `language`, `picker` (renders the HUD alone; try `480x210`, picker `360x440`) |
+| `UV_HUD_STATE` | `recording`, `recordingLoud`, `silence`, `transcribing`, `local`, `localFa`, `inserting`, `done`, `doneSaved`, `copied`, `copiedAppChanged`, `lineBreaks`, `cancelled`, `errorNetwork`, `errorMic`, `errorTimedOut`, `errorSecure`, `language`, `picker` (renders the HUD alone; try `480x210`, picker `360x440`) |
 | `UV_MENU_HEADER` | `idle`, `recording` (the menu bar header row, `260x76`) |
 
 `UV_PREVIEW_FEATURES=1` shows controls whose backend has not shipped (Correct this one, delete

@@ -92,10 +92,34 @@ export async function writeJsonAtomic(filePath: string, value: unknown): Promise
   const temp = `${filePath}.tmp-${process.pid}-${Date.now()}`;
   try {
     await fs.writeFile(temp, JSON.stringify(value, null, 2), 'utf8');
-    await fs.rename(temp, filePath);
+    await renameRetryingLocks(temp, filePath);
   } catch (error) {
     await fs.rm(temp, { force: true }).catch(() => undefined);
     throw error;
+  }
+}
+
+/**
+ * What Windows returns for a rename while another process has either file open: an
+ * antivirus scan, the indexer, a backup or sync tool, or anything reading the file.
+ * The lock usually clears within milliseconds. Giving up on the first one dropped the
+ * write while the app already showed the change as saved.
+ */
+const LOCKED_RENAME_CODES = new Set(['EPERM', 'EACCES', 'EBUSY']);
+/** About one second in all, then the error goes to the caller. */
+const RENAME_RETRY_DELAYS_MS = [10, 20, 40, 80, 160, 250, 250, 250];
+
+async function renameRetryingLocks(from: string, to: string): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await fs.rename(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const delay = RENAME_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined || code === undefined || !LOCKED_RENAME_CODES.has(code)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
   }
 }
 

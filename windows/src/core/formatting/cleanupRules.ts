@@ -26,11 +26,15 @@
  * "mm hmm" and "Uh, huh?" stay whole.
  * Deleting a filler tidies only the punctuation it leaves behind:
  *   - its own trailing comma goes with it: "Well, um, I think" -> "Well, I think";
- *   - a comma before it goes only when the filler ends the text or the sentence ("went home,
- *     um." -> "went home.") or the word before is one that never takes a comma ("the, um,
- *     store" -> "the store"). Any other comma before it stays, because it may belong to an
- *     intro phrase or a name ("Dear John, um, thanks" -> "Dear John, thanks", "For example, um,
- *     the build" -> "For example, the build");
+ *   - a comma before it goes when the filler ends the text or the sentence ("went home,
+ *     um." -> "went home."), when the word before is one that never takes a comma
+ *     ("the, um, store" -> "the store"), and when the filler sits between two commas that
+ *     only bracket it ("I think, um, we should" -> "I think we should"). That last comma stays
+ *     when it closes a real opening: after a sentence's first word ("Well,"), after a discourse
+ *     word ("okay,", "actually,"), after an opening that starts with a greeting or answer word
+ *     ("Dear John,", "Thanks Sam,", "Yes sir,"), after an intro phrase ("For example,", "As a
+ *     result,", "In 2020,"), before a conjunction ("Friday, um, or Monday") and in a list
+ *     ("apples, um, pears,");
  *   - a filler that ends a sentence ("I went, um.") hands its full stop to the word before.
  * Sentence-initial capital: when the deleted filler was Capitalised and started a
  * sentence ("Um, so we"), the next word gets the capital back ("So we"). That restores the
@@ -95,6 +99,38 @@ const DOUBLE_STUTTER = new Set([
  * "so" is not one: "so so so tired" is emphasis.
  */
 const TRIPLE_STUTTER = new Set([...DOUBLE_STUTTER, 'it', 'that', 'is', 'but', 'was', 'this']);
+
+/** A comma before a bracketed filler stays after these words ("Well, um, I think"). */
+const KEEP_COMMA_BEFORE = new Set([
+  'well', 'so', 'okay', 'ok', 'yes', 'yeah', 'no', 'oh', 'right', 'now', 'sure', 'anyway',
+  'actually', 'however', 'also', 'alright', 'hi', 'hello', 'hey', 'thanks', 'honestly', 'basically',
+]);
+
+/** A comma before a bracketed filler stays when one of these follows it ("Friday, um, or Monday"). */
+const CONJUNCTIONS = new Set([
+  'and', 'or', 'but', 'so', 'then', 'because', 'which', 'who', 'where', 'when', 'while',
+  'although', 'though', 'unless', 'if',
+]);
+
+/** An opening that starts with one of these is closed by its comma ("Dear John,", "Yes sir,"). */
+const GREETING_STARTS = new Set([
+  'dear', 'hi', 'hello', 'hey', 'thanks', 'yes', 'no', 'ok', 'okay', 'sure', 'sorry', 'well',
+]);
+
+/** Intro phrases whose comma closes them ("For example, um, the build"). */
+const INTRO_PHRASES = new Set([
+  'as a result', 'for example', 'for instance', 'in addition', 'in fact', 'of course', 'by the way',
+  'on the other hand', 'at the moment', 'in general',
+]);
+
+/** "In 2020,", "By 5,": one of these plus a number is an intro phrase. */
+const NUMBER_INTRO = new Set(['in', 'by', 'since', 'until']);
+
+const NUMBER_WORDS = new Set([
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven',
+  'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty',
+  'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety', 'hundred', 'thousand',
+]);
 
 /** Words after which a filler is being mentioned, not used: "the word um", "I said hmm". */
 const MENTION = new Set([
@@ -329,7 +365,12 @@ function removeFillers(tokens: Token[]): { tokens: Token[]; keptProtected: boole
       if (terminal !== '') {
         if (endsComma) prev.text = dropLastChar(prev.text) + terminal;
         else if (!endsWithStop(prev.text)) prev.text += terminal;
-      } else if (endsComma && (isLast || NO_COMMA_AFTER.has(bareWord(prev.text)))) {
+      } else if (
+        endsComma &&
+        (isLast ||
+          (NO_COMMA_AFTER.has(bareWord(prev.text)) && !thankYouOpening(out)) ||
+          (filler.trail === ',' && bracketOnly(out, next)))
+      ) {
         prev.text = dropLastChar(prev.text);
       }
     }
@@ -353,6 +394,62 @@ function deletable(filler: Filler, atSentenceStart: boolean, prev: Token | undef
   if (filler.capitalised) return false;
   if (prev !== undefined && !prev.text.endsWith(',') && MENTION.has(bareWord(prev.text))) return false;
   return true;
+}
+
+/** "Thank you," alone at the start of a sentence: its comma stays although "you" never takes one. */
+function thankYouOpening(out: Token[]): boolean {
+  const n = out.length;
+  if (n < 2 || bareWord(out[n - 1]?.text ?? '') !== 'you' || bareWord(out[n - 2]?.text ?? '') !== 'thank') return false;
+  return n === 2 || endsSentence(out[n - 3]?.text ?? '') || containsNewline(out[n - 2]?.space ?? '');
+}
+
+/**
+ * True when the comma before a ", um," filler was only there to bracket it, so it goes too.
+ * It stays when it closes a real opening (see the header comment), before a conjunction and
+ * in a list.
+ */
+function bracketOnly(out: Token[], next: Token | undefined): boolean {
+  const prev = out[out.length - 1];
+  if (!prev) return false;
+  let start = out.length - 1;
+  while (start > 0 && !endsSentence(out[start - 1]?.text ?? '') && !containsNewline(out[start]?.space ?? '')) start -= 1;
+  if (start === out.length - 1) return false;
+  if (KEEP_COMMA_BEFORE.has(bareWord(prev.text))) return false;
+  if (closesOpening(out.slice(start))) return false;
+  if (next === undefined) return false;
+  if (CONJUNCTIONS.has(bareWord(next.text))) return false;
+  if (next.text.endsWith(',')) return false;
+  return true;
+}
+
+/**
+ * Whether the words from the sentence start to the comma are an opening the comma closes:
+ * one that starts with a greeting or answer word, a known intro phrase, or "in" / "by" /
+ * "since" / "until" plus a number.
+ */
+function closesOpening(segment: Token[]): boolean {
+  const words = segment.map((t) => bareWord(t.text));
+  const first = words[0];
+  if (first === undefined) return false;
+  if (GREETING_STARTS.has(first)) return true;
+  if (first === 'thank' && words[1] === 'you') return true;
+  if (INTRO_PHRASES.has(words.join(' '))) return true;
+  if (NUMBER_INTRO.has(first) && segment.length > 1 && segment.slice(1).every((t) => isNumberToken(t.text))) {
+    return true;
+  }
+  return false;
+}
+
+/** "2020," "3.5" or a spoken number word such as "twenty". */
+function isNumberToken(text: string): boolean {
+  const chars = Array.from(text);
+  let end = chars.length;
+  while (end > 0 && ',.!?'.includes(chars[end - 1] ?? '')) end -= 1;
+  const core = chars.slice(0, end);
+  if (core.length === 0) return false;
+  const isDigit = (c: string): boolean => c >= '0' && c <= '9';
+  if (isDigit(core[0] ?? '') && core.every((c) => isDigit(c) || c === ',' || c === '.')) return true;
+  return NUMBER_WORDS.has(lowerAscii(core.join('')));
 }
 
 /** "so," -> "So,". Anything that is not a plain lowercase word ("iPhone", "app.ts", "3d") is returned as is. */

@@ -25,9 +25,9 @@
     "expected": "We shipped it and then left."
   },
   {
-    "name": "the comma before a bracketed filler after a verb stays",
+    "name": "comma bracketing a filler after a verb goes",
     "input": "We should, um, ship it.",
-    "expected": "We should, ship it."
+    "expected": "We should ship it."
   },
   {
     "name": "sentence-initial capital filler hands capital over",
@@ -257,7 +257,7 @@
   {
     "name": "filler in the middle of a long sentence",
     "input": "The report, uh, covers the third quarter and, um, the forecast for the next two.",
-    "expected": "The report, covers the third quarter and the forecast for the next two."
+    "expected": "The report covers the third quarter and the forecast for the next two."
   },
   {
     "name": "triple I",
@@ -580,9 +580,9 @@
     "expected": "I said hmm and walked away."
   },
   {
-    "name": "filler set off by commas after said goes, its first comma stays",
+    "name": "filler set off by commas after said goes",
     "input": "I said, um, that we should wait.",
-    "expected": "I said, that we should wait."
+    "expected": "I said that we should wait."
   },
   {
     "name": "lowercase filler after an abbreviation goes",
@@ -600,14 +600,14 @@
     "expected": "Done. So what next?"
   },
   {
-    "name": "the comma before a bracketed filler after an identifier stays",
+    "name": "bracketing comma after an identifier goes",
     "input": "Why does the build fail with ERR_MODULE_NOT_FOUND, uh, after the upgrade?",
-    "expected": "Why does the build fail with ERR_MODULE_NOT_FOUND, after the upgrade?"
+    "expected": "Why does the build fail with ERR_MODULE_NOT_FOUND after the upgrade?"
   },
   {
-    "name": "the comma before a bracketed filler after a file name stays",
+    "name": "bracketing comma after a file name goes",
     "input": "Edit @src/server.ts, uh, to add a health route.",
-    "expected": "Edit @src/server.ts, to add a health route."
+    "expected": "Edit @src/server.ts to add a health route."
   },
   {
     "name": "bracketing comma before a conjunction stays",
@@ -678,6 +678,31 @@
     "name": "the comma after yes sir stays",
     "input": "Yes sir, uh, right away.",
     "expected": "Yes sir, right away."
+  },
+  {
+    "name": "the comma bracketing a filler after I think goes",
+    "input": "I think, um, we should go.",
+    "expected": "I think we should go."
+  },
+  {
+    "name": "the comma after well stays",
+    "input": "Well, um, maybe.",
+    "expected": "Well, maybe."
+  },
+  {
+    "name": "the comma after thank you stays",
+    "input": "Thank you, um, that helps a lot.",
+    "expected": "Thank you, that helps a lot."
+  },
+  {
+    "name": "the comma after a spoken year stays",
+    "input": "In twenty twenty, um, we moved.",
+    "expected": "In twenty twenty, we moved."
+  },
+  {
+    "name": "the comma after of course stays",
+    "input": "Of course, um, it works.",
+    "expected": "Of course, it works."
   },
   {
     "name": "a lone hmm stays",

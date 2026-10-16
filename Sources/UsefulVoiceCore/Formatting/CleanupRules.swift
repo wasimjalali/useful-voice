@@ -27,11 +27,15 @@ import Foundation
 /// "mm hmm" and "Uh, huh?" stay whole.
 /// Deleting a filler tidies only the punctuation it leaves behind:
 ///   - its own trailing comma goes with it: "Well, um, I think" -> "Well, I think";
-///   - a comma before it goes only when the filler ends the text or the sentence ("went home,
-///     um." -> "went home.") or the word before is one that never takes a comma ("the, um,
-///     store" -> "the store"). Any other comma before it stays, because it may belong to an
-///     intro phrase or a name ("Dear John, um, thanks" -> "Dear John, thanks", "For example, um,
-///     the build" -> "For example, the build");
+///   - a comma before it goes when the filler ends the text or the sentence ("went home,
+///     um." -> "went home."), when the word before is one that never takes a comma
+///     ("the, um, store" -> "the store"), and when the filler sits between two commas that
+///     only bracket it ("I think, um, we should" -> "I think we should"). That last comma stays
+///     when it closes a real opening: after a sentence's first word ("Well,"), after a discourse
+///     word ("okay,", "actually,"), after an opening that starts with a greeting or answer word
+///     ("Dear John,", "Thanks Sam,", "Yes sir,"), after an intro phrase ("For example,", "As a
+///     result,", "In 2020,"), before a conjunction ("Friday, um, or Monday") and in a list
+///     ("apples, um, pears,");
 ///   - a filler that ends a sentence ("I went, um.") hands its full stop to the word before.
 /// Sentence-initial capital: when the deleted filler was Capitalised and started a
 /// sentence ("Um, so we"), the next word gets the capital back ("So we"). That restores the
@@ -90,6 +94,38 @@ public enum CleanupRules {
     /// Function words that collapse from three repeats on (the pairs list collapses from two).
     /// "so" is not one: "so so so tired" is emphasis.
     private static let tripleStutter: Set<String> = doubleStutter.union(["it", "that", "is", "but", "was", "this"])
+
+    /// A comma before a bracketed filler stays after these words ("Well, um, I think").
+    private static let keepCommaBefore: Set<String> = [
+        "well", "so", "okay", "ok", "yes", "yeah", "no", "oh", "right", "now", "sure", "anyway",
+        "actually", "however", "also", "alright", "hi", "hello", "hey", "thanks", "honestly", "basically",
+    ]
+
+    /// A comma before a bracketed filler stays when one of these follows it ("Friday, um, or Monday").
+    private static let conjunctions: Set<String> = [
+        "and", "or", "but", "so", "then", "because", "which", "who", "where", "when", "while",
+        "although", "though", "unless", "if",
+    ]
+
+    /// An opening that starts with one of these is closed by its comma ("Dear John,", "Yes sir,").
+    private static let greetingStarts: Set<String> = [
+        "dear", "hi", "hello", "hey", "thanks", "yes", "no", "ok", "okay", "sure", "sorry", "well",
+    ]
+
+    /// Intro phrases whose comma closes them ("For example, um, the build").
+    private static let introPhrases: Set<String> = [
+        "as a result", "for example", "for instance", "in addition", "in fact", "of course", "by the way",
+        "on the other hand", "at the moment", "in general",
+    ]
+
+    /// "In 2020,", "By 5,": one of these plus a number is an intro phrase.
+    private static let numberIntro: Set<String> = ["in", "by", "since", "until"]
+
+    private static let numberWords: Set<String> = [
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven",
+        "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty",
+        "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred", "thousand",
+    ]
 
     /// Words after which a filler is being mentioned, not used: "the word um", "I said hmm".
     private static let mention: Set<String> = [
@@ -350,7 +386,10 @@ public enum CleanupRules {
                     } else if !endsWithStop(out[prevIndex].text) {
                         out[prevIndex].text += terminal
                     }
-                } else if endsComma && (isLast || noCommaAfter.contains(bareWord(out[prevIndex].text))) {
+                } else if endsComma
+                    && (isLast
+                        || (noCommaAfter.contains(bareWord(out[prevIndex].text)) && !thankYouOpening(out))
+                        || (filler.trail == "," && bracketOnly(out, next: next))) {
                     out[prevIndex].text = dropLastScalar(out[prevIndex].text)
                 }
             }
@@ -373,6 +412,59 @@ public enum CleanupRules {
         if filler.capitalised { return false }
         if let prev = prev, lastScalar(prev.text) != ",", mention.contains(bareWord(prev.text)) { return false }
         return true
+    }
+
+    /// "Thank you," alone at the start of a sentence: its comma stays although "you" never takes one.
+    private static func thankYouOpening(_ out: [Token]) -> Bool {
+        let n = out.count
+        guard n >= 2, bareWord(out[n - 1].text) == "you", bareWord(out[n - 2].text) == "thank" else { return false }
+        return n == 2 || endsSentence(out[n - 3].text) || containsNewline(out[n - 2].space)
+    }
+
+    /// True when the comma before a ", um," filler was only there to bracket it, so it goes too.
+    /// It stays when it closes a real opening (see the header comment), before a conjunction and
+    /// in a list.
+    private static func bracketOnly(_ out: [Token], next: Token?) -> Bool {
+        guard let prev = out.last else { return false }
+        var start = out.count - 1
+        while start > 0 && !endsSentence(out[start - 1].text) && !containsNewline(out[start].space) { start -= 1 }
+        if start == out.count - 1 { return false }
+        if keepCommaBefore.contains(bareWord(prev.text)) { return false }
+        if closesOpening(Array(out[start...])) { return false }
+        guard let next = next else { return false }
+        if conjunctions.contains(bareWord(next.text)) { return false }
+        if lastScalar(next.text) == "," { return false }
+        return true
+    }
+
+    /// Whether the words from the sentence start to the comma are an opening the comma closes:
+    /// one that starts with a greeting or answer word, a known intro phrase, or "in" / "by" /
+    /// "since" / "until" plus a number.
+    private static func closesOpening(_ segment: [Token]) -> Bool {
+        let words = segment.map { bareWord($0.text) }
+        guard let first = words.first else { return false }
+        if greetingStarts.contains(first) { return true }
+        if first == "thank" && words.count > 1 && words[1] == "you" { return true }
+        if introPhrases.contains(words.joined(separator: " ")) { return true }
+        if numberIntro.contains(first) && segment.count > 1
+            && segment.dropFirst().allSatisfy({ isNumberToken($0.text) }) {
+            return true
+        }
+        return false
+    }
+
+    /// "2020," "3.5" or a spoken number word such as "twenty".
+    private static func isNumberToken(_ text: String) -> Bool {
+        let chars = Array(text.unicodeScalars)
+        var end = chars.count
+        while end > 0 && ",.!?".unicodeScalars.contains(chars[end - 1]) { end -= 1 }
+        let core = chars[0..<end]
+        if core.isEmpty { return false }
+        if core.first.map({ $0.value >= 0x30 && $0.value <= 0x39 }) == true
+            && core.allSatisfy({ ($0.value >= 0x30 && $0.value <= 0x39) || $0 == "," || $0 == "." }) {
+            return true
+        }
+        return numberWords.contains(lowerAscii(string(core)))
     }
 
     /// "so," -> "So,". Anything that is not a plain lowercase word ("iPhone", "app.ts", "3d") is returned as is.

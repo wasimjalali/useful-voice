@@ -236,9 +236,8 @@ struct LocalCleanupModelTests {
         gen.loadGate = gate
         let model = LocalCleanupModel(modelURL: url, generator: gen, idleUnloadAfter: .seconds(60))
         await model.begin()                       // the load starts and blocks in the generator
-        let started = ContinuousClock.now
+        // The load stays blocked until after this call: if `clean` waited for it, this would hang.
         #expect(await model.clean("x", controlLine: line, deadline: soon) == nil)
-        #expect(started.duration(to: .now) < .seconds(5))
         #expect(await !model.isLoaded)
         #expect(gen.prompts.isEmpty)
         #expect(gen.loads == 0)

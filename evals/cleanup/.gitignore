@@ -2,3 +2,4 @@
 *.gguf
 *.gguf.part
 work/
+__pycache__/

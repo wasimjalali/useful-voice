@@ -814,3 +814,248 @@ run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASUR
 run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | MEASURE metal run 9649.614083 ms (context 14.973500000000001 ms, prompt decode 6743.699291999999 ms, native prompt 6743.671 ms, native generate 2885.723 ms, out 10)
 run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test measure() passed after 123.026 seconds.
 run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | ✔ Test run with 5 tests passed after 153.932 seconds.
+=== run 38915657883, head 1afbf07, log run38915657883-macos.log ===
+run 38915657883 | UNKNOWN STEP | ✘ Test whisperTranscribesARealClipAfterS1MiniRan() skipped.
+run 38915657883 | UNKNOWN STEP | ✘ Test bothFrameworksLoadInOneProcess() skipped.
+run 38915657883 | UNKNOWN STEP | ✘ Test s1MiniRunsBetweenTwoWhisperContexts() skipped.
+run 38915657883 | UNKNOWN STEP | ✘ Test pipelineWithTheRealModel() skipped.
+run 38915657883 | UNKNOWN STEP | ✘ Test controlTokensInTheTranscriptStayLiteral() skipped.
+run 38915657883 | UNKNOWN STEP | ✘ Test aPassedDeadlineStopsTheRun() skipped.
+run 38915657883 | UNKNOWN STEP | ✘ Test measure() skipped.
+run 38915657883 | UNKNOWN STEP | ✔ Test run with 935 tests passed after 8.663 seconds.
+run 38915657883 | UNKNOWN STEP | Apple M1 (Virtual)
+run 38915657883 | UNKNOWN STEP | 7516192768
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_init: using embedded metal library
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_aux' library in 1.268 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_f16' library in 2.751 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_f32' library in 4.561 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_q4_0' library in 3.458 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_q4_1' library in 5.464 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_q5_0' library in 6.120 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_q5_1' library in 6.974 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_q8_0' library in 7.975 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_tensor' library in 6.127 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_f16' library in 11.273 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_f32' library in 11.963 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_q4_0' library in 12.787 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_q4_1' library in 20.924 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_q5_0' library in 17.062 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_q5_1' library in 16.423 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_q8_0' library in 20.000 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'mul_mv' library in 22.410 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'mul_mv_mma' library in 22.046 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'mul_mm' library in 24.403 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'quantize' library in 24.808 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'softmax' library in 22.074 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'norm' library in 22.129 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'unary' library in 24.867 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'binbcast' library in 22.189 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'reduce' library in 24.892 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'tri' library in 22.225 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'ssm' library in 24.940 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'wkv' library in 22.253 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'gated_delta_net' library in 24.971 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'solve_tri' library in 22.274 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'rope' library in 25.017 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'conv' library in 22.362 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'upscale' library in 25.040 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'argsort' library in 22.424 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'pool' library in 25.088 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'misc' library in 22.529 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: loaded 36 libraries from embedded data in 25.170 sec (max single = 25.088 sec)
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: simdgroup reduction   = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: has unified memory    = true
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: has bfloat            = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: has tensor            = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: use residency sets    = true
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: use shared buffers    = true
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38915657883 | UNKNOWN STEP | | model                          |       size |     params | backend    | threads |            test |                  t/s |
+run 38915657883 | UNKNOWN STEP | | ------------------------------ | ---------: | ---------: | ---------- | ------: | --------------: | -------------------: |
+run 38915657883 | UNKNOWN STEP | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       3 |           pp100 |       309.95 ± 48.31 |
+run 38915657883 | UNKNOWN STEP | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       3 |            tg16 |        101.78 ± 5.70 |
+run 38915657883 | UNKNOWN STEP | build: 620d2225c (11669)
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_init: using embedded metal library
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_aux' library in 0.016 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_f16' library in 0.014 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_f32' library in 0.006 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_q4_0' library in 0.014 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_q4_1' library in 0.015 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_q5_0' library in 0.031 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_q5_1' library in 0.007 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_q8_0' library in 0.020 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_tensor' library in 0.006 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_f16' library in 0.039 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_f32' library in 0.024 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_q4_0' library in 0.014 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_q4_1' library in 0.009 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_q5_0' library in 0.004 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_q5_1' library in 0.024 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_q8_0' library in 0.019 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'mul_mv' library in 0.026 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'mul_mv_mma' library in 0.014 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'mul_mm' library in 0.033 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'quantize' library in 0.017 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'softmax' library in 0.015 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'norm' library in 0.011 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'unary' library in 0.008 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'binbcast' library in 0.008 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'reduce' library in 0.009 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'tri' library in 0.006 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'ssm' library in 0.006 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'wkv' library in 0.004 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'gated_delta_net' library in 0.005 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'solve_tri' library in 0.001 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'rope' library in 0.000 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'conv' library in 0.000 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'upscale' library in 0.000 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'argsort' library in 0.000 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'pool' library in 0.001 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'misc' library in 0.001 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: loaded 36 libraries from embedded data in 0.053 sec (max single = 0.039 sec)
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: simdgroup reduction   = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: has unified memory    = true
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: has bfloat            = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: has tensor            = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: use residency sets    = true
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: use shared buffers    = true
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38915657883 | UNKNOWN STEP | | model                          |       size |     params | backend    | threads | dev          |            test |                  t/s |
+run 38915657883 | UNKNOWN STEP | | ------------------------------ | ---------: | ---------: | ---------- | ------: | ------------ | --------------: | -------------------: |
+run 38915657883 | UNKNOWN STEP | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       3 | none         |           pp100 |       192.23 ± 18.16 |
+run 38915657883 | UNKNOWN STEP | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       3 | none         |            tg16 |         93.99 ± 2.93 |
+run 38915657883 | UNKNOWN STEP | build: 620d2225c (11669)
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_init: using embedded metal library
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_aux' library in 0.001 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_f16' library in 0.001 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_f32' library in 0.002 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_q4_0' library in 0.001 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_q4_1' library in 0.002 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_q5_0' library in 0.001 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_q5_1' library in 0.001 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_q8_0' library in 0.013 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_tensor' library in 0.019 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_f16' library in 0.002 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_f32' library in 0.002 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_q4_0' library in 0.003 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_q4_1' library in 0.005 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_q5_0' library in 0.009 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_q5_1' library in 0.013 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'fa_vec_q8_0' library in 0.012 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'mul_mv' library in 0.004 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'mul_mv_mma' library in 0.007 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'mul_mm' library in 0.012 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'quantize' library in 0.008 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'softmax' library in 0.008 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'norm' library in 0.004 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'unary' library in 0.003 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'binbcast' library in 0.005 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'reduce' library in 0.005 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'tri' library in 0.002 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'ssm' library in 0.000 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'wkv' library in 0.000 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'gated_delta_net' library in 0.000 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'solve_tri' library in 0.003 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'rope' library in 0.000 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'conv' library in 0.003 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'upscale' library in 0.001 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'argsort' library in 0.000 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'pool' library in 0.002 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: compiled 'misc' library in 0.002 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_compile_all: loaded 36 libraries from embedded data in 0.021 sec (max single = 0.019 sec)
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: simdgroup reduction   = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: has unified memory    = true
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: has bfloat            = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: has tensor            = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: use residency sets    = true
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: use shared buffers    = true
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38915657883 | UNKNOWN STEP | | model                          |       size |     params | backend    | threads | dev          |            test |                  t/s |
+run 38915657883 | UNKNOWN STEP | | ------------------------------ | ---------: | ---------: | ---------- | ------: | ------------ | --------------: | -------------------: |
+run 38915657883 | UNKNOWN STEP | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       1 | none         |           pp100 |        124.89 ± 5.45 |
+run 38915657883 | UNKNOWN STEP | | qwen3 0.6B Q4_K - Medium       | 456.11 MiB |   751.63 M | MTL,BLAS   |       1 | none         |            tg16 |         49.22 ± 1.90 |
+run 38915657883 | UNKNOWN STEP | build: 620d2225c (11669)
+run 38915657883 | UNKNOWN STEP | hw.optional.arm.FEAT_DotProd: 1
+run 38915657883 | UNKNOWN STEP | hw.optional.arm.FEAT_BF16: 0
+run 38915657883 | UNKNOWN STEP | MEASURE baseline (resident: 25.046875, footprint: 8.0482177734375)
+run 38915657883 | UNKNOWN STEP | MEASURE cpuOnly load 21196.488083 ms threads 3 cores 3 mem (resident: 854.640625, footprint: 428.28460693359375)
+run 38915657883 | UNKNOWN STEP | MEASURE cpuOnly run 8493.439708 ms prompt 97 out 10 ctx 512 prefill 7523.99025 ms (context 79.503167 ms, prompt decode 7441.843000000001 ms, native prompt 7444.992 ms, native generate 962.037 ms) -> "So I need to send the report by Thursday."
+run 38915657883 | UNKNOWN STEP | MEASURE cpuOnly run 8910.392042 ms prompt 92 out 15 ctx 512 prefill 7264.6696249999995 ms (context 9.244625 ms, prompt decode 7251.451459 ms, native prompt 7255.035 ms, native generate 1642.271 ms) -> "Send it to john.smith@example.com by Friday the 3rd."
+run 38915657883 | UNKNOWN STEP | MEASURE cpuOnly run 10655.433917 ms prompt 95 out 16 ctx 512 prefill 8202.647083 ms (context 12.270791 ms, prompt decode 8188.999042 ms, native prompt 8192.94 ms, native generate 2450.276 ms) -> "The meeting is at 2:30pm on March 16."
+run 38915657883 | UNKNOWN STEP | MEASURE cpuOnly run 11491.587208 ms prompt 99 out 20 ctx 512 prefill 8491.878542 ms (context 7.779042 ms, prompt decode 8482.912750000001 ms, native prompt 8487.102 ms, native generate 2995.453 ms) -> "So the budget is $45,000, and we need to confirm with Sarah."
+run 38915657883 | UNKNOWN STEP | MEASURE cpuOnly run 10941.057875 ms prompt 97 out 18 ctx 512 prefill 8201.772165999999 ms (context 14.464584 ms, prompt decode 8184.802166 ms, native prompt 8188.851000000001 ms, native generate 2733.815 ms) -> "Can you open the file source/app.ts and rename the function get user to fetch user?"
+run 38915657883 | UNKNOWN STEP | MEASURE cpuOnly median 10655.433917 ms max 11491.587208 ms mem after (resident: 855.359375, footprint: 428.06585693359375)
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_init: using embedded metal library
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_init: loaded in 17.151 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: simdgroup reduction   = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: has unified memory    = true
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: has bfloat            = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: has tensor            = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: use residency sets    = true
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: use shared buffers    = true
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38915657883 | UNKNOWN STEP | MEASURE cpuOnly with whisper tiny loadable=true in 17581.661291 ms mem (resident: 880.125, footprint: 459.65966796875)
+run 38915657883 | UNKNOWN STEP | MEASURE after cpuOnly unload (resident: 178.1875, footprint: 53.158203125)
+run 38915657883 | UNKNOWN STEP | MEASURE probe cpuOnly context 21.596583 ms, prompt 97 tokens
+run 38915657883 | UNKNOWN STEP | MEASURE probe cpuOnly prompt decode #0 status 0 8767.873708 ms
+run 38915657883 | UNKNOWN STEP | MEASURE probe cpuOnly prompt decode #1 status 0 9314.777875000002 ms
+run 38915657883 | UNKNOWN STEP | MEASURE probe cpuOnly prompt decode #2 status 0 8430.346458 ms
+run 38915657883 | UNKNOWN STEP | MEASURE probe cpuOnly prompt decode #3 status 0 8461.234959000001 ms
+run 38915657883 | UNKNOWN STEP | MEASURE probe cpuOnly single-token decodes ms 119 155 128 114 115 117 139 112 128 109
+run 38915657883 | UNKNOWN STEP | MEASURE probe metal context 21.941375 ms, prompt 97 tokens
+run 38915657883 | UNKNOWN STEP | MEASURE probe metal prompt decode #0 status 0 9293.645041 ms
+run 38915657883 | UNKNOWN STEP | MEASURE probe metal prompt decode #1 status 0 8720.659833 ms
+run 38915657883 | UNKNOWN STEP | MEASURE probe metal prompt decode #2 status 0 9749.428542 ms
+run 38915657883 | UNKNOWN STEP | MEASURE probe metal prompt decode #3 status 0 9249.68325 ms
+run 38915657883 | UNKNOWN STEP | MEASURE probe metal single-token decodes ms 359 286 459 302 226 328 231 201 205 200
+run 38915657883 | UNKNOWN STEP | MEASURE metal load 949.826916 ms mem (resident: 909.5625, footprint: 425.53466796875)
+run 38915657883 | UNKNOWN STEP | MEASURE metal run 10050.19125 ms (context 26.204708 ms, prompt decode 7261.164 ms, native prompt 7260.986 ms, native generate 2758.37 ms, out 10)
+run 38915657883 | UNKNOWN STEP | MEASURE metal run 9593.601917 ms (context 12.153209 ms, prompt decode 7219.563958 ms, native prompt 7219.535 ms, native generate 2356.088 ms, out 10)
+run 38915657883 | UNKNOWN STEP | MEASURE metal run 11722.46925 ms (context 14.079334000000001 ms, prompt decode 7967.387708 ms, native prompt 7967.3330000000005 ms, native generate 3729.996 ms, out 10)
+run 38915657883 | UNKNOWN STEP | ✔ Test measure() passed after 200.517 seconds.
+run 38915657883 | UNKNOWN STEP | ✔ Test run with 1 test passed after 200.517 seconds.
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_init: using embedded metal library
+run 38915657883 | UNKNOWN STEP | ggml_metal_library_init: loaded in 0.021 sec
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: GPU name:   MTL0 (Apple Paravirtual device)
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: GPU family: MTLGPUFamilyApple5  (1005)
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: simdgroup reduction   = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: simdgroup matrix mul. = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: has unified memory    = true
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: has bfloat            = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: has tensor            = false
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: use residency sets    = true
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: use shared buffers    = true
+run 38915657883 | UNKNOWN STEP | ggml_metal_device_init: recommendedMaxWorkingSetSize  =  5010.80 MB
+run 38915657883 | UNKNOWN STEP | COEXIST whisper system info: WHISPER : COREML = 1 | OPENVINO = 0 | MTL : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | DOTPROD = 1 | ACCELERATE = 1 | REPACK = 1 | 
+run 38915657883 | UNKNOWN STEP | COEXIST llama 0.7.0-dev system info: MTL : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | DOTPROD = 1 | LLAMAFILE = 1 | ACCELERATE = 1 | REPACK = 1 | 
+run 38915657883 | UNKNOWN STEP | COEXIST images: ["/Users/runner/work/useful-voice/useful-voice/.build/arm64-apple-macosx/debug/whisper.framework/Versions/A/whisper"] ["/Users/runner/work/useful-voice/useful-voice/.build/arm64-apple-macosx/debug/llama.framework/Versions/A/llama"]
+run 38915657883 | UNKNOWN STEP | ✔ Test bothFrameworksLoadInOneProcess() passed after 0.157 seconds.
+run 38915657883 | UNKNOWN STEP | COEXIST model card example -> "So I need to send the report by Thursday." Stats(promptTokens: 97, outputTokens: 10, contextSize: 512, prefillSeconds: 9.920898875, totalSeconds: 11.304036667, contextSeconds: 0.020973958, promptDecodeSeconds: 9.897238042, nativePromptMs: 9897.092, nativeGenerateMs: 1378.508)
+run 38915657883 | UNKNOWN STEP | ✔ Test s1MiniRunsBetweenTwoWhisperContexts() passed after 24.079 seconds.
+run 38915657883 | UNKNOWN STEP | COEXIST whisper after S1-mini -> "Hello, this is a test of local dictation on this Mac."
+run 38915657883 | UNKNOWN STEP | ✔ Test whisperTranscribesARealClipAfterS1MiniRan() passed after 21.097 seconds.
+run 38915657883 | UNKNOWN STEP | ✔ Test controlTokensInTheTranscriptStayLiteral() passed after 0.951 seconds.
+run 38915657883 | UNKNOWN STEP | COEXIST 5 ms deadline stopped the run after 13.035791 ms
+run 38915657883 | UNKNOWN STEP | ✔ Test aPassedDeadlineStopsTheRun() passed after 7.857 seconds.
+run 38915657883 | UNKNOWN STEP | COEXIST pipeline -> Result(text: "So I need to send the report by Thursday.", source: UsefulVoiceCore.CleanupPipeline.Source.model, model: Optional(UsefulVoiceCore.CleanupPipeline.ModelOutcome.accepted))
+run 38915657883 | UNKNOWN STEP | ✔ Test pipelineWithTheRealModel() passed after 8.234 seconds.
+run 38915657883 | UNKNOWN STEP | ✔ Test run with 6 tests passed after 62.377 seconds.

@@ -26,20 +26,26 @@ average Mac? Which runtime and placement (CPU or Metal) should the hidden flag u
     `... -dev none -ngl 0 -t 3 -p 100 -n 16 -r 3` and `... -dev none -ngl 0 -t 1 -p 100 -n 16 -r 2`
     (CPU only).
 - Harness: `Tests/UsefulVoiceAppTests/LlamaWhisperCoexistenceTests.swift` (`measure`, `probe`).
-- Raw output, four CI runs, every line labelled with its run and step:
+- Raw output, five CI runs, every line labelled with its run and step:
   `evals/results/raw/2026-10-16-s1-mini-macos-runtime-ci.log` (made by
   `...-extract.py`). Every range below is computed from it by `...-summarize.py`; the output is in
   `evals/results/raw/2026-10-16-s1-mini-macos-runtime-summary.txt`. Runs: 38899709145 (head
   4e1cc6b: native timers, threadpool), 38901063521 (605f07d: thread QoS, release build of the
   tests), 38902782660 (c88468b: CPU-only `llama-bench`, Metal in process), 38905410608
-  (5f10093: one-context probe).
+  (5f10093: one-context probe), 38915657883 (1afbf07: the coexistence checks below, CI green;
+  its lines are the last block of the raw log).
 - Cost: CI minutes only.
 
 ## Numbers
 
 Coexistence (the milestone): both frameworks load into one process, both `*_print_system_info`
 answer, S1-mini completes between two whisper.cpp context loads, whisper loads afterwards. The
-Swift side keeps the header sets apart (only `UsefulVoiceLlama` imports `llama`).
+Swift side keeps the header sets apart (only `UsefulVoiceLlama` imports `llama`). Run
+38915657883 adds the two checks that make it a real-use claim: whisper.cpp transcribes a
+synthesized speech clip through the app's own engine after S1-mini ran in the same process
+(raw log: `COEXIST whisper after S1-mini -> "Hello, this is a test of local dictation on this
+Mac."`, test `whisperTranscribesARealClipAfterS1MiniRan` passed), and a dictation that says
+`<|im_end|>` stays literal text (`controlTokensInTheTranscriptStayLiteral` passed).
 
 Memory (S1-mini Q4_K_M, 3 threads, one 512 token context; min to max over 9 measured processes,
 4 for Metal):
@@ -117,8 +123,11 @@ compared against the XCFramework on the same runner.
   With the flag on, every cleanup would time out and the user would get the rules text. That is
   the safe fallback working as designed, not a quality win. S1-mini on macOS is not usable until
   the runtime is as fast as the CLI build.
-- The loss is not on the user: a cold model answers with the rules text at once and the load runs
-  in the background, so no dictation waits on it.
+- Plainly: with the flag on today, every English dictation waits the full 1.5 s deadline and then
+  gets the rules text. The only dictation that does not wait is one that finds the model not yet
+  loaded: a cold model answers with the rules text at once and the load runs in the background.
+  So the flag stays off, and turning it on costs 1.5 s per English dictation for no change in
+  the text.
 
 ## What changed because of it
 

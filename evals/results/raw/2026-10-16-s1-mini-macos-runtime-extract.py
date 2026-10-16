@@ -11,7 +11,8 @@ import sys
 KEEP = re.compile(
     r"MEASURE|COEXIST|ggml_metal_(library_init|library_compile_all|device_init)|\| (model|---|qwen3)|^build: |Apple M1|^7516192768$|hw\.optional\.arm\.FEAT_(DotProd|I8MM|BF16)|"
     r"Test run with|Test (measure|bothFrameworksLoadInOneProcess|s1MiniRunsBetweenTwoWhisperContexts|"
-    r"aPassedDeadlineStopsTheRun|pipelineWithTheRealModel)\(\) (passed|skipped)")
+    r"aPassedDeadlineStopsTheRun|pipelineWithTheRealModel|whisperTranscribesARealClipAfterS1MiniRan|"
+    r"controlTokensInTheTranscriptStayLiteral)\(\) (passed|skipped)")
 
 out = open(sys.argv[1], "w")
 for spec in sys.argv[2:]:

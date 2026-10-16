@@ -7,8 +7,9 @@ import os from 'node:os';
 
 import { DataStore } from '../core/settings/dataStore.js';
 import { planLoginItem, wasAutoStarted } from '../core/settings/autostart.js';
-import { DELIVERY_TIMEOUT, deliverToTarget } from '../core/delivery/deliveryFlow.js';
-import { appIdFor, isKnownBrowser, type DeliveryTarget } from '../core/delivery/deliveryTarget.js';
+import { deliverToTarget } from '../core/delivery/deliveryFlow.js';
+import { isKnownBrowser, type DeliveryTarget } from '../core/delivery/deliveryTarget.js';
+import { PendingAddress, focusReader, forgetPageDetails, killOnTimeout, toDeliveryTarget } from './deliveryGlue.js';
 import {
   normaliseMemoryLanguage,
   type AppSettings,
@@ -52,7 +53,6 @@ import {
   reactivateWindow,
   browserAddress,
   typeText,
-  type ForegroundWindowInfo,
   ownProcessName,
   playCue,
   restoreClipboard,
@@ -184,7 +184,7 @@ class UsefulVoiceApp {
    */
   private recentTargetApps: string[] = [];
   /** The hotkey target whose browser address is still being read, if any. */
-  private pendingAddressTarget: DeliveryTarget | null = null;
+  private readonly pendingAddress = new PendingAddress();
   private service!: DictationService;
   private diagnostics!: Diagnostics;
 
@@ -1182,11 +1182,9 @@ class UsefulVoiceApp {
         // Off the critical path: recording never waits on UI Automation. The address
         // stays on this dictation's target, in memory only, and a read that finishes
         // after delivery has settled is dropped.
-        const pending = target;
-        this.pendingAddressTarget = pending;
-        void browserAddress(front.handle, pending.appId).then((address) => {
-          if (address && this.pendingAddressTarget === pending) pending.browserUrl = address;
-        });
+        const handle = front.handle;
+        const appId = target.appId;
+        void this.pendingAddress.start(target, async () => (await browserAddress(handle, appId)).address);
       }
     }
     await this.service.toggle({ source, targetApp, targetHandle, target });
@@ -1251,6 +1249,11 @@ class UsefulVoiceApp {
     const target = request.target;
     const deadline = Date.now() + (request.timeBudgetMs ?? DEFAULT_SINK_BUDGET_MS);
     const kill = killOnTimeout(request.signal);
+    const readFocus = focusReader(target, {
+      foregroundWindow: (budgetMs) => foregroundWindow(budgetMs),
+      browserAddress: (handle, appId, budgetMs) => browserAddress(handle, appId, budgetMs),
+      log: (category, message) => this.diagnostics.log(category, message),
+    });
     try {
       const result = await deliverToTarget(
         {
@@ -1264,19 +1267,7 @@ class UsefulVoiceApp {
         },
         {
           now: () => Date.now(),
-          readFocus: async (budgetMs, withAddress) => {
-            const front = await foregroundWindow(budgetMs);
-            if (!front) return null;
-            const focus = toDeliveryTarget(front);
-            // The address is read only from the target's own window: another window's
-            // page says nothing about the target's.
-            if (withAddress && target?.windowHandle === front.handle) {
-              const left = deadline - Date.now();
-              const address = await browserAddress(front.handle, focus.appId, left);
-              if (address) focus.browserUrl = address;
-            }
-            return focus;
-          },
+          readFocus,
           reactivate: (lockTarget, budgetMs) =>
             reactivateWindow(lockTarget.windowHandle ?? 0, lockTarget.focusHandle, budgetMs),
           snapshotClipboard: () => snapshotClipboard(),
@@ -1295,12 +1286,8 @@ class UsefulVoiceApp {
       if (result.lineBreaks) delivered.lineBreaks = true;
       return delivered;
     } finally {
-      // The window title and the page address were for this dictation only.
-      if (target) {
-        delete target.browserUrl;
-        delete target.windowTitle;
-      }
-      if (this.pendingAddressTarget === target) this.pendingAddressTarget = null;
+      forgetPageDetails(target);
+      this.pendingAddress.settle(target);
     }
   }
 
@@ -1978,34 +1965,6 @@ class UsefulVoiceApp {
     ];
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));
   }
-}
-
-/** The target lock's view of a foreground window. */
-function toDeliveryTarget(front: ForegroundWindowInfo): DeliveryTarget {
-  const target: DeliveryTarget = { windowHandle: front.handle, windowTitle: front.title };
-  const appId = appIdFor(front.processName);
-  if (appId) target.appId = appId;
-  const name = front.title || front.processName;
-  if (name) target.appName = name;
-  if (front.processId !== undefined) target.processId = front.processId;
-  if (front.focusHandle !== undefined) target.focusHandle = front.focusHandle;
-  return target;
-}
-
-/**
- * A signal that fires only when the delivery ran out of time, never on a cancel. It
- * kills a running keystroke script outright; a cancel lets a paste that already
- * started finish, as it always has.
- */
-function killOnTimeout(signal: AbortSignal | undefined): AbortSignal | undefined {
-  if (!signal) return undefined;
-  const kill = new AbortController();
-  const onAbort = (): void => {
-    if (signal.reason === DELIVERY_TIMEOUT) kill.abort();
-  };
-  if (signal.aborted) onAbort();
-  else signal.addEventListener('abort', onAbort, { once: true });
-  return kill.signal;
 }
 
 function delay(ms: number): Promise<void> {

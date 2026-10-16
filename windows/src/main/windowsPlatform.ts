@@ -8,6 +8,7 @@ import path from 'node:path';
 // the title the UI needs on top, so window info can be handed straight to the policy.
 import { parseForegroundLine, type ForegroundWindowInfo } from '../core/delivery/foregroundLine.js';
 import type { InsertAttempt } from '../core/delivery/deliveryFlow.js';
+import type { AddressRead } from './deliveryGlue.js';
 import { appIdFor, isKnownBrowser } from '../core/delivery/deliveryTarget.js';
 import {
   browserAddressScript,
@@ -165,21 +166,25 @@ export async function reactivateWindow(
  * The page address of a browser window (Chrome, Edge, Brave, Firefox), read from its
  * real address bar with UI Automation (`browserAddressScript` says how it's told
  * apart from any other edit control). An address without a scheme (Chromium hides
- * `https://`) gets `https://`, the same way at the press and at delivery. Null when it
- * can't be read, or the app isn't a known browser. Kept in memory only.
+ * `https://`) gets `https://`, the same way at the press and at delivery. The address
+ * is null when it can't be read, or the app isn't a known browser; `timedOut` says the
+ * read was cut off. Kept in memory only.
  */
-export async function browserAddress(handle: number, appId: string | undefined, timeoutMs = 3000): Promise<string | null> {
-  if (!isHandle(handle) || !isKnownBrowser(appId) || timeoutMs <= 0) return null;
+export async function browserAddress(handle: number, appId: string | undefined, timeoutMs = 3000): Promise<AddressRead> {
+  const none = (timedOut: boolean): AddressRead => ({ address: null, timedOut });
+  if (!isHandle(handle) || !isKnownBrowser(appId)) return none(false);
+  if (timeoutMs <= 0) return none(true);
   const kind = appIdFor(appId) === 'firefox' ? 'firefox' : 'chromium';
   try {
     const { stdout } = await runPowerShell(browserAddressScript(handle, kind), Math.min(3000, timeoutMs));
     const encoded = lastLine(stdout);
-    if (!/^[A-Za-z0-9+/=]+$/.test(encoded)) return null;
+    if (!/^[A-Za-z0-9+/=]+$/.test(encoded)) return none(false);
     const value = Buffer.from(encoded, 'base64').toString('utf8').trim();
-    if (value.length === 0 || /\s/.test(value)) return null;
-    return /^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `https://${value}`;
-  } catch {
-    return null;
+    if (value.length === 0 || /\s/.test(value)) return none(false);
+    return { address: /^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `https://${value}`, timedOut: false };
+  } catch (error) {
+    // execFile kills a script that outlives its timeout and says so with `killed`.
+    return none((error as { killed?: boolean }).killed === true);
   }
 }
 

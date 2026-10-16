@@ -116,6 +116,23 @@ describe('PowerShell script guards', () => {
     }
   });
 
+  it('searches the browser chrome level by level, never the whole tree or a page', () => {
+    for (const script of [scripts['address bar, chromium']!, scripts['address bar, firefox']!]) {
+      expect(script).not.toContain('TreeScope]::Descendants');
+      expect(script).toContain('TreeScope]::Children');
+      expect(script).toContain('NotCondition($isPage)');
+      expect(script).toContain('ControlType]::Document');
+      expect(script).toMatch(/\$depth -lt \d+/);
+      expect(script).toMatch(/\$visited -ge \d+/);
+    }
+  });
+
+  it('rounds a fractional deadline down instead of writing 0 (every paste would time out)', () => {
+    expect(pasteScript(0x1234, deadline + 0.5)).toContain(`FromUnixTimeMilliseconds(${deadline})`);
+    expect(typeScript(0x1234, deadline + 0.75)).toContain(`FromUnixTimeMilliseconds(${deadline})`);
+    expect(pasteScript(0x1234, Number.NaN)).toContain('FromUnixTimeMilliseconds(0)');
+  });
+
   it('refuses anything but a plain handle', () => {
     expect(() => typeScript(0, deadline)).toThrow();
     expect(() => typeScript(1.5, deadline)).toThrow();

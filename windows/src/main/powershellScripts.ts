@@ -20,9 +20,14 @@ export function isHandle(value: number | undefined): value is number {
   return value !== undefined && Number.isSafeInteger(value) && value > 0;
 }
 
-/** A deadline as an epoch millisecond count PowerShell can compare against. */
+/**
+ * A deadline as an epoch millisecond count PowerShell can compare against. A fractional
+ * one is rounded down (never later than asked); anything else unusable is 0, which has
+ * passed.
+ */
 function deadlineLine(deadlineEpochMs: number): string {
-  const ms = Number.isSafeInteger(deadlineEpochMs) && deadlineEpochMs > 0 ? deadlineEpochMs : 0;
+  const floored = Math.floor(deadlineEpochMs);
+  const ms = Number.isSafeInteger(floored) && floored > 0 ? floored : 0;
   return `$deadline = [DateTimeOffset]::FromUnixTimeMilliseconds(${ms}).UtcDateTime`;
 }
 
@@ -231,6 +236,11 @@ ${REACTIVATE_CS}
 /** Which UI Automation element is the address bar, per browser family. */
 export type AddressBarKind = 'chromium' | 'firefox';
 
+/** How deep the address bar search goes below the window. Chromium's sits about eight levels down. */
+export const ADDRESS_MAX_DEPTH = 16;
+/** How many elements the address bar search looks inside before it gives up. */
+export const ADDRESS_MAX_NODES = 400;
+
 /**
  * Read a browser window's address bar with UI Automation. Only the real address bar
  * is accepted: an edit control whose ClassName is `OmniboxViewViews` (Chrome, Edge,
@@ -238,6 +248,11 @@ export type AddressBarKind = 'chromium' | 'firefox';
  * names, not localised labels, and no other edit control on a page carries them. Any
  * other edit (a search box on the page) is never read. Prints the value as base64 of
  * UTF-8, or nothing.
+ *
+ * The search stays in the browser's own chrome: level by level from the window, one
+ * Children query per element, never entering a page (a Document) and capped at
+ * `ADDRESS_MAX_DEPTH` levels and `ADDRESS_MAX_NODES` elements. A whole-tree search
+ * walked every node of the page too and could eat the delivery's time.
  */
 export function browserAddressScript(handle: number, kind: AddressBarKind): string {
   if (!isHandle(handle)) throw new Error('browserAddressScript needs a window handle');
@@ -254,7 +269,24 @@ try {
   $isEdit = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)
   $isBar = ${match}
   $cond = New-Object System.Windows.Automation.AndCondition($isEdit, $isBar)
-  $edit = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+  $isPage = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Document)
+  $notPage = New-Object System.Windows.Automation.NotCondition($isPage)
+  $children = [System.Windows.Automation.TreeScope]::Children
+  $edit = $null
+  $level = @($root)
+  $visited = 0
+  for ($depth = 0; $depth -lt ${ADDRESS_MAX_DEPTH} -and $edit -eq $null -and $level.Count -gt 0; $depth++) {
+    $next = New-Object System.Collections.ArrayList
+    foreach ($node in $level) {
+      $edit = $node.FindFirst($children, $cond)
+      if ($edit -ne $null) { break }
+      foreach ($child in $node.FindAll($children, $notPage)) { [void]$next.Add($child) }
+      $visited += 1
+      if ($visited -ge ${ADDRESS_MAX_NODES}) { break }
+    }
+    if ($visited -ge ${ADDRESS_MAX_NODES}) { break }
+    $level = $next
+  }
   if ($edit -eq $null) { exit 0 }
   $value = $edit.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value
   Write-Output ([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($value)))

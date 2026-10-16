@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pageKey } from '../src/core/delivery/deliveryTarget.js';
+import { DELIVERY_ADDRESS_MS } from '../src/main/deliveryGlue.js';
 import { browserAddressScript } from '../src/main/powershellScripts.js';
 
 /**
@@ -14,8 +15,10 @@ import { browserAddressScript } from '../src/main/powershellScripts.js';
  * else. The page puts a focused text field holding another address first in the page,
  * which the old "first edit control" read would have returned.
  *
- * Skipped where there is no Edge, and when Edge never opens a window (an environment
- * problem, not a wrong read). A wrong or missing read fails.
+ * Skipped where there is no Edge. When Edge never opens a window it fails on CI (the
+ * windows-latest runner has Edge, so a skip there would hide a broken check) and skips
+ * elsewhere. A wrong or missing read fails, and so does a read slower than a delivery
+ * waits for (`DELIVERY_ADDRESS_MS`), which would switch the page check off unseen.
  */
 const edge = [
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
@@ -24,10 +27,10 @@ const edge = [
 
 const TITLE = 'uv-address-check';
 
-function powershell(script: string): string {
+function powershell(script: string, timeout = 30_000): string {
   return execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], {
     encoding: 'utf8',
-    timeout: 30_000,
+    timeout,
     windowsHide: true,
   });
 }
@@ -89,7 +92,10 @@ describe.skipIf(!edge)('address bar read on a real Edge', () => {
       handle = Number(out) || 0;
       if (handle === 0) await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-    if (handle === 0) ctx.skip();
+    if (handle === 0) {
+      if (process.env.CI) expect.fail('Edge never opened a window, so the address bar read was not checked');
+      ctx.skip();
+    }
 
     let value = '';
     // UI Automation on a page that just loaded can need a moment to build its tree.
@@ -103,5 +109,15 @@ describe.skipIf(!edge)('address bar read on a real Edge', () => {
     // The way `browserAddress` completes it, the same at the press and at delivery.
     const address = /^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `https://${value}`;
     expect(pageKey(address)).toMatch(new RegExp(`^https?://127\\.0\\.0\\.1:${port}/compose\\?draft=1$`));
+
+    // Warm, the whole read (PowerShell start included) fits what a delivery waits for.
+    const timings: number[] = [];
+    for (let run = 0; run < 3; run += 1) {
+      const started = Date.now();
+      const encoded = powershell(browserAddressScript(handle, 'chromium'), DELIVERY_ADDRESS_MS).trim().split(/\r?\n/).pop() ?? '';
+      timings.push(Date.now() - started);
+      expect(Buffer.from(encoded, 'base64').toString('utf8')).toContain(`127.0.0.1:${port}/compose?draft=1`);
+    }
+    console.log(`address bar read, warm: ${timings.join(', ')} ms (cap ${DELIVERY_ADDRESS_MS} ms)`);
   }, 120_000);
 });

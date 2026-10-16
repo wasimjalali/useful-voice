@@ -159,7 +159,8 @@ struct CleanupTests {
             if verdict != want { failures.append("\(row.name): got \(verdict), want \(want)") }
         }
         #expect(failures.isEmpty, "\(failures.joined(separator: "\n"))")
-        #expect(seen == ["accept", "reasoning", "empty", "tooLong", "noWordChange", "droppedContent", "addedContent"])
+        // An accepting row and a row for every rejection reason, and nothing else.
+        #expect(seen == Set(["accept"] + CleanupGuard.Reason.allCases.map(\.rawValue)))
     }
 
     @Test func guardHonoursCustomLimits() {

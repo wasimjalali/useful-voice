@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { applyCleanupRules } from '../src/core/formatting/cleanupRules.js';
 import {
   evaluateCleanupOutput,
+  GUARD_REASONS,
   STANDARD_GUARD_LIMITS,
   type GuardReason,
 } from '../src/core/formatting/cleanupGuard.js';
@@ -146,11 +147,10 @@ describe('evaluateCleanupOutput fixtures', () => {
     });
   }
 
-  it('covers every rejection reason', () => {
+  it('has an accepting row and a row for every rejection reason', () => {
     const reasons = new Set(guardRows.map((r) => r.verdict));
-    for (const reason of ['accept', 'reasoning', 'empty', 'tooLong', 'noWordChange', 'droppedContent', 'addedContent']) {
-      expect(reasons.has(reason), reason).toBe(true);
-    }
+    for (const reason of ['accept', ...GUARD_REASONS]) expect(reasons.has(reason), reason).toBe(true);
+    for (const reason of reasons) expect(reason === 'accept' || GUARD_REASONS.includes(reason as GuardReason), reason).toBe(true);
   });
 
   it('honours custom limits', () => {

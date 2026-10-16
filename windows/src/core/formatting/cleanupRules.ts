@@ -289,7 +289,7 @@ function removeFillers(tokens: Token[]): Token[] {
     let n = i + 1;
     while (n < tokens.length && parseFiller(tokens[n]?.text ?? '') !== null) n += 1;
     const next = tokens[n];
-    const atSentenceStart =
+    const atSentenceStart: boolean =
       startCarried || prev === undefined || endsSentence(prev.text) || containsNewline(tok.space);
     let filler = backchannel.has(i) ? null : parseFiller(tok.text);
     if (filler && !deletable(filler, atSentenceStart, prev, next)) filler = null;

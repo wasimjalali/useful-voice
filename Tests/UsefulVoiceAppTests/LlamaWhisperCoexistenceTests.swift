@@ -162,25 +162,18 @@ struct LlamaWhisperCoexistenceTests {
             }
             print("MEASURE after \(label) unload \(memoryMB())")
         }
-        // Thread quality of service: ggml's workers inherit the QoS of the thread that makes the call.
+        // Metal placement in the same process (llama-bench runs on the GPU even with -ngl 0).
         do {
-            let runtime = try LlamaRuntime(modelPath: s1, placement: .cpuOnly)
-            func once(_ label: String) {
+            let t0 = ContinuousClock.now
+            let runtime = try LlamaRuntime(modelPath: s1, placement: .metal)
+            print("MEASURE metal load \(ms(t0.duration(to: .now))) ms mem \(memoryMB())")
+            for _ in 0..<3 {
                 let t = ContinuousClock.now
-                let qos = qos_class_self().rawValue
-                guard let r = try? runtime.complete(prompt: prompt(cardInput), deadline: .now.advanced(by: .seconds(120))) else { return }
-                print("MEASURE qos \(label) (class \(qos)) run \(ms(t.duration(to: .now))) ms (native prompt \(r.stats.nativePromptMs) ms, native generate \(r.stats.nativeGenerateMs) ms, out \(r.stats.outputTokens))")
-            }
-            once("test thread"); once("test thread")
-            for (name, qos) in [("userInteractive", QualityOfService.userInteractive), ("userInitiated", .userInitiated)] {
-                let done = DispatchSemaphore(value: 0)
-                let thread = Thread { once(name); once(name); done.signal() }
-                thread.qualityOfService = qos
-                thread.start()
-                done.wait()
+                let r = try runtime.complete(prompt: prompt(cardInput), deadline: .now.advanced(by: .seconds(120)))
+                print("MEASURE metal run \(ms(t.duration(to: .now))) ms (context \(r.stats.contextSeconds * 1000) ms, prompt decode \(r.stats.promptDecodeSeconds * 1000) ms, native prompt \(r.stats.nativePromptMs) ms, native generate \(r.stats.nativeGenerateMs) ms, out \(r.stats.outputTokens))")
             }
         } catch {
-            print("MEASURE qos failed: \(error)")
+            print("MEASURE metal failed: \(error)")
         }
     }
 }

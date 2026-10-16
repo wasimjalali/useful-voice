@@ -64,6 +64,11 @@ jobs:
           bench=$(find "$d" -name llama-bench -type f | head -1)
           sysctl -n machdep.cpu.brand_string hw.ncpu hw.memsize || true
           "$bench" -m "$RUNNER_TEMP/uv-models/s1-mini-q4_k_m.gguf" -ngl 0 -t 3 -p 100 -n 16 -r 3 || echo "llama-bench failed"
+          # The same weights on the CPU alone: with -ngl 0 the line above still runs on the GPU
+          # (Metal reads the memory-mapped weights), so this is the one to compare with the CPU rows.
+          "$bench" -m "$RUNNER_TEMP/uv-models/s1-mini-q4_k_m.gguf" -dev none -ngl 0 -t 3 -p 100 -n 16 -r 3 || echo "llama-bench cpu failed"
+          "$bench" -m "$RUNNER_TEMP/uv-models/s1-mini-q4_k_m.gguf" -dev none -ngl 0 -t 1 -p 100 -n 16 -r 2 || echo "llama-bench cpu t1 failed"
+          sysctl -a 2>/dev/null | grep -E "hw.optional.(arm|neon|AdvSIMD|FEAT_(DotProd|I8MM|BF16))" | head -30 || true
 
       # The real-weights tests run alone: llama.cpp's worker threads spin, and next to the
       # other 800 tests they starve the timing-based ones (and the model's own latency
@@ -74,14 +79,6 @@ jobs:
           UV_S1_MINI_PATH: ${{ runner.temp }}/uv-models/s1-mini-q4_k_m.gguf
           UV_WHISPER_TINY_PATH: ${{ runner.temp }}/uv-models/ggml-tiny.en.bin
         run: swift test --skip-build --filter 'LlamaWhisperCoexistenceTests/measure'
-
-      # The same measurement from an optimised test build, to rule the debug build in or out.
-      - name: S1-mini latency, release build of the tests
-        continue-on-error: true
-        env:
-          UV_S1_MINI_PATH: ${{ runner.temp }}/uv-models/s1-mini-q4_k_m.gguf
-          UV_WHISPER_TINY_PATH: ${{ runner.temp }}/uv-models/ggml-tiny.en.bin
-        run: swift test -c release -Xswiftc -enable-testing --filter 'LlamaWhisperCoexistenceTests/measure'
 
       - name: S1-mini and whisper.cpp in one process (real weights)
         env:

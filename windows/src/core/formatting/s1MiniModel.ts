@@ -38,8 +38,13 @@ export const S1_MINI_MODEL: PinnedModelFile = {
  */
 export function s1MiniPrompt(controlLine: string, text: string): string {
   return (
-    `<|im_start|>system\n${S1_MINI_SYSTEM_PROMPT}<|im_end|>\n` +
-    `<|im_start|>user\n${controlLine}\n${text}<|im_end|>\n` +
+    s1MiniPromptPrefix() +
+    `${controlLine}\n${text}<|im_end|>\n` +
     '<|im_start|>assistant\n<think>\n\n</think>\n\n'
   );
+}
+
+/** The start every prompt shares: the system turn and the opening of the user turn. */
+export function s1MiniPromptPrefix(): string {
+  return `<|im_start|>system\n${S1_MINI_SYSTEM_PROMPT}<|im_end|>\n<|im_start|>user\n`;
 }

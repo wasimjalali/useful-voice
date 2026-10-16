@@ -12,6 +12,7 @@
  *   text the pipeline had is delivered as it was;
  * - the text before the cursor lives in memory for one dictation, 200 characters at most.
  */
+import type { AppSettings } from '../models.js';
 import { formatForCategory } from '../formatting/categoryFormatter.js';
 import {
   allowedStyles,
@@ -106,6 +107,35 @@ export function normaliseAppCategories(raw: unknown): Record<string, AppCategory
     if (out.size >= MAX_APP_CATEGORIES) break;
   }
   return Object.fromEntries(out);
+}
+
+// ---- the settings at the press -------------------------------------------------
+
+/**
+ * The settings one dictation uses, copied when it starts. A change made in Settings while
+ * it records or transcribes applies from the next dictation, and a retry of a failed one
+ * uses the settings it started with.
+ */
+export interface PressSettings {
+  /** "Auto-format transcript": with it off nothing is cleaned or formatted. */
+  formattingEnabled: boolean;
+  /** "Format for the app". */
+  appAwareFormatting: boolean;
+  categoryStyles: Partial<Record<AppCategory, FormattingStyle>>;
+  userName: string;
+  autoSend: Partial<Record<AppCategory, AutoSendKey>>;
+  appCategories: Record<string, AppCategory>;
+}
+
+export function snapshotPress(settings: AppSettings): PressSettings {
+  return {
+    formattingEnabled: settings.formattingEnabled,
+    appAwareFormatting: settings.appAwareFormatting,
+    categoryStyles: { ...settings.categoryStyles },
+    userName: settings.userName,
+    autoSend: { ...settings.autoSend },
+    appCategories: { ...settings.appCategories },
+  };
 }
 
 // ---- the captured context -----------------------------------------------------

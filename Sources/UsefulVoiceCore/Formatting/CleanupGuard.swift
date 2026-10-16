@@ -36,7 +36,9 @@ import Foundation
 /// Self-corrections. A real correction pattern ("Monday, no wait, Tuesday", "four thousand,
 /// sorry, forty thousand", "X, I mean Y", "X, actually, Y", "X, or rather Y", "Thursday, no,
 /// Friday", "make that", "scratch that") with content on both sides marks a corrected span:
-/// the cue plus as many content words or numbers before it as the repair after it has. Only
+/// the cue plus as many content words or numbers before it as the repair after it has, and
+/// never more than 4. A cue that starts a sentence ("Wait, Tuesday.") reaches back into the
+/// previous sentence only when that sentence has at most 4 content words or numbers. Only
 /// that span may vanish without counting as a drop, a dropped number or a dropped negation. A
 /// cue word anywhere else ("Sorry, I'm late", "I mean what I said") widens nothing.
 ///
@@ -85,7 +87,7 @@ public enum CleanupGuard {
         let inputText = rulesText.precomposedStringWithCanonicalMapping
         let output = trimSpace(modelOutput.precomposedStringWithCanonicalMapping)
         let lowered = lowerAscii(output)
-        if lowered.contains("<think>") || lowered.contains("</think>") { return .reject(.reasoning) }
+        if scalarsContain(lowered, "<think>") || scalarsContain(lowered, "</think>") { return .reject(.reasoning) }
         if hasWrapper(input: inputText, output: output) { return .reject(.wrapper) }
 
         let rawIn = scan(inputText)
@@ -206,8 +208,9 @@ public enum CleanupGuard {
         """)
 
     private static func hasWrapper(input: String, output: String) -> Bool {
-        for tag in tags(output) where !input.contains(tag) { return true }
-        for marker in ["```", "<|", "|>", "[INST]", "[/INST]"] where output.contains(marker) && !input.contains(marker) {
+        for tag in tags(output) where !scalarsContain(input, tag) { return true }
+        for marker in ["```", "<|", "|>", "[INST]", "[/INST]"]
+        where scalarsContain(output, marker) && !scalarsContain(input, marker) {
             return true
         }
         let outChars = Array(output.unicodeScalars)
@@ -233,6 +236,18 @@ public enum CleanupGuard {
                 if words.contains(where: { wrapperWords.contains($0) }) && !containsRun(inWords, words) { return true }
             }
         }
+        return false
+    }
+
+    /// Substring test on unicode scalars, as the TypeScript mirror's `includes` works on code
+    /// units. `String.contains` compares graphemes, so "<b>" followed by a combining mark would
+    /// not count as containing "<b>" there.
+    private static func scalarsContain(_ text: String, _ needle: String) -> Bool {
+        let hay = Array(text.unicodeScalars)
+        let run = Array(needle.unicodeScalars)
+        if run.isEmpty { return true }
+        if run.count > hay.count { return false }
+        for i in 0...(hay.count - run.count) where hay[i..<(i + run.count)].elementsEqual(run) { return true }
         return false
     }
 
@@ -694,7 +709,7 @@ public enum CleanupGuard {
             var found = 0
             var from = start
             k = start - 1
-            while k >= floor && found < max(1, repair) {
+            while k >= floor && found < min(maxCorrected, max(1, repair)) {
                 if isContentOrNumber(tokens[k]) {
                     found += 1
                     from = k
@@ -709,10 +724,21 @@ public enum CleanupGuard {
         return exempt
     }
 
+    /// Most content words or numbers one correction may replace.
+    private static let maxCorrected = 4
+
+    /// Where the corrected span may start: this sentence's start, or, for a cue that starts a
+    /// sentence, the previous sentence's start when that sentence is short (at most 4 content
+    /// words or numbers). A longer previous sentence is out of reach.
     private static func sentenceFloor(_ tokens: [Tok], _ start: Int) -> Int {
         var k = start
-        if k < tokens.count && tokens[k].sentenceStart { k -= 1 }
+        let cueStartsSentence = k < tokens.count && tokens[k].sentenceStart
+        if cueStartsSentence { k -= 1 }
         while k > 0 && !tokens[k].sentenceStart { k -= 1 }
-        return max(0, k)
+        let floor = max(0, k)
+        if cueStartsSentence && tokens[floor..<start].filter({ isContentOrNumber($0) }).count > maxCorrected {
+            return start
+        }
+        return floor
     }
 }

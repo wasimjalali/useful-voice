@@ -668,5 +668,68 @@
     "rulesText": "Ship it on Friday.",
     "output": "\r\n",
     "verdict": "empty"
+  },
+  {
+    "name": "a no correction cannot drop a long clause (quarterly report)",
+    "rulesText": "Send the quarterly sales report to the regional board, no, the finance team should review every number in the forecast first.",
+    "output": "The finance team should review every number in the forecast first.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "a sentence-initial sorry cannot drop a long previous sentence (signed contract)",
+    "rulesText": "We signed the contract with the new supplier in Leeds on Monday. Sorry, I have to leave early today for a dentist appointment across town.",
+    "output": "Sorry, I have to leave early today for a dentist appointment across town.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "a sentence-initial wait cannot reach into a long previous sentence",
+    "rulesText": "The quarterly report covers revenue, hiring, the office lease and the travel budget. Wait, I need to add the marketing numbers.",
+    "output": "The quarterly report covers revenue and hiring. Wait, I need to add the marketing numbers.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "sorry for the delay is not a correction",
+    "rulesText": "Sorry for the delay, the report covers a, b, c and d.",
+    "output": "Sorry for the delay, the report covers a.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "a sentence-initial actually is not a correction",
+    "rulesText": "Actually, the report covers a, b, c and d.",
+    "output": "Actually, the report covers a.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "chained make that keeps only the last repair",
+    "rulesText": "Order two pizzas, make that three pizzas, make that four pizzas.",
+    "output": "Order 4 pizzas.",
+    "verdict": "accept",
+    "text": "Order 4 pizzas."
+  },
+  {
+    "name": "a cue with no repair exempts nothing",
+    "rulesText": "Move the meeting to Friday, sorry.",
+    "output": "Move the meeting.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "dropping exactly the maximum share is allowed",
+    "rulesText": "Pack apples, bananas, cherries, grapes, lemons, limes, mangoes, melons, oranges, peaches, pears, plums, berries, figs, dates, kiwis, olives, onions and carrots.",
+    "output": "Pack apples, bananas, cherries, grapes, lemons, limes, mangoes, melons, oranges, peaches, pears, plums, berries, olives, onions and carrots.",
+    "verdict": "accept",
+    "text": "Pack apples, bananas, cherries, grapes, lemons, limes, mangoes, melons, oranges, peaches, pears, plums, berries, olives, onions and carrots."
+  },
+  {
+    "name": "dropping one word past the maximum share is not",
+    "rulesText": "Pack apples, bananas, cherries, grapes, lemons, limes, mangoes, melons, oranges, peaches, pears, plums, berries, figs, dates, kiwis, olives, onions and carrots.",
+    "output": "Pack apples, bananas, cherries, grapes, lemons, limes, mangoes, melons, oranges, peaches, pears, plums, olives, onions and carrots.",
+    "verdict": "droppedContent"
+  },
+  {
+    "name": "a dictated tag followed by a combining mark stays",
+    "rulesText": "Wrap the title in <b>́ tags, um, please.",
+    "output": "Wrap the title in <b>́ tags please.",
+    "verdict": "accept",
+    "text": "Wrap the title in <b>́ tags please."
   }
 ]

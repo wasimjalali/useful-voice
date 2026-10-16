@@ -27,12 +27,11 @@ import Foundation
 /// "mm hmm" and "Uh, huh?" stay whole.
 /// Deleting a filler tidies only the punctuation it leaves behind:
 ///   - its own trailing comma goes with it: "Well, um, I think" -> "Well, I think";
-///   - a comma before it goes when the filler ends the text or the sentence ("went home,
-///     um." -> "went home."), when the word before is one that never takes a comma
-///     ("the, um, store" -> "the store"), and when the filler sits between two commas that
-///     only bracket it ("The results, um, show" -> "The results show"). That last comma stays
-///     after a sentence's first word ("Well,"), after a discourse word ("okay,", "actually,"),
-///     before a conjunction ("Friday, um, or Monday") and in a list ("apples, um, pears,");
+///   - a comma before it goes only when the filler ends the text or the sentence ("went home,
+///     um." -> "went home.") or the word before is one that never takes a comma ("the, um,
+///     store" -> "the store"). Any other comma before it stays, because it may belong to an
+///     intro phrase or a name ("Dear John, um, thanks" -> "Dear John, thanks", "For example, um,
+///     the build" -> "For example, the build");
 ///   - a filler that ends a sentence ("I went, um.") hands its full stop to the word before.
 /// Sentence-initial capital: when the deleted filler was Capitalised and started a
 /// sentence ("Um, so we"), the next word gets the capital back ("So we"). That restores the
@@ -45,16 +44,22 @@ import Foundation
 ///
 /// Stutters. Only a closed list of function words ever collapses, to its first occurrence:
 /// two in a row when the word never legitimately doubles ("the the", "I I", "to to"), three
-/// or more in a row for a few more ("it it it", "so so so", "that that that", "is is is").
+/// or more in a row for a few more ("it it it", "that that that", "is is is").
 /// Every other word is left alone however often it repeats: numbers ("five five five", "nine
 /// nine nine"), emphasis and idiom ("Stop stop stop", "Knock knock knock", "Ho ho ho", "Well
-/// well well", "My my"). "had had", "that that" and "is is" are grammatical, so pairs of
-/// those stay. A comma between the repeats is part of the stutter ("I, I think" -> "I
+/// well well", "My my", "so so so tired"), and a laugh ("he he he"). A missed stutter is
+/// harmless; a lost word is not. "had had", "that that" and "is is" are grammatical, so pairs
+/// of those stay. A comma between the repeats is part of the stutter ("I, I think" -> "I
 /// think"); a full stop or a line break is not.
 ///
 /// Whitespace is only ever removed together with the token it belonged to. Text with no
 /// filler or stutter comes back byte for byte. Text that is nothing but filler candidates
-/// becomes "" ("Um.", "Um, uh, er.").
+/// becomes "" ("Um.", "Um, uh, er."), unless one of them is protected: a sentence-initial
+/// "hmm" or a backchannel ("Hmm.", "Um hmm.", "Hmm hmm" stay).
+///
+/// For the caller: the result can be "" (and `CleanupGuard` accepts an empty output for an
+/// empty input), so whenever the cleaned text is empty, History and the clipboard must keep
+/// the raw transcript instead of an empty entry.
 /// English only: other languages have real words that look like these fillers ("um" is
 /// Portuguese for "a").
 public enum CleanupRules {
@@ -75,14 +80,16 @@ public enum CleanupRules {
     ]
 
     /// Function words whose doubling is always a stutter. "my" is not one: "My my, look at that."
+    /// Neither is "he": "he he he" is a laugh.
     private static let doubleStutter: Set<String> = [
-        "the", "a", "an", "i", "we", "you", "they", "he", "she", "to", "of", "in", "on", "at", "for",
+        "the", "a", "an", "i", "we", "you", "they", "she", "to", "of", "in", "on", "at", "for",
         "with", "by", "from", "and", "or", "your", "our", "their", "his", "her", "its", "if", "as",
         "i'm", "i've", "i'll", "i'd", "we're", "it's", "don't", "can't", "didn't", "won't",
     ]
 
     /// Function words that collapse from three repeats on (the pairs list collapses from two).
-    private static let tripleStutter: Set<String> = doubleStutter.union(["it", "so", "that", "is", "but", "was", "this"])
+    /// "so" is not one: "so so so tired" is emphasis.
+    private static let tripleStutter: Set<String> = doubleStutter.union(["it", "that", "is", "but", "was", "this"])
 
     /// Words after which a filler is being mentioned, not used: "the word um", "I said hmm".
     private static let mention: Set<String> = [
@@ -99,18 +106,6 @@ public enum CleanupRules {
     private static let backchannelFirst: Set<String> = ["uh", "um", "uhm", "mm", "mhm", "hm", "hmm"]
     private static let backchannelSecond: Set<String> = ["huh", "hmm", "hmmm", "hm", "mhm"]
 
-    /// A comma before a bracketed filler stays after these words ("Well, um, I think").
-    private static let keepCommaBefore: Set<String> = [
-        "well", "so", "okay", "ok", "yes", "yeah", "no", "oh", "right", "now", "sure", "anyway",
-        "actually", "however", "also", "alright", "hi", "hello", "hey", "thanks", "honestly", "basically",
-    ]
-
-    /// A comma before a bracketed filler stays when one of these follows it ("Friday, um, or Monday").
-    private static let conjunctions: Set<String> = [
-        "and", "or", "but", "so", "then", "because", "which", "who", "where", "when", "while",
-        "although", "though", "unless", "if",
-    ]
-
     private struct Token {
         var space: String
         var text: String
@@ -119,9 +114,11 @@ public enum CleanupRules {
     private static func english(_ text: String) -> String {
         let (tokens, trailing) = splitTokens(text)
         if tokens.isEmpty { return text }
-        // Text that is nothing but fillers ("Um.", "Um, uh, er.") was never meant to be typed.
-        if tokens.allSatisfy({ parseFiller($0.text) != nil }) { return "" }
-        let collapsed = collapseStutters(removeFillers(tokens))
+        let (cleaned, keptProtected) = removeFillers(tokens)
+        // Text that is nothing but fillers ("Um.", "Um, uh, er.") was never meant to be typed,
+        // unless one of them is protected ("Hmm.", "Um hmm.").
+        if !keptProtected && tokens.allSatisfy({ parseFiller($0.text) != nil }) { return "" }
+        let collapsed = collapseStutters(cleaned)
         if collapsed.isEmpty { return "" }
         return collapsed.map { $0.space + $0.text }.joined() + trailing
     }
@@ -285,7 +282,8 @@ public enum CleanupRules {
         return lowerAscii(string(out))
     }
 
-    private static func removeFillers(_ tokens: [Token]) -> [Token] {
+    /// Indices of tokens in a backchannel pair ("uh huh", "um hmm"), which are never fillers.
+    private static func backchannelIndices(_ tokens: [Token]) -> Set<Int> {
         var backchannel = Set<Int>()
         if tokens.count >= 2 {
             for i in 0..<(tokens.count - 1) {
@@ -296,6 +294,14 @@ public enum CleanupRules {
                 }
             }
         }
+        return backchannel
+    }
+
+    /// The tokens without deletable fillers, and whether a protected filler candidate was kept:
+    /// one in a backchannel ("um hmm") or a sentence-initial "hmm".
+    private static func removeFillers(_ tokens: [Token]) -> (tokens: [Token], keptProtected: Bool) {
+        let backchannel = backchannelIndices(tokens)
+        var keptProtected = false
 
         var out: [Token] = []
         var pendingCapital = false
@@ -311,11 +317,15 @@ public enum CleanupRules {
             let next: Token? = n < tokens.count ? tokens[n] : nil
             let atSentenceStart = startCarried || !hasPrev || endsSentence(out[prevIndex].text)
                 || containsNewline(tok.space)
-            var parsed = backchannel.contains(i) ? nil : parseFiller(tok.text)
+            let candidate = parseFiller(tok.text)
+            var parsed = backchannel.contains(i) ? nil : candidate
             if let f = parsed, !deletable(f, atSentenceStart: atSentenceStart, prev: hasPrev ? out[prevIndex] : nil, next: next) {
                 parsed = nil
             }
             guard let filler = parsed else {
+                if let c = candidate, backchannel.contains(i) || (atSentenceStart && c.word.hasPrefix("hm")) {
+                    keptProtected = true
+                }
                 var kept = tok
                 if let carried = carriedSpace { kept.space = carried }
                 carriedSpace = nil
@@ -340,9 +350,7 @@ public enum CleanupRules {
                     } else if !endsWithStop(out[prevIndex].text) {
                         out[prevIndex].text += terminal
                     }
-                } else if endsComma
-                    && (isLast || noCommaAfter.contains(bareWord(out[prevIndex].text))
-                        || (filler.trail == "," && bracketOnly(out, next: next))) {
+                } else if endsComma && (isLast || noCommaAfter.contains(bareWord(out[prevIndex].text))) {
                     out[prevIndex].text = dropLastScalar(out[prevIndex].text)
                 }
             }
@@ -350,7 +358,7 @@ public enum CleanupRules {
             startCarried = atSentenceStart
             if carriedSpace == nil && (!hasPrev || containsNewline(tok.space)) { carriedSpace = tok.space }
         }
-        return out
+        return (out, keptProtected)
     }
 
     /// Whether a filler candidate is a hesitation to delete (see the header comment).
@@ -364,19 +372,6 @@ public enum CleanupRules {
         }
         if filler.capitalised { return false }
         if let prev = prev, lastScalar(prev.text) != ",", mention.contains(bareWord(prev.text)) { return false }
-        return true
-    }
-
-    /// True when the comma before a ", um," filler was only there to bracket it, so it goes too:
-    /// not after a sentence's first word or a discourse word, not before a conjunction, not in a list.
-    private static func bracketOnly(_ out: [Token], next: Token?) -> Bool {
-        guard let prev = out.last else { return false }
-        let prevStartsSentence = out.count < 2 || endsSentence(out[out.count - 2].text) || containsNewline(prev.space)
-        if prevStartsSentence { return false }
-        if keepCommaBefore.contains(bareWord(prev.text)) { return false }
-        guard let next = next else { return false }
-        if conjunctions.contains(bareWord(next.text)) { return false }
-        if lastScalar(next.text) == "," { return false }
         return true
     }
 

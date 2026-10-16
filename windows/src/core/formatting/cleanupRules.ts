@@ -26,12 +26,11 @@
  * "mm hmm" and "Uh, huh?" stay whole.
  * Deleting a filler tidies only the punctuation it leaves behind:
  *   - its own trailing comma goes with it: "Well, um, I think" -> "Well, I think";
- *   - a comma before it goes when the filler ends the text or the sentence ("went home,
- *     um." -> "went home."), when the word before is one that never takes a comma
- *     ("the, um, store" -> "the store"), and when the filler sits between two commas that
- *     only bracket it ("The results, um, show" -> "The results show"). That last comma stays
- *     after a sentence's first word ("Well,"), after a discourse word ("okay,", "actually,"),
- *     before a conjunction ("Friday, um, or Monday") and in a list ("apples, um, pears,");
+ *   - a comma before it goes only when the filler ends the text or the sentence ("went home,
+ *     um." -> "went home.") or the word before is one that never takes a comma ("the, um,
+ *     store" -> "the store"). Any other comma before it stays, because it may belong to an
+ *     intro phrase or a name ("Dear John, um, thanks" -> "Dear John, thanks", "For example, um,
+ *     the build" -> "For example, the build");
  *   - a filler that ends a sentence ("I went, um.") hands its full stop to the word before.
  * Sentence-initial capital: when the deleted filler was Capitalised and started a
  * sentence ("Um, so we"), the next word gets the capital back ("So we"). That restores the
@@ -44,16 +43,22 @@
  *
  * Stutters. Only a closed list of function words ever collapses, to its first occurrence:
  * two in a row when the word never legitimately doubles ("the the", "I I", "to to"), three
- * or more in a row for a few more ("it it it", "so so so", "that that that", "is is is").
+ * or more in a row for a few more ("it it it", "that that that", "is is is").
  * Every other word is left alone however often it repeats: numbers ("five five five", "nine
  * nine nine"), emphasis and idiom ("Stop stop stop", "Knock knock knock", "Ho ho ho", "Well
- * well well", "My my"). "had had", "that that" and "is is" are grammatical, so pairs of
- * those stay. A comma between the repeats is part of the stutter ("I, I think" -> "I
+ * well well", "My my", "so so so tired"), and a laugh ("he he he"). A missed stutter is
+ * harmless; a lost word is not. "had had", "that that" and "is is" are grammatical, so pairs
+ * of those stay. A comma between the repeats is part of the stutter ("I, I think" -> "I
  * think"); a full stop or a line break is not.
  *
  * Whitespace is only ever removed together with the token it belonged to. Text with no
  * filler or stutter comes back byte for byte. Text that is nothing but filler candidates
- * becomes "" ("Um.", "Um, uh, er.").
+ * becomes "" ("Um.", "Um, uh, er."), unless one of them is protected: a sentence-initial
+ * "hmm" or a backchannel ("Hmm.", "Um hmm.", "Hmm hmm" stay).
+ *
+ * For the caller: the result can be "" (and the cleanup guard accepts an empty output for an
+ * empty input), so whenever the cleaned text is empty, History and the clipboard must keep
+ * the raw transcript instead of an empty entry.
  * English only: other languages have real words that look like these fillers ("um" is
  * Portuguese for "a").
  */
@@ -75,15 +80,21 @@ const NO_COMMA_AFTER = new Set([
   'were', 'be', 'i', 'we', 'you', 'they', 'he', 'she', 'it',
 ]);
 
-/** Function words whose doubling is always a stutter. "my" is not one: "My my, look at that." */
+/**
+ * Function words whose doubling is always a stutter. "my" is not one: "My my, look at that."
+ * Neither is "he": "he he he" is a laugh.
+ */
 const DOUBLE_STUTTER = new Set([
-  'the', 'a', 'an', 'i', 'we', 'you', 'they', 'he', 'she', 'to', 'of', 'in', 'on', 'at', 'for',
+  'the', 'a', 'an', 'i', 'we', 'you', 'they', 'she', 'to', 'of', 'in', 'on', 'at', 'for',
   'with', 'by', 'from', 'and', 'or', 'your', 'our', 'their', 'his', 'her', 'its', 'if', 'as',
   "i'm", "i've", "i'll", "i'd", "we're", "it's", "don't", "can't", "didn't", "won't",
 ]);
 
-/** Function words that collapse from three repeats on (the pairs list collapses from two). */
-const TRIPLE_STUTTER = new Set([...DOUBLE_STUTTER, 'it', 'so', 'that', 'is', 'but', 'was', 'this']);
+/**
+ * Function words that collapse from three repeats on (the pairs list collapses from two).
+ * "so" is not one: "so so so tired" is emphasis.
+ */
+const TRIPLE_STUTTER = new Set([...DOUBLE_STUTTER, 'it', 'that', 'is', 'but', 'was', 'this']);
 
 /** Words after which a filler is being mentioned, not used: "the word um", "I said hmm". */
 const MENTION = new Set([
@@ -100,18 +111,6 @@ const ABBREVIATIONS = new Set([
 const BACKCHANNEL_FIRST = new Set(['uh', 'um', 'uhm', 'mm', 'mhm', 'hm', 'hmm']);
 const BACKCHANNEL_SECOND = new Set(['huh', 'hmm', 'hmmm', 'hm', 'mhm']);
 
-/** A comma before a bracketed filler stays after these words ("Well, um, I think"). */
-const KEEP_COMMA_BEFORE = new Set([
-  'well', 'so', 'okay', 'ok', 'yes', 'yeah', 'no', 'oh', 'right', 'now', 'sure', 'anyway',
-  'actually', 'however', 'also', 'alright', 'hi', 'hello', 'hey', 'thanks', 'honestly', 'basically',
-]);
-
-/** A comma before a bracketed filler stays when one of these follows it ("Friday, um, or Monday"). */
-const CONJUNCTIONS = new Set([
-  'and', 'or', 'but', 'so', 'then', 'because', 'which', 'who', 'where', 'when', 'while',
-  'although', 'though', 'unless', 'if',
-]);
-
 interface Token {
   space: string;
   text: string;
@@ -120,9 +119,10 @@ interface Token {
 function english(text: string): string {
   const [tokens, trailing] = splitTokens(text);
   if (tokens.length === 0) return text;
-  // Text that is nothing but fillers ("Um.", "Um, uh, er.") was never meant to be typed.
-  if (tokens.every((t) => parseFiller(t.text) !== null)) return '';
-  const withoutFillers = removeFillers(tokens);
+  const { tokens: withoutFillers, keptProtected } = removeFillers(tokens);
+  // Text that is nothing but fillers ("Um.", "Um, uh, er.") was never meant to be typed,
+  // unless one of them is protected ("Hmm.", "Um hmm.").
+  if (!keptProtected && tokens.every((t) => parseFiller(t.text) !== null)) return '';
   const collapsed = collapseStutters(withoutFillers);
   if (collapsed.length === 0) return '';
   return collapsed.map((t) => t.space + t.text).join('') + trailing;
@@ -265,7 +265,8 @@ function dropLastChar(text: string): string {
   return chars.join('');
 }
 
-function removeFillers(tokens: Token[]): Token[] {
+/** Indices of tokens in a backchannel pair ("uh huh", "um hmm"), which are never fillers. */
+function backchannelIndices(tokens: Token[]): Set<number> {
   const backchannel = new Set<number>();
   for (let i = 0; i + 1 < tokens.length; i += 1) {
     const a = plainCore(tokens[i]?.text ?? '');
@@ -275,7 +276,16 @@ function removeFillers(tokens: Token[]): Token[] {
       backchannel.add(i + 1);
     }
   }
+  return backchannel;
+}
 
+/**
+ * The tokens without deletable fillers, and whether a protected filler candidate was kept:
+ * one in a backchannel ("um hmm") or a sentence-initial "hmm".
+ */
+function removeFillers(tokens: Token[]): { tokens: Token[]; keptProtected: boolean } {
+  const backchannel = backchannelIndices(tokens);
+  let keptProtected = false;
   const out: Token[] = [];
   let pendingCapital = false;
   let carriedSpace: string | null = null;
@@ -291,9 +301,13 @@ function removeFillers(tokens: Token[]): Token[] {
     const next = tokens[n];
     const atSentenceStart: boolean =
       startCarried || prev === undefined || endsSentence(prev.text) || containsNewline(tok.space);
-    let filler = backchannel.has(i) ? null : parseFiller(tok.text);
+    const candidate = parseFiller(tok.text);
+    let filler = backchannel.has(i) ? null : candidate;
     if (filler && !deletable(filler, atSentenceStart, prev, next)) filler = null;
     if (!filler) {
+      if (candidate && (backchannel.has(i) || (atSentenceStart && candidate.word.startsWith('hm')))) {
+        keptProtected = true;
+      }
       let kept: Token = tok;
       if (carriedSpace !== null) kept = { space: carriedSpace, text: kept.text };
       carriedSpace = null;
@@ -315,10 +329,7 @@ function removeFillers(tokens: Token[]): Token[] {
       if (terminal !== '') {
         if (endsComma) prev.text = dropLastChar(prev.text) + terminal;
         else if (!endsWithStop(prev.text)) prev.text += terminal;
-      } else if (
-        endsComma &&
-        (isLast || NO_COMMA_AFTER.has(bareWord(prev.text)) || (filler.trail === ',' && bracketOnly(out, next)))
-      ) {
+      } else if (endsComma && (isLast || NO_COMMA_AFTER.has(bareWord(prev.text)))) {
         prev.text = dropLastChar(prev.text);
       }
     }
@@ -328,7 +339,7 @@ function removeFillers(tokens: Token[]): Token[] {
       carriedSpace = tok.space;
     }
   }
-  return out;
+  return { tokens: out, keptProtected };
 }
 
 /** Whether a filler candidate is a hesitation to delete (see the header comment). */
@@ -341,23 +352,6 @@ function deletable(filler: Filler, atSentenceStart: boolean, prev: Token | undef
   }
   if (filler.capitalised) return false;
   if (prev !== undefined && !prev.text.endsWith(',') && MENTION.has(bareWord(prev.text))) return false;
-  return true;
-}
-
-/**
- * True when the comma before a ", um," filler was only there to bracket it, so it goes too:
- * not after a sentence's first word or a discourse word, not before a conjunction, not in a list.
- */
-function bracketOnly(out: Token[], next: Token | undefined): boolean {
-  const prev = out[out.length - 1];
-  if (!prev) return false;
-  const before = out[out.length - 2];
-  const prevStartsSentence = before === undefined || endsSentence(before.text) || containsNewline(prev.space);
-  if (prevStartsSentence) return false;
-  if (KEEP_COMMA_BEFORE.has(bareWord(prev.text))) return false;
-  if (next === undefined) return false;
-  if (CONJUNCTIONS.has(bareWord(next.text))) return false;
-  if (next.text.endsWith(',')) return false;
   return true;
 }
 

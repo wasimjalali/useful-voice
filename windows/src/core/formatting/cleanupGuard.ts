@@ -35,7 +35,9 @@
  * Self-corrections. A real correction pattern ("Monday, no wait, Tuesday", "four thousand,
  * sorry, forty thousand", "X, I mean Y", "X, actually, Y", "X, or rather Y", "Thursday, no,
  * Friday", "make that", "scratch that") with content on both sides marks a corrected span:
- * the cue plus as many content words or numbers before it as the repair after it has. Only
+ * the cue plus as many content words or numbers before it as the repair after it has, and
+ * never more than 4. A cue that starts a sentence ("Wait, Tuesday.") reaches back into the
+ * previous sentence only when that sentence has at most 4 content words or numbers. Only
  * that span may vanish without counting as a drop, a dropped number or a dropped negation. A
  * cue word anywhere else ("Sorry, I'm late", "I mean what I said") widens nothing.
  *
@@ -752,7 +754,7 @@ function correctedSpans(tokens: Tok[]): boolean[] {
     const floor = sentenceFloor(tokens, start);
     let found = 0;
     let from = start;
-    for (let k = start - 1; k >= floor && found < Math.max(1, repair); k -= 1) {
+    for (let k = start - 1; k >= floor && found < Math.min(MAX_CORRECTED, Math.max(1, repair)); k -= 1) {
       if (isContentOrNumber(tokens[k])) {
         found += 1;
         from = k;
@@ -766,9 +768,22 @@ function correctedSpans(tokens: Tok[]): boolean[] {
 
 const FILLERS = w('um uh erm er hmm');
 
+/** Most content words or numbers one correction may replace. */
+const MAX_CORRECTED = 4;
+
+/**
+ * Where the corrected span may start: this sentence's start, or, for a cue that starts a
+ * sentence, the previous sentence's start when that sentence is short (at most 4 content
+ * words or numbers). A longer previous sentence is out of reach.
+ */
 function sentenceFloor(tokens: Tok[], start: number): number {
   let k = start;
-  if (tokens[k]?.sentenceStart) k -= 1;
+  const cueStartsSentence = tokens[k]?.sentenceStart === true;
+  if (cueStartsSentence) k -= 1;
   while (k > 0 && !tokens[k]?.sentenceStart) k -= 1;
-  return Math.max(0, k);
+  const floor = Math.max(0, k);
+  if (cueStartsSentence && tokens.slice(floor, start).filter((t) => isContentOrNumber(t)).length > MAX_CORRECTED) {
+    return start;
+  }
+  return floor;
 }

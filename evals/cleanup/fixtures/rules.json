@@ -25,9 +25,9 @@
     "expected": "We shipped it and then left."
   },
   {
-    "name": "comma bracketing a filler after a verb goes",
+    "name": "the comma before a bracketed filler after a verb stays",
     "input": "We should, um, ship it.",
-    "expected": "We should ship it."
+    "expected": "We should, ship it."
   },
   {
     "name": "sentence-initial capital filler hands capital over",
@@ -257,7 +257,7 @@
   {
     "name": "filler in the middle of a long sentence",
     "input": "The report, uh, covers the third quarter and, um, the forecast for the next two.",
-    "expected": "The report covers the third quarter and the forecast for the next two."
+    "expected": "The report, covers the third quarter and the forecast for the next two."
   },
   {
     "name": "triple I",
@@ -490,9 +490,9 @@
     "expected": "It works now."
   },
   {
-    "name": "triple so collapses",
+    "name": "triple so stays",
     "input": "So so so I was thinking.",
-    "expected": "So I was thinking."
+    "expected": "So so so I was thinking."
   },
   {
     "name": "triple that collapses",
@@ -580,9 +580,9 @@
     "expected": "I said hmm and walked away."
   },
   {
-    "name": "filler set off by commas after said goes",
+    "name": "filler set off by commas after said goes, its first comma stays",
     "input": "I said, um, that we should wait.",
-    "expected": "I said that we should wait."
+    "expected": "I said, that we should wait."
   },
   {
     "name": "lowercase filler after an abbreviation goes",
@@ -600,14 +600,14 @@
     "expected": "Done. So what next?"
   },
   {
-    "name": "bracketing comma after an identifier goes",
+    "name": "the comma before a bracketed filler after an identifier stays",
     "input": "Why does the build fail with ERR_MODULE_NOT_FOUND, uh, after the upgrade?",
-    "expected": "Why does the build fail with ERR_MODULE_NOT_FOUND after the upgrade?"
+    "expected": "Why does the build fail with ERR_MODULE_NOT_FOUND, after the upgrade?"
   },
   {
-    "name": "bracketing comma after a file name goes",
+    "name": "the comma before a bracketed filler after a file name stays",
     "input": "Edit @src/server.ts, uh, to add a health route.",
-    "expected": "Edit @src/server.ts to add a health route."
+    "expected": "Edit @src/server.ts, to add a health route."
   },
   {
     "name": "bracketing comma before a conjunction stays",
@@ -643,5 +643,80 @@
     "name": "a lone cr starts a sentence for a filler",
     "input": "Done.\rUm, next step.",
     "expected": "Done.\rNext step."
+  },
+  {
+    "name": "the comma after a vocative stays",
+    "input": "Dear John, um, thanks for the update.",
+    "expected": "Dear John, thanks for the update."
+  },
+  {
+    "name": "the comma after an intro phrase stays",
+    "input": "For example, um, the build is red.",
+    "expected": "For example, the build is red."
+  },
+  {
+    "name": "the comma after a greeting stays",
+    "input": "Hello everyone, um, welcome back.",
+    "expected": "Hello everyone, welcome back."
+  },
+  {
+    "name": "the comma after thanks and a name stays",
+    "input": "Thanks Sam, uh, that helps.",
+    "expected": "Thanks Sam, that helps."
+  },
+  {
+    "name": "the comma after as a result stays",
+    "input": "As a result, um, we shipped late.",
+    "expected": "As a result, we shipped late."
+  },
+  {
+    "name": "the comma after a year stays",
+    "input": "In 2020, um, we moved to Berlin.",
+    "expected": "In 2020, we moved to Berlin."
+  },
+  {
+    "name": "the comma after yes sir stays",
+    "input": "Yes sir, uh, right away.",
+    "expected": "Yes sir, right away."
+  },
+  {
+    "name": "a lone hmm stays",
+    "input": "Hmm.",
+    "expected": "Hmm."
+  },
+  {
+    "name": "hmm hmm stays",
+    "input": "Hmm hmm",
+    "expected": "Hmm hmm"
+  },
+  {
+    "name": "um hmm alone stays",
+    "input": "Um hmm.",
+    "expected": "Um hmm."
+  },
+  {
+    "name": "hmm then a filler keeps the hmm",
+    "input": "Hmm, um.",
+    "expected": "Hmm."
+  },
+  {
+    "name": "he he he stays",
+    "input": "He he he, that is funny.",
+    "expected": "He he he, that is funny."
+  },
+  {
+    "name": "so so so tired stays",
+    "input": "I am so so so tired.",
+    "expected": "I am so so so tired."
+  },
+  {
+    "name": "a word after a deleted sentence-initial filler starts the sentence",
+    "input": "Done\nUm, Uh so we go.",
+    "expected": "Done\nSo we go."
+  },
+  {
+    "name": "a filler and its comma at the very end go with the comma before",
+    "input": "I went home, um,",
+    "expected": "I went home"
   }
 ]

@@ -21,6 +21,10 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDeleg
     /// False in a local build, which has no feed: the menu hides the update item.
     var isAvailable: Bool { controller != nil }
 
+    /// False while Sparkle is busy with a session it isn't showing (a check in
+    /// flight, a background download): a click then would do nothing.
+    var canCheckForUpdates: Bool { controller?.updater.canCheckForUpdates ?? false }
+
     /// Starts Sparkle's scheduled checks. Called once at launch, after the
     /// single-instance check, so a copy that yields never starts an updater.
     func start() {
@@ -62,5 +66,12 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDeleg
     /// Never, not even right after launch: a login launch must not take focus.
     nonisolated func standardUserDriverShouldHandleShowingScheduledUpdate(_ update: SUAppcastItem, andInImmediateFocus immediateFocus: Bool) -> Bool {
         false
+    }
+
+    /// Where Sparkle hands over an update it leaves to us: the menu offers it.
+    nonisolated func standardUserDriverWillHandleShowingUpdate(_ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem, state: SPUUserUpdateState) {
+        guard !handleShowingUpdate else { return }
+        let version = update.displayVersionString
+        Task { @MainActor in self.pendingVersion = version }
     }
 }

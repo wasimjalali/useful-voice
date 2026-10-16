@@ -95,6 +95,8 @@ jobs:
             [ -f "$f" ] || { echo "missing $f"; exit 1; }
           done
           xmllint --noout appcast.xml
+          # stdout carries only the summary JSON.
+          python3 -c 'import json; d = json.load(open("../../release.json")); assert d["adHoc"] is True and d["version"] == "0.0.1", d'
           grep -q 'sparkle:edSignature="' appcast.xml
           grep -q 'url="http://127.0.0.1:8765/Useful-Voice-macOS.zip"' appcast.xml
           if grep -nE '@@[A-Z_]+@@' install.sh release-notes.md; then echo "unfilled placeholders"; exit 1; fi

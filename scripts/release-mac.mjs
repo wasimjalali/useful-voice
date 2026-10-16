@@ -83,7 +83,12 @@ const edPublicKey = values["ed-public-key"];
 if (adHoc) {
   // An ad hoc build must not look like a real one: it may not use the real key.
   if (!edPublicKey || (!edKeyFile && edAccount === ED_ACCOUNT) || edPublicKey === ED_PUBLIC_KEY) {
-    fail(`--ad-hoc is for test builds and needs a throwaway key: pass --ed-account and --ed-public-key for a key other than "${ED_ACCOUNT}"`);
+    fail(`--ad-hoc is for test builds and needs a throwaway key: pass --ed-account or --ed-key-file, and --ed-public-key, for a key other than "${ED_ACCOUNT}"`);
+  }
+  // Nor point at the real releases: its install.sh would install an ad hoc app,
+  // which loses the user's Accessibility and Microphone grants.
+  for (const name of ["feed-url", "download-base"]) {
+    if (values[name] === undefined || values[name].startsWith(RELEASES)) fail(`--ad-hoc needs its own --${name}, not the real releases`);
   }
 } else {
   if (!ED_PUBLIC_KEY) {
@@ -100,6 +105,8 @@ if (adHoc) {
   }
 }
 const git = (...args) => execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();
+// A release must match a commit (its build number is the commit count).
+if (values["allow-dirty"] && !adHoc) fail("--allow-dirty is for --ad-hoc test builds only");
 if (!values["allow-dirty"] && git("status", "--porcelain", "--untracked-files=no") !== "") {
   fail("the tree has uncommitted changes; commit them or pass --allow-dirty for a test build");
 }

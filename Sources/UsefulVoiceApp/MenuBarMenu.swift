@@ -204,6 +204,7 @@ final class MenuBarMenu: NSObject, NSMenuDelegate {
         isOpen = true
         header.copied = false
         updateItem?.title = Self.updateTitle()
+        updateItem?.isEnabled = AppUpdater.shared.canCheckForUpdates
         refresh()
     }
 

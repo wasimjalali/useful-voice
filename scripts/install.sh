@@ -64,8 +64,8 @@ OLD="$DEST/.Useful Voice.app.previous"
 rm -rf "$OLD"
 if [ -e "$APP" ]; then mv "$APP" "$OLD" || { rm -rf "$NEW"; die "could not move the old app aside."; }; fi
 if ! mv "$NEW" "$APP"; then
-  [ -e "$OLD" ] && mv "$OLD" "$APP"
   rm -rf "$NEW"
+  if [ -e "$OLD" ] && ! mv "$OLD" "$APP"; then die "could not move the new app into place, nor the old one back: it is at $OLD."; fi
   die "could not move the new app into place; the old one is back."
 fi
 rm -rf "$OLD"

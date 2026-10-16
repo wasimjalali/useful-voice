@@ -591,6 +591,10 @@ struct FRMicrophonePage: View {
             .foregroundStyle(Theme.inkMuted)
         FRPrimaryButton(title: "Open System Settings", action: model.openMicSettings)
         FRWaitingStatus()
+        // Without it a person who won't grant access can never leave setup. Setup
+        // counts as done and the window's microphone banner takes over.
+        FRTextLink(title: "Set up later", action: model.finish)
+            .frame(maxWidth: .infinity)
     }
 }
 
@@ -676,6 +680,9 @@ struct FRAccessibilityPage: View {
             } else {
                 FRPrimaryButton(title: "Open System Settings", action: model.openAccessibilitySettings)
                 FRWaitingStatus()
+                // Setup counts as done; the "Accessibility is off" banner takes over.
+                FRTextLink(title: "Set up later", action: model.finish)
+                    .frame(maxWidth: .infinity)
             }
         }
     }

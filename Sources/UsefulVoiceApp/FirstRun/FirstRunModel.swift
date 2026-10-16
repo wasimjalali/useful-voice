@@ -24,11 +24,13 @@ import UsefulVoiceCore
 ///   flow opened (unless the committed model already works). Nothing switches
 ///   the engine after the flow ends, so a later Settings choice is never undone.
 /// - Microphone denied, then granted while the step is open: a one-second poll
-///   moves on by itself.
+///   moves on by itself. Never granted: "Set up later" finishes setup (here and
+///   on the Accessibility step) and the window banners take over.
 /// - Accessibility granted while the app is in the background: the same poll
 ///   runs on the main run loop in `.common` mode, and activation re-checks.
-/// - Window closed mid-flow: `completed` is only written on Done or Finish, so
-///   the flow opens again next launch. The meter stops when the window hides.
+/// - Window closed mid-flow: `completed` is only written on Done, Finish or
+///   "Set up later", so the flow opens again next launch. The meter stops when
+///   the window hides.
 /// - Practice dictation fails: the pipeline's own error text shows and Retry
 ///   re-runs the last audio.
 @MainActor
@@ -59,6 +61,9 @@ final class FirstRunModel: ObservableObject {
     // MARK: - Published state
 
     @Published private(set) var active: Bool
+    /// The flow is up at launch only for the grant recheck after the rename. A
+    /// login launch then leaves the window closed (`FirstRunGate.opensWindowAtLaunch`).
+    let recheckOnly: Bool
     @Published private(set) var page: Page = .welcome
     /// Bumped when the flow ends, so the window can land on Dictate.
     @Published private(set) var finishCount = 0
@@ -167,25 +172,20 @@ final class FirstRunModel: ObservableObject {
 
         self.snapshot = FirstRunGate.EngineSelection(
             engine: settings.transcriptionEngine, modelID: settings.localModelID)
-        // Key PRESENCE (attributes only, never prompts) or a usable local model.
-        // Never the key cache, which may not have loaded yet, and a stored key
-        // that cannot be read right now still counts as configured.
-        let decision = FirstRunGate.decide(
-            completed: defaults.bool(forKey: FirstRunGate.completedKey),
-            engineConfigured: FirstRunGate.engineConfigured(
-                engine: settings.transcriptionEngine,
-                keyStored: DeepgramKeyStore.keyIsStored(),
-                activeModelUsable: viewModel.models.availability(
-                    of: viewModel.models.activeModel) == .usable),
-            microphoneAuthorized: AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
-            accessibilityTrusted: AXIsProcessTrusted(),
-            forced: forced)
+        let completed = defaults.bool(forKey: FirstRunGate.completedKey)
+        // Setup finished under the previous identity: its grants are gone.
+        let grantsNeedRecheck = defaults.bool(forKey: FirstRunGate.recheckGrantsKey)
+        self.recheckOnly = FirstRunGate.isRecheckOnly(
+            completed: completed, grantsNeedRecheck: grantsNeedRecheck, forced: forced)
+        let decision = Self.gateDecision(
+            settings: settings, viewModel: viewModel, completed: completed,
+            forced: forced, grantsNeedRecheck: grantsNeedRecheck)
         // An offscreen render saves nothing, and unless the flow is forced it
         // renders the page it was asked for: a differently signed build is never
         // Accessibility-trusted, so the gate would otherwise always show setup.
         let offscreen = environment["UV_SNAPSHOT"] != nil
         if decision == .skipAndMarkCompleted, !offscreen {
-            defaults.set(true, forKey: FirstRunGate.completedKey)
+            FirstRunGate.recordCompleted(in: defaults)
         }
         self.active = decision == .show && (forced || !offscreen)
 
@@ -215,6 +215,45 @@ final class FirstRunModel: ObservableObject {
                 MainActor.assumeIsolated { self?.appBecameActive() }
             }
             .store(in: &cancellables)
+    }
+
+    /// Key PRESENCE (attributes only, never prompts) or a usable local model.
+    /// Never the key cache, which may not have loaded yet, and a stored key
+    /// that cannot be read right now still counts as configured.
+    private static func gateDecision(settings: AppSettings, viewModel: UsefulVoiceViewModel,
+                                     completed: Bool, forced: Bool,
+                                     grantsNeedRecheck: Bool) -> FirstRunGate.Decision {
+        FirstRunGate.decide(
+            completed: completed,
+            engineConfigured: FirstRunGate.engineConfigured(
+                engine: settings.transcriptionEngine,
+                keyStored: DeepgramKeyStore.keyIsStored(),
+                activeModelUsable: viewModel.models.availability(
+                    of: viewModel.models.activeModel) == .usable),
+            microphoneAuthorized: AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
+            accessibilityTrusted: AXIsProcessTrusted(),
+            forced: forced,
+            grantsNeedRecheck: grantsNeedRecheck)
+    }
+
+    /// The recheck was decided at launch, but a login launch keeps its window
+    /// closed, so the person may have granted everything since (the launch
+    /// prompts, the pill). Asked again as the window is about to open: if the gate
+    /// now says everything is in place, setup is marked done and the normal window
+    /// shows. Forced and snapshot runs never get here with anything to drop, and
+    /// nothing is written for them.
+    func resolveRecheckBeforeShow() {
+        guard active, recheckOnly, !forced, !offscreen, !frozen, page == .welcome else { return }
+        let decision = Self.gateDecision(
+            settings: settings, viewModel: viewModel,
+            completed: defaults.bool(forKey: FirstRunGate.completedKey),
+            forced: false,
+            grantsNeedRecheck: defaults.bool(forKey: FirstRunGate.recheckGrantsKey))
+        guard FirstRunGate.recheckResolvedBeforeShow(
+            flowActive: active, recheckOnly: recheckOnly, decision: decision) else { return }
+        leave(page)
+        FirstRunGate.recordCompleted(in: defaults)
+        active = false
     }
 
     private static func jump(named name: String) -> (page: Page, preview: Preview?)? {
@@ -301,10 +340,11 @@ final class FirstRunModel: ObservableObject {
         enter(.welcome)
     }
 
-    /// Done or Finish: the setup counts as complete. Never written in a forced run.
+    /// Done, Finish or "Set up later": the setup counts as complete. Never written in
+    /// a forced run.
     func markCompleted() {
         guard !forced else { return }
-        defaults.set(true, forKey: FirstRunGate.completedKey)
+        FirstRunGate.recordCompleted(in: defaults)
     }
 
     func finish() {

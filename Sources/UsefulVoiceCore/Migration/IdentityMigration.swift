@@ -420,6 +420,16 @@ public struct IdentityMigration {
         // global-domain value must not stop a stored legacy setting being copied.
         let existing = defaults.persistentDomain(forName: names.newDefaultsDomain) ?? [:]
         if let legacy = readLegacyDefaults(names.legacyDefaultsDomain) {
+            // The renamed app has no Accessibility or Microphone grant yet (macOS
+            // keys them to the bundle id), so a setup the old identity finished is
+            // checked against the grants again at the next gate decision. Written
+            // before the copy: a crash after "setup finished" was copied must not
+            // leave it without the recheck, since the rerun then sees it as the
+            // new identity's own answer.
+            if (legacy[FirstRunGate.completedKey] as? Bool) == true,
+               existing[FirstRunGate.completedKey] == nil {
+                defaults.set(true, forKey: FirstRunGate.recheckGrantsKey)
+            }
             for (key, value) in legacy where existing[key] == nil {
                 defaults.set(value, forKey: key)
                 report.defaultsCopied += 1

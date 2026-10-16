@@ -17,3 +17,10 @@ build/icon.png
 
 # Playwright E2E output (`npm run e2e`)
 e2e-results/
+
+# Release pipeline E2E output and the folders the Windows release workflow makes
+e2e-installer-results/
+release-old/
+publish/
+publish-local/
+old-builder.json

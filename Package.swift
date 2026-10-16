@@ -31,5 +31,8 @@ let package = Package(
             ]
         ),
         .testTarget(name: "UsefulVoiceCoreTests", dependencies: ["UsefulVoiceCore"]),
+        // The app's own display rules (what the HUD says to VoiceOver). The executable
+        // target is imported with `@testable`, which SwiftPM supports on macOS.
+        .testTarget(name: "UsefulVoiceAppTests", dependencies: ["UsefulVoiceApp", "UsefulVoiceCore"]),
     ]
 )

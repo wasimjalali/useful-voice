@@ -1,0 +1,437 @@
+{
+ "summary": {
+  "cases": 60,
+  "identicalToEval": 60,
+  "loadMs": 24780,
+  "rssAfterLoadMb": 1200,
+  "peakRssMb": 1200,
+  "latencyMs": {
+   "median": 445,
+   "p95": 16298,
+   "max": 44591,
+   "over1500": 5
+  }
+ },
+ "rows": [
+  {
+   "id": "f01",
+   "ms": 44591,
+   "match": true,
+   "output": "So I need to send the report today.",
+   "evalOutput": "So I need to send the report today."
+  },
+  {
+   "id": "f02",
+   "ms": 34789,
+   "match": true,
+   "output": "Can you check the build?",
+   "evalOutput": "Can you check the build?"
+  },
+  {
+   "id": "f03",
+   "ms": 10751,
+   "match": true,
+   "output": "Hey, are you free for lunch tomorrow?",
+   "evalOutput": "Hey, are you free for lunch tomorrow?"
+  },
+  {
+   "id": "f04",
+   "ms": 656,
+   "match": true,
+   "output": "The results show a clear improvement over the baseline.",
+   "evalOutput": "The results show a clear improvement over the baseline."
+  },
+  {
+   "id": "f05",
+   "ms": 385,
+   "match": true,
+   "output": "I think we should wait until Monday.",
+   "evalOutput": "I think we should wait until Monday."
+  },
+  {
+   "id": "f06",
+   "ms": 641,
+   "match": true,
+   "output": "We reviewed the quarterly numbers and found no issues.",
+   "evalOutput": "We reviewed the quarterly numbers and found no issues."
+  },
+  {
+   "id": "f07",
+   "ms": 332,
+   "match": true,
+   "output": "Okay, that makes sense.",
+   "evalOutput": "Okay, that makes sense."
+  },
+  {
+   "id": "f08",
+   "ms": 572,
+   "match": true,
+   "output": "I forgot what I was going to say.",
+   "evalOutput": "I forgot what I was going to say."
+  },
+  {
+   "id": "f09",
+   "ms": 600,
+   "match": true,
+   "output": "The meeting is at noon.",
+   "evalOutput": "The meeting is at noon."
+  },
+  {
+   "id": "f10",
+   "ms": 723,
+   "match": true,
+   "output": "Sure, I can do that.",
+   "evalOutput": "Sure, I can do that."
+  },
+  {
+   "id": "f11",
+   "ms": 545,
+   "match": true,
+   "output": "The plan has three phases. The first covers discovery.",
+   "evalOutput": "The plan has three phases. The first covers discovery."
+  },
+  {
+   "id": "f12",
+   "ms": 424,
+   "match": true,
+   "output": "Thanks, I really appreciate it.",
+   "evalOutput": "Thanks, I really appreciate it."
+  },
+  {
+   "id": "f13",
+   "ms": 474,
+   "match": true,
+   "output": "I went to the store and bought some milk.",
+   "evalOutput": "I went to the store and bought some milk."
+  },
+  {
+   "id": "f14",
+   "ms": 468,
+   "match": true,
+   "output": "Our approach is to start small and measure everything.",
+   "evalOutput": "Our approach is to start small and measure everything."
+  },
+  {
+   "id": "f15",
+   "ms": 348,
+   "match": true,
+   "output": "Hi, it's me again.",
+   "evalOutput": "Hi, it's me again."
+  },
+  {
+   "id": "f16",
+   "ms": 547,
+   "match": true,
+   "output": "We could ship it Friday, or Monday if needed.",
+   "evalOutput": "We could ship it Friday, or Monday if needed."
+  },
+  {
+   "id": "f17",
+   "ms": 430,
+   "match": true,
+   "output": "Revenue grew 12% year over year.",
+   "evalOutput": "Revenue grew 12% year over year."
+  },
+  {
+   "id": "f18",
+   "ms": 374,
+   "match": true,
+   "output": "Do you want to grab coffee later?",
+   "evalOutput": "Do you want to grab coffee later?"
+  },
+  {
+   "id": "f19",
+   "ms": 445,
+   "match": true,
+   "output": "Okay, let's begin.",
+   "evalOutput": "Okay, let's begin."
+  },
+  {
+   "id": "f20",
+   "ms": 653,
+   "match": true,
+   "output": "This is honestly the best option we have.",
+   "evalOutput": "This is honestly the best option we have."
+  },
+  {
+   "id": "f21",
+   "ms": 406,
+   "match": true,
+   "output": "So I'm not sure about that.",
+   "evalOutput": "So I'm not sure about that."
+  },
+  {
+   "id": "f22",
+   "ms": 493,
+   "match": true,
+   "output": "The invoice was sent on Tuesday and paid on Thursday.",
+   "evalOutput": "The invoice was sent on Tuesday and paid on Thursday."
+  },
+  {
+   "id": "s01",
+   "ms": 366,
+   "match": true,
+   "output": "I think we should go.",
+   "evalOutput": "I think we should go."
+  },
+  {
+   "id": "s02",
+   "ms": 344,
+   "match": true,
+   "output": "We need to finish this today.",
+   "evalOutput": "We need to finish this today."
+  },
+  {
+   "id": "s03",
+   "ms": 415,
+   "match": true,
+   "output": "The report is due Friday.",
+   "evalOutput": "The report is due Friday."
+  },
+  {
+   "id": "s04",
+   "ms": 420,
+   "match": true,
+   "output": "I just wanted to say thanks.",
+   "evalOutput": "I just wanted to say thanks."
+  },
+  {
+   "id": "s05",
+   "ms": 615,
+   "match": true,
+   "output": "Can you send me the file?",
+   "evalOutput": "Can you send me the file?"
+  },
+  {
+   "id": "s06",
+   "ms": 426,
+   "match": true,
+   "output": "It is going to be a long week.",
+   "evalOutput": "It is going to be a long week."
+  },
+  {
+   "id": "s07",
+   "ms": 347,
+   "match": true,
+   "output": "I'm not sure about this.",
+   "evalOutput": "I'm not sure about this."
+  },
+  {
+   "id": "s08",
+   "ms": 545,
+   "match": true,
+   "output": "Please send it to the team by noon.",
+   "evalOutput": "Please send it to the team by noon."
+  },
+  {
+   "id": "s09",
+   "ms": 270,
+   "match": true,
+   "output": "And then we left.",
+   "evalOutput": "And then we left."
+  },
+  {
+   "id": "s10",
+   "ms": 432,
+   "match": true,
+   "output": "We should review the draft before Monday.",
+   "evalOutput": "We should review the draft before Monday."
+  },
+  {
+   "id": "s11",
+   "ms": 244,
+   "match": true,
+   "output": "I think that works.",
+   "evalOutput": "I think that works."
+  },
+  {
+   "id": "s12",
+   "ms": 311,
+   "match": true,
+   "output": "It's a good idea.",
+   "evalOutput": "It's a good idea."
+  },
+  {
+   "id": "c01",
+   "ms": 340,
+   "match": true,
+   "output": "Let's meet on Tuesday.",
+   "evalOutput": "Let's meet on Tuesday."
+  },
+  {
+   "id": "c02",
+   "ms": 348,
+   "match": true,
+   "output": "Let's ship it Friday.",
+   "evalOutput": "Let's ship it Friday."
+  },
+  {
+   "id": "c03",
+   "ms": 398,
+   "match": true,
+   "output": "The meeting is at 4.",
+   "evalOutput": "The meeting is at 4."
+  },
+  {
+   "id": "c04",
+   "ms": 574,
+   "match": true,
+   "output": "The budget is $40,000.",
+   "evalOutput": "The budget is $40,000."
+  },
+  {
+   "id": "c05",
+   "ms": 349,
+   "match": true,
+   "output": "Send it to Alice.",
+   "evalOutput": "Send it to Alice."
+  },
+  {
+   "id": "c06",
+   "ms": 551,
+   "match": true,
+   "output": "I'll call you at noon, actually, at 1.",
+   "evalOutput": "I'll call you at noon, actually, at 1."
+  },
+  {
+   "id": "c07",
+   "ms": 408,
+   "match": true,
+   "output": "We're meeting in room 14.",
+   "evalOutput": "We're meeting in room 14."
+  },
+  {
+   "id": "c08",
+   "ms": 1129,
+   "match": true,
+   "output": "The deadline is the 6th of March.",
+   "evalOutput": "The deadline is the 6th of March."
+  },
+  {
+   "id": "c09",
+   "ms": 13226,
+   "match": true,
+   "output": "I'll be there on Thursday morning.",
+   "evalOutput": "I'll be there on Thursday morning."
+  },
+  {
+   "id": "c10",
+   "ms": 16298,
+   "match": true,
+   "output": "Order three pizzas.",
+   "evalOutput": "Order three pizzas."
+  },
+  {
+   "id": "c11",
+   "ms": 565,
+   "match": true,
+   "output": "The report was written by Jane.",
+   "evalOutput": "The report was written by Jane."
+  },
+  {
+   "id": "c12",
+   "ms": 376,
+   "match": true,
+   "output": "Let's use green for the button.",
+   "evalOutput": "Let's use green for the button."
+  },
+  {
+   "id": "c13",
+   "ms": 412,
+   "match": true,
+   "output": "The flight leaves at 10.",
+   "evalOutput": "The flight leaves at 10."
+  },
+  {
+   "id": "c14",
+   "ms": 479,
+   "match": true,
+   "output": "Can you meet Saturday?",
+   "evalOutput": "Can you meet Saturday?"
+  },
+  {
+   "id": "c15",
+   "ms": 431,
+   "match": true,
+   "output": "We have 60 users.",
+   "evalOutput": "We have 60 users."
+  },
+  {
+   "id": "c16",
+   "ms": 405,
+   "match": true,
+   "output": "Take the right turn at the lights.",
+   "evalOutput": "Take the right turn at the lights."
+  },
+  {
+   "id": "c17",
+   "ms": 504,
+   "match": true,
+   "output": "Call me at 556.",
+   "evalOutput": "Call me at 556."
+  },
+  {
+   "id": "c18",
+   "ms": 404,
+   "match": true,
+   "output": "I'll bring the dessert.",
+   "evalOutput": "I'll bring the dessert."
+  },
+  {
+   "id": "c19",
+   "ms": 366,
+   "match": true,
+   "output": "The venue is in Munich.",
+   "evalOutput": "The venue is in Munich."
+  },
+  {
+   "id": "c20",
+   "ms": 547,
+   "match": true,
+   "output": "So I need to send the report by Thursday.",
+   "evalOutput": "So I need to send the report by Thursday."
+  },
+  {
+   "id": "c21",
+   "ms": 400,
+   "match": true,
+   "output": "Let's go with plan B.",
+   "evalOutput": "Let's go with plan B."
+  },
+  {
+   "id": "c22",
+   "ms": 288,
+   "match": true,
+   "output": "Section three covers pricing.",
+   "evalOutput": "Section three covers pricing."
+  },
+  {
+   "id": "c23",
+   "ms": 473,
+   "match": true,
+   "output": "The package weighs 15 kilos.",
+   "evalOutput": "The package weighs 15 kilos."
+  },
+  {
+   "id": "c24",
+   "ms": 523,
+   "match": true,
+   "output": "I'll see you on the 12th.",
+   "evalOutput": "I'll see you on the 12th."
+  },
+  {
+   "id": "n01",
+   "ms": 461,
+   "match": true,
+   "output": "You can reach me at john@example.com.",
+   "evalOutput": "You can reach me at john@example.com."
+  },
+  {
+   "id": "n02",
+   "ms": 592,
+   "match": true,
+   "output": "Send it to sarah.lee@example.org, please.",
+   "evalOutput": "Send it to sarah.lee@example.org, please."
+  }
+ ]
+}

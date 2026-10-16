@@ -219,7 +219,7 @@ test('fresh install: every step, a bad key blocks, a good key advances, then nev
     await shot(win, 'flow-06-done');
     await fr(win).getByRole('button', { name: 'Open Useful Voice' }).click();
     await expect(win.locator('.fr')).toHaveCount(0);
-    await expect(win.locator('.st-title')).toHaveText('Stream');
+    await expect(win.locator('.st-title')).toHaveText('Dictations');
     const done = await settingsWhere(userData, (s) => s?.firstRunCompleted === true);
     expect(done?.firstRunCompleted).toBe(true);
   } finally {
@@ -229,7 +229,7 @@ test('fresh install: every step, a bad key blocks, a good key advances, then nev
   // Relaunch on the same folder: no flow.
   run = await launch('fresh-relaunch', userData);
   try {
-    await expect(run.win.locator('.st-title')).toHaveText('Stream');
+    await expect(run.win.locator('.st-title')).toHaveText('Dictations');
     expect((await run.win.evaluate(() => window.usefulVoice.firstRunState())).pending).toBe(false);
     await expect(run.win.locator('.fr')).toHaveCount(0);
   } finally {
@@ -254,7 +254,7 @@ test('an existing user with a saved key never sees it, and is marked completed',
 
   run = await launch('existing', userData);
   try {
-    await expect(run.win.locator('.st-title')).toHaveText('Stream');
+    await expect(run.win.locator('.st-title')).toHaveText('Dictations');
     await expect(run.win.locator('.bubble')).toHaveCount(6);
     expect((await run.win.evaluate(() => window.usefulVoice.firstRunState())).pending).toBe(false);
     await expect(run.win.locator('.fr')).toHaveCount(0);
@@ -350,7 +350,7 @@ test('--force-first-run on a completed install shows the flow and saves nothing'
   // And the install is still complete: the next normal launch shows no flow.
   run = await launch('forced-after', userData);
   try {
-    await expect(run.win.locator('.st-title')).toHaveText('Stream');
+    await expect(run.win.locator('.st-title')).toHaveText('Dictations');
     expect((await run.win.evaluate(() => window.usefulVoice.firstRunState())).pending).toBe(false);
   } finally {
     await run.stop();
@@ -369,7 +369,7 @@ test('skip from the key step, then Settings > Run setup again reopens it', async
 
     // The main window, with the key-missing banner.
     await expect(win.locator('.fr')).toHaveCount(0);
-    await expect(win.locator('.st-title')).toHaveText('Stream');
+    await expect(win.locator('.st-title')).toHaveText('Dictations');
     await expect(win.locator('.banner')).toContainText('No Deepgram key.');
     const skipped = await settingsWhere(userData, (s) => s?.firstRunCompleted === true);
     expect(skipped?.firstRunCompleted).toBe(true);
@@ -396,7 +396,7 @@ test('skip from the key step, then Settings > Run setup again reopens it', async
   // A skip counts as finished: the next launch does not show the flow.
   run = await launch('skip-relaunch', userData);
   try {
-    await expect(run.win.locator('.st-title')).toHaveText('Stream');
+    await expect(run.win.locator('.st-title')).toHaveText('Dictations');
     expect((await run.win.evaluate(() => window.usefulVoice.firstRunState())).pending).toBe(false);
   } finally {
     await run.stop();

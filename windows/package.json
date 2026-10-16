@@ -48,12 +48,24 @@
     "files": [
       "dist/**/*",
       "package.json",
-      "!**/*.map"
+      "!**/*.map",
+      "!node_modules/@node-llama-cpp/*/bins/**/*",
+      "node_modules/@node-llama-cpp/win-x64/bins/**/*",
+      "!node_modules/node-llama-cpp/llama/localBuilds/**/*",
+      "!node_modules/node-llama-cpp/llama/gitRelease.bundle"
     ],
     "extraResources": [
       {
         "from": "build/tray",
         "to": "tray"
+      },
+      {
+        "from": "licenses",
+        "to": "licenses"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
       }
     ],
     "extraMetadata": {
@@ -94,6 +106,13 @@
     },
     "portable": {
       "artifactName": "${productName}-${version}-portable.${ext}"
-    }
+    },
+    "asarUnpack": [
+      "node_modules/node-llama-cpp/bins/**/*",
+      "node_modules/@node-llama-cpp/*/bins/**/*"
+    ]
+  },
+  "dependencies": {
+    "node-llama-cpp": "3.22.1"
   }
 }

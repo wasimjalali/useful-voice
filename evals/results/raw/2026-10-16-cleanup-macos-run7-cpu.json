@@ -1,0 +1,3125 @@
+{
+ "raw": {
+  "cases_ids": [
+   "f01",
+   "f04",
+   "f07",
+   "f10",
+   "f13",
+   "f16",
+   "f19",
+   "f22",
+   "s04",
+   "s07",
+   "s10",
+   "c01",
+   "c04",
+   "c07",
+   "c10",
+   "c14",
+   "c17",
+   "c20",
+   "c23",
+   "n02",
+   "n05",
+   "n08",
+   "n11",
+   "m01",
+   "m04",
+   "g01",
+   "g04",
+   "g07",
+   "g10",
+   "g13",
+   "p01",
+   "p04",
+   "k01",
+   "k04",
+   "k07",
+   "k10",
+   "k13",
+   "k16",
+   "k20",
+   "k23",
+   "k26",
+   "k29",
+   "k32",
+   "k35",
+   "k38",
+   "k42",
+   "k45",
+   "k48",
+   "k51",
+   "k54",
+   "k57",
+   "k60",
+   "k63",
+   "k67",
+   "k70",
+   "k73",
+   "k76",
+   "k79",
+   "k82",
+   "k85"
+  ],
+  "rules_text": {
+   "f01": "So I need to send the report today.",
+   "f04": "The results, show a clear improvement over the baseline.",
+   "f07": "Okay, that makes sense.",
+   "f10": "Sure, I can do that.",
+   "f13": "I went to the store and bought some milk.",
+   "f16": "We could ship it Friday, or Monday if needed.",
+   "f19": "Okay. Let's begin.",
+   "f22": "The invoice, was sent on Tuesday and paid on Thursday.",
+   "s04": "I just wanted to say thanks.",
+   "s07": "I'm not sure about this.",
+   "s10": "We should review the draft before Monday.",
+   "c01": "Let's meet on Monday, no wait, Tuesday.",
+   "c04": "The budget is four thousand, sorry, forty thousand dollars.",
+   "c07": "We're meeting in room twelve, scratch that, room fourteen.",
+   "c10": "Order two pizzas, make that three pizzas.",
+   "c14": "Can you meet Friday? Sorry, Saturday?",
+   "c17": "Call me at five, oh wait, five five six.",
+   "c20": "So I need to send the report by Friday, no wait, make that Thursday.",
+   "c23": "The package weighs five kilos, sorry, fifteen kilos.",
+   "n02": "Send it to sarah dot lee at example dot org please.",
+   "n05": "The meeting is on March third at two thirty p m.",
+   "n08": "Write to support at help dot example dot com.",
+   "n11": "Meet me at four thirty.",
+   "m01": "Hi Sarah, can you send the numbers by Friday? Thanks, John.",
+   "m04": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+   "g01": "Can you refactor the auth middleware to use async await?",
+   "g04": "Rename the function to fooBar, no wait, bazQux.",
+   "g07": "Add a --verbose flag to the CLI, and document it in the README.",
+   "g10": "Don't change the public API, just the internal helpers.",
+   "g13": "Make the query use an index on user_id, scratch that, on created_at.",
+   "p01": "Look at app dot ts and the readme dot md.",
+   "p04": "Edit @src/server.ts, to add a health route.",
+   "k01": "Thanks for the update. I will review it tonight and send notes in the morning.",
+   "k04": "Okay.",
+   "k07": "I think we should wait until Monday.",
+   "k10": "She had had enough of the noise.",
+   "k13": "I mean what I said: the plan needs a second review.",
+   "k16": "The ER was busy last night.",
+   "k20": "Please send the signed copy to legal by the end of the week.",
+   "k23": "gonna grab a coffee, back in 10",
+   "k26": "Good morning, everyone. Let's get started.",
+   "k29": "The patient reported mild headaches and occasional dizziness.",
+   "k32": "Hmm, interesting question.",
+   "k35": "We should totally do this again sometime.",
+   "k38": "I was like, no way, and she was like, yes way.",
+   "k42": "It's 5 o'clock somewhere.",
+   "k45": "About 25% of users opted in during the first 7 days.",
+   "k48": "Revenue was $3.2 million in Q3, up 12% from last year.",
+   "k51": "The file is 2.5 GB and takes about 10 minutes to download.",
+   "k54": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+   "k57": "Hey Chris,\n\nJust checking in on the proposal.\n\nTalk soon,\nLena",
+   "k60": "Run npm test and fix any failing specs.",
+   "k63": "Why does the build fail with ERR_MODULE_NOT_FOUND after the upgrade?",
+   "k67": "Write a script that reads the CSV and prints the top 10 rows.",
+   "k70": "Set DEBUG=true and run npm run dev -- --port 8081.",
+   "k73": "Explain what Array.prototype.reduce does with an empty array.",
+   "k76": "Check package.json for the test script.",
+   "k79": "The config lives in .github/workflows/ci.yml, not in the root.",
+   "k82": "See https://example.com/pricing?plan=pro for the details.",
+   "k85": "The first paragraph introduces the topic.\n\nThe second paragraph gives an example."
+  },
+  "runs": {
+   "rules+s1": [
+    {
+     "output": "So I need to send the report today.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 226.1,
+     "prompt_tokens": 87,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 100.209,
+      "predicted_ms": 123.747,
+      "predicted_per_second": 72.72903585541468
+     },
+     "id": "f01",
+     "model_input": "So I need to send the report today."
+    },
+    {
+     "output": "The results show a clear improvement over the baseline.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 193.0,
+     "prompt_tokens": 89,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 76.455,
+      "predicted_ms": 113.764,
+      "predicted_per_second": 87.90126929432861
+     },
+     "id": "f04",
+     "model_input": "The results, show a clear improvement over the baseline."
+    },
+    {
+     "output": "Okay, that makes sense.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 132.0,
+     "prompt_tokens": 84,
+     "completion_tokens": 7,
+     "timings": {
+      "prompt_ms": 51.093,
+      "predicted_ms": 79.024,
+      "predicted_per_second": 75.92630087062159
+     },
+     "id": "f07",
+     "model_input": "Okay, that makes sense."
+    },
+    {
+     "output": "Sure, I can do that.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 127.1,
+     "prompt_tokens": 85,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 53.17,
+      "predicted_ms": 72.348,
+      "predicted_per_second": 96.75457510919445
+     },
+     "id": "f10",
+     "model_input": "Sure, I can do that."
+    },
+    {
+     "output": "I went to the store and bought some milk.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 173.4,
+     "prompt_tokens": 88,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 65.735,
+      "predicted_ms": 105.906,
+      "predicted_per_second": 94.42335656147904
+     },
+     "id": "f13",
+     "model_input": "I went to the store and bought some milk."
+    },
+    {
+     "output": "We could ship it Friday, or Monday if needed.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 195.5,
+     "prompt_tokens": 89,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 64.367,
+      "predicted_ms": 129.17,
+      "predicted_per_second": 85.1590926685763
+     },
+     "id": "f16",
+     "model_input": "We could ship it Friday, or Monday if needed."
+    },
+    {
+     "output": "Okay. Let's begin.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 119.3,
+     "prompt_tokens": 84,
+     "completion_tokens": 7,
+     "timings": {
+      "prompt_ms": 49.117,
+      "predicted_ms": 68.376,
+      "predicted_per_second": 87.75008775008774
+     },
+     "id": "f19",
+     "model_input": "Okay. Let's begin."
+    },
+    {
+     "output": "The invoice was sent on Tuesday and paid on Thursday.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 179.5,
+     "prompt_tokens": 90,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 61.488,
+      "predicted_ms": 115.833,
+      "predicted_per_second": 94.96430205554547
+     },
+     "id": "f22",
+     "model_input": "The invoice, was sent on Tuesday and paid on Thursday."
+    },
+    {
+     "output": "I just wanted to say thanks.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 138.6,
+     "prompt_tokens": 85,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 59.108,
+      "predicted_ms": 74.753,
+      "predicted_per_second": 93.64172675344133
+     },
+     "id": "s04",
+     "model_input": "I just wanted to say thanks."
+    },
+    {
+     "output": "I'm not sure about this.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 154.1,
+     "prompt_tokens": 85,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 53.596,
+      "predicted_ms": 97.046,
+      "predicted_per_second": 72.13074212229252
+     },
+     "id": "s07",
+     "model_input": "I'm not sure about this."
+    },
+    {
+     "output": "We should review the draft before Monday.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 154.8,
+     "prompt_tokens": 86,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 53.754,
+      "predicted_ms": 97.648,
+      "predicted_per_second": 81.92692118630183
+     },
+     "id": "s10",
+     "model_input": "We should review the draft before Monday."
+    },
+    {
+     "output": "Let's meet on Tuesday.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 137.4,
+     "prompt_tokens": 89,
+     "completion_tokens": 7,
+     "timings": {
+      "prompt_ms": 71.79,
+      "predicted_ms": 63.503,
+      "predicted_per_second": 94.48372517833803
+     },
+     "id": "c01",
+     "model_input": "Let's meet on Monday, no wait, Tuesday."
+    },
+    {
+     "output": "The budget is $40,000.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 198.4,
+     "prompt_tokens": 90,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 72.104,
+      "predicted_ms": 124.304,
+      "predicted_per_second": 88.49272750675763
+     },
+     "id": "c04",
+     "model_input": "The budget is four thousand, sorry, forty thousand dollars."
+    },
+    {
+     "output": "We're meeting in room 14.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 169.0,
+     "prompt_tokens": 91,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 70.97,
+      "predicted_ms": 96.004,
+      "predicted_per_second": 93.74609391275364
+     },
+     "id": "c07",
+     "model_input": "We're meeting in room twelve, scratch that, room fourteen."
+    },
+    {
+     "output": "Order three pizzas.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 106.6,
+     "prompt_tokens": 87,
+     "completion_tokens": 5,
+     "timings": {
+      "prompt_ms": 57.83,
+      "predicted_ms": 44.309,
+      "predicted_per_second": 90.27511340811122
+     },
+     "id": "c10",
+     "model_input": "Order two pizzas, make that three pizzas."
+    },
+    {
+     "output": "Can you meet Saturday?",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 120.7,
+     "prompt_tokens": 87,
+     "completion_tokens": 6,
+     "timings": {
+      "prompt_ms": 67.746,
+      "predicted_ms": 49.788,
+      "predicted_per_second": 100.42580541495944
+     },
+     "id": "c14",
+     "model_input": "Can you meet Friday? Sorry, Saturday?"
+    },
+    {
+     "output": "Call me at 556.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 160.3,
+     "prompt_tokens": 90,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 73.26,
+      "predicted_ms": 85.019,
+      "predicted_per_second": 94.09661369811454
+     },
+     "id": "c17",
+     "model_input": "Call me at five, oh wait, five five six."
+    },
+    {
+     "output": "So I need to send the report by Thursday.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 174.5,
+     "prompt_tokens": 95,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 76.125,
+      "predicted_ms": 96.754,
+      "predicted_per_second": 103.35490005581164
+     },
+     "id": "c20",
+     "model_input": "So I need to send the report by Friday, no wait, make that Thursday."
+    },
+    {
+     "output": "The package weighs 15 kilos.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 163.3,
+     "prompt_tokens": 91,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 73.238,
+      "predicted_ms": 88.211,
+      "predicted_per_second": 102.02809173459093
+     },
+     "id": "c23",
+     "model_input": "The package weighs five kilos, sorry, fifteen kilos."
+    },
+    {
+     "output": "Send it to sarah.lee@example.org please.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 194.3,
+     "prompt_tokens": 91,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 67.228,
+      "predicted_ms": 125.24,
+      "predicted_per_second": 95.81603321622485
+     },
+     "id": "n02",
+     "model_input": "Send it to sarah dot lee at example dot org please."
+    },
+    {
+     "output": "The meeting is on March 3rd at 2:30pm.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 247.9,
+     "prompt_tokens": 90,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 67.767,
+      "predicted_ms": 178.098,
+      "predicted_per_second": 89.83817898011206
+     },
+     "id": "n05",
+     "model_input": "The meeting is on March third at two thirty p m."
+    },
+    {
+     "output": "Write to support@help.example.com.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 178.1,
+     "prompt_tokens": 89,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 62.797,
+      "predicted_ms": 113.607,
+      "predicted_per_second": 79.2204705695952
+     },
+     "id": "n08",
+     "model_input": "Write to support at help dot example dot com."
+    },
+    {
+     "output": "Meet me at 4:30.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 150.0,
+     "prompt_tokens": 84,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 49.252,
+      "predicted_ms": 98.982,
+      "predicted_per_second": 90.92562284051645
+     },
+     "id": "n11",
+     "model_input": "Meet me at four thirty."
+    },
+    {
+     "output": "Hi Sarah,\n\nCan you send the numbers by Friday?\n\nThanks,\nJohn",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 228.0,
+     "prompt_tokens": 93,
+     "completion_tokens": 15,
+     "timings": {
+      "prompt_ms": 84.49,
+      "predicted_ms": 140.805,
+      "predicted_per_second": 99.42828734775043
+     },
+     "id": "m01",
+     "model_input": "Hi Sarah, can you send the numbers by Friday? Thanks, John."
+    },
+    {
+     "output": "Hi Tom,\n\nThanks for the quick reply. I'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 558.8,
+     "prompt_tokens": 104,
+     "completion_tokens": 26,
+     "timings": {
+      "prompt_ms": 97.474,
+      "predicted_ms": 459.324,
+      "predicted_per_second": 54.42781130530954
+     },
+     "id": "m04",
+     "model_input": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave."
+    },
+    {
+     "output": "Can you refactor the auth middleware to use async await?",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 502.2,
+     "prompt_tokens": 89,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 178.262,
+      "predicted_ms": 320.979,
+      "predicted_per_second": 34.27015474532602
+     },
+     "id": "g01",
+     "model_input": "Can you refactor the auth middleware to use async await?"
+    },
+    {
+     "output": "Rename the function to bazQux.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 309.7,
+     "prompt_tokens": 92,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 176.149,
+      "predicted_ms": 131.715,
+      "predicted_per_second": 60.73719773753938
+     },
+     "id": "g04",
+     "model_input": "Rename the function to fooBar, no wait, bazQux."
+    },
+    {
+     "output": "Add a --verbose flag to the CLI, and document it in the README.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 232.7,
+     "prompt_tokens": 94,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 74.365,
+      "predicted_ms": 156.455,
+      "predicted_per_second": 102.26582723466811
+     },
+     "id": "g07",
+     "model_input": "Add a --verbose flag to the CLI, and document it in the README."
+    },
+    {
+     "output": "Don't change the public API, just the internal helpers.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 203.4,
+     "prompt_tokens": 90,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 81.654,
+      "predicted_ms": 119.94,
+      "predicted_per_second": 100.05002501250624
+     },
+     "id": "g10",
+     "model_input": "Don't change the public API, just the internal helpers."
+    },
+    {
+     "output": "Make the query use an index on created_at.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 182.2,
+     "prompt_tokens": 95,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 79.426,
+      "predicted_ms": 100.959,
+      "predicted_per_second": 99.05010945037094
+     },
+     "id": "g13",
+     "model_input": "Make the query use an index on user_id, scratch that, on created_at."
+    },
+    {
+     "output": "Look at app.ts and the readme.md.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 150.9,
+     "prompt_tokens": 89,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 61.342,
+      "predicted_ms": 87.506,
+      "predicted_per_second": 102.8500902795237
+     },
+     "id": "p01",
+     "model_input": "Look at app dot ts and the readme dot md."
+    },
+    {
+     "output": "Edit @src/server.ts, to add a health route.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 189.9,
+     "prompt_tokens": 90,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 67.825,
+      "predicted_ms": 120.268,
+      "predicted_per_second": 99.77716433298966
+     },
+     "id": "p04",
+     "model_input": "Edit @src/server.ts, to add a health route."
+    },
+    {
+     "output": "Thanks for the update. I will review it tonight and send notes in the morning.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 252.6,
+     "prompt_tokens": 95,
+     "completion_tokens": 18,
+     "timings": {
+      "prompt_ms": 83.102,
+      "predicted_ms": 167.791,
+      "predicted_per_second": 101.31651876441526
+     },
+     "id": "k01",
+     "model_input": "Thanks for the update. I will review it tonight and send notes in the morning."
+    },
+    {
+     "output": "Okay.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 64.4,
+     "prompt_tokens": 80,
+     "completion_tokens": 3,
+     "timings": {
+      "prompt_ms": 41.959,
+      "predicted_ms": 20.686,
+      "predicted_per_second": 96.68374746205163
+     },
+     "id": "k04",
+     "model_input": "Okay."
+    },
+    {
+     "output": "I think we should wait until Monday.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 145.1,
+     "prompt_tokens": 86,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 71.242,
+      "predicted_ms": 72.141,
+      "predicted_per_second": 110.89394380449397
+     },
+     "id": "k07",
+     "model_input": "I think we should wait until Monday."
+    },
+    {
+     "output": "She had enough of the noise.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 129.5,
+     "prompt_tokens": 86,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 57.388,
+      "predicted_ms": 68.513,
+      "predicted_per_second": 102.1703910206822
+     },
+     "id": "k10",
+     "model_input": "She had had enough of the noise."
+    },
+    {
+     "output": "I mean what I said: the plan needs a second review.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 201.5,
+     "prompt_tokens": 91,
+     "completion_tokens": 14,
+     "timings": {
+      "prompt_ms": 67.027,
+      "predicted_ms": 132.753,
+      "predicted_per_second": 97.92622388947896
+     },
+     "id": "k13",
+     "model_input": "I mean what I said: the plan needs a second review."
+    },
+    {
+     "output": "The ER was busy last night.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 119.8,
+     "prompt_tokens": 85,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 47.506,
+      "predicted_ms": 70.516,
+      "predicted_per_second": 99.26825117703783
+     },
+     "id": "k16",
+     "model_input": "The ER was busy last night."
+    },
+    {
+     "output": "Please send the signed copy to legal by the end of the week.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 253.8,
+     "prompt_tokens": 92,
+     "completion_tokens": 15,
+     "timings": {
+      "prompt_ms": 112.472,
+      "predicted_ms": 139.552,
+      "predicted_per_second": 100.32102728731942
+     },
+     "id": "k20",
+     "model_input": "Please send the signed copy to legal by the end of the week."
+    },
+    {
+     "output": "I'm going to grab a coffee, back in 10.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 221.8,
+     "prompt_tokens": 89,
+     "completion_tokens": 15,
+     "timings": {
+      "prompt_ms": 66.163,
+      "predicted_ms": 151.844,
+      "predicted_per_second": 92.19988936013277
+     },
+     "id": "k23",
+     "model_input": "gonna grab a coffee, back in 10"
+    },
+    {
+     "output": "Good morning, everyone. Let's get started.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 168.6,
+     "prompt_tokens": 88,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 66.354,
+      "predicted_ms": 100.318,
+      "predicted_per_second": 99.68300803445045
+     },
+     "id": "k26",
+     "model_input": "Good morning, everyone. Let's get started."
+    },
+    {
+     "output": "The patient reported mild headaches and occasional dizziness.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 162.0,
+     "prompt_tokens": 88,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 63.092,
+      "predicted_ms": 96.379,
+      "predicted_per_second": 103.75704250926032
+     },
+     "id": "k29",
+     "model_input": "The patient reported mild headaches and occasional dizziness."
+    },
+    {
+     "output": "Hmm, interesting question.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 101.2,
+     "prompt_tokens": 83,
+     "completion_tokens": 6,
+     "timings": {
+      "prompt_ms": 52.063,
+      "predicted_ms": 47.435,
+      "predicted_per_second": 105.40739959945188
+     },
+     "id": "k32",
+     "model_input": "Hmm, interesting question."
+    },
+    {
+     "output": "We should totally do this again sometime.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 135.7,
+     "prompt_tokens": 86,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 54.443,
+      "predicted_ms": 79.318,
+      "predicted_per_second": 100.85983005118636
+     },
+     "id": "k35",
+     "model_input": "We should totally do this again sometime."
+    },
+    {
+     "output": "I was like, no way, and she was like, yes way.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 252.7,
+     "prompt_tokens": 93,
+     "completion_tokens": 16,
+     "timings": {
+      "prompt_ms": 79.906,
+      "predicted_ms": 169.208,
+      "predicted_per_second": 88.6482908609522
+     },
+     "id": "k38",
+     "model_input": "I was like, no way, and she was like, yes way."
+    },
+    {
+     "output": "It's 5 o'clock somewhere.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 142.1,
+     "prompt_tokens": 86,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 55.324,
+      "predicted_ms": 84.896,
+      "predicted_per_second": 94.23294383716548
+     },
+     "id": "k42",
+     "model_input": "It's 5 o'clock somewhere."
+    },
+    {
+     "output": "About 25% of users opted in during the first 7 days.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 279.1,
+     "prompt_tokens": 94,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 85.929,
+      "predicted_ms": 191.277,
+      "predicted_per_second": 83.64832154414802
+     },
+     "id": "k45",
+     "model_input": "About 25% of users opted in during the first 7 days."
+    },
+    {
+     "output": "Revenue was $3.2 million in Q3, up 12% from last year.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 285.9,
+     "prompt_tokens": 98,
+     "completion_tokens": 21,
+     "timings": {
+      "prompt_ms": 92.384,
+      "predicted_ms": 191.795,
+      "predicted_per_second": 104.27800516176126
+     },
+     "id": "k48",
+     "model_input": "Revenue was $3.2 million in Q3, up 12% from last year."
+    },
+    {
+     "output": "The file is 2.5 GB and takes about 10 minutes to download.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 265.9,
+     "prompt_tokens": 96,
+     "completion_tokens": 19,
+     "timings": {
+      "prompt_ms": 86.693,
+      "predicted_ms": 177.375,
+      "predicted_per_second": 101.4799154334038
+     },
+     "id": "k51",
+     "model_input": "The file is 2.5 GB and takes about 10 minutes to download."
+    },
+    {
+     "output": "Hi Tom,\n\nThanks for the quick reply. I'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 390.5,
+     "prompt_tokens": 104,
+     "completion_tokens": 26,
+     "timings": {
+      "prompt_ms": 110.23,
+      "predicted_ms": 277.932,
+      "predicted_per_second": 89.95005972683965
+     },
+     "id": "k54",
+     "model_input": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave."
+    },
+    {
+     "output": "Hey Chris,\n\nJust checking in on the proposal.\n\nTalk soon,\nLena",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 232.4,
+     "prompt_tokens": 93,
+     "completion_tokens": 16,
+     "timings": {
+      "prompt_ms": 66.733,
+      "predicted_ms": 162.359,
+      "predicted_per_second": 92.38785654013637
+     },
+     "id": "k57",
+     "model_input": "Hey Chris,\n\nJust checking in on the proposal.\n\nTalk soon,\nLena"
+    },
+    {
+     "output": "Run npm test and fix any failing specs.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 155.7,
+     "prompt_tokens": 87,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 59.887,
+      "predicted_ms": 94.073,
+      "predicted_per_second": 95.6703836382384
+     },
+     "id": "k60",
+     "model_input": "Run npm test and fix any failing specs."
+    },
+    {
+     "output": "Why does the build fail with ERR_MODULE_NOT_FOUND after the upgrade?",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 210.7,
+     "prompt_tokens": 92,
+     "completion_tokens": 15,
+     "timings": {
+      "prompt_ms": 72.15,
+      "predicted_ms": 136.67,
+      "predicted_per_second": 102.43652593839175
+     },
+     "id": "k63",
+     "model_input": "Why does the build fail with ERR_MODULE_NOT_FOUND after the upgrade?"
+    },
+    {
+     "output": "Write a script that reads the CSV and prints the top 10 rows.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 235.5,
+     "prompt_tokens": 94,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 74.824,
+      "predicted_ms": 158.999,
+      "predicted_per_second": 100.62956370794785
+     },
+     "id": "k67",
+     "model_input": "Write a script that reads the CSV and prints the top 10 rows."
+    },
+    {
+     "output": "Set DEBUG=true and run npm run dev -- port 8081.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 259.3,
+     "prompt_tokens": 95,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 77.313,
+      "predicted_ms": 180.14,
+      "predicted_per_second": 88.81980681692018
+     },
+     "id": "k70",
+     "model_input": "Set DEBUG=true and run npm run dev -- --port 8081."
+    },
+    {
+     "output": "Explain what Array.prototype.reduce does with an empty array.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 183.8,
+     "prompt_tokens": 90,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 61.279,
+      "predicted_ms": 118.392,
+      "predicted_per_second": 101.35819987837016
+     },
+     "id": "k73",
+     "model_input": "Explain what Array.prototype.reduce does with an empty array."
+    },
+    {
+     "output": "Check package.json for the test script.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 138.1,
+     "prompt_tokens": 86,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 58.157,
+      "predicted_ms": 78.308,
+      "predicted_per_second": 102.16069877917964
+     },
+     "id": "k76",
+     "model_input": "Check package.json for the test script."
+    },
+    {
+     "output": "The config lives in .github/workflows/ci.yml, not in the root.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 254.6,
+     "prompt_tokens": 95,
+     "completion_tokens": 18,
+     "timings": {
+      "prompt_ms": 76.265,
+      "predicted_ms": 176.62,
+      "predicted_per_second": 96.25184010870795
+     },
+     "id": "k79",
+     "model_input": "The config lives in .github/workflows/ci.yml, not in the root."
+    },
+    {
+     "output": "See https://example.com/pricing?plan=pro for the details.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 228.7,
+     "prompt_tokens": 93,
+     "completion_tokens": 16,
+     "timings": {
+      "prompt_ms": 70.233,
+      "predicted_ms": 156.458,
+      "predicted_per_second": 95.87237469480627
+     },
+     "id": "k82",
+     "model_input": "See https://example.com/pricing?plan=pro for the details."
+    },
+    {
+     "output": "The first paragraph introduces the topic. The second paragraph gives an example.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 230.2,
+     "prompt_tokens": 92,
+     "completion_tokens": 15,
+     "timings": {
+      "prompt_ms": 80.418,
+      "predicted_ms": 147.737,
+      "predicted_per_second": 94.76299099074707
+     },
+     "id": "k85",
+     "model_input": "The first paragraph introduces the topic.\n\nThe second paragraph gives an example."
+    }
+   ],
+   "rules+sf": [
+    {
+     "output": "So I need to send the report today.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 287.5,
+     "prompt_tokens": 263,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 102.685,
+      "predicted_ms": 180.509,
+      "predicted_per_second": 49.85900980006538
+     },
+     "id": "f01",
+     "model_input": "So I need to send the report today."
+    },
+    {
+     "output": "The results show a clear improvement over the baseline.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 266.5,
+     "prompt_tokens": 265,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 110.575,
+      "predicted_ms": 153.038,
+      "predicted_per_second": 65.34324808217566
+     },
+     "id": "f04",
+     "model_input": "The results, show a clear improvement over the baseline."
+    },
+    {
+     "output": "Okay, that makes sense.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 183.1,
+     "prompt_tokens": 260,
+     "completion_tokens": 7,
+     "timings": {
+      "prompt_ms": 91.365,
+      "predicted_ms": 89.422,
+      "predicted_per_second": 67.0975822504529
+     },
+     "id": "f07",
+     "model_input": "Okay, that makes sense."
+    },
+    {
+     "output": "Sure, I can do that.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 203.1,
+     "prompt_tokens": 261,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 86.51,
+      "predicted_ms": 114.13,
+      "predicted_per_second": 61.333566985017086
+     },
+     "id": "f10",
+     "model_input": "Sure, I can do that."
+    },
+    {
+     "output": "I went to the store and bought some milk.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 255.0,
+     "prompt_tokens": 264,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 100.335,
+      "predicted_ms": 152.463,
+      "predicted_per_second": 65.58968405449191
+     },
+     "id": "f13",
+     "model_input": "I went to the store and bought some milk."
+    },
+    {
+     "output": "We could ship it Friday, or Monday if needed.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 291.7,
+     "prompt_tokens": 265,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 118.085,
+      "predicted_ms": 171.381,
+      "predicted_per_second": 64.18447785927262
+     },
+     "id": "f16",
+     "model_input": "We could ship it Friday, or Monday if needed."
+    },
+    {
+     "output": "Okay. Let's begin.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 179.9,
+     "prompt_tokens": 260,
+     "completion_tokens": 7,
+     "timings": {
+      "prompt_ms": 86.201,
+      "predicted_ms": 91.443,
+      "predicted_per_second": 65.61464518880615
+     },
+     "id": "f19",
+     "model_input": "Okay. Let's begin."
+    },
+    {
+     "output": "The invoice was sent on Tuesday and paid on Thursday.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 272.1,
+     "prompt_tokens": 266,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 108.871,
+      "predicted_ms": 160.921,
+      "predicted_per_second": 68.3565227658292
+     },
+     "id": "f22",
+     "model_input": "The invoice, was sent on Tuesday and paid on Thursday."
+    },
+    {
+     "output": "I just wanted to say thanks.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 199.3,
+     "prompt_tokens": 261,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 89.571,
+      "predicted_ms": 107.442,
+      "predicted_per_second": 65.1514305392677
+     },
+     "id": "s04",
+     "model_input": "I just wanted to say thanks."
+    },
+    {
+     "output": "I'm not sure about this.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 206.2,
+     "prompt_tokens": 261,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 95.057,
+      "predicted_ms": 109.034,
+      "predicted_per_second": 64.20015774895904
+     },
+     "id": "s07",
+     "model_input": "I'm not sure about this."
+    },
+    {
+     "output": "We should review the draft before Monday.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 213.7,
+     "prompt_tokens": 262,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 94.26,
+      "predicted_ms": 117.294,
+      "predicted_per_second": 68.20468225143657
+     },
+     "id": "s10",
+     "model_input": "We should review the draft before Monday."
+    },
+    {
+     "output": "Let's meet on Tuesday.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 191.7,
+     "prompt_tokens": 265,
+     "completion_tokens": 7,
+     "timings": {
+      "prompt_ms": 105.45,
+      "predicted_ms": 84.181,
+      "predicted_per_second": 71.27499079364702
+     },
+     "id": "c01",
+     "model_input": "Let's meet on Monday, no wait, Tuesday."
+    },
+    {
+     "output": "The budget is forty thousand dollars.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 215.0,
+     "prompt_tokens": 266,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 108.484,
+      "predicted_ms": 103.941,
+      "predicted_per_second": 67.3458981537603
+     },
+     "id": "c04",
+     "model_input": "The budget is four thousand, sorry, forty thousand dollars."
+    },
+    {
+     "output": "We're meeting in room fourteen.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 212.8,
+     "prompt_tokens": 267,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 105.94,
+      "predicted_ms": 104.22,
+      "predicted_per_second": 67.16561120706199
+     },
+     "id": "c07",
+     "model_input": "We're meeting in room twelve, scratch that, room fourteen."
+    },
+    {
+     "output": "Order three pizzas.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 165.3,
+     "prompt_tokens": 263,
+     "completion_tokens": 5,
+     "timings": {
+      "prompt_ms": 97.657,
+      "predicted_ms": 65.396,
+      "predicted_per_second": 61.16582053948254
+     },
+     "id": "c10",
+     "model_input": "Order two pizzas, make that three pizzas."
+    },
+    {
+     "output": "Can you meet Saturday?",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 172.1,
+     "prompt_tokens": 263,
+     "completion_tokens": 6,
+     "timings": {
+      "prompt_ms": 91.197,
+      "predicted_ms": 78.59,
+      "predicted_per_second": 63.62132586843109
+     },
+     "id": "c14",
+     "model_input": "Can you meet Friday? Sorry, Saturday?"
+    },
+    {
+     "output": "Call me at five five six.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 202.9,
+     "prompt_tokens": 266,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 97.405,
+      "predicted_ms": 103.355,
+      "predicted_per_second": 67.72773450728073
+     },
+     "id": "c17",
+     "model_input": "Call me at five, oh wait, five five six."
+    },
+    {
+     "output": "So I need to send the report by Thursday.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 276.6,
+     "prompt_tokens": 271,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 126.722,
+      "predicted_ms": 147.647,
+      "predicted_per_second": 67.72911064904807
+     },
+     "id": "c20",
+     "model_input": "So I need to send the report by Friday, no wait, make that Thursday."
+    },
+    {
+     "output": "The package weighs fifteen kilos.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 201.1,
+     "prompt_tokens": 265,
+     "completion_tokens": 7,
+     "timings": {
+      "prompt_ms": 115.229,
+      "predicted_ms": 83.536,
+      "predicted_per_second": 71.82532081976632
+     },
+     "id": "c23",
+     "model_input": "The package weighs five kilos, sorry, fifteen kilos."
+    },
+    {
+     "output": "Send it to sarah.lee@example.org please.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 308.6,
+     "prompt_tokens": 267,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 113.288,
+      "predicted_ms": 193.093,
+      "predicted_per_second": 62.146219697244334
+     },
+     "id": "n02",
+     "model_input": "Send it to sarah dot lee at example dot org please."
+    },
+    {
+     "output": "The meeting is on March third at two thirty p m.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 296.6,
+     "prompt_tokens": 266,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 111.132,
+      "predicted_ms": 183.269,
+      "predicted_per_second": 65.47752211230485
+     },
+     "id": "n05",
+     "model_input": "The meeting is on March third at two thirty p m."
+    },
+    {
+     "output": "Write to support@help.example.com.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 251.5,
+     "prompt_tokens": 265,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 103.292,
+      "predicted_ms": 145.882,
+      "predicted_per_second": 61.693697646042686
+     },
+     "id": "n08",
+     "model_input": "Write to support at help dot example dot com."
+    },
+    {
+     "output": "Meet me at four thirty.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 178.7,
+     "prompt_tokens": 260,
+     "completion_tokens": 7,
+     "timings": {
+      "prompt_ms": 80.09,
+      "predicted_ms": 94.879,
+      "predicted_per_second": 63.238440540056274
+     },
+     "id": "n11",
+     "model_input": "Meet me at four thirty."
+    },
+    {
+     "output": "Hi Sarah,\n\nCan you send the numbers by Friday?\n\nThanks,\nJohn",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 411.1,
+     "prompt_tokens": 269,
+     "completion_tokens": 18,
+     "timings": {
+      "prompt_ms": 135.338,
+      "predicted_ms": 273.207,
+      "predicted_per_second": 62.223881525729574
+     },
+     "id": "m01",
+     "model_input": "Hi Sarah, can you send the numbers by Friday? Thanks, John."
+    },
+    {
+     "output": "Hi Tom,\n\nThanks for the quick reply.\n\nI'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 624.2,
+     "prompt_tokens": 280,
+     "completion_tokens": 30,
+     "timings": {
+      "prompt_ms": 153.634,
+      "predicted_ms": 467.927,
+      "predicted_per_second": 61.97547908113873
+     },
+     "id": "m04",
+     "model_input": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave."
+    },
+    {
+     "output": "Can you refactor the auth middleware to use async await?",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 283.8,
+     "prompt_tokens": 265,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 109.6,
+      "predicted_ms": 171.795,
+      "predicted_per_second": 64.02980296283361
+     },
+     "id": "g01",
+     "model_input": "Can you refactor the auth middleware to use async await?"
+    },
+    {
+     "output": "Rename the function to bazQux.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 246.4,
+     "prompt_tokens": 268,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 118.477,
+      "predicted_ms": 125.677,
+      "predicted_per_second": 63.65524320281356
+     },
+     "id": "g04",
+     "model_input": "Rename the function to fooBar, no wait, bazQux."
+    },
+    {
+     "output": "Add a --verbose flag to the CLI, and document it in the README.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 357.4,
+     "prompt_tokens": 270,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 113.338,
+      "predicted_ms": 241.644,
+      "predicted_per_second": 66.21310688450778
+     },
+     "id": "g07",
+     "model_input": "Add a --verbose flag to the CLI, and document it in the README."
+    },
+    {
+     "output": "Don't change the public API, just the internal helpers.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 311.6,
+     "prompt_tokens": 266,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 105.902,
+      "predicted_ms": 203.275,
+      "predicted_per_second": 59.03332923379658
+     },
+     "id": "g10",
+     "model_input": "Don't change the public API, just the internal helpers."
+    },
+    {
+     "output": "Make the query use an index on created_at.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 287.9,
+     "prompt_tokens": 271,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 123.758,
+      "predicted_ms": 159.808,
+      "predicted_per_second": 62.57509010812976
+     },
+     "id": "g13",
+     "model_input": "Make the query use an index on user_id, scratch that, on created_at."
+    },
+    {
+     "output": "Look at app.ts and the readme.md.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 246.1,
+     "prompt_tokens": 265,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 105.975,
+      "predicted_ms": 137.718,
+      "predicted_per_second": 65.35093451836362
+     },
+     "id": "p01",
+     "model_input": "Look at app dot ts and the readme dot md."
+    },
+    {
+     "output": "Edit @src/server.ts, to add a health route.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 301.1,
+     "prompt_tokens": 266,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 102.427,
+      "predicted_ms": 196.14,
+      "predicted_per_second": 61.1807892321811
+     },
+     "id": "p04",
+     "model_input": "Edit @src/server.ts, to add a health route."
+    },
+    {
+     "output": "Thanks for the update. I will review it tonight and send notes in the morning.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 486.5,
+     "prompt_tokens": 271,
+     "completion_tokens": 18,
+     "timings": {
+      "prompt_ms": 142.347,
+      "predicted_ms": 341.705,
+      "predicted_per_second": 49.750515795788765
+     },
+     "id": "k01",
+     "model_input": "Thanks for the update. I will review it tonight and send notes in the morning."
+    },
+    {
+     "output": "Okay.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 119.4,
+     "prompt_tokens": 256,
+     "completion_tokens": 3,
+     "timings": {
+      "prompt_ms": 80.868,
+      "predicted_ms": 36.16,
+      "predicted_per_second": 55.30973451327434
+     },
+     "id": "k04",
+     "model_input": "Okay."
+    },
+    {
+     "output": "I think we should wait until Monday.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 256.5,
+     "prompt_tokens": 262,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 109.661,
+      "predicted_ms": 144.44,
+      "predicted_per_second": 55.38631957906397
+     },
+     "id": "k07",
+     "model_input": "I think we should wait until Monday."
+    },
+    {
+     "output": "She had had enough of the noise.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 379.1,
+     "prompt_tokens": 262,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 100.936,
+      "predicted_ms": 275.933,
+      "predicted_per_second": 28.99254529179185
+     },
+     "id": "k10",
+     "model_input": "She had had enough of the noise."
+    },
+    {
+     "output": "The plan needs a second review.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 612.8,
+     "prompt_tokens": 267,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 278.532,
+      "predicted_ms": 327.47,
+      "predicted_per_second": 21.376003908754996
+     },
+     "id": "k13",
+     "model_input": "I mean what I said: the plan needs a second review."
+    },
+    {
+     "output": "The ER was busy last night.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 438.4,
+     "prompt_tokens": 261,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 127.782,
+      "predicted_ms": 306.724,
+      "predicted_per_second": 22.82182026838461
+     },
+     "id": "k16",
+     "model_input": "The ER was busy last night."
+    },
+    {
+     "output": "Please send the signed copy to legal by the end of the week.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 417.2,
+     "prompt_tokens": 268,
+     "completion_tokens": 15,
+     "timings": {
+      "prompt_ms": 171.328,
+      "predicted_ms": 240.884,
+      "predicted_per_second": 58.1192607230036
+     },
+     "id": "k20",
+     "model_input": "Please send the signed copy to legal by the end of the week."
+    },
+    {
+     "output": "gonna grab a coffee, back in 10",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 317.9,
+     "prompt_tokens": 265,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 122.035,
+      "predicted_ms": 193.389,
+      "predicted_per_second": 56.880174156751416
+     },
+     "id": "k23",
+     "model_input": "gonna grab a coffee, back in 10"
+    },
+    {
+     "output": "Good morning, everyone. Let's get started.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 306.2,
+     "prompt_tokens": 264,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 108.145,
+      "predicted_ms": 195.462,
+      "predicted_per_second": 51.160839447053654
+     },
+     "id": "k26",
+     "model_input": "Good morning, everyone. Let's get started."
+    },
+    {
+     "output": "The patient reported mild headaches and occasional dizziness.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 450.1,
+     "prompt_tokens": 264,
+     "completion_tokens": 11,
+     "timings": {
+      "prompt_ms": 111.32,
+      "predicted_ms": 336.034,
+      "predicted_per_second": 29.75889344530613
+     },
+     "id": "k29",
+     "model_input": "The patient reported mild headaches and occasional dizziness."
+    },
+    {
+     "output": "Hmm, interesting question.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 190.6,
+     "prompt_tokens": 259,
+     "completion_tokens": 6,
+     "timings": {
+      "prompt_ms": 92.817,
+      "predicted_ms": 93.573,
+      "predicted_per_second": 53.434217135284754
+     },
+     "id": "k32",
+     "model_input": "Hmm, interesting question."
+    },
+    {
+     "output": "We should totally do this again sometime.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 254.7,
+     "prompt_tokens": 262,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 111.086,
+      "predicted_ms": 141.225,
+      "predicted_per_second": 56.6471941936626
+     },
+     "id": "k35",
+     "model_input": "We should totally do this again sometime."
+    },
+    {
+     "output": "I was like, no way, and she was like, yes way.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 367.0,
+     "prompt_tokens": 269,
+     "completion_tokens": 16,
+     "timings": {
+      "prompt_ms": 120.037,
+      "predicted_ms": 244.045,
+      "predicted_per_second": 61.46407424860169
+     },
+     "id": "k38",
+     "model_input": "I was like, no way, and she was like, yes way."
+    },
+    {
+     "output": "It's 5 o'clock somewhere.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 229.5,
+     "prompt_tokens": 262,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 91.033,
+      "predicted_ms": 131.369,
+      "predicted_per_second": 60.89716752049571
+     },
+     "id": "k42",
+     "model_input": "It's 5 o'clock somewhere."
+    },
+    {
+     "output": "About 25% of users opted in during the first 7 days.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 382.3,
+     "prompt_tokens": 270,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 117.169,
+      "predicted_ms": 262.617,
+      "predicted_per_second": 60.92522570892211
+     },
+     "id": "k45",
+     "model_input": "About 25% of users opted in during the first 7 days."
+    },
+    {
+     "output": "Revenue was $3.2 million in Q3, up 12% from last year.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 467.3,
+     "prompt_tokens": 274,
+     "completion_tokens": 21,
+     "timings": {
+      "prompt_ms": 150.224,
+      "predicted_ms": 314.772,
+      "predicted_per_second": 63.53805293990571
+     },
+     "id": "k48",
+     "model_input": "Revenue was $3.2 million in Q3, up 12% from last year."
+    },
+    {
+     "output": "The file is 2.5 GB and takes about 10 minutes to download.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 413.2,
+     "prompt_tokens": 272,
+     "completion_tokens": 19,
+     "timings": {
+      "prompt_ms": 128.848,
+      "predicted_ms": 282.232,
+      "predicted_per_second": 63.77731795118909
+     },
+     "id": "k51",
+     "model_input": "The file is 2.5 GB and takes about 10 minutes to download."
+    },
+    {
+     "output": "Hi Tom,\n\nThanks for the quick reply.\n\nI'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 669.8,
+     "prompt_tokens": 280,
+     "completion_tokens": 30,
+     "timings": {
+      "prompt_ms": 169.868,
+      "predicted_ms": 497.495,
+      "predicted_per_second": 58.292043136111914
+     },
+     "id": "k54",
+     "model_input": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave."
+    },
+    {
+     "output": "Hey Chris,\n\nJust checking in on the proposal.\n\nTalk soon,\nLena",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 428.6,
+     "prompt_tokens": 272,
+     "completion_tokens": 19,
+     "timings": {
+      "prompt_ms": 134.027,
+      "predicted_ms": 291.544,
+      "predicted_per_second": 61.74025190022776
+     },
+     "id": "k57",
+     "model_input": "Hey Chris,\n\nJust checking in on the proposal.\n\nTalk soon,\nLena"
+    },
+    {
+     "output": "Run npm test and fix any failing specs.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 250.7,
+     "prompt_tokens": 263,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 103.426,
+      "predicted_ms": 144.71,
+      "predicted_per_second": 62.19335222168474
+     },
+     "id": "k60",
+     "model_input": "Run npm test and fix any failing specs."
+    },
+    {
+     "output": "Why does the build fail with ERR_MODULE_NOT_FOUND after the upgrade?",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 351.3,
+     "prompt_tokens": 268,
+     "completion_tokens": 15,
+     "timings": {
+      "prompt_ms": 116.405,
+      "predicted_ms": 232.129,
+      "predicted_per_second": 60.31129242791723
+     },
+     "id": "k63",
+     "model_input": "Why does the build fail with ERR_MODULE_NOT_FOUND after the upgrade?"
+    },
+    {
+     "output": "Write a script that reads the CSV and prints the top 10 rows.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 411.6,
+     "prompt_tokens": 270,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 122.647,
+      "predicted_ms": 286.285,
+      "predicted_per_second": 55.88836299491765
+     },
+     "id": "k67",
+     "model_input": "Write a script that reads the CSV and prints the top 10 rows."
+    },
+    {
+     "output": "Set DEBUG=true and run npm run dev -- --port 8081.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 411.9,
+     "prompt_tokens": 271,
+     "completion_tokens": 18,
+     "timings": {
+      "prompt_ms": 126.763,
+      "predicted_ms": 282.762,
+      "predicted_per_second": 60.12123269746289
+     },
+     "id": "k70",
+     "model_input": "Set DEBUG=true and run npm run dev -- --port 8081."
+    },
+    {
+     "output": "Explain what Array.prototype.reduce does with an empty array.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 297.9,
+     "prompt_tokens": 266,
+     "completion_tokens": 13,
+     "timings": {
+      "prompt_ms": 107.827,
+      "predicted_ms": 187.609,
+      "predicted_per_second": 63.96281628280093
+     },
+     "id": "k73",
+     "model_input": "Explain what Array.prototype.reduce does with an empty array."
+    },
+    {
+     "output": "Check package.json for the test script.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 226.2,
+     "prompt_tokens": 262,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 92.99,
+      "predicted_ms": 131.063,
+      "predicted_per_second": 61.039347489375345
+     },
+     "id": "k76",
+     "model_input": "Check package.json for the test script."
+    },
+    {
+     "output": "The config lives in .github/workflows/ci.yml, not in the root.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 426.0,
+     "prompt_tokens": 271,
+     "completion_tokens": 18,
+     "timings": {
+      "prompt_ms": 127.042,
+      "predicted_ms": 296.535,
+      "predicted_per_second": 57.32881447383951
+     },
+     "id": "k79",
+     "model_input": "The config lives in .github/workflows/ci.yml, not in the root."
+    },
+    {
+     "output": "See https://example.com/pricing?plan=pro for the details.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 358.4,
+     "prompt_tokens": 269,
+     "completion_tokens": 16,
+     "timings": {
+      "prompt_ms": 120.644,
+      "predicted_ms": 235.54,
+      "predicted_per_second": 63.68345079392035
+     },
+     "id": "k82",
+     "model_input": "See https://example.com/pricing?plan=pro for the details."
+    },
+    {
+     "output": "The first paragraph introduces the topic.\n\nThe second paragraph gives an example.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 392.3,
+     "prompt_tokens": 269,
+     "completion_tokens": 16,
+     "timings": {
+      "prompt_ms": 130.789,
+      "predicted_ms": 259.089,
+      "predicted_per_second": 57.89516343804639
+     },
+     "id": "k85",
+     "model_input": "The first paragraph introduces the topic.\n\nThe second paragraph gives an example."
+    }
+   ]
+  },
+  "servers": {
+   "s1": {
+    "cmd": [
+     "/Users/runner/work/_temp/cleanup/llama/llama-b11669/llama-server",
+     "-m",
+     "/Users/runner/work/_temp/cleanup/models/s1-mini-q4_k_m.gguf",
+     "--jinja",
+     "--chat-template-kwargs",
+     "{\"enable_thinking\":false}",
+     "--temp",
+     "0",
+     "-c",
+     "8192",
+     "-np",
+     "1",
+     "--port",
+     "8090",
+     "--host",
+     "127.0.0.1",
+     "-ngl",
+     "0"
+    ],
+    "peak_rss_mb": 1702.2,
+    "model": {
+     "name": "S1-mini by Superwhisper",
+     "repo": "superwhisper/s1-mini-GGUF",
+     "revision": "34add00a48a2e5d24e5a4ee5405a99620a3a240c",
+     "file": "s1-mini-q4_k_m.gguf",
+     "sha256": "3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634",
+     "size": 484219808
+    }
+   },
+   "sf": {
+    "cmd": [
+     "/Users/runner/work/_temp/cleanup/llama/llama-b11669/llama-server",
+     "-m",
+     "/Users/runner/work/_temp/cleanup/models/SpeakoFlow-Mini-0.8B-Q4_K_M.gguf",
+     "--jinja",
+     "--chat-template-kwargs",
+     "{\"enable_thinking\":false}",
+     "--temp",
+     "0",
+     "-c",
+     "8192",
+     "-np",
+     "1",
+     "--port",
+     "8091",
+     "--host",
+     "127.0.0.1",
+     "-ngl",
+     "0"
+    ],
+    "peak_rss_mb": 1392.1,
+    "model": {
+     "name": "SpeakoFlow Mini 0.8B",
+     "repo": "SpeakoFlow/speakoflow-mini",
+     "revision": "835431771f72820251fe6c6b4b07f12b000e2647",
+     "file": "SpeakoFlow-Mini-0.8B-Q4_K_M.gguf",
+     "sha256": "530e0a5d4e9314e3bae2c92aecf3ab39ca48e8cfecac41372058f9fcb742329d",
+     "size": 541903616
+    }
+   }
+  },
+  "meta": {
+   "date": "2026-10-16",
+   "platform": "macOS-15.7.9-arm64-arm-64bit",
+   "machine": "arm64",
+   "cpu_count": 3,
+   "python": "3.12.10",
+   "llama_cpp": "b11669",
+   "ngl": 0,
+   "threads": null,
+   "ctx": 8192,
+   "warmup": 3,
+   "subset": 60,
+   "label": "macos-15-cpu",
+   "node": "v22.23.2"
+  }
+ },
+ "result": {
+  "summary": {
+   "none": {
+    "all": {
+     "n": 60,
+     "n_clean": 28,
+     "n_edit": 32,
+     "restraint": 100.0,
+     "edit_accuracy": 0.0,
+     "edit_accuracy_rules_fixable": 0.0,
+     "edit_accuracy_model_needed": 0.0,
+     "n_rules_fixable": 17,
+     "n_model_needed": 15,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": []
+    },
+    "dev": {
+     "n": 28,
+     "n_clean": 14,
+     "n_edit": 14,
+     "restraint": 100.0,
+     "edit_accuracy": 0.0,
+     "edit_accuracy_rules_fixable": 0.0,
+     "edit_accuracy_model_needed": 0.0,
+     "n_rules_fixable": 5,
+     "n_model_needed": 9,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": []
+    },
+    "test": {
+     "n": 32,
+     "n_clean": 14,
+     "n_edit": 18,
+     "restraint": 100.0,
+     "edit_accuracy": 0.0,
+     "edit_accuracy_rules_fixable": 0.0,
+     "edit_accuracy_model_needed": 0.0,
+     "n_rules_fixable": 12,
+     "n_model_needed": 6,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": []
+    },
+    "by_group": {
+     "clean": {
+      "n": 28,
+      "exact": 100.0
+     },
+     "coding_agent": {
+      "n": 5,
+      "exact": 0.0
+     },
+     "email": {
+      "n": 2,
+      "exact": 0.0
+     },
+     "file_mention": {
+      "n": 2,
+      "exact": 0.0
+     },
+     "filler": {
+      "n": 8,
+      "exact": 0.0
+     },
+     "format": {
+      "n": 4,
+      "exact": 0.0
+     },
+     "self_correction": {
+      "n": 8,
+      "exact": 0.0
+     },
+     "stutter": {
+      "n": 3,
+      "exact": 0.0
+     }
+    }
+   },
+   "rules": {
+    "all": {
+     "n": 60,
+     "n_clean": 28,
+     "n_edit": 32,
+     "restraint": 100.0,
+     "edit_accuracy": 53.1,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 0.0,
+     "n_rules_fixable": 17,
+     "n_model_needed": 15,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": []
+    },
+    "dev": {
+     "n": 28,
+     "n_clean": 14,
+     "n_edit": 14,
+     "restraint": 100.0,
+     "edit_accuracy": 35.7,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 0.0,
+     "n_rules_fixable": 5,
+     "n_model_needed": 9,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": []
+    },
+    "test": {
+     "n": 32,
+     "n_clean": 14,
+     "n_edit": 18,
+     "restraint": 100.0,
+     "edit_accuracy": 66.7,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 0.0,
+     "n_rules_fixable": 12,
+     "n_model_needed": 6,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": []
+    },
+    "by_group": {
+     "clean": {
+      "n": 28,
+      "exact": 100.0
+     },
+     "coding_agent": {
+      "n": 5,
+      "exact": 60.0
+     },
+     "email": {
+      "n": 2,
+      "exact": 100.0
+     },
+     "file_mention": {
+      "n": 2,
+      "exact": 50.0
+     },
+     "filler": {
+      "n": 8,
+      "exact": 100.0
+     },
+     "format": {
+      "n": 4,
+      "exact": 0.0
+     },
+     "self_correction": {
+      "n": 8,
+      "exact": 0.0
+     },
+     "stutter": {
+      "n": 3,
+      "exact": 100.0
+     }
+    }
+   },
+   "rules+s1": {
+    "all": {
+     "n": 60,
+     "n_clean": 28,
+     "n_edit": 32,
+     "restraint": 82.1,
+     "edit_accuracy": 96.9,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 93.3,
+     "n_rules_fixable": 17,
+     "n_model_needed": 15,
+     "content_loss": 1.7,
+     "content_add": 1.7,
+     "clean_wrong": [
+      "k10",
+      "k23",
+      "k54",
+      "k70",
+      "k85"
+     ],
+     "loss_ids": [
+      "k23"
+     ]
+    },
+    "dev": {
+     "n": 28,
+     "n_clean": 14,
+     "n_edit": 14,
+     "restraint": 71.4,
+     "edit_accuracy": 92.9,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 88.9,
+     "n_rules_fixable": 5,
+     "n_model_needed": 9,
+     "content_loss": 3.6,
+     "content_add": 3.6,
+     "clean_wrong": [
+      "k10",
+      "k23",
+      "k54",
+      "k85"
+     ],
+     "loss_ids": [
+      "k23"
+     ]
+    },
+    "test": {
+     "n": 32,
+     "n_clean": 14,
+     "n_edit": 18,
+     "restraint": 92.9,
+     "edit_accuracy": 100.0,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 100.0,
+     "n_rules_fixable": 12,
+     "n_model_needed": 6,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [
+      "k70"
+     ],
+     "loss_ids": []
+    },
+    "by_group": {
+     "clean": {
+      "n": 28,
+      "exact": 82.1
+     },
+     "coding_agent": {
+      "n": 5,
+      "exact": 100.0
+     },
+     "email": {
+      "n": 2,
+      "exact": 100.0
+     },
+     "file_mention": {
+      "n": 2,
+      "exact": 100.0
+     },
+     "filler": {
+      "n": 8,
+      "exact": 100.0
+     },
+     "format": {
+      "n": 4,
+      "exact": 75.0
+     },
+     "self_correction": {
+      "n": 8,
+      "exact": 100.0
+     },
+     "stutter": {
+      "n": 3,
+      "exact": 100.0
+     }
+    }
+   },
+   "rules+s1+guard": {
+    "all": {
+     "n": 60,
+     "n_clean": 28,
+     "n_edit": 32,
+     "restraint": 96.4,
+     "edit_accuracy": 96.9,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 93.3,
+     "n_rules_fixable": 17,
+     "n_model_needed": 15,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [
+      "k10"
+     ],
+     "loss_ids": [],
+     "guard_reject": 73.3
+    },
+    "dev": {
+     "n": 28,
+     "n_clean": 14,
+     "n_edit": 14,
+     "restraint": 92.9,
+     "edit_accuracy": 92.9,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 88.9,
+     "n_rules_fixable": 5,
+     "n_model_needed": 9,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [
+      "k10"
+     ],
+     "loss_ids": [],
+     "guard_reject": 64.3
+    },
+    "test": {
+     "n": 32,
+     "n_clean": 14,
+     "n_edit": 18,
+     "restraint": 100.0,
+     "edit_accuracy": 100.0,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 100.0,
+     "n_rules_fixable": 12,
+     "n_model_needed": 6,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": [],
+     "guard_reject": 81.2
+    },
+    "by_group": {
+     "clean": {
+      "n": 28,
+      "exact": 96.4
+     },
+     "coding_agent": {
+      "n": 5,
+      "exact": 100.0
+     },
+     "email": {
+      "n": 2,
+      "exact": 100.0
+     },
+     "file_mention": {
+      "n": 2,
+      "exact": 100.0
+     },
+     "filler": {
+      "n": 8,
+      "exact": 100.0
+     },
+     "format": {
+      "n": 4,
+      "exact": 75.0
+     },
+     "self_correction": {
+      "n": 8,
+      "exact": 100.0
+     },
+     "stutter": {
+      "n": 3,
+      "exact": 100.0
+     }
+    }
+   },
+   "rules+sf": {
+    "all": {
+     "n": 60,
+     "n_clean": 28,
+     "n_edit": 32,
+     "restraint": 92.9,
+     "edit_accuracy": 90.6,
+     "edit_accuracy_rules_fixable": 94.1,
+     "edit_accuracy_model_needed": 86.7,
+     "n_rules_fixable": 17,
+     "n_model_needed": 15,
+     "content_loss": 1.7,
+     "content_add": 0.0,
+     "clean_wrong": [
+      "k13",
+      "k54"
+     ],
+     "loss_ids": [
+      "k13"
+     ]
+    },
+    "dev": {
+     "n": 28,
+     "n_clean": 14,
+     "n_edit": 14,
+     "restraint": 92.9,
+     "edit_accuracy": 85.7,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 77.8,
+     "n_rules_fixable": 5,
+     "n_model_needed": 9,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [
+      "k54"
+     ],
+     "loss_ids": []
+    },
+    "test": {
+     "n": 32,
+     "n_clean": 14,
+     "n_edit": 18,
+     "restraint": 92.9,
+     "edit_accuracy": 94.4,
+     "edit_accuracy_rules_fixable": 91.7,
+     "edit_accuracy_model_needed": 100.0,
+     "n_rules_fixable": 12,
+     "n_model_needed": 6,
+     "content_loss": 3.1,
+     "content_add": 0.0,
+     "clean_wrong": [
+      "k13"
+     ],
+     "loss_ids": [
+      "k13"
+     ]
+    },
+    "by_group": {
+     "clean": {
+      "n": 28,
+      "exact": 92.9
+     },
+     "coding_agent": {
+      "n": 5,
+      "exact": 100.0
+     },
+     "email": {
+      "n": 2,
+      "exact": 50.0
+     },
+     "file_mention": {
+      "n": 2,
+      "exact": 100.0
+     },
+     "filler": {
+      "n": 8,
+      "exact": 100.0
+     },
+     "format": {
+      "n": 4,
+      "exact": 50.0
+     },
+     "self_correction": {
+      "n": 8,
+      "exact": 100.0
+     },
+     "stutter": {
+      "n": 3,
+      "exact": 100.0
+     }
+    }
+   },
+   "rules+sf+guard": {
+    "all": {
+     "n": 60,
+     "n_clean": 28,
+     "n_edit": 32,
+     "restraint": 96.4,
+     "edit_accuracy": 93.8,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 86.7,
+     "n_rules_fixable": 17,
+     "n_model_needed": 15,
+     "content_loss": 1.7,
+     "content_add": 0.0,
+     "clean_wrong": [
+      "k13"
+     ],
+     "loss_ids": [
+      "k13"
+     ],
+     "guard_reject": 76.7
+    },
+    "dev": {
+     "n": 28,
+     "n_clean": 14,
+     "n_edit": 14,
+     "restraint": 100.0,
+     "edit_accuracy": 85.7,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 77.8,
+     "n_rules_fixable": 5,
+     "n_model_needed": 9,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": [],
+     "guard_reject": 75.0
+    },
+    "test": {
+     "n": 32,
+     "n_clean": 14,
+     "n_edit": 18,
+     "restraint": 92.9,
+     "edit_accuracy": 100.0,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 100.0,
+     "n_rules_fixable": 12,
+     "n_model_needed": 6,
+     "content_loss": 3.1,
+     "content_add": 0.0,
+     "clean_wrong": [
+      "k13"
+     ],
+     "loss_ids": [
+      "k13"
+     ],
+     "guard_reject": 78.1
+    },
+    "by_group": {
+     "clean": {
+      "n": 28,
+      "exact": 96.4
+     },
+     "coding_agent": {
+      "n": 5,
+      "exact": 100.0
+     },
+     "email": {
+      "n": 2,
+      "exact": 100.0
+     },
+     "file_mention": {
+      "n": 2,
+      "exact": 100.0
+     },
+     "filler": {
+      "n": 8,
+      "exact": 100.0
+     },
+     "format": {
+      "n": 4,
+      "exact": 50.0
+     },
+     "self_correction": {
+      "n": 8,
+      "exact": 100.0
+     },
+     "stutter": {
+      "n": 3,
+      "exact": 100.0
+     }
+    }
+   }
+  },
+  "latency": {
+   "rules+s1": {
+    "n": 60,
+    "median_ms": 183.0,
+    "p95_ms": 309.7,
+    "mean_ms": 200.9,
+    "max_ms": 558.8,
+    "share_over_1s": 0.0,
+    "share_over_2s": 0.0,
+    "share_over_3s": 0.0,
+    "reasoning_outputs": 0,
+    "think_tag_outputs": 0
+   },
+   "rules+sf": {
+    "n": 60,
+    "median_ms": 287.7,
+    "p95_ms": 486.5,
+    "mean_ms": 310.2,
+    "max_ms": 669.8,
+    "share_over_1s": 0.0,
+    "share_over_2s": 0.0,
+    "share_over_3s": 0.0,
+    "reasoning_outputs": 0,
+    "think_tag_outputs": 0
+   }
+  },
+  "latency_pooled": {
+   "s1": {
+    "n": 60,
+    "median_ms": 183.0,
+    "p95_ms": 309.7,
+    "mean_ms": 200.9,
+    "max_ms": 558.8
+   },
+   "sf": {
+    "n": 60,
+    "median_ms": 287.7,
+    "p95_ms": 486.5,
+    "mean_ms": 310.2,
+    "max_ms": 669.8
+   }
+  },
+  "guard": {
+   "rules+s1+guard": {
+    "rejects": 44,
+    "reasons": {
+     "noWordChange": 43,
+     "droppedContent": 1
+    },
+    "reject_of_exact_output": 40,
+    "reject_of_inexact_output": 4,
+    "ids": {
+     "f01": "noWordChange",
+     "f04": "noWordChange",
+     "f07": "noWordChange",
+     "f10": "noWordChange",
+     "f13": "noWordChange",
+     "f16": "noWordChange",
+     "f19": "noWordChange",
+     "f22": "noWordChange",
+     "s04": "noWordChange",
+     "s07": "noWordChange",
+     "s10": "noWordChange",
+     "m01": "noWordChange",
+     "m04": "noWordChange",
+     "g01": "noWordChange",
+     "g07": "noWordChange",
+     "g10": "noWordChange",
+     "p04": "noWordChange",
+     "k01": "noWordChange",
+     "k04": "noWordChange",
+     "k07": "noWordChange",
+     "k13": "noWordChange",
+     "k16": "noWordChange",
+     "k20": "noWordChange",
+     "k23": "droppedContent",
+     "k26": "noWordChange",
+     "k29": "noWordChange",
+     "k32": "noWordChange",
+     "k35": "noWordChange",
+     "k38": "noWordChange",
+     "k42": "noWordChange",
+     "k45": "noWordChange",
+     "k48": "noWordChange",
+     "k51": "noWordChange",
+     "k54": "noWordChange",
+     "k57": "noWordChange",
+     "k60": "noWordChange",
+     "k63": "noWordChange",
+     "k67": "noWordChange",
+     "k70": "noWordChange",
+     "k73": "noWordChange",
+     "k76": "noWordChange",
+     "k79": "noWordChange",
+     "k82": "noWordChange",
+     "k85": "noWordChange"
+    }
+   },
+   "rules+sf+guard": {
+    "rejects": 46,
+    "reasons": {
+     "noWordChange": 46
+    },
+    "reject_of_exact_output": 42,
+    "reject_of_inexact_output": 4,
+    "ids": {
+     "f01": "noWordChange",
+     "f04": "noWordChange",
+     "f07": "noWordChange",
+     "f10": "noWordChange",
+     "f13": "noWordChange",
+     "f16": "noWordChange",
+     "f19": "noWordChange",
+     "f22": "noWordChange",
+     "s04": "noWordChange",
+     "s07": "noWordChange",
+     "s10": "noWordChange",
+     "n05": "noWordChange",
+     "n11": "noWordChange",
+     "m01": "noWordChange",
+     "m04": "noWordChange",
+     "g01": "noWordChange",
+     "g07": "noWordChange",
+     "g10": "noWordChange",
+     "p04": "noWordChange",
+     "k01": "noWordChange",
+     "k04": "noWordChange",
+     "k07": "noWordChange",
+     "k10": "noWordChange",
+     "k16": "noWordChange",
+     "k20": "noWordChange",
+     "k23": "noWordChange",
+     "k26": "noWordChange",
+     "k29": "noWordChange",
+     "k32": "noWordChange",
+     "k35": "noWordChange",
+     "k38": "noWordChange",
+     "k42": "noWordChange",
+     "k45": "noWordChange",
+     "k48": "noWordChange",
+     "k51": "noWordChange",
+     "k54": "noWordChange",
+     "k57": "noWordChange",
+     "k60": "noWordChange",
+     "k63": "noWordChange",
+     "k67": "noWordChange",
+     "k70": "noWordChange",
+     "k73": "noWordChange",
+     "k76": "noWordChange",
+     "k79": "noWordChange",
+     "k82": "noWordChange",
+     "k85": "noWordChange"
+    }
+   }
+  },
+  "rules_ok_ids": [
+   "f01",
+   "f04",
+   "f07",
+   "f10",
+   "f13",
+   "f16",
+   "f19",
+   "f22",
+   "s04",
+   "s07",
+   "s10",
+   "m01",
+   "m04",
+   "g01",
+   "g07",
+   "g10",
+   "p04",
+   "k01",
+   "k04",
+   "k07",
+   "k10",
+   "k13",
+   "k16",
+   "k20",
+   "k23",
+   "k26",
+   "k29",
+   "k32",
+   "k35",
+   "k38",
+   "k42",
+   "k45",
+   "k48",
+   "k51",
+   "k54",
+   "k57",
+   "k60",
+   "k63",
+   "k67",
+   "k70",
+   "k73",
+   "k76",
+   "k79",
+   "k82",
+   "k85"
+  ]
+ },
+ "finals": {
+  "none": {
+   "f01": "So um I need to send the report today.",
+   "f04": "The results, um, show a clear improvement over the baseline.",
+   "f07": "Okay, hmm, that makes sense.",
+   "f10": "Uh, sure, I can do that.",
+   "f13": "I went to the store and, uh, bought some milk.",
+   "f16": "We could ship it Friday, erm, or Monday if needed.",
+   "f19": "Um. Okay. Let's begin.",
+   "f22": "The invoice, uh, was sent on Tuesday and, um, paid on Thursday.",
+   "s04": "I, I just wanted to say thanks.",
+   "s07": "I'm I'm not sure about this.",
+   "s10": "We we should review the the draft before Monday.",
+   "c01": "Let's meet on Monday, no wait, Tuesday.",
+   "c04": "The budget is four thousand, sorry, forty thousand dollars.",
+   "c07": "We're meeting in room twelve, scratch that, room fourteen.",
+   "c10": "Order two pizzas, make that three pizzas.",
+   "c14": "Can you meet Friday? Sorry, Saturday?",
+   "c17": "Call me at five five five, oh wait, five five six.",
+   "c20": "Um so I need to send the the report by uh Friday, no wait, make that Thursday.",
+   "c23": "The package weighs five kilos, sorry, fifteen kilos.",
+   "n02": "Send it to sarah dot lee at example dot org please.",
+   "n05": "The meeting is on March third at two thirty p m.",
+   "n08": "Write to support at help dot example dot com.",
+   "n11": "Meet me at four thirty.",
+   "m01": "Hi Sarah, um, can you send the numbers by Friday? Thanks, John.",
+   "m04": "Hi Tom, thanks for the quick reply. Um, I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+   "g01": "Um, can you refactor the auth middleware to use async await?",
+   "g04": "Rename the function to fooBar, no wait, bazQux.",
+   "g07": "Add a --verbose flag to the CLI, hmm, and document it in the README.",
+   "g10": "Don't change the public API, um, just the internal helpers.",
+   "g13": "Make the query use an index on user_id, scratch that, on created_at.",
+   "p01": "Look at app dot ts and the readme dot md.",
+   "p04": "Edit @src/server.ts, uh, to add a health route.",
+   "k01": "Thanks for the update. I will review it tonight and send notes in the morning.",
+   "k04": "Okay.",
+   "k07": "I think we should wait until Monday.",
+   "k10": "She had had enough of the noise.",
+   "k13": "I mean what I said: the plan needs a second review.",
+   "k16": "The ER was busy last night.",
+   "k20": "Please send the signed copy to legal by the end of the week.",
+   "k23": "gonna grab a coffee, back in 10",
+   "k26": "Good morning, everyone. Let's get started.",
+   "k29": "The patient reported mild headaches and occasional dizziness.",
+   "k32": "Hmm, interesting question.",
+   "k35": "We should totally do this again sometime.",
+   "k38": "I was like, no way, and she was like, yes way.",
+   "k42": "It's 5 o'clock somewhere.",
+   "k45": "About 25% of users opted in during the first 7 days.",
+   "k48": "Revenue was $3.2 million in Q3, up 12% from last year.",
+   "k51": "The file is 2.5 GB and takes about 10 minutes to download.",
+   "k54": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+   "k57": "Hey Chris,\n\nJust checking in on the proposal.\n\nTalk soon,\nLena",
+   "k60": "Run npm test and fix any failing specs.",
+   "k63": "Why does the build fail with ERR_MODULE_NOT_FOUND after the upgrade?",
+   "k67": "Write a script that reads the CSV and prints the top 10 rows.",
+   "k70": "Set DEBUG=true and run npm run dev -- --port 8081.",
+   "k73": "Explain what Array.prototype.reduce does with an empty array.",
+   "k76": "Check package.json for the test script.",
+   "k79": "The config lives in .github/workflows/ci.yml, not in the root.",
+   "k82": "See https://example.com/pricing?plan=pro for the details.",
+   "k85": "The first paragraph introduces the topic.\n\nThe second paragraph gives an example."
+  },
+  "rules": {
+   "f01": "So I need to send the report today.",
+   "f04": "The results, show a clear improvement over the baseline.",
+   "f07": "Okay, that makes sense.",
+   "f10": "Sure, I can do that.",
+   "f13": "I went to the store and bought some milk.",
+   "f16": "We could ship it Friday, or Monday if needed.",
+   "f19": "Okay. Let's begin.",
+   "f22": "The invoice, was sent on Tuesday and paid on Thursday.",
+   "s04": "I just wanted to say thanks.",
+   "s07": "I'm not sure about this.",
+   "s10": "We should review the draft before Monday.",
+   "c01": "Let's meet on Monday, no wait, Tuesday.",
+   "c04": "The budget is four thousand, sorry, forty thousand dollars.",
+   "c07": "We're meeting in room twelve, scratch that, room fourteen.",
+   "c10": "Order two pizzas, make that three pizzas.",
+   "c14": "Can you meet Friday? Sorry, Saturday?",
+   "c17": "Call me at five, oh wait, five five six.",
+   "c20": "So I need to send the report by Friday, no wait, make that Thursday.",
+   "c23": "The package weighs five kilos, sorry, fifteen kilos.",
+   "n02": "Send it to sarah dot lee at example dot org please.",
+   "n05": "The meeting is on March third at two thirty p m.",
+   "n08": "Write to support at help dot example dot com.",
+   "n11": "Meet me at four thirty.",
+   "m01": "Hi Sarah, can you send the numbers by Friday? Thanks, John.",
+   "m04": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+   "g01": "Can you refactor the auth middleware to use async await?",
+   "g04": "Rename the function to fooBar, no wait, bazQux.",
+   "g07": "Add a --verbose flag to the CLI, and document it in the README.",
+   "g10": "Don't change the public API, just the internal helpers.",
+   "g13": "Make the query use an index on user_id, scratch that, on created_at.",
+   "p01": "Look at app dot ts and the readme dot md.",
+   "p04": "Edit @src/server.ts, to add a health route.",
+   "k01": "Thanks for the update. I will review it tonight and send notes in the morning.",
+   "k04": "Okay.",
+   "k07": "I think we should wait until Monday.",
+   "k10": "She had had enough of the noise.",
+   "k13": "I mean what I said: the plan needs a second review.",
+   "k16": "The ER was busy last night.",
+   "k20": "Please send the signed copy to legal by the end of the week.",
+   "k23": "gonna grab a coffee, back in 10",
+   "k26": "Good morning, everyone. Let's get started.",
+   "k29": "The patient reported mild headaches and occasional dizziness.",
+   "k32": "Hmm, interesting question.",
+   "k35": "We should totally do this again sometime.",
+   "k38": "I was like, no way, and she was like, yes way.",
+   "k42": "It's 5 o'clock somewhere.",
+   "k45": "About 25% of users opted in during the first 7 days.",
+   "k48": "Revenue was $3.2 million in Q3, up 12% from last year.",
+   "k51": "The file is 2.5 GB and takes about 10 minutes to download.",
+   "k54": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+   "k57": "Hey Chris,\n\nJust checking in on the proposal.\n\nTalk soon,\nLena",
+   "k60": "Run npm test and fix any failing specs.",
+   "k63": "Why does the build fail with ERR_MODULE_NOT_FOUND after the upgrade?",
+   "k67": "Write a script that reads the CSV and prints the top 10 rows.",
+   "k70": "Set DEBUG=true and run npm run dev -- --port 8081.",
+   "k73": "Explain what Array.prototype.reduce does with an empty array.",
+   "k76": "Check package.json for the test script.",
+   "k79": "The config lives in .github/workflows/ci.yml, not in the root.",
+   "k82": "See https://example.com/pricing?plan=pro for the details.",
+   "k85": "The first paragraph introduces the topic.\n\nThe second paragraph gives an example."
+  },
+  "rules+s1": {
+   "f01": "So I need to send the report today.",
+   "f04": "The results show a clear improvement over the baseline.",
+   "f07": "Okay, that makes sense.",
+   "f10": "Sure, I can do that.",
+   "f13": "I went to the store and bought some milk.",
+   "f16": "We could ship it Friday, or Monday if needed.",
+   "f19": "Okay. Let's begin.",
+   "f22": "The invoice was sent on Tuesday and paid on Thursday.",
+   "s04": "I just wanted to say thanks.",
+   "s07": "I'm not sure about this.",
+   "s10": "We should review the draft before Monday.",
+   "c01": "Let's meet on Tuesday.",
+   "c04": "The budget is $40,000.",
+   "c07": "We're meeting in room 14.",
+   "c10": "Order three pizzas.",
+   "c14": "Can you meet Saturday?",
+   "c17": "Call me at 556.",
+   "c20": "So I need to send the report by Thursday.",
+   "c23": "The package weighs 15 kilos.",
+   "n02": "Send it to sarah.lee@example.org please.",
+   "n05": "The meeting is on March 3rd at 2:30pm.",
+   "n08": "Write to support@help.example.com.",
+   "n11": "Meet me at 4:30.",
+   "m01": "Hi Sarah,\n\nCan you send the numbers by Friday?\n\nThanks,\nJohn",
+   "m04": "Hi Tom,\n\nThanks for the quick reply. I'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave",
+   "g01": "Can you refactor the auth middleware to use async await?",
+   "g04": "Rename the function to bazQux.",
+   "g07": "Add a --verbose flag to the CLI, and document it in the README.",
+   "g10": "Don't change the public API, just the internal helpers.",
+   "g13": "Make the query use an index on created_at.",
+   "p01": "Look at app.ts and the readme.md.",
+   "p04": "Edit @src/server.ts, to add a health route.",
+   "k01": "Thanks for the update. I will review it tonight and send notes in the morning.",
+   "k04": "Okay.",
+   "k07": "I think we should wait until Monday.",
+   "k10": "She had enough of the noise.",
+   "k13": "I mean what I said: the plan needs a second review.",
+   "k16": "The ER was busy last night.",
+   "k20": "Please send the signed copy to legal by the end of the week.",
+   "k23": "I'm going to grab a coffee, back in 10.",
+   "k26": "Good morning, everyone. Let's get started.",
+   "k29": "The patient reported mild headaches and occasional dizziness.",
+   "k32": "Hmm, interesting question.",
+   "k35": "We should totally do this again sometime.",
+   "k38": "I was like, no way, and she was like, yes way.",
+   "k42": "It's 5 o'clock somewhere.",
+   "k45": "About 25% of users opted in during the first 7 days.",
+   "k48": "Revenue was $3.2 million in Q3, up 12% from last year.",
+   "k51": "The file is 2.5 GB and takes about 10 minutes to download.",
+   "k54": "Hi Tom,\n\nThanks for the quick reply. I'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave",
+   "k57": "Hey Chris,\n\nJust checking in on the proposal.\n\nTalk soon,\nLena",
+   "k60": "Run npm test and fix any failing specs.",
+   "k63": "Why does the build fail with ERR_MODULE_NOT_FOUND after the upgrade?",
+   "k67": "Write a script that reads the CSV and prints the top 10 rows.",
+   "k70": "Set DEBUG=true and run npm run dev -- port 8081.",
+   "k73": "Explain what Array.prototype.reduce does with an empty array.",
+   "k76": "Check package.json for the test script.",
+   "k79": "The config lives in .github/workflows/ci.yml, not in the root.",
+   "k82": "See https://example.com/pricing?plan=pro for the details.",
+   "k85": "The first paragraph introduces the topic. The second paragraph gives an example."
+  },
+  "rules+s1+guard": {
+   "f01": "So I need to send the report today.",
+   "f04": "The results, show a clear improvement over the baseline.",
+   "f07": "Okay, that makes sense.",
+   "f10": "Sure, I can do that.",
+   "f13": "I went to the store and bought some milk.",
+   "f16": "We could ship it Friday, or Monday if needed.",
+   "f19": "Okay. Let's begin.",
+   "f22": "The invoice, was sent on Tuesday and paid on Thursday.",
+   "s04": "I just wanted to say thanks.",
+   "s07": "I'm not sure about this.",
+   "s10": "We should review the draft before Monday.",
+   "c01": "Let's meet on Tuesday.",
+   "c04": "The budget is $40,000.",
+   "c07": "We're meeting in room 14.",
+   "c10": "Order three pizzas.",
+   "c14": "Can you meet Saturday?",
+   "c17": "Call me at 556.",
+   "c20": "So I need to send the report by Thursday.",
+   "c23": "The package weighs 15 kilos.",
+   "n02": "Send it to sarah.lee@example.org please.",
+   "n05": "The meeting is on March 3rd at 2:30pm.",
+   "n08": "Write to support@help.example.com.",
+   "n11": "Meet me at 4:30.",
+   "m01": "Hi Sarah, can you send the numbers by Friday? Thanks, John.",
+   "m04": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+   "g01": "Can you refactor the auth middleware to use async await?",
+   "g04": "Rename the function to bazQux.",
+   "g07": "Add a --verbose flag to the CLI, and document it in the README.",
+   "g10": "Don't change the public API, just the internal helpers.",
+   "g13": "Make the query use an index on created_at.",
+   "p01": "Look at app.ts and the readme.md.",
+   "p04": "Edit @src/server.ts, to add a health route.",
+   "k01": "Thanks for the update. I will review it tonight and send notes in the morning.",
+   "k04": "Okay.",
+   "k07": "I think we should wait until Monday.",
+   "k10": "She had enough of the noise.",
+   "k13": "I mean what I said: the plan needs a second review.",
+   "k16": "The ER was busy last night.",
+   "k20": "Please send the signed copy to legal by the end of the week.",
+   "k23": "gonna grab a coffee, back in 10",
+   "k26": "Good morning, everyone. Let's get started.",
+   "k29": "The patient reported mild headaches and occasional dizziness.",
+   "k32": "Hmm, interesting question.",
+   "k35": "We should totally do this again sometime.",
+   "k38": "I was like, no way, and she was like, yes way.",
+   "k42": "It's 5 o'clock somewhere.",
+   "k45": "About 25% of users opted in during the first 7 days.",
+   "k48": "Revenue was $3.2 million in Q3, up 12% from last year.",
+   "k51": "The file is 2.5 GB and takes about 10 minutes to download.",
+   "k54": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+   "k57": "Hey Chris,\n\nJust checking in on the proposal.\n\nTalk soon,\nLena",
+   "k60": "Run npm test and fix any failing specs.",
+   "k63": "Why does the build fail with ERR_MODULE_NOT_FOUND after the upgrade?",
+   "k67": "Write a script that reads the CSV and prints the top 10 rows.",
+   "k70": "Set DEBUG=true and run npm run dev -- --port 8081.",
+   "k73": "Explain what Array.prototype.reduce does with an empty array.",
+   "k76": "Check package.json for the test script.",
+   "k79": "The config lives in .github/workflows/ci.yml, not in the root.",
+   "k82": "See https://example.com/pricing?plan=pro for the details.",
+   "k85": "The first paragraph introduces the topic.\n\nThe second paragraph gives an example."
+  },
+  "rules+sf": {
+   "f01": "So I need to send the report today.",
+   "f04": "The results show a clear improvement over the baseline.",
+   "f07": "Okay, that makes sense.",
+   "f10": "Sure, I can do that.",
+   "f13": "I went to the store and bought some milk.",
+   "f16": "We could ship it Friday, or Monday if needed.",
+   "f19": "Okay. Let's begin.",
+   "f22": "The invoice was sent on Tuesday and paid on Thursday.",
+   "s04": "I just wanted to say thanks.",
+   "s07": "I'm not sure about this.",
+   "s10": "We should review the draft before Monday.",
+   "c01": "Let's meet on Tuesday.",
+   "c04": "The budget is forty thousand dollars.",
+   "c07": "We're meeting in room fourteen.",
+   "c10": "Order three pizzas.",
+   "c14": "Can you meet Saturday?",
+   "c17": "Call me at five five six.",
+   "c20": "So I need to send the report by Thursday.",
+   "c23": "The package weighs fifteen kilos.",
+   "n02": "Send it to sarah.lee@example.org please.",
+   "n05": "The meeting is on March third at two thirty p m.",
+   "n08": "Write to support@help.example.com.",
+   "n11": "Meet me at four thirty.",
+   "m01": "Hi Sarah,\n\nCan you send the numbers by Friday?\n\nThanks,\nJohn",
+   "m04": "Hi Tom,\n\nThanks for the quick reply.\n\nI'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave",
+   "g01": "Can you refactor the auth middleware to use async await?",
+   "g04": "Rename the function to bazQux.",
+   "g07": "Add a --verbose flag to the CLI, and document it in the README.",
+   "g10": "Don't change the public API, just the internal helpers.",
+   "g13": "Make the query use an index on created_at.",
+   "p01": "Look at app.ts and the readme.md.",
+   "p04": "Edit @src/server.ts, to add a health route.",
+   "k01": "Thanks for the update. I will review it tonight and send notes in the morning.",
+   "k04": "Okay.",
+   "k07": "I think we should wait until Monday.",
+   "k10": "She had had enough of the noise.",
+   "k13": "The plan needs a second review.",
+   "k16": "The ER was busy last night.",
+   "k20": "Please send the signed copy to legal by the end of the week.",
+   "k23": "gonna grab a coffee, back in 10",
+   "k26": "Good morning, everyone. Let's get started.",
+   "k29": "The patient reported mild headaches and occasional dizziness.",
+   "k32": "Hmm, interesting question.",
+   "k35": "We should totally do this again sometime.",
+   "k38": "I was like, no way, and she was like, yes way.",
+   "k42": "It's 5 o'clock somewhere.",
+   "k45": "About 25% of users opted in during the first 7 days.",
+   "k48": "Revenue was $3.2 million in Q3, up 12% from last year.",
+   "k51": "The file is 2.5 GB and takes about 10 minutes to download.",
+   "k54": "Hi Tom,\n\nThanks for the quick reply.\n\nI'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave",
+   "k57": "Hey Chris,\n\nJust checking in on the proposal.\n\nTalk soon,\nLena",
+   "k60": "Run npm test and fix any failing specs.",
+   "k63": "Why does the build fail with ERR_MODULE_NOT_FOUND after the upgrade?",
+   "k67": "Write a script that reads the CSV and prints the top 10 rows.",
+   "k70": "Set DEBUG=true and run npm run dev -- --port 8081.",
+   "k73": "Explain what Array.prototype.reduce does with an empty array.",
+   "k76": "Check package.json for the test script.",
+   "k79": "The config lives in .github/workflows/ci.yml, not in the root.",
+   "k82": "See https://example.com/pricing?plan=pro for the details.",
+   "k85": "The first paragraph introduces the topic.\n\nThe second paragraph gives an example."
+  },
+  "rules+sf+guard": {
+   "f01": "So I need to send the report today.",
+   "f04": "The results, show a clear improvement over the baseline.",
+   "f07": "Okay, that makes sense.",
+   "f10": "Sure, I can do that.",
+   "f13": "I went to the store and bought some milk.",
+   "f16": "We could ship it Friday, or Monday if needed.",
+   "f19": "Okay. Let's begin.",
+   "f22": "The invoice, was sent on Tuesday and paid on Thursday.",
+   "s04": "I just wanted to say thanks.",
+   "s07": "I'm not sure about this.",
+   "s10": "We should review the draft before Monday.",
+   "c01": "Let's meet on Tuesday.",
+   "c04": "The budget is forty thousand dollars.",
+   "c07": "We're meeting in room fourteen.",
+   "c10": "Order three pizzas.",
+   "c14": "Can you meet Saturday?",
+   "c17": "Call me at five five six.",
+   "c20": "So I need to send the report by Thursday.",
+   "c23": "The package weighs fifteen kilos.",
+   "n02": "Send it to sarah.lee@example.org please.",
+   "n05": "The meeting is on March third at two thirty p m.",
+   "n08": "Write to support@help.example.com.",
+   "n11": "Meet me at four thirty.",
+   "m01": "Hi Sarah, can you send the numbers by Friday? Thanks, John.",
+   "m04": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+   "g01": "Can you refactor the auth middleware to use async await?",
+   "g04": "Rename the function to bazQux.",
+   "g07": "Add a --verbose flag to the CLI, and document it in the README.",
+   "g10": "Don't change the public API, just the internal helpers.",
+   "g13": "Make the query use an index on created_at.",
+   "p01": "Look at app.ts and the readme.md.",
+   "p04": "Edit @src/server.ts, to add a health route.",
+   "k01": "Thanks for the update. I will review it tonight and send notes in the morning.",
+   "k04": "Okay.",
+   "k07": "I think we should wait until Monday.",
+   "k10": "She had had enough of the noise.",
+   "k13": "The plan needs a second review.",
+   "k16": "The ER was busy last night.",
+   "k20": "Please send the signed copy to legal by the end of the week.",
+   "k23": "gonna grab a coffee, back in 10",
+   "k26": "Good morning, everyone. Let's get started.",
+   "k29": "The patient reported mild headaches and occasional dizziness.",
+   "k32": "Hmm, interesting question.",
+   "k35": "We should totally do this again sometime.",
+   "k38": "I was like, no way, and she was like, yes way.",
+   "k42": "It's 5 o'clock somewhere.",
+   "k45": "About 25% of users opted in during the first 7 days.",
+   "k48": "Revenue was $3.2 million in Q3, up 12% from last year.",
+   "k51": "The file is 2.5 GB and takes about 10 minutes to download.",
+   "k54": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+   "k57": "Hey Chris,\n\nJust checking in on the proposal.\n\nTalk soon,\nLena",
+   "k60": "Run npm test and fix any failing specs.",
+   "k63": "Why does the build fail with ERR_MODULE_NOT_FOUND after the upgrade?",
+   "k67": "Write a script that reads the CSV and prints the top 10 rows.",
+   "k70": "Set DEBUG=true and run npm run dev -- --port 8081.",
+   "k73": "Explain what Array.prototype.reduce does with an empty array.",
+   "k76": "Check package.json for the test script.",
+   "k79": "The config lives in .github/workflows/ci.yml, not in the root.",
+   "k82": "See https://example.com/pricing?plan=pro for the details.",
+   "k85": "The first paragraph introduces the topic.\n\nThe second paragraph gives an example."
+  }
+ }
+}

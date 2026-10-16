@@ -28,6 +28,10 @@ export interface DropdownOptions {
 export interface DropdownHandle {
   /** The trigger element to place in the page. */
   element: HTMLElement;
+  /** Show another value without calling `onChange`. */
+  setValue: (value: string) => void;
+  /** A disabled dropdown can't be opened. */
+  setDisabled: (disabled: boolean) => void;
 }
 
 /**
@@ -207,6 +211,17 @@ export function dropdown({ value, options, onChange, label }: DropdownOptions): 
 
   trigger.addEventListener('click', () => (isOpen ? close() : open()));
 
+  const setValue = (value: string): void => {
+    current = value;
+    valueLabel.textContent = currentLabel();
+    if (isOpen) renderList();
+  };
+
+  const setDisabled = (disabled: boolean): void => {
+    if (disabled) close();
+    trigger.disabled = disabled;
+  };
+
   wrapper.addEventListener('keydown', (event: KeyboardEvent) => {
     if (event.key === 'Escape') {
       if (!isOpen) return;
@@ -218,6 +233,7 @@ export function dropdown({ value, options, onChange, label }: DropdownOptions): 
       return;
     }
     if (!isOpen) {
+      if (trigger.disabled) return;
       if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         open();
@@ -238,5 +254,5 @@ export function dropdown({ value, options, onChange, label }: DropdownOptions): 
     }
   });
 
-  return { element: wrapper };
+  return { element: wrapper, setValue, setDisabled };
 }

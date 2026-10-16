@@ -6,7 +6,24 @@ import os from 'node:os';
 import path from 'node:path';
 // The delivery policy's view of a window: the same identity (process + handle) with
 // the title the UI needs on top, so window info can be handed straight to the policy.
-import type { PasteTarget } from '../core/delivery/clipboardRestore.js';
+import { parseForegroundLine, type ForegroundWindowInfo } from '../core/delivery/foregroundLine.js';
+import type { InsertAttempt } from '../core/delivery/deliveryFlow.js';
+import type { AddressRead } from './deliveryGlue.js';
+import { appIdFor, isKnownBrowser } from '../core/delivery/deliveryTarget.js';
+import {
+  browserAddressScript,
+  cueScript,
+  foregroundScript,
+  isHandle,
+  pasteScript,
+  reactivateScript,
+  restoreForegroundScript,
+  sendKeyScript,
+  textBeforeCursorScript,
+  typeScript,
+} from './powershellScripts.js';
+import { sendKeysFor } from '../core/apps/appAwareness.js';
+import type { AutoSendKey } from '../core/apps/appCategory.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -25,26 +42,108 @@ const execFileAsync = promisify(execFile);
  * the delivery contract used to be reachable from no test at all.
  */
 
-export interface ForegroundWindowInfo extends PasteTarget {
-  /** Window title, for the HUD's "dictating into X" label. */
-  title: string;
+export type { ForegroundWindowInfo };
+
+/** The last line a script printed. */
+function lastLine(stdout: string): string {
+  return stdout.trim().split(/\r?\n/).pop() ?? '';
 }
 
 /**
- * Send Ctrl+V.
+ * Send Ctrl+V, only while `expectedForeground` is in front and before the deadline.
  *
  * `SendKeys` via PowerShell is used rather than a native addon: it needs no
  * compilation step, so the packaged app has no native binary to keep in step with
  * the Electron version. It is slower than a keybd_event call, which is irrelevant
- * here — one keystroke per dictation.
+ * here: one keystroke per dictation. `kill` stops the script outright (a delivery that
+ * ran out of time), so no keystroke can follow it.
  */
-export async function pasteClipboard(): Promise<boolean> {
+export async function pasteClipboard(
+  expectedForeground: number,
+  deadlineEpochMs: number,
+  kill?: AbortSignal,
+): Promise<InsertAttempt> {
+  if (!isHandle(expectedForeground)) return { result: 'failed' };
   try {
-    await runPowerShell('$wshell = New-Object -ComObject WScript.Shell; $wshell.SendKeys("^v")');
-    return true;
+    const { stdout } = await runPowerShell(
+      pasteScript(expectedForeground, deadlineEpochMs),
+      scriptTimeout(deadlineEpochMs),
+      undefined,
+      kill,
+    );
+    const word = lastLine(stdout);
+    return { result: word === 'sent' || word === 'moved' || word === 'timeout' ? word : 'failed' };
   } catch {
-    return false;
+    return { result: kill?.aborted || Date.now() >= deadlineEpochMs ? 'timeout' : 'failed' };
   }
+}
+
+/**
+ * Press the auto-send key (Return, Shift+Return or Ctrl+Return), only while
+ * `expectedForeground` is in front (with `expectedFocus`, the child control captured at the
+ * press, still focused) and before the deadline, in the same script as the keystroke. `kill` stops the script outright when the delivery ran out of time.
+ */
+export async function sendKey(
+  expectedForeground: number,
+  key: AutoSendKey,
+  deadlineEpochMs: number,
+  kill?: AbortSignal,
+  expectedFocus?: number,
+): Promise<InsertAttempt> {
+  const keys = sendKeysFor(key);
+  if (!isHandle(expectedForeground) || keys === null) return { result: 'failed' };
+  try {
+    const { stdout } = await runPowerShell(
+      sendKeyScript(expectedForeground, deadlineEpochMs, keys, expectedFocus),
+      scriptTimeout(deadlineEpochMs),
+      undefined,
+      kill,
+    );
+    const word = lastLine(stdout);
+    return { result: word === 'sent' || word === 'moved' || word === 'timeout' ? word : 'failed' };
+  } catch {
+    return { result: kill?.aborted || Date.now() >= deadlineEpochMs ? 'timeout' : 'failed' };
+  }
+}
+
+/**
+ * Type batches of UTF-16 units as Unicode keystrokes (type-out mode), never Ctrl+V.
+ *
+ * The batches come from `typeOutChunks` (so none splits an emoji) and go to the script
+ * on stdin as decimal numbers, never inside the script. Before every batch the script
+ * checks the deadline, that the target is still in front and that no password field
+ * has focus, and it reports how many units went in before it stopped.
+ */
+export async function typeText(
+  batches: number[][],
+  expectedForeground: number,
+  deadlineEpochMs: number,
+  kill?: AbortSignal,
+): Promise<InsertAttempt> {
+  if (!isHandle(expectedForeground)) return { result: 'failed', typedUnits: 0 };
+  const input = batches.map((batch) => batch.join(',')).join('\n');
+  try {
+    const { stdout } = await runPowerShell(
+      typeScript(expectedForeground, deadlineEpochMs),
+      scriptTimeout(deadlineEpochMs),
+      input,
+      kill,
+    );
+    const match = /^(sent|moved|secure|timeout|failed):(\d+)$/.exec(lastLine(stdout));
+    if (!match) return { result: 'failed' };
+    return { result: match[1] as InsertAttempt['result'], typedUnits: Number(match[2]) };
+  } catch {
+    // Killed or crashed: any number of batches may have gone in.
+    return { result: kill?.aborted || Date.now() >= deadlineEpochMs ? 'timeout' : 'failed' };
+  }
+}
+
+/**
+ * How long a keystroke script may run: until its deadline plus a moment, so the
+ * script's own deadline check (which reports what it typed) wins over the kill.
+ */
+function scriptTimeout(deadlineEpochMs: number): number {
+  return Math.max(1, deadlineEpochMs - Date.now()) + 1000;
 }
 
 /**
@@ -52,50 +151,72 @@ export async function pasteClipboard(): Promise<boolean> {
  *
  * Used for two things: showing the user which app will receive their text, and
  * proving that a paste landed in the same window it was aimed at. Comparing these
- * before and after is what makes "it landed" mean something — a paste that arrived
+ * before and after is what makes "it landed" mean something: a paste that arrived
  * in a different window, or that only appeared to land because the user typed
  * something, must not trigger the clipboard restore.
  *
  * Returns null when the query fails, which callers treat as "cannot verify".
  */
-export async function foregroundWindow(): Promise<ForegroundWindowInfo | null> {
-  const script = `
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class UvForeground {
-  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr hWnd);
-  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
-  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
-}
-"@
-$h = [UvForeground]::GetForegroundWindow()
-$len = [UvForeground]::GetWindowTextLength($h)
-$sb = New-Object System.Text.StringBuilder ($len + 1)
-[void][UvForeground]::GetWindowText($h, $sb, $sb.Capacity)
-$procId = 0
-[void][UvForeground]::GetWindowThreadProcessId($h, [ref]$procId)
-$name = ""
-try { $name = (Get-Process -Id $procId -ErrorAction Stop).ProcessName } catch {}
-# A unit-separator character is used rather than a tab: PowerShell would need a
-# backtick escape for a tab, and the backtick collides with JS template syntax.
-Write-Output ("{0}{1}{2}{1}{3}" -f $h.ToInt64(), [char]31, $name, $sb.ToString())
-`;
+export async function foregroundWindow(timeoutMs = 8000): Promise<ForegroundWindowInfo | null> {
+  if (timeoutMs <= 0) return null;
   try {
-    const { stdout } = await runPowerShell(script);
-    const line = stdout.trim().split(/\r?\n/).pop() ?? '';
-    // Split on the unit separator emitted above.
-    const [handleText, processName, ...titleParts] = line.split('\u001f');
-    const handle = Number(handleText);
-    if (!Number.isFinite(handle)) return null;
-    return {
-      handle,
-      processName: (processName ?? '').trim(),
-      title: titleParts.join(' ').trim(),
-    };
+    const { stdout } = await runPowerShell(foregroundScript(), timeoutMs);
+    return parseForegroundLine(lastLine(stdout));
   } catch {
     return null;
+  }
+}
+
+/**
+ * Bring a dictation's target back to the front (the target lock), with its focused
+ * child when one was captured.
+ *
+ * Windows only hands the foreground over in a few cases; the script attaches to the
+ * thread that owns the current foreground window, which is the documented way for an
+ * input-attached thread to call `SetForegroundWindow`, and then restores the focused
+ * child inside the target. Returns `gone` when the window no longer exists and
+ * `refused` when Windows kept another window in front. The caller reads the foreground
+ * again before inserting anything, so `ok` is never trusted on its own.
+ */
+export async function reactivateWindow(
+  handle: number,
+  focusHandle?: number,
+  timeoutMs = 4000,
+): Promise<'ok' | 'gone' | 'refused'> {
+  if (!isHandle(handle)) return 'gone';
+  if (timeoutMs <= 0) return 'refused';
+  try {
+    const { stdout } = await runPowerShell(reactivateScript(handle, focusHandle), Math.min(4000, timeoutMs));
+    const result = lastLine(stdout);
+    return result === 'ok' || result === 'gone' ? result : 'refused';
+  } catch {
+    return 'refused';
+  }
+}
+
+/**
+ * The page address of a browser window (Chrome, Edge, Brave, Firefox), read from its
+ * real address bar with UI Automation (`browserAddressScript` says how it's told
+ * apart from any other edit control). An address without a scheme (Chromium hides
+ * `https://`) gets `https://`, the same way at the press and at delivery. The address
+ * is null when it can't be read, or the app isn't a known browser; `timedOut` says the
+ * read was cut off. Kept in memory only.
+ */
+export async function browserAddress(handle: number, appId: string | undefined, timeoutMs = 3000): Promise<AddressRead> {
+  const none = (timedOut: boolean): AddressRead => ({ address: null, timedOut });
+  if (!isHandle(handle) || !isKnownBrowser(appId)) return none(false);
+  if (timeoutMs <= 0) return none(true);
+  const kind = appIdFor(appId) === 'firefox' ? 'firefox' : 'chromium';
+  try {
+    const { stdout } = await runPowerShell(browserAddressScript(handle, kind), Math.min(3000, timeoutMs));
+    const encoded = lastLine(stdout);
+    if (!/^[A-Za-z0-9+/=]+$/.test(encoded)) return none(false);
+    const value = Buffer.from(encoded, 'base64').toString('utf8').trim();
+    if (value.length === 0 || /\s/.test(value)) return none(false);
+    return { address: /^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `https://${value}`, timedOut: false };
+  } catch (error) {
+    // execFile kills a script that outlives its timeout and says so with `killed`.
+    return none((error as { killed?: boolean }).killed === true);
   }
 }
 
@@ -118,25 +239,7 @@ export async function restoreForegroundWindow(
   if (!Number.isSafeInteger(handle) || handle <= 0) return false;
   const guard = options.onlyIfForeground;
   if (guard !== undefined && (!Number.isSafeInteger(guard) || guard <= 0)) return false;
-  const script = `
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class UvRestore {
-  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
-  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-}
-"@
-$h = [IntPtr]${handle}
-${guard === undefined ? '' : `# The user clicked somewhere else while this started: leave their choice alone.
-if ([UvRestore]::GetForegroundWindow() -ne [IntPtr]${guard}) { Write-Output "moved"; exit 0 }`}
-if (-not [UvRestore]::IsWindow($h)) { Write-Output "gone"; exit 0 }
-if ([UvRestore]::IsIconic($h)) { [void][UvRestore]::ShowWindow($h, 9) }
-Write-Output ([UvRestore]::SetForegroundWindow($h))
-`;
+  const script = restoreForegroundScript(handle, guard);
   try {
     const { stdout } = await runPowerShell(script, options.timeoutMs);
     return stdout.trim().split(/\r?\n/).pop() === 'True';
@@ -166,7 +269,7 @@ export async function playCue(kind: 'start' | 'stop' | 'error'): Promise<void> {
   try {
     // PowerShell's SoundPlayer is the dependency-free option.
     await runPowerShell(
-      `(New-Object Media.SoundPlayer '${file.replace(/'/g, "''")}').PlaySync()`,
+      cueScript(file),
       // A cue that takes longer than this is not feedback any more.
       2000,
     );
@@ -390,11 +493,54 @@ export function appVersion(): string {
   return app.getVersion();
 }
 
-async function runPowerShell(script: string, timeoutMs = 8000): Promise<{ stdout: string; stderr: string }> {
-  const result = await execFileAsync(
+/**
+ * Run a script. `kill` (when given) stops the child at once: a delivery that ran out of
+ * time must not send a keystroke afterwards.
+ */
+async function runPowerShell(
+  script: string,
+  timeoutMs = 8000,
+  input?: string,
+  kill?: AbortSignal,
+): Promise<{ stdout: string; stderr: string }> {
+  const pending = execFileAsync(
     'powershell.exe',
     ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
-    { timeout: timeoutMs, windowsHide: true, maxBuffer: 1024 * 1024 },
+    { timeout: timeoutMs, windowsHide: true, maxBuffer: 1024 * 1024, encoding: 'utf8', ...(kill ? { signal: kill } : {}) },
   );
+  // A child that exits (or is killed) before reading its input closes the pipe; the
+  // write then fails with EPIPE, which must not become an uncaught exception. The
+  // script's own result (or the rejection below) already says what happened.
+  pending.child.stdin?.on('error', () => undefined);
+  // stdin is closed either way, so a script that reads it never waits forever.
+  pending.child.stdin?.end(input ?? '');
+  const result = await pending;
   return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+}
+
+/**
+ * The longest a text-before-cursor read may live, start of PowerShell and UI Automation
+ * included. The read itself has `TEXT_READ_BUDGET_MS`; this only stops a stuck process.
+ * It runs beside the recording, so it never delays the hotkey press.
+ */
+const TEXT_READ_KILL_MS = 3000;
+
+/**
+ * Up to 200 characters before the caret in the focused field of the window captured at
+ * the press, or null when that can't be known: a password field, no caret, the window no
+ * longer in front, a timeout or any failure. Memory only: the caller must never log or
+ * store it.
+ */
+export async function textBeforeCursor(handle: number): Promise<string | null> {
+  if (!isHandle(handle)) return null;
+  try {
+    const { stdout } = await runPowerShell(textBeforeCursorScript(handle), TEXT_READ_KILL_MS);
+    const line = lastLine(stdout);
+    if (!line.startsWith('ok:')) return null;
+    const encoded = line.slice(3);
+    if (!/^[A-Za-z0-9+/=]*$/.test(encoded)) return null;
+    return Buffer.from(encoded, 'base64').toString('utf8');
+  } catch {
+    return null;
+  }
 }

@@ -750,8 +750,18 @@ function appCategoriesSurface(settings: SettingsDTO): HTMLElement {
       }
       update(id, appRow);
     }
+    // The rows follow the order of the apps listed (newest first, then the user's choices). The
+    // existing nodes are moved, not rebuilt; moving a node drops its focus in Chromium, so the
+    // element that had it gets it back.
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    ids.forEach((id, index) => {
+      const node = rows.get(id)?.node;
+      const at = list.children[index + 1] ?? null; // the first child is the "App categories" row
+      if (node && at !== node) list.insertBefore(node, at);
+    });
+    if (active && active.isConnected && document.activeElement !== active) active.focus({ preventScroll: true });
     // A row that had the focus is gone: keep it in the list, on the first picker left.
-    if (focusedGone) [...rows.values()][0]?.picker.element.querySelector<HTMLElement>('.select-trigger')?.focus();
+    else if (focusedGone) [...rows.values()][0]?.picker.element.querySelector<HTMLElement>('.select-trigger')?.focus();
     wrapper.hidden = rows.size === 0;
   };
 

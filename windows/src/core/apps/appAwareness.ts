@@ -85,11 +85,26 @@ export function normaliseAutoSend(raw: unknown): Partial<Record<AppCategory, Aut
   return out;
 }
 
-/** One line, no control characters, trimmed and capped. Anything else is no name. */
+/**
+ * The whitespace the name is collapsed on: Swift's `whitespacesAndNewlines`, so both
+ * platforms agree. JS `\s` also holds U+FEFF, a format character that must stay.
+ */
+const NAME_SPACE = '\\t\\n\\u000b\\f\\r \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000';
+const NAME_SPACE_RUN = new RegExp(`[${NAME_SPACE}]+`, 'g');
+const NAME_EDGE_SPACE = new RegExp(`^[${NAME_SPACE}]+|[${NAME_SPACE}]+$`, 'g');
+
+/**
+ * One line, no control characters, trimmed and capped. Anything else is no name. Control
+ * characters (C0, DEL, C1) become spaces and format characters (ZWNJ, ZWJ, bidi marks, soft
+ * hyphen, U+FEFF) are kept.
+ */
 export function normaliseUserName(raw: unknown): string {
   if (typeof raw !== 'string') return '';
-  const clean = raw.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, ' ').replace(/\s+/g, ' ').trim();
-  return Array.from(clean).slice(0, MAX_USER_NAME_CHARS).join('').trim();
+  const clean = raw
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, ' ')
+    .replace(NAME_SPACE_RUN, ' ')
+    .replace(NAME_EDGE_SPACE, '');
+  return Array.from(clean).slice(0, MAX_USER_NAME_CHARS).join('').replace(NAME_EDGE_SPACE, '');
 }
 
 /**

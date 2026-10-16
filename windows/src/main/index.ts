@@ -1037,18 +1037,29 @@ class UsefulVoiceApp {
       // The data is flushed, so nothing may start a dictation or an edit while the installer
       // is checked below: close every window (the app has no window-all-closed quit).
       if (updateReady) for (const window of BrowserWindow.getAllWindows()) window.destroy();
-      const installing = (await this.updater?.installOnExit(restart)) ?? false;
-      if (updateReady) {
-        // Its own file, appended synchronously: diagnostics.log is rewritten by the next
-        // launch, which is seconds away on both paths, and nothing async survives `app.exit`.
+      // Its own file, appended synchronously: diagnostics.log is rewritten by the next
+      // launch, which is seconds away on both paths, and nothing async survives `app.exit`.
+      // The first line goes in before the restart wait, which the installer can cut short.
+      const updateLog = (line: string): void => {
         try {
-          appendFileSync(
-            path.join(app.getPath('userData'), 'update.log'),
-            `${new Date().toISOString()} installer for ${updateReady} ${installing ? 'started' : `did not start (${this.updater?.lastProblem ?? 'no reason recorded'})`}${restart ? ', restart requested' : ''}\n`,
-          );
+          appendFileSync(path.join(app.getPath('userData'), 'update.log'), `${new Date().toISOString()} ${line}\n`);
         } catch {
           // The log is a diagnostic aid only.
         }
+      };
+      const describe = (started: boolean): string =>
+        `installer for ${updateReady} ${started ? 'started' : `did not start (${this.updater?.lastProblem ?? 'no reason recorded'})`}${restart ? ', restart requested' : ''}`;
+      let spawned: boolean | null = null;
+      const installing =
+        (await this.updater?.installOnExit(restart, (started) => {
+          spawned = started;
+          if (updateReady) updateLog(describe(started));
+        })) ?? false;
+      if (updateReady) {
+        // Refused before any spawn (the file is gone, the call threw), or a spawn failure
+        // that arrived during the wait.
+        if (spawned === null) updateLog(describe(false));
+        else if (spawned && !installing) updateLog(`installer for ${updateReady} failed after starting (${this.updater?.lastProblem ?? 'no reason recorded'})`);
       }
       // The person asked for a restart: come back even if the installer could not start.
       if (restart && !installing) app.relaunch();

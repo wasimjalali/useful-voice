@@ -157,9 +157,10 @@ export class Updater {
    * Run the downloaded installer silently, if there is one. Called just before the app
    * exits; the installer waits for this process to end. Returns whether it started, as far
    * as can be known: with `relaunch` (the person is waiting for the app to come back) it
-   * also waits briefly for a late spawn failure.
+   * also waits briefly for a late spawn failure. `onSpawned` runs as soon as the spawn result
+   * is known, before that wait.
    */
-  async installOnExit(relaunch: boolean): Promise<boolean> {
+  async installOnExit(relaunch: boolean, onSpawned?: (started: boolean) => void): Promise<boolean> {
     if (!this.readyVersion) return false;
     if (this.timer) clearInterval(this.timer);
     if (!this.downloadedFile || !existsSync(this.downloadedFile)) {
@@ -181,6 +182,8 @@ export class Updater {
       this.options.log(`install failed: ${this.problem}`);
       return false;
     }
+    // Before the wait below: the installer can kill this process while it waits.
+    onSpawned?.(started);
     if (started && relaunch) {
       await new Promise((resolve) => setTimeout(resolve, INSTALL_ERROR_WAIT_MS));
       if (this.lastErrorAt >= startedAt) return false;

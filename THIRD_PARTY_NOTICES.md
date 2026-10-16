@@ -36,7 +36,7 @@ The local transcription engine downloads one of two models on request, not bundl
 Whisper large-v3-turbo (MIT License) or large-v3 (Apache License 2.0). The files are the ggml
 conversions published at [huggingface.co/ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp)
 (model card license: MIT). The app checks each download against a pinned SHA-256. The models are
-by OpenAI; their licenses are the ones on the model cards linked from the app's model list
+by OpenAI; see the model cards
 ([whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo),
 [whisper-large-v3](https://huggingface.co/openai/whisper-large-v3)).
 

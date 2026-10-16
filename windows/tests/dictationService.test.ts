@@ -2499,7 +2499,7 @@ describe('hidden S1-mini cleanup port', () => {
     const context = { appID: 'app.exe', category, textBeforeCursor: null };
     return { initial: { ...context }, settled: Promise.resolve(context) };
   };
-  const calls: Array<{ raw: string; language: string | null; category: string; style: string | null }> = [];
+  const calls: Array<{ raw: string; language: string | null; category: string | null; style: string | null }> = [];
   const port = (answer: (raw: string) => Promise<{ text: string }>): CleanupPort => ({
     run: (input) => {
       calls.push(input);
@@ -2529,6 +2529,18 @@ describe('hidden S1-mini cleanup port', () => {
     await ctx.service.startRecording({ source: 'hotkey', context: capture('email') });
     await ctx.service.stopAndProcess();
     expect(calls[0]).toMatchObject({ category: 'email', style: null });
+  });
+
+  it('a dictation made in our own window has no category and no style, like the macOS app', async () => {
+    calls.length = 0;
+    const ctx = setup({
+      settings: { categoryStyles: { other: 'formal' } },
+      cleanup: port(async (raw) => ({ text: raw })),
+    });
+    await ctx.service.startRecording({ source: 'window', context: capture('other') });
+    await ctx.service.stopAndProcess();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ category: null, style: null });
   });
 
   it('keeps the transcript when the port throws or answers with nothing', async () => {

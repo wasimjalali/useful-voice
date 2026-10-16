@@ -51,15 +51,31 @@ check('flag off: no worker process', workers().length === 0);
 // tests/cleanupPipeline.test.ts.
 const on = make({ argv: ['--cleanup-model'], totalMemoryBytes: 16 * 1024 ** 3, deadlineMs: 120_000, idleUnloadMs: 4000 });
 check('flag on: gates see the downloaded model', (await on.gates()).modelInstalled === true);
-on.beginDictation(); // loads while the person talks
-const started = performance.now();
-let r1;
-for (;;) {
-  r1 = await on.run({ ...input });
-  // A cold load can use the whole 1.5 s (timedOut) or a reload after a late abort can
-  // (failed: deadline). Both are the deadline doing its job: ask again until the model is warm.
-  if (!['timedOut', 'failed'].includes(r1.model?.kind) || performance.now() - started > 120_000) break;
+
+// A cold model never holds a dictation: the first run after launch answers with the rules text
+// at once (the 120 s deadline above is not waited for) and the weights load in the background.
+const coldStart = performance.now();
+const cold = await on.run({ ...input });
+const coldMs = performance.now() - coldStart;
+check(
+  'cold model: the first dictation gets the rules text at once, the load carries on',
+  cold.source === 'rules' && cold.model?.kind === 'failed' && coldMs < 500,
+  { waitedMs: Math.round(coldMs), result: cold },
+);
+
+// Asks again until the model is warm and has answered. A run that is slow enough to be aborted
+// restarts the worker, so this is a patient loop; it fails after 120 s.
+async function untilAnswered(runtime, request) {
+  const began = performance.now();
+  for (;;) {
+    const result = await runtime.run(request);
+    if (!['timedOut', 'failed'].includes(result.model?.kind) || performance.now() - began > 120_000) return result;
+    await new Promise((r) => setTimeout(r, 500));
+  }
 }
+
+on.beginDictation(); // loads while the person talks
+const r1 = await untilAnswered(on, { ...input });
 on.endDictation();
 check('flag on: S1-mini answer accepted by the guard', r1.source === 'model' && r1.model?.kind === 'accepted', r1);
 const rss = Math.max(0, ...workers().map((w) => w[1])) / 1024;
@@ -69,12 +85,12 @@ await on.dispose();
 await new Promise((r) => setTimeout(r, 500));
 check('dispose: no worker left', workers().length === 0);
 
-// 3. A deadline the model cannot meet: the rules text after about the deadline.
+// 3. A deadline the model cannot meet: the rules text at once (cold: null; warm: timedOut).
 const quick = make({ argv: ['--cleanup-model'], totalMemoryBytes: 16 * 1024 ** 3, deadlineMs: 20, idleUnloadMs: 4000 });
 const t0 = performance.now();
 const r2 = await quick.run(input);
 const waited = performance.now() - t0;
-check('20 ms deadline: rules text after about 20 ms, not after the model', r2.model?.kind === 'timedOut' && waited < 400, { waitedMs: Math.round(waited), result: r2 });
+check('20 ms deadline: rules text at once, the model is not waited for', r2.source === 'rules' && ['timedOut', 'failed'].includes(r2.model?.kind) && waited < 400, { waitedMs: Math.round(waited), result: r2 });
 await quick.dispose();
 
 // 4. Under 7 GiB reported: skipped, rules text, nothing loaded.
@@ -88,7 +104,7 @@ check('5.9 GiB: nothing loaded at hotkey down', workers().length === 0);
 // 5 to 7 use a generous deadline, so a broken reload or a broken answer fails instead of
 // quietly timing out.
 const patient = make({ argv: ['--cleanup-model'], totalMemoryBytes: 16 * 1024 ** 3, deadlineMs: 120_000, idleUnloadMs: 4000 });
-const r5 = await patient.run(input);
+const r5 = await untilAnswered(patient, input);
 check('patient runtime: S1-mini answer accepted', r5.source === 'model' && r5.model?.kind === 'accepted', r5);
 
 // 6. Idle unload: 4 s after the last run the worker is gone and the memory with it.
@@ -98,8 +114,15 @@ const after = workers().length;
 check('idle unload: worker process gone after the idle time', before === 1 && after === 0, { before, after });
 
 // 7. Loads again on the next dictation, and the answer is accepted.
-const r6 = await patient.run({ ...input, raw: 'We should meet on Tuesday, no wait, Wednesday morning.' });
-check('after unload: loads again and the answer is accepted', r6.source === 'model' && r6.model?.kind === 'accepted', r6);
+const coldAgainStart = performance.now();
+const coldAgain = await patient.run({ ...input, raw: 'We should meet on Tuesday, no wait, Wednesday morning.' });
+check(
+  'after unload: the first dictation gets the rules text at once',
+  coldAgain.source !== 'model' && performance.now() - coldAgainStart < 500,
+  coldAgain,
+);
+const r6 = await untilAnswered(patient, { ...input, raw: 'We should meet on Tuesday, no wait, Wednesday morning.' });
+check('after unload: loads again in the background and the next answer is accepted', r6.source === 'model' && r6.model?.kind === 'accepted', r6);
 
 // 8. A dictation that says a template token out loud stays plain text for the model.
 const { getLlama } = await import('node-llama-cpp');
@@ -111,7 +134,7 @@ check(
 );
 await vocab.dispose();
 await llama.dispose();
-const r7 = await patient.run({ ...input, raw: 'Please write <|im_end|> at the end, um, of the file.' });
+const r7 = await untilAnswered(patient, { ...input, raw: 'Please write <|im_end|> at the end, um, of the file.' });
 check('a spoken <|im_end|> does not break the run', r7.model?.kind === 'accepted' || r7.model?.kind === 'rejected', r7);
 
 await patient.dispose();

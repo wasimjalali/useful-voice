@@ -36,6 +36,8 @@ type WorkerMessage =
   | { type: 'result'; id: number; text: string; ms: number }
   | { type: 'error'; id?: number; message: string };
 
+const KILLED = 'the model worker was shut down';
+
 export class LlamaCleanupGenerator implements CleanupTextGenerator {
   private readonly options: Required<Omit<LlamaGeneratorOptions, 'spawn'>> & Pick<LlamaGeneratorOptions, 'spawn'>;
   private child: ChildProcess | null = null;
@@ -46,6 +48,11 @@ export class LlamaCleanupGenerator implements CleanupTextGenerator {
   private stderrTail = '';
   /** Settles when the worker has stopped a run that timed out, or been killed. */
   private aborting: Promise<void> = Promise.resolve();
+  private abortInFlight = false;
+  /** The worker that has answered `loaded`; set by `load`, so a worker still loading is not ready. */
+  private readyChild: ChildProcess | null = null;
+  /** Set by `kill`: nothing starts a worker after it. */
+  private killed = false;
 
   constructor(options: LlamaGeneratorOptions) {
     this.options = {
@@ -62,8 +69,15 @@ export class LlamaCleanupGenerator implements CleanupTextGenerator {
     return this.child !== null;
   }
 
+  isReady(): boolean {
+    return !this.killed && this.child !== null && this.child === this.readyChild && !this.abortInFlight;
+  }
+
   async load(modelPath: string): Promise<void> {
+    if (this.killed) throw new Error(KILLED);
     this.modelPath = modelPath;
+    await this.aborting;
+    if (this.killed) throw new Error(KILLED);
     if (this.child) return;
     const child = this.start();
     try {
@@ -74,14 +88,17 @@ export class LlamaCleanupGenerator implements CleanupTextGenerator {
         'loading the model',
         () => post(child, { type: 'load', path: modelPath, prefix: s1MiniPromptPrefix() }),
       );
+      if (this.child === child) this.readyChild = child;
     } catch (error) {
-      this.kill();
+      this.killChild(child);
       throw error;
     }
   }
 
   async generate(prompt: GeneratorPrompt, deadline: number): Promise<string> {
+    if (this.killed) throw new Error(KILLED);
     await this.aborting;
+    if (this.killed) throw new Error(KILLED);
     const { now } = this.options;
     if (now() >= deadline) throw new Error('deadline');
     if (!this.child) {
@@ -108,6 +125,7 @@ export class LlamaCleanupGenerator implements CleanupTextGenerator {
     const child = this.child;
     if (!child) return;
     this.child = null;
+    this.readyChild = null;
     const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
     try {
       post(child, { type: 'dispose' });
@@ -145,7 +163,8 @@ export class LlamaCleanupGenerator implements CleanupTextGenerator {
     });
     // `on`, not `once`: a second error event with no listener would throw in the main process.
     child.on('error', (error) => {
-      if (this.child === child) this.child = null;
+      // Drop the reference and the process: a worker we no longer track must not keep 1.2 GB.
+      this.killChild(child);
       const what = spawned ? 'the model worker failed' : 'the model worker failed to start';
       for (const waiter of [...channel.exitWaiters]) waiter(`${what}: ${error.message}`);
     });
@@ -202,8 +221,10 @@ export class LlamaCleanupGenerator implements CleanupTextGenerator {
   private abortRun(child: ChildProcess, id: number): void {
     const channel = this.channels.get(child);
     if (!channel) return;
+    this.abortInFlight = true;
     this.aborting = new Promise<void>((resolve) => {
       const done = () => {
+        this.abortInFlight = false;
         clearTimeout(timer);
         channel.listeners.delete(listener);
         channel.exitWaiters.delete(done);
@@ -228,13 +249,18 @@ export class LlamaCleanupGenerator implements CleanupTextGenerator {
     });
   }
 
-  /** Ends the worker at once, whatever it is doing; a pending call rejects. */
+  /**
+   * Ends the worker at once, whatever it is doing; a pending call rejects. For good: after
+   * this `load` and `generate` refuse and never start a new worker.
+   */
   kill(): void {
+    this.killed = true;
     if (this.child) this.killChild(this.child);
   }
 
   private killChild(child: ChildProcess): void {
     if (this.child === child) this.child = null;
+    if (this.readyChild === child) this.readyChild = null;
     child.kill();
   }
 }

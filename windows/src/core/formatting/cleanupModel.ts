@@ -24,8 +24,18 @@ export interface CleanupTextGenerator {
   /** Runs the prompt to the end of the model's turn. Rejects when the deadline passes. */
   generate(prompt: GeneratorPrompt, deadline: number): Promise<string>;
   unload(): Promise<void>;
-  /** Ends the model at once, without waiting for a load or a run. Optional. */
+  /**
+   * Ends the model at once and for good, without waiting for a load or a run: after it,
+   * `load` and `generate` refuse and never start a new worker. Optional.
+   */
   kill?(): void;
+  /**
+   * True when the weights are loaded and a run can start now. False while they are
+   * loading, were lost (the worker died or was killed) or a stopped run is still being
+   * aborted. `LocalCleanupModel` answers null at once instead of waiting for it. Optional:
+   * without it a loaded model counts as ready.
+   */
+  isReady?(): boolean;
 }
 
 /**

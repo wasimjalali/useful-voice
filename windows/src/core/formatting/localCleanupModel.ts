@@ -35,9 +35,12 @@ export interface LocalCleanupModelOptions {
  *   second `begin` before the first `end` keeps the weights loaded until both have ended.
  * - `end()` is called when the dictation ends or is cancelled: when no dictation is left in
  *   progress it starts the idle timer.
- * - `clean` loads on demand if `begin` was not called or the weights were unloaded, runs the
- *   model, and starts the idle timer again. Nothing here ever rejects: a load or run error
- *   is reported to `warn` and `clean` returns null, so the pipeline keeps the rules text.
+ * - `clean` runs the model when the weights are loaded and ready, and starts the idle timer
+ *   again. It never waits for a model that cannot answer: when the weights are not loaded
+ *   (first dictation after launch or an idle unload), a load or unload is in flight, or a
+ *   stopped run is still being aborted, it answers null at once, so the dictation keeps the
+ *   rules text, and starts the load in the background for the next dictation. Nothing here
+ *   ever rejects: a load or run error is reported to `warn` and `clean` returns null.
  * - After `idleUnloadMs` (60 s by default) with no `begin` or `clean`, the weights are
  *   freed. A dictation that is still in progress is never unloaded under: the timer only runs
  *   while the count of dictations in progress is zero.
@@ -54,6 +57,8 @@ export class LocalCleanupModel implements CleanupModel {
   private loaded = false;
   private disposed = false;
   private inProgress = 0;
+  /** Loads and unloads queued or running. `clean` answers null while there is one. */
+  private maintenance = 0;
   private cancelIdle: (() => void) | null = null;
   private idleGeneration = 0;
   private tail: Promise<unknown> = Promise.resolve();
@@ -74,7 +79,7 @@ export class LocalCleanupModel implements CleanupModel {
   begin(): Promise<void> {
     this.inProgress += 1;
     this.cancelIdleTimer();
-    return this.enqueue(async () => {
+    return this.maintain(async () => {
       await this.ensureLoaded();
     });
   }
@@ -96,15 +101,24 @@ export class LocalCleanupModel implements CleanupModel {
 
   unload(): Promise<void> {
     this.cancelIdleTimer();
-    return this.enqueue(() => this.unloadNow());
+    return this.maintain(() => this.unloadNow());
   }
 
   async clean(text: string, controlLine: string, deadline: number): Promise<string | null> {
+    if (this.disposed) return null;
     this.cancelIdleTimer();
     try {
+      if (!this.isWarm()) {
+        this.loadInBackground();
+        return null;
+      }
       return await this.enqueue(async () => {
         if (this.clock.now() >= deadline) return null;
-        if (!(await this.ensureLoaded())) return null;
+        // A run ahead of this one may have been aborted, or the worker lost, while it waited.
+        if (!this.isWarm()) {
+          this.loadInBackground();
+          return null;
+        }
         try {
           return await this.generator.generate(s1MiniPromptParts(controlLine, text), deadline);
         } catch (error) {
@@ -117,6 +131,27 @@ export class LocalCleanupModel implements CleanupModel {
     }
   }
 
+  /** Weights loaded, nothing loading or unloading, and the generator can start a run now. */
+  private isWarm(): boolean {
+    return this.loaded && this.maintenance === 0 && (this.generator.isReady?.() ?? true);
+  }
+
+  /** Starts a load that nobody waits for, unless one is already on its way. */
+  private loadInBackground(): void {
+    if (this.disposed || this.maintenance > 0) return;
+    void this.maintain(async () => {
+      await this.ensureLoaded();
+    });
+  }
+
+  /** A load or an unload: queued like any call, and counted so `clean` knows not to wait. */
+  private maintain<T>(work: () => Promise<T>): Promise<T> {
+    this.maintenance += 1;
+    return this.enqueue(work).finally(() => {
+      this.maintenance -= 1;
+    });
+  }
+
   private enqueue<T>(work: () => Promise<T>): Promise<T> {
     const result = this.tail.then(work, work);
     this.tail = result.catch(() => undefined);
@@ -125,7 +160,9 @@ export class LocalCleanupModel implements CleanupModel {
 
   private async ensureLoaded(): Promise<boolean> {
     if (this.disposed) return false;
-    if (this.loaded) return true;
+    if (this.loaded && (this.generator.isReady?.() ?? true)) return true;
+    // Not loaded, or the worker was lost since (the generator starts a new one): load again.
+    this.loaded = false;
     try {
       await this.generator.load(this.modelPath);
       this.loaded = !this.disposed;
@@ -159,7 +196,7 @@ export class LocalCleanupModel implements CleanupModel {
     this.cancelIdle = this.clock.setTimer(() => {
       if (generation !== this.idleGeneration || !this.loaded) return;
       this.cancelIdle = null;
-      void this.enqueue(() => (generation === this.idleGeneration ? this.unloadNow() : Promise.resolve()));
+      void this.maintain(() => (generation === this.idleGeneration ? this.unloadNow() : Promise.resolve()));
     }, this.idleUnloadMs);
   }
 }

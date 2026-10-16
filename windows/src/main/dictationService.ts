@@ -184,7 +184,7 @@ export interface CleanupPort {
   run(input: {
     raw: string;
     language: string | null;
-    category: string;
+    category: string | null;
     style: string | null;
   }): Promise<{ text: string }>;
 }
@@ -803,8 +803,9 @@ export class DictationService {
               await this.deps.cleanup.run({
                 raw: rawText,
                 language: storedLanguage,
-                category: context.category,
-                style: press.categoryStyles[context.category] ?? null,
+                // Like the macOS app: a dictation made in our own window has no app to fit.
+                category: session.noCategory ? null : context.category,
+                style: session.noCategory ? null : (press.categoryStyles[context.category] ?? null),
               })
             ).text
           : applyCleanupRules(rawText, storedLanguage);

@@ -15,7 +15,7 @@ heavy is it, and does it behave like the llama.cpp the cleanup eval used?
 **node-llama-cpp 3.22.1, CPU only, in a child process.** It runs the real model, gives the same
 answers as the eval's `llama-server` on 256 of 261 cases, peaks at about 1.2 GB for the worker, and
 packages with electron-builder (CI's windows job, which runs `electron-builder --win`, is green). The
-alternative, shipping the official `llama-server.exe` as a helper, was about 30 to 35% faster at the median
+alternative, shipping the official `llama-server.exe` as a helper, took about 27% less time at the median (291 vs 401 ms)
 on the same noisy box but needs a second binary to fetch, pin and sign, so it stays the fallback.
 
 ## What ran
@@ -32,14 +32,14 @@ on the same noisy box but needs a second binary to fetch, pin and sign, so it st
 - Box: Linux cloud VM, 4 vCPU Xeon @ 2.1 GHz, 16 GB, CPU only. **Shared with other jobs the whole
   time**, load average 4 to 13 on 4 cores. Every latency here is noisy; the medians are the usable
   numbers.
-- Windows: not available here. CI (`windows-latest`) ran typecheck, 1,208 unit tests, build, E2E and
+- Windows: not available here. CI (`windows-latest`) runs typecheck, 1,360 unit tests (21 skipped), build, E2E and
   `electron-builder --win` on every push. No model inference ran on Windows.
 
 ## Numbers
 
 Same 40 in-sample cases, 3 unscored warm-ups, `-c 2048`, greedy (`windows/scripts/bench-runtimes/`).
-Median and p95 are `sorted[floor(p * n)]` of the 40 request times, so the p95 is the 38th slowest
-and the max is one request. Each row names the raw file that backs it (`evals/results/raw/`, prefix
+Median and p95 are `sorted[floor(p * n)]` of the 40 request times, so the p95 is the 39th fastest, which is
+the second slowest of the 40, and the max is the slowest one. Each row names the raw file that backs it (`evals/results/raw/`, prefix
 `2026-10-16-s1-mini-windows-bench-`), with the load average at the start of the run:
 
 | Runtime | Raw file | Load | RSS after load | Median | p95 | Max |
@@ -51,8 +51,8 @@ and the max is one request. Each row names the raw file that backs it (`evals/re
 | llama-server b11669 | `llama-server-1` (4.5) | 1.2 s | 1,012 MB | 291 ms | 15,372 ms | 17,134 ms |
 | llama-server b11669 | `llama-server-2` (5.1) | 1.2 s | 1,012 MB | 292 ms | 773 ms | 7,359 ms |
 
-Keeping the system prompt in context cuts the median by a third (about 600 to 400 ms). llama-server
-is about 30 to 35% faster than the shipped node-llama-cpp at the median (291 vs 401 ms) and its tail
+Keeping the system prompt in context cuts the median time by a third (about 600 to 400 ms). llama-server
+takes about 27% less time than the shipped node-llama-cpp at the median (291 vs 401 ms) and its tail
 was as bad as node-llama-cpp's on the same box (its slow stretches overlapped other jobs). node-llama-cpp
 holds about 180 MB more RSS (the Node binding and its buffers). Both stay under the 1.5 s deadline at the median.
 The tails (one slow run in each pair) track the load average, not the runtime, which is why the
@@ -78,11 +78,11 @@ vs `use LayoutEffect`, `that that` kept, `fooBar_baz` vs `FooBar_baz`, `Index.ht
 
 End to end through the hookup facade with the real model (`check-cleanup-runtime.mjs`, raw
 `-runtime-e2e.json` and `.log`, every check must pass): flag off spawns nothing and reads no disk;
-flag on loads one worker (about 1.2 GB) and the guard accepts "So I need to send the report by
-Thursday."; a 20 ms deadline returns the rules text after about 20 ms; a runtime reporting 5.9 GiB
+flag on: the first dictation on a cold model gets the rules text at once (10 ms in the committed run) while the load carries on in the background, then one worker (about 1.2 GB) holds the model and the guard accepts "So I need to send the report by
+Thursday."; a 20 ms deadline returns the rules text without waiting for the model; a runtime reporting 5.9 GiB
 skips the model and loads nothing at the hotkey; with a patient 120 s deadline the answer is
-accepted; 4 s idle time ends the worker process and the next dictation loads it again and is
-accepted; the template token `<|im_end|>` is one token with specials on and several with them off,
+accepted; 4 s idle time ends the worker process, the first dictation after it gets the rules text at
+once and the next one is accepted; the template token `<|im_end|>` is one token with specials on and several with them off,
 and a dictation that says it aloud does not break the run.
 
 Package cost (Linux `electron-builder --dir` with the same `files` and `asarUnpack`): `app.asar`
@@ -97,8 +97,10 @@ the installer. CI: `npm ci` 35 s, `electron-builder --win` 1 m 47 s.
   `kill` and a stuck run cannot hang the app.
 - The cost is real: about 36 MB on disk, a 1.2 GB worker while the model is loaded, and a
   load that takes about 2 to 25 s here (2 to 6 s on a quiet box, up to 25 s under heavy load, per the raw files). The first dictation after an idle unload, or after a restart,
-  will usually get the rules-only text because the 1.5 s deadline passes while the model loads. The
-  load starts when the hotkey goes down, so a dictation longer than the load gets the model.
+  gets the rules-only text at once: a dictation never waits for a model that cannot answer, so it
+  does not spend the 1.5 s deadline on a load. The load starts when the hotkey goes down (and carries on
+  in the background if it was not started), so a dictation longer than the load, and every dictation
+  after it, gets the model.
 - Under heavy CPU load the model misses the deadline and the abort can take seconds to land (the
   worker is killed after 3 s). The dictation is never delayed, but the worker is reloaded. Worth
   measuring on real Windows hardware before the flag goes visible.
@@ -112,6 +114,11 @@ golden-file test). Decisions taken after review:
 - RAM rule: the model runs on machines that report **at least 7 GiB** (on both platforms). Windows
   `os.totalmem()` leaves out hardware-reserved memory, so machines sold with 8 GB report about 7.0 to
   7.9 GiB; 6 GB and smaller stay off. Tests cover 6.9, 7.0, 7.8 and 8 GiB.
+- Cold model: when the weights are not loaded, a load or unload is in flight or a stopped run is
+  still being aborted, the model answers null at once and the dictation keeps the rules text. The
+  first dictation after launch or an idle unload therefore costs nothing; the next one uses the model.
+- Style: the style picked for an app category maps to the control line like the macOS app (Formal is
+  formal, Casual is semi-casual, Very casual is casual, none is semi-formal).
 - `run()` never rejects: any failure while checking the model file, loading or generating returns
   the rules text, and the disk check sits inside the 1.5 s deadline.
 - Idle unload waits for every dictation in progress (begin/end count), and the preload skips a pinned

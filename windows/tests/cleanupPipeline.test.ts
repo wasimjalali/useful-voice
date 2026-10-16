@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runCleanupPipeline, type CleanupPipelineInput } from '../src/core/formatting/cleanupPipeline.js';
 import type { CleanupModel } from '../src/core/formatting/cleanupModel.js';
+import { s1ControlStyle } from '../src/core/formatting/cleanupControlLine.js';
 import {
   CLEANUP_MODEL_ENV_KEY,
   CLEANUP_MODEL_SWITCH,
@@ -154,6 +155,42 @@ describe('runCleanupPipeline', () => {
     });
     const invented = fakeModel(() => 'I need to send the report by Thursday, 42 pages.');
     expect((await runCleanupPipeline(input({ model: invented.model }))).text).toBe(RULES_TEXT);
+  });
+
+  it('returns the raw text when the rules leave only whitespace, without asking the model', async () => {
+    const { model, calls } = fakeModel(() => GOOD_ANSWER);
+    const result = await runCleanupPipeline(input({ raw: '   ', model }));
+    expect(result).toEqual({ text: '   ', source: 'raw' });
+    expect(calls).toHaveLength(0);
+    const tabs = await runCleanupPipeline(input({ raw: ' \n\t ', model }));
+    expect(tabs).toEqual({ text: ' \n\t ', source: 'raw' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('maps the app style to the control-line style like the macOS app', () => {
+    expect(s1ControlStyle('formal')).toBe('formal');
+    expect(s1ControlStyle('casual')).toBe('semi-casual');
+    expect(s1ControlStyle('veryCasual')).toBe('casual');
+    expect(s1ControlStyle(null)).toBeNull();
+    expect(s1ControlStyle(undefined)).toBeNull();
+    expect(s1ControlStyle('semi-formal')).toBeNull(); // not an app style
+  });
+
+  it.each([
+    [null, 'semi-formal'],
+    ['formal', 'formal'],
+    ['casual', 'semi-casual'],
+    ['veryCasual', 'casual'],
+  ] as const)('a Work chat dictation with style %s reaches the model with Styling: %s', async (style, styling) => {
+    const { model, calls } = fakeModel(() => GOOD_ANSWER);
+    await runCleanupPipeline(input({ model, category: 'workChat', style }));
+    expect(calls[0]?.controlLine).toBe(`[Styling: ${styling}] [Structure: prose] [Context: general]`);
+  });
+
+  it('no category (our own window) is general context with the default style', async () => {
+    const { model, calls } = fakeModel(() => GOOD_ANSWER);
+    await runCleanupPipeline(input({ model, category: null, style: null }));
+    expect(calls[0]?.controlLine).toBe('[Styling: semi-formal] [Structure: prose] [Context: general]');
   });
 
   it('returns the raw text when the rules leave nothing, without asking the model', async () => {

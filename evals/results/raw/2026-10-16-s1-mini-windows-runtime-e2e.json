@@ -20,6 +20,20 @@
   "ok": true
  },
  {
+  "name": "cold model: the first dictation gets the rules text at once, the load carries on",
+  "ok": true,
+  "detail": {
+   "waitedMs": 10,
+   "result": {
+    "text": "So I need to send the report by Friday, no wait, Thursday.",
+    "source": "rules",
+    "model": {
+     "kind": "failed"
+    }
+   }
+  }
+ },
+ {
   "name": "flag on: S1-mini answer accepted by the guard",
   "ok": true,
   "detail": {
@@ -34,7 +48,7 @@
   "name": "flag on: one worker process holds the model",
   "ok": true,
   "detail": {
-   "rssMb": 1202
+   "rssMb": 1168
   }
  },
  {
@@ -42,15 +56,15 @@
   "ok": true
  },
  {
-  "name": "20 ms deadline: rules text after about 20 ms, not after the model",
+  "name": "20 ms deadline: rules text at once, the model is not waited for",
   "ok": true,
   "detail": {
-   "waitedMs": 19,
+   "waitedMs": 4,
    "result": {
     "text": "So I need to send the report by Friday, no wait, Thursday.",
     "source": "rules",
     "model": {
-     "kind": "timedOut"
+     "kind": "failed"
     }
    }
   }
@@ -91,7 +105,18 @@
   }
  },
  {
-  "name": "after unload: loads again and the answer is accepted",
+  "name": "after unload: the first dictation gets the rules text at once",
+  "ok": true,
+  "detail": {
+   "text": "We should meet on Tuesday, no wait, Wednesday morning.",
+   "source": "raw",
+   "model": {
+    "kind": "failed"
+   }
+  }
+ },
+ {
+  "name": "after unload: loads again in the background and the next answer is accepted",
   "ok": true,
   "detail": {
    "text": "We should meet on Wednesday morning.",

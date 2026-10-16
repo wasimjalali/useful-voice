@@ -9,7 +9,7 @@ import {
   type TextSinkPort,
   type TranscriberPort,
 } from '../src/main/dictationService.js';
-import { cleanupPortFor, createCleanupRuntime } from '../src/main/cleanupModel/cleanupRuntime.js';
+import { dictationSettings, preloadLanguageFor, wireCleanup } from '../src/main/cleanupModel/cleanupWiring.js';
 import { DEFAULT_SETTINGS, emptySnapshot, type AppSettings } from '../src/core/models.js';
 import type { Transcript } from '../src/core/transcription/deepgramProvider.js';
 
@@ -80,20 +80,20 @@ async function runOne(text: string, language: string | null, variant: (typeof VA
     },
   };
   const settings: AppSettings = { ...DEFAULT_SETTINGS, ...variant.settings };
-  // Wired exactly as index.ts does it with the flag off: the port is undefined.
-  const port = cleanupPortFor(createCleanupRuntime({ userDataDir: '/nowhere', argv: [], env: {} }));
+  // Wired by the same functions index.ts calls, with the flag off: no cleanup port.
+  const wiring = wireCleanup({ userDataDir: '/nowhere', argv: [], env: {} });
   const service = new DictationService({
     recorder: new Recorder(),
     transcriber,
     sink,
-    settings: () => settings,
+    settings: () => dictationSettings(settings, { sandbox: false, language: null }),
     memory: () => MEMORY,
     apiKey: async () => 'key',
     onStatus: (status) => statuses.push(status),
     onCompleted: (outcome) => completed.push(outcome),
     idFactory: () => 'id',
     now: () => 0,
-    ...(port ? { cleanup: port } : {}),
+    ...wiring.serviceDeps,
   });
   const context =
     variant.category === 'none'
@@ -131,8 +131,18 @@ async function runAll(): Promise<Record<string, unknown>> {
 
 describe('hidden cleanup flag off', () => {
   it('has no cleanup port, so the service runs its own rules step', () => {
-    expect(cleanupPortFor(createCleanupRuntime({ userDataDir: '/nowhere', argv: [], env: {} }))).toBeUndefined();
-    expect(cleanupPortFor(createCleanupRuntime({ userDataDir: '/nowhere', argv: ['--cleanup-model'], env: { UV_CLEANUP_MODEL: '0' } }))).toBeUndefined();
+    expect(wireCleanup({ userDataDir: '/nowhere', argv: [], env: {} }).serviceDeps).toEqual({});
+    expect(wireCleanup({ userDataDir: '/nowhere', argv: ['--cleanup-model'], env: { UV_CLEANUP_MODEL: '0' } }).serviceDeps).toEqual({});
+    expect(wireCleanup({ userDataDir: '/nowhere', argv: ['--cleanup-model'], env: {} }).serviceDeps.cleanup).toBeDefined();
+  });
+
+  it('preloads for the language the dictation runs with, sandbox included', () => {
+    const saved: AppSettings = { ...DEFAULT_SETTINGS, languagePin: 'en' };
+    expect(preloadLanguageFor(dictationSettings(saved, { sandbox: false, language: null }))).toBe('en');
+    // The first-run sandbox language replaces the pin for the run, so it must for the preload.
+    expect(dictationSettings(saved, { sandbox: true, language: 'de' }).languagePin).toBe('de');
+    expect(preloadLanguageFor(dictationSettings(saved, { sandbox: true, language: 'de' }))).toBe('de');
+    expect(preloadLanguageFor(dictationSettings({ ...saved, languagePin: 'auto' }, { sandbox: true, language: null }))).toBeUndefined();
   });
 
   it('delivers byte for byte what main delivered before the cleanup runtime existed', async () => {

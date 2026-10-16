@@ -28,7 +28,9 @@ import { downloadModel, modelAvailability, modelFilePath, type DownloadOptions, 
  *   ...
  *   await cleanup.dispose();                        // before quit
  *
- * Nothing here ever costs a dictation: `run` does not reject, whatever fails (the disk, the
+ * A dictation never waits for a model that cannot answer: while the weights are not loaded
+ * (the first dictation after launch or an idle unload) `run` answers with the rules text at
+ * once and the load carries on in the background. Nothing here ever costs a dictation: `run` does not reject, whatever fails (the disk, the
  * worker, the model) it answers with the rules text, and its disk check is inside the
  * deadline. With the flag off (the default) nothing touches the disk, spawns a process or
  * loads node-llama-cpp: `run` is just the rules.

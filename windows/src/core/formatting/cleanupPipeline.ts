@@ -1,5 +1,5 @@
 import { evaluateCleanupOutput, type GuardReason } from './cleanupGuard.js';
-import { s1ControlLine } from './cleanupControlLine.js';
+import { s1ControlLine, s1ControlStyle } from './cleanupControlLine.js';
 import type { CleanupModel } from './cleanupModel.js';
 import {
   DEFAULT_CLEANUP_DEADLINE_MS,
@@ -18,7 +18,7 @@ import { applyCleanupRules } from './cleanupRules.js';
  * starts, and anything short of a guard-approved answer yields the rules-only text.
  *
  *   1. `applyCleanupRules` runs on the raw text (English only).
- *   2. Rules left nothing (the whole dictation was fillers): the raw text is the result, so
+ *   2. Rules left nothing or only whitespace (the whole dictation was fillers): the raw text is the result, so
  *      History and the clipboard never get an empty entry. The model is not asked.
  *   3. `decideCleanupModel` (flag, model downloaded, at least 7 GiB reported, which is an
  *      8 GB machine, English): when it says
@@ -49,6 +49,7 @@ export interface CleanupPipelineInput {
   raw: string;
   language: string | null | undefined;
   category: string | null | undefined;
+  /** The style picked for the app category: `formal`, `casual`, `veryCasual` or none. */
   style: string | null | undefined;
   gates: CleanupGates;
   model: CleanupModel | null;
@@ -61,7 +62,7 @@ export async function runCleanupPipeline(input: CleanupPipelineInput): Promise<C
   const now = input.now ?? (() => performance.now());
   const start = now();
   const rulesText = applyCleanupRules(input.raw, input.language);
-  if (rulesText === '') return { text: input.raw, source: 'raw' };
+  if (rulesText.trim() === '') return { text: input.raw, source: 'raw' };
   const rulesSource: CleanupSource = rulesText === input.raw ? 'raw' : 'rules';
   const rulesResult = (model: CleanupModelOutcome): CleanupResult => ({ text: rulesText, source: rulesSource, model });
 
@@ -69,7 +70,7 @@ export async function runCleanupPipeline(input: CleanupPipelineInput): Promise<C
   if (!decision.run) return rulesResult({ kind: 'skipped', reason: decision.reason });
   if (!input.model) return rulesResult({ kind: 'skipped', reason: 'noModel' });
 
-  const controlLine = s1ControlLine(input.category, input.style);
+  const controlLine = s1ControlLine(input.category, s1ControlStyle(input.style));
   const limit = start + (input.deadlineMs ?? DEFAULT_CLEANUP_DEADLINE_MS);
   const answer = await withDeadline(
     askModel(input.model, rulesText, controlLine, limit),

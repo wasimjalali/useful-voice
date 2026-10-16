@@ -64,6 +64,11 @@ class FakeGenerator implements CleanupTextGenerator {
     this.killed = true;
     this.events.push('kill');
   }
+  /** The worker is lost or busy aborting: the weights are not usable right now. */
+  notReady = false;
+  isReady(): boolean {
+    return !this.notReady;
+  }
 }
 
 const LINE = '[Styling: semi-formal] [Structure: prose] [Context: general]';
@@ -76,25 +81,50 @@ function make(over: { idleUnloadMs?: number } = {}) {
   return { clock, generator, warnings, model };
 }
 
+/** Loads the weights the way a dictation does and lets the dictation end: the model is warm. */
+async function warm(model: LocalCleanupModel): Promise<void> {
+  await model.begin();
+  model.end();
+}
+
 describe('LocalCleanupModel', () => {
-  it('loads on first use, runs the card prompt and answers', async () => {
+  it('answers the first dictation after launch with null at once, and loads in the background for the next', async () => {
     const { model, generator } = make();
+    generator.holdLoad = true;
+    // The load never finishes while this dictation waits: clean must not wait for it.
+    expect(await model.clean('hello there', LINE, 1000)).toBeNull();
+    expect(generator.events).toEqual(['load m.gguf']);
+    expect(model.isLoaded).toBe(false);
+    generator.releaseLoad?.();
+    await settle();
+    expect(model.isLoaded).toBe(true);
+    // The next dictation uses the model.
+    generator.holdLoad = false;
     expect(await model.clean('hello there', LINE, 1000)).toBe('cleaned');
     expect(generator.events).toEqual(['load m.gguf', 'generate']);
     expect(generator.prompts[0]).toBe(s1MiniPrompt(LINE, 'hello there'));
     expect(generator.deadlines[0]).toBe(1000);
-    expect(model.isLoaded).toBe(true);
   });
 
   it('loads once for several dictations', async () => {
     const { model, generator } = make();
+    await warm(model);
     await model.clean('a', LINE, 1000);
     await model.clean('b', LINE, 1000);
     expect(generator.events.filter((e) => e.startsWith('load'))).toHaveLength(1);
   });
 
+  it('does not start a second load while one is on its way', async () => {
+    const { model, generator } = make();
+    generator.holdLoad = true;
+    expect(await model.clean('a', LINE, 1000)).toBeNull();
+    expect(await model.clean('b', LINE, 1000)).toBeNull();
+    expect(generator.events).toEqual(['load m.gguf']);
+  });
+
   it('unloads after 60 s idle by default', async () => {
     const { model, generator, clock } = make();
+    await warm(model);
     await model.clean('a', LINE, 1000);
     await clock.advance(59_999);
     expect(model.isLoaded).toBe(true);
@@ -105,6 +135,7 @@ describe('LocalCleanupModel', () => {
 
   it('takes another idle time', async () => {
     const { model, clock } = make({ idleUnloadMs: 5000 });
+    await warm(model);
     await model.clean('a', LINE, 1000);
     await clock.advance(4999);
     expect(model.isLoaded).toBe(true);
@@ -114,6 +145,7 @@ describe('LocalCleanupModel', () => {
 
   it('restarts the idle timer on every dictation', async () => {
     const { model, clock } = make();
+    await warm(model);
     await model.clean('a', LINE, 1000);
     await clock.advance(40_000);
     await model.clean('b', LINE, 1000);
@@ -125,9 +157,13 @@ describe('LocalCleanupModel', () => {
 
   it('loads again after an unload', async () => {
     const { model, generator, clock } = make();
+    await warm(model);
     await model.clean('a', LINE, 1000);
     await clock.advance(60_000);
-    expect(await model.clean('b', LINE, clock.time + 1500)).toBe('cleaned');
+    // After an idle unload the first dictation gets null at once and the load carries on.
+    expect(await model.clean('b', LINE, clock.time + 1500)).toBeNull();
+    await settle();
+    expect(await model.clean('c', LINE, clock.time + 1500)).toBe('cleaned');
     expect(generator.events).toEqual(['load m.gguf', 'generate', 'unload', 'load m.gguf', 'generate']);
   });
 
@@ -145,6 +181,7 @@ describe('LocalCleanupModel', () => {
 
   it('begin after a finished dictation cancels the pending unload', async () => {
     const { model, clock } = make();
+    await warm(model);
     await model.clean('a', LINE, 1000);
     await clock.advance(30_000);
     await model.begin();
@@ -152,38 +189,56 @@ describe('LocalCleanupModel', () => {
     expect(model.isLoaded).toBe(true);
   });
 
-  it('clean waits for a load that begin started', async () => {
+  it('clean does not wait for a load that begin started: null at once, the load carries on', async () => {
     const { model, generator } = make();
     generator.holdLoad = true;
     const begun = model.begin();
-    const cleaned = model.clean('a', LINE, 1000);
-    await settle();
+    expect(await model.clean('a', LINE, 1000)).toBeNull();
     expect(generator.events).toEqual(['load m.gguf']);
     generator.releaseLoad?.();
     await begun;
-    expect(await cleaned).toBe('cleaned');
+    expect(model.isLoaded).toBe(true);
+    expect(await model.clean('a', LINE, 1000)).toBe('cleaned');
     expect(generator.events).toEqual(['load m.gguf', 'generate']);
   });
 
-  it('answers null without loading when the deadline has already passed', async () => {
+  it('answers null at once while a stopped run is still being aborted, and loads again afterwards', async () => {
+    const { model, generator } = make();
+    await warm(model);
+    generator.notReady = true; // the worker is aborting or was lost
+    expect(await model.clean('a', LINE, 1000)).toBeNull();
+    expect(generator.events).toEqual(['load m.gguf', 'load m.gguf']); // a background reload was asked for
+    expect(generator.prompts).toEqual([]);
+    generator.notReady = false;
+    await settle();
+    expect(await model.clean('b', LINE, 1000)).toBe('cleaned');
+  });
+
+  it('answers null without running when the deadline has already passed', async () => {
     const { model, generator, clock } = make();
+    await warm(model);
     clock.time = 2000;
     expect(await model.clean('a', LINE, 1500)).toBeNull();
-    expect(generator.events).toEqual([]);
+    expect(generator.events).toEqual(['load m.gguf']);
   });
 
   it('answers null and warns when the load fails, and tries again next time', async () => {
     const { model, generator, warnings } = make();
     generator.loadError = new Error('no memory');
-    expect(await model.clean('a', LINE, 1000)).toBeNull();
+    await model.begin();
     expect(warnings[0]).toContain('no memory');
     expect(model.isLoaded).toBe(false);
+    expect(await model.clean('a', LINE, 1000)).toBeNull();
+    await settle();
     generator.loadError = null;
-    expect(await model.clean('b', LINE, 1000)).toBe('cleaned');
+    expect(await model.clean('b', LINE, 1000)).toBeNull(); // still cold: the retry above failed too
+    await settle();
+    expect(await model.clean('c', LINE, 1000)).toBe('cleaned');
   });
 
   it('answers null and warns when the run throws, and stays loaded', async () => {
     const { model, generator, warnings } = make();
+    await warm(model);
     generator.runError = new Error('deadline');
     expect(await model.clean('a', LINE, 1000)).toBeNull();
     expect(warnings[0]).toContain('deadline');
@@ -221,6 +276,30 @@ describe('LocalCleanupModel', () => {
     await model.begin();
     await clock.advance(5 * 60_000);
     expect(model.isLoaded).toBe(true);
+  });
+
+  it('counts from zero after stray ends, so the timer still arms when the real dictation ends', async () => {
+    const { model, clock } = make();
+    model.end();
+    model.end();
+    await model.begin();
+    model.end();
+    await clock.advance(60_000);
+    expect(model.isLoaded).toBe(false);
+  });
+
+  it('does not arm the timer while another dictation is in progress, only when the last one ends', async () => {
+    const { model, clock } = make();
+    await model.begin(); // A
+    await model.begin(); // B
+    model.end(); // A ends; B has not
+    await clock.advance(10 * 60_000);
+    expect(model.isLoaded).toBe(true);
+    expect(clock.pendingTimers).toBe(0);
+    model.end(); // B ends
+    expect(clock.pendingTimers).toBe(1);
+    await clock.advance(60_000);
+    expect(model.isLoaded).toBe(false);
   });
 
   it('dispose kills the worker at once, even in the middle of a load, and never loads again', async () => {

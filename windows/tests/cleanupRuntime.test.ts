@@ -60,6 +60,13 @@ afterEach(() => {
   expect(unhandled).toEqual([]);
 });
 
+/** A dictation that loads the model and ends: the model is warm for the next one. */
+async function warmUp(runtime: ReturnType<typeof createCleanupRuntime>): Promise<void> {
+  runtime.beginDictation('en');
+  await settle();
+  runtime.endDictation();
+}
+
 function make(over: Partial<CleanupRuntimeOptions> = {}) {
   const generator = new FakeGenerator();
   const clock = new ManualTimers();
@@ -105,8 +112,20 @@ describe('createCleanupRuntime, flag off', () => {
 describe('createCleanupRuntime, flag on', () => {
   it('runs the model and takes an answer the guard accepts', async () => {
     const { runtime, generator } = make();
+    await warmUp(runtime);
     expect(await runtime.run(input)).toEqual({ text: GOOD, source: 'model', model: { kind: 'accepted' } });
     expect(generator.events).toEqual(['load', 'generate']);
+  });
+
+  it('the first dictation after launch gets the rules text at once while the model loads for the next', async () => {
+    const { runtime, generator } = make();
+    const started = performance.now();
+    const first = await runtime.run(input);
+    expect(performance.now() - started).toBeLessThan(500); // not the 1.5 s deadline
+    expect(first).toEqual({ text: RULES_TEXT, source: 'rules', model: { kind: 'failed' } });
+    await settle();
+    expect(generator.events).toEqual(['load']);
+    expect(await runtime.run(input)).toEqual({ text: GOOD, source: 'model', model: { kind: 'accepted' } });
   });
 
   it('skips the model on a 6 GB machine and loads nothing at hotkey down', async () => {
@@ -119,6 +138,7 @@ describe('createCleanupRuntime, flag on', () => {
 
   it('passes an 8 GB PC that reports 7.4 GiB', async () => {
     const { runtime } = make({ totalMemoryBytes: 7.4 * GiB });
+    await warmUp(runtime);
     expect((await runtime.run(input)).source).toBe('model');
   });
 
@@ -128,6 +148,8 @@ describe('createCleanupRuntime, flag on', () => {
     const { runtime } = make({ checkModel: async () => (calls++, state) });
     expect((await runtime.run(input)).model).toEqual({ kind: 'skipped', reason: 'modelNotDownloaded' });
     state = 'usable';
+    await runtime.run(input); // sees the file; the model is cold, so rules text and a background load
+    await settle();
     expect((await runtime.run(input)).source).toBe('model');
     await runtime.run(input);
     expect(calls).toBe(2);
@@ -163,12 +185,38 @@ describe('run never rejects and never loses the dictation', () => {
     expect(result.text).toBe(RULES_TEXT);
   });
 
+  it('the disk check and the model share one deadline: a slow check leaves less time, never more', async () => {
+    const { runtime } = make({
+      checkModel: () => new Promise<ModelAvailability>((resolve) => setTimeout(() => resolve('usable'), 100)),
+      deadlineMs: 150,
+    });
+    const started = performance.now();
+    const result = await runtime.run(input);
+    const took = performance.now() - started;
+    expect(result.text).toBe(RULES_TEXT);
+    expect(took).toBeLessThan(220); // 100 ms disk + the cold-model answer, never 100 + 150
+  });
+
+  it('a warm model that hangs is cut off at the deadline, counted from the start of the run', async () => {
+    const generator = new FakeGenerator();
+    generator.generate = () => new Promise<string>(() => undefined);
+    const { runtime } = make({ generator, deadlineMs: 120 });
+    await warmUp(runtime);
+    const started = performance.now();
+    const result = await runtime.run(input);
+    const took = performance.now() - started;
+    expect(result).toMatchObject({ text: RULES_TEXT, model: { kind: 'timedOut' } });
+    expect(took).toBeGreaterThanOrEqual(100);
+    expect(took).toBeLessThan(400);
+  });
+
   it('the generator throwing synchronously gives the rules text', async () => {
     const generator = new FakeGenerator();
     generator.generate = () => {
       throw new Error('sync generate');
     };
     const { runtime } = make({ generator });
+    await warmUp(runtime);
     expect(await runtime.run(input)).toMatchObject({ text: RULES_TEXT, model: { kind: 'failed' } });
   });
 

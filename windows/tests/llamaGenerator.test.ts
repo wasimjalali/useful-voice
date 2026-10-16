@@ -155,7 +155,58 @@ describe('LlamaCleanupGenerator', () => {
     child!.emit('error', new Error('channel broke'));
     child!.emit('error', new Error('second error with no waiter')); // `on`, so this must not throw
     await rejected;
+    // The generator let go of the worker, so it must not leave the process running.
+    const pid = child!.pid!;
+    await new Promise((r) => setTimeout(r, 300));
+    expect(() => process.kill(pid, 0)).toThrow();
+    expect(watched.isRunning).toBe(false);
     watched.kill();
+  });
+
+  it('is ready only once the weights are loaded, and not after the worker is gone', async () => {
+    expect(generator.isReady()).toBe(false);
+    const loading = generator.load('ok.gguf');
+    expect(generator.isReady()).toBe(false); // still loading
+    await loading;
+    expect(generator.isReady()).toBe(true);
+    await generator.unload();
+    expect(generator.isReady()).toBe(false);
+  });
+
+  it('after kill it refuses to load or run and never starts a new worker', async () => {
+    let spawned = 0;
+    const latched = new LlamaCleanupGenerator({
+      workerScript: script,
+      spawn: (file) => {
+        spawned += 1;
+        return fork(file, [], { execArgv: [], stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+      },
+    });
+    await latched.load('ok.gguf');
+    expect(spawned).toBe(1);
+    latched.kill();
+    expect(latched.isReady()).toBe(false);
+    await expect(latched.load('ok.gguf')).rejects.toThrow('shut down');
+    await expect(latched.generate(prompt('echo'), FAR())).rejects.toThrow('shut down');
+    expect(spawned).toBe(1);
+    expect(latched.isRunning).toBe(false);
+  });
+
+  it('is not ready while a stopped run is still being aborted, and ready again once the worker confirms', async () => {
+    await generator.load('ok.gguf');
+    await expect(generator.generate(prompt('ackAbort'), performance.now() + 50)).rejects.toThrow('deadline');
+    expect(generator.isReady()).toBe(false); // the abort is on its way
+    await new Promise((r) => setTimeout(r, 100));
+    expect(generator.isReady()).toBe(true); // confirmed: the same worker, weights still loaded
+  });
+
+  it('is not ready when a worker that ignores the abort has been killed', async () => {
+    await generator.load('ok.gguf');
+    await expect(generator.generate(prompt('hang'), performance.now() + 50)).rejects.toThrow('deadline');
+    expect(generator.isReady()).toBe(false);
+    await new Promise((r) => setTimeout(r, 400)); // past the 150 ms grace
+    expect(generator.isReady()).toBe(false);
+    expect(generator.isRunning).toBe(false);
   });
 
   it('refuses to send to a closed channel', async () => {

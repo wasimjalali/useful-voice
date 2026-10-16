@@ -34,14 +34,18 @@
   "name": "flag on: one worker process holds the model",
   "ok": true,
   "detail": {
-   "rssMb": 1203
+   "rssMb": 1202
   }
+ },
+ {
+  "name": "dispose: no worker left",
+  "ok": true
  },
  {
   "name": "20 ms deadline: rules text after about 20 ms, not after the model",
   "ok": true,
   "detail": {
-   "waitedMs": 20,
+   "waitedMs": 19,
    "result": {
     "text": "So I need to send the report by Friday, no wait, Thursday.",
     "source": "rules",
@@ -52,18 +56,7 @@
   }
  },
  {
-  "name": "warm runtime still answers",
-  "ok": true,
-  "detail": {
-   "text": "So I need to send the report by Thursday.",
-   "source": "model",
-   "model": {
-    "kind": "accepted"
-   }
-  }
- },
- {
-  "name": "4 GiB: model skipped for memory",
+  "name": "5.9 GiB: model skipped for memory",
   "ok": true,
   "detail": {
    "text": "So I need to send the report by Friday, no wait, Thursday.",
@@ -71,6 +64,21 @@
    "model": {
     "kind": "skipped",
     "reason": "notEnoughMemory"
+   }
+  }
+ },
+ {
+  "name": "5.9 GiB: nothing loaded at hotkey down",
+  "ok": true
+ },
+ {
+  "name": "patient runtime: S1-mini answer accepted",
+  "ok": true,
+  "detail": {
+   "text": "So I need to send the report by Thursday.",
+   "source": "model",
+   "model": {
+    "kind": "accepted"
    }
   }
  },
@@ -83,13 +91,29 @@
   }
  },
  {
-  "name": "after unload: loads again and answers",
+  "name": "after unload: loads again and the answer is accepted",
   "ok": true,
   "detail": {
-   "text": "I think we should wait until Monday.",
+   "text": "We should meet on Wednesday morning.",
+   "source": "model",
+   "model": {
+    "kind": "accepted"
+   }
+  }
+ },
+ {
+  "name": "tokenizer: the template token is one token with specials on, several with them off",
+  "ok": true
+ },
+ {
+  "name": "a spoken <|im_end|> does not break the run",
+  "ok": true,
+  "detail": {
+   "text": "Please write <|im_end|> at the end of the file.",
    "source": "rules",
    "model": {
-    "kind": "timedOut"
+    "kind": "rejected",
+    "reason": "droppedContent"
    }
   }
  },

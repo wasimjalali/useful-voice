@@ -166,12 +166,27 @@ export interface DictationServiceDeps {
   onDiagnostic?: (category: string, message: string) => void;
   /** Optional post-transcription formatting (the formatter). */
   formatter?: FormatterPort;
+  /**
+   * The hidden local-model cleanup (S1-mini). Present only when its flag is on; it replaces
+   * the cleanup rules step with rules plus the model, and it never rejects and never takes
+   * longer than its own deadline. Absent: the cleanup rules alone, exactly as before.
+   */
+  cleanup?: CleanupPort;
   idFactory?: () => string;
   now?: () => number;
   /** Bounded wait for delivery, so a lost callback cannot wedge the app. */
   deliveryTimeoutMs?: number;
   /** How often the silence and max-length limits are checked. */
   tickMs?: number;
+}
+
+export interface CleanupPort {
+  run(input: {
+    raw: string;
+    language: string | null;
+    category: string;
+    style: string | null;
+  }): Promise<{ text: string }>;
 }
 
 export interface StartOptions {
@@ -783,7 +798,17 @@ export class DictationService {
     let formattingChangedText = false;
     if (!rawMode && press.formattingEnabled) {
       try {
-        const cleaned = applyCleanupRules(rawText, storedLanguage);
+        const cleaned = this.deps.cleanup
+          ? (
+              await this.deps.cleanup.run({
+                raw: rawText,
+                language: storedLanguage,
+                category: context.category,
+                style: press.categoryStyles[context.category] ?? null,
+              })
+            ).text
+          : applyCleanupRules(rawText, storedLanguage);
+        if (!current()) return;
         // Nothing left (a dictation that was only "um"): keep the transcript as it came.
         if (cleaned.trim().length > 0) preparedText = cleaned;
       } catch {

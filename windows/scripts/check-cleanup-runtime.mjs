@@ -45,14 +45,20 @@ off.beginDictation();
 check('flag off: no worker process', workers().length === 0);
 
 // 2. Flag on through the switch, 16 GiB: the model runs and the guard accepts.
-const on = make({ argv: ['--cleanup-model'], totalMemoryBytes: 16 * 1024 ** 3, idleUnloadMs: 4000 });
+// The deadline here is 120 s, not the shipped 1.5 s: this box is shared, and a run slow enough to be
+// aborted restarts the worker, so a short deadline can loop on reloads and never see an answer
+// (seen with other jobs running). The 1.5 s deadline itself is covered by check 3 below and by
+// tests/cleanupPipeline.test.ts.
+const on = make({ argv: ['--cleanup-model'], totalMemoryBytes: 16 * 1024 ** 3, deadlineMs: 120_000, idleUnloadMs: 4000 });
 check('flag on: gates see the downloaded model', (await on.gates()).modelInstalled === true);
 on.beginDictation(); // loads while the person talks
 const started = performance.now();
 let r1;
 for (;;) {
-  r1 = await on.run({ ...input }); // default 1.5 s deadline
-  if (r1.model?.kind !== 'timedOut' || performance.now() - started > 120_000) break;
+  r1 = await on.run({ ...input });
+  // A cold load can use the whole 1.5 s (timedOut) or a reload after a late abort can
+  // (failed: deadline). Both are the deadline doing its job: ask again until the model is warm.
+  if (!['timedOut', 'failed'].includes(r1.model?.kind) || performance.now() - started > 120_000) break;
 }
 on.endDictation();
 check('flag on: S1-mini answer accepted by the guard', r1.source === 'model' && r1.model?.kind === 'accepted', r1);
@@ -92,7 +98,7 @@ const after = workers().length;
 check('idle unload: worker process gone after the idle time', before === 1 && after === 0, { before, after });
 
 // 7. Loads again on the next dictation, and the answer is accepted.
-const r6 = await patient.run({ ...input, raw: 'I think we should, uh, wait until Monday.' });
+const r6 = await patient.run({ ...input, raw: 'We should meet on Tuesday, no wait, Wednesday morning.' });
 check('after unload: loads again and the answer is accepted', r6.source === 'model' && r6.model?.kind === 'accepted', r6);
 
 // 8. A dictation that says a template token out loud stays plain text for the model.

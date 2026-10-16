@@ -12,6 +12,7 @@ import {
 import { runCleanupPipeline, type CleanupResult } from '../../core/formatting/cleanupPipeline.js';
 import { LocalCleanupModel, type CleanupClock } from '../../core/formatting/localCleanupModel.js';
 import { S1_MINI_MODEL } from '../../core/formatting/s1MiniModel.js';
+import type { CleanupPort } from '../dictationService.js';
 import { LlamaCleanupGenerator } from './llamaGenerator.js';
 import { downloadModel, modelAvailability, modelFilePath, type DownloadOptions, type ModelAvailability } from './modelDownloader.js';
 
@@ -216,4 +217,19 @@ export function createCleanupRuntime(options: CleanupRuntimeOptions): CleanupRun
       }
     },
   };
+}
+
+/**
+ * What the dictation service gets. Undefined with the flag off, so the service runs its
+ * own cleanup-rules step exactly as it did before this feature existed; there is no
+ * "off" mode of the model path, only the absence of it.
+ */
+export function cleanupPortFor(runtime: CleanupRuntime): CleanupPort | undefined {
+  return runtime.flagOn ? { run: (input) => runtime.run(input) } : undefined;
+}
+
+/** The pinned language to preload for, or undefined when it is not known before the audio. */
+export function preloadLanguage(languagePin: string): string | undefined {
+  const pin = languagePin.trim().toLowerCase();
+  return pin === '' || pin === 'auto' || pin === 'multi' ? undefined : pin;
 }

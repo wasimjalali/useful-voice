@@ -1,0 +1,18 @@
+PASS  flag off: rules text, model skipped  {"text":"So I need to send the report by Friday, no wait, Thursday.","source":"rules","model":{"kind":"skipped","reason":"flagOff"}}
+PASS  flag off: no worker process
+PASS  flag on: gates see the downloaded model
+PASS  flag on: S1-mini answer accepted by the guard  {"text":"So I need to send the report by Thursday.","source":"model","model":{"kind":"accepted"}}
+PASS  flag on: one worker process holds the model  {"rssMb":1202}
+PASS  dispose: no worker left
+PASS  20 ms deadline: rules text after about 20 ms, not after the model  {"waitedMs":19,"result":{"text":"So I need to send the report by Friday, no wait, Thursday.","source":"rules","model":{"kind":"timedOut"}}}
+PASS  5.9 GiB: model skipped for memory  {"text":"So I need to send the report by Friday, no wait, Thursday.","source":"rules","model":{"kind":"skipped","reason":"notEnoughMemory"}}
+warn: cleanup model load failed: the model worker exited (SIGTERM)
+PASS  5.9 GiB: nothing loaded at hotkey down
+PASS  patient runtime: S1-mini answer accepted  {"text":"So I need to send the report by Thursday.","source":"model","model":{"kind":"accepted"}}
+PASS  idle unload: worker process gone after the idle time  {"before":1,"after":0}
+PASS  after unload: loads again and the answer is accepted  {"text":"We should meet on Wednesday morning.","source":"model","model":{"kind":"accepted"}}
+[node-llama-cpp] load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+PASS  tokenizer: the template token is one token with specials on, several with them off
+PASS  a spoken <|im_end|> does not break the run  {"text":"Please write <|im_end|> at the end of the file.","source":"rules","model":{"kind":"rejected","reason":"droppedContent"}}
+PASS  dispose: no worker left
+exit 0

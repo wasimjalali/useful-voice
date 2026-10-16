@@ -33,6 +33,7 @@ import {
   type TranscriptionHint,
 } from '../core/transcription/deepgramProvider.js';
 import { SettingsStore } from './settingsStore.js';
+import { cleanupPortFor, createCleanupRuntime, preloadLanguage, type CleanupRuntime } from './cleanupModel/cleanupRuntime.js';
 import {
   applyAppearance,
   canvasColor,
@@ -189,6 +190,10 @@ class UsefulVoiceApp {
   private desktop: Desktop = windowsDesktop;
   private fakeDesktop: FakeDesktop | null = null;
   private service!: DictationService;
+  /** The hidden S1-mini cleanup. Off unless `--cleanup-model` or `UV_CLEANUP_MODEL=1`; then it is wired in below. */
+  private cleanup!: CleanupRuntime;
+  /** A dictation is open for the cleanup model: between the first recording status and the idle one. */
+  private cleanupOpen = false;
   private diagnostics!: Diagnostics;
 
   /**
@@ -389,6 +394,12 @@ class UsefulVoiceApp {
     this.createRecorderWindow();
     this.announcer = new Announcer((text, urgency) => this.sendAnnouncement(text, urgency));
     this.hudModel = new HudModel((frame) => this.onHudFrame(frame));
+    this.cleanup = createCleanupRuntime({
+      userDataDir: app.getPath('userData'),
+      argv: process.argv,
+      env: process.env,
+      warn: (message) => this.diagnostics.log('cleanup', message),
+    });
     this.service = this.buildService();
     this.tray = new TrayController({
       // The tray is part of the app, not the app the user is dictating into, so a
@@ -946,6 +957,8 @@ class UsefulVoiceApp {
 
   async quit(): Promise<void> {
     try {
+      // Not awaited: it ends the model worker at once and must not wait behind a load.
+      void this.cleanup.dispose();
       await this.service.cancel();
       // Always give the data a chance to reach disk before exiting: a debounced
       // save that never fires would lose the user's last dictionary edit.
@@ -1068,6 +1081,7 @@ class UsefulVoiceApp {
             this.diagnostics.log('dictation', `could not end the recording after a recorder error: ${(failure as Error).message}`),
           ),
     });
+    const cleanupPort = cleanupPortFor(this.cleanup);
     return new DictationService({
       recorder: this.recorder,
       transcriber: {
@@ -1097,6 +1111,7 @@ class UsefulVoiceApp {
           ? { ...this.settings.all, languagePin: this.firstRun.language }
           : this.settings.all,
       memory: () => this.data.memorySnapshot(),
+      ...(cleanupPort ? { cleanup: cleanupPort } : {}),
       apiKey: async () => this.dictationKey(),
       onStatus: (status) => this.handleStatus(status),
       // Before the idle status, so a window can show its done line before it resets.
@@ -1155,6 +1170,15 @@ class UsefulVoiceApp {
     // Leaving the recording state hands the paste to whatever is in front, so a picker that
     // is still open would be the foreground window and take it.
     if (status.state === 'transcribing' || status.state === 'delivering') this.closeLanguagePicker(true);
+
+    // The hidden cleanup model loads while the person talks and is let go when the dictation is over.
+    if (status.state === 'recording' && !this.cleanupOpen) {
+      this.cleanupOpen = true;
+      this.cleanup.beginDictation(preloadLanguage(this.settings.all.languagePin));
+    } else if ((status.state === 'idle' || status.state === 'error') && this.cleanupOpen) {
+      this.cleanupOpen = false;
+      this.cleanup.endDictation();
+    }
 
     if (status.state === 'recording') {
       void playCue('start').catch(() => undefined);
@@ -1906,7 +1930,10 @@ class UsefulVoiceApp {
       if (/^https:\/\//i.test(url) || url === 'ms-settings:privacy-microphone') await shell.openExternal(url);
     });
 
-    ipcMain.handle('app:flags', () => ({ previewFeatures: process.argv.includes('--preview-features') }));
+    ipcMain.handle('app:flags', () => ({
+      previewFeatures: process.argv.includes('--preview-features'),
+      cleanupModel: this.cleanup.flagOn,
+    }));
     ipcMain.handle('app:get-theme', () => resolvedTheme());
     ipcMain.handle('app:show-log', () => shell.showItemInFolder(this.diagnostics.path));
 
@@ -2142,7 +2169,7 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     'notes:get': [],
     'app:save-status': { ok: true },
     'app:get-theme': 'light',
-    'app:flags': { previewFeatures: false },
+    'app:flags': { previewFeatures: false, cleanupModel: false },
     'firstrun:get': { pending: false, forced: false, step: null, keySaved: true, hotkey: 'Control+Alt+Space', language: 'auto' },
   };
   for (const [channel, value] of Object.entries(stubs)) {

@@ -2,7 +2,7 @@ import { api } from '../api.js';
 import { el, icon, ICONS } from '../components/dom.js';
 import { dropdown } from '../components/dropdown.js';
 import type { DropdownHandle } from '../components/dropdown.js';
-import { previewFeatures } from '../components/flags.js';
+import { cleanupModelOn, previewFeatures } from '../components/flags.js';
 import { runSetupAgain } from '../components/firstRun.js';
 import { languagePicker } from '../components/languagePicker.js';
 import { releaseLinks } from '../../core/releaseLinks.js';
@@ -561,6 +561,8 @@ function formattingGroup(settings: SettingsDTO): HTMLElement {
         + 'That is about 30 % more while your dictionary is in use.',
     ),
   );
+  // The hidden S1-mini cleanup: one credit line while its flag is on, nothing otherwise.
+  if (cleanupModelOn()) wrapper.append(el('p', { class: 's-note', id: 'settings-cleanup-credit' }, 'AI cleanup: S1-mini by Superwhisper'));
   return wrapper;
 }
 

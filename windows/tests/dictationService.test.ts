@@ -83,6 +83,7 @@ import {
   type CapturedAudio,
   type DictationOutcome,
   type DictationStatus,
+  type CleanupPort,
   type FormatterPort,
   type RecorderPort,
   type TextSinkPort,
@@ -213,6 +214,7 @@ function setup(options: {
   memory?: Partial<LanguageMemorySnapshot>;
   apiKey?: string | null;
   formatter?: FormatterPort;
+  cleanup?: CleanupPort;
   tickMs?: number;
   deliveryTimeoutMs?: number;
 } = {}) {
@@ -256,6 +258,7 @@ function setup(options: {
     onDiagnostic: (category, message) => diagnostics.push({ category, message }),
     idFactory,
     formatter: options.formatter,
+    ...(options.cleanup ? { cleanup: options.cleanup } : {}),
     deliveryTimeoutMs: options.deliveryTimeoutMs ?? 200,
     tickMs: options.tickMs,
   });
@@ -2487,5 +2490,83 @@ describe('app-aware formatting', () => {
       await dictate(known, 'See you at five.', { source: 'hotkey', context: capture('other') });
       expect(autoSendOf(known)).toBe('return');
     });
+  });
+});
+
+describe('hidden S1-mini cleanup port', () => {
+  const english = (text: string) => ({ text, durationSeconds: 1, detectedLanguage: 'en' });
+  const capture = (category: 'email' | 'workChat' | 'other') => {
+    const context = { appID: 'app.exe', category, textBeforeCursor: null };
+    return { initial: { ...context }, settled: Promise.resolve(context) };
+  };
+  const calls: Array<{ raw: string; language: string | null; category: string; style: string | null }> = [];
+  const port = (answer: (raw: string) => Promise<{ text: string }>): CleanupPort => ({
+    run: (input) => {
+      calls.push(input);
+      return answer(input.raw);
+    },
+  });
+
+  it('replaces the rules step: the model text is formatted for the app and goes through the user rules', async () => {
+    calls.length = 0;
+    const ctx = setup({
+      settings: { categoryStyles: { workChat: 'casual' } },
+      cleanup: port(async () => ({ text: 'I need to send the report by Thursday.' })),
+    });
+    ctx.transcriber.transcript = english('So um I need to send the report by Friday, no wait, Thursday.');
+    await ctx.service.startRecording({ source: 'hotkey', context: capture('workChat') });
+    await ctx.service.stopAndProcess();
+    // Casual drops the full stop: the model text went on to category formatting.
+    expect(ctx.sink.delivered).toEqual(['I need to send the report by Thursday']);
+    expect(calls).toEqual([
+      { raw: 'So um I need to send the report by Friday, no wait, Thursday.', language: 'en', category: 'workChat', style: 'casual' },
+    ]);
+  });
+
+  it('passes the category and style captured at the press', async () => {
+    calls.length = 0;
+    const ctx = setup({ cleanup: port(async (raw) => ({ text: raw })) });
+    await ctx.service.startRecording({ source: 'hotkey', context: capture('email') });
+    await ctx.service.stopAndProcess();
+    expect(calls[0]).toMatchObject({ category: 'email', style: null });
+  });
+
+  it('keeps the transcript when the port throws or answers with nothing', async () => {
+    for (const answer of [
+      async () => {
+        throw new Error('model exploded');
+      },
+      async () => ({ text: '   ' }),
+    ]) {
+      const ctx = setup({ cleanup: port(answer) });
+      ctx.transcriber.transcript = english('See you at five.');
+      await ctx.service.startRecording({ source: 'hotkey', context: capture('other') });
+      await ctx.service.stopAndProcess();
+      expect(ctx.sink.delivered).toEqual(['See you at five.']);
+    }
+  });
+
+  it('does not run in raw mode or with Auto-format transcript off', async () => {
+    calls.length = 0;
+    const raw = setup({ cleanup: port(async () => ({ text: 'x' })) });
+    await raw.service.startRecording({ source: 'hotkey', rawMode: true, context: capture('other') });
+    await raw.service.stopAndProcess();
+    const off = setup({ settings: { formattingEnabled: false }, cleanup: port(async () => ({ text: 'x' })) });
+    await off.service.startRecording({ source: 'hotkey', context: capture('other') });
+    await off.service.stopAndProcess();
+    expect(calls).toEqual([]);
+    expect(raw.sink.delivered).toEqual(['hello world']);
+  });
+
+  it('a Cancel during the model step drops the dictation without delivering', async () => {
+    let release: (value: { text: string }) => void = () => undefined;
+    const ctx = setup({ cleanup: port(() => new Promise((resolve) => (release = resolve))) });
+    await ctx.service.startRecording({ source: 'hotkey', context: capture('other') });
+    const processing = ctx.service.stopAndProcess();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await ctx.service.cancel();
+    release({ text: 'late answer' });
+    await processing;
+    expect(ctx.sink.delivered).toEqual([]);
   });
 });

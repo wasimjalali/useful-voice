@@ -1,9 +1,9 @@
 PASS  flag off: rules text, model skipped  {"text":"So I need to send the report by Friday, no wait, Thursday.","source":"rules","model":{"kind":"skipped","reason":"flagOff"}}
 PASS  flag off: no worker process
 PASS  flag on: gates see the downloaded model
-PASS  cold model: the first dictation gets the rules text at once, the load carries on  {"waitedMs":10,"result":{"text":"So I need to send the report by Friday, no wait, Thursday.","source":"rules","model":{"kind":"failed"}}}
+PASS  cold model: the first dictation gets the rules text at once, the load carries on  {"waitedMs":11,"result":{"text":"So I need to send the report by Friday, no wait, Thursday.","source":"rules","model":{"kind":"failed"}}}
 PASS  flag on: S1-mini answer accepted by the guard  {"text":"So I need to send the report by Thursday.","source":"model","model":{"kind":"accepted"}}
-PASS  flag on: one worker process holds the model  {"rssMb":1168}
+PASS  flag on: one worker process holds the model  {"rssMb":1198}
 PASS  dispose: no worker left
 PASS  20 ms deadline: rules text at once, the model is not waited for  {"waitedMs":4,"result":{"text":"So I need to send the report by Friday, no wait, Thursday.","source":"rules","model":{"kind":"failed"}}}
 warn: cleanup model load failed: the model worker exited (SIGTERM)

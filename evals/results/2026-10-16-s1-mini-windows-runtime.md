@@ -32,7 +32,7 @@ on the same noisy box but needs a second binary to fetch, pin and sign, so it st
 - Box: Linux cloud VM, 4 vCPU Xeon @ 2.1 GHz, 16 GB, CPU only. **Shared with other jobs the whole
   time**, load average 4 to 13 on 4 cores. Every latency here is noisy; the medians are the usable
   numbers.
-- Windows: not available here. CI (`windows-latest`) runs typecheck, 1,360 unit tests (21 skipped), build, E2E and
+- Windows: not available here. CI (`windows-latest`) runs typecheck, 1,365 unit tests (21 skipped), build, E2E and
   `electron-builder --win` on every push. No model inference ran on Windows.
 
 ## Numbers

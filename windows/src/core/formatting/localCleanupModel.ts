@@ -166,6 +166,9 @@ export class LocalCleanupModel implements CleanupModel {
     try {
       await this.generator.load(this.modelPath);
       this.loaded = !this.disposed;
+      // A load that outlasted the idle time (or the whole dictation) finds no timer running:
+      // with nobody using the weights, start it now.
+      if (this.loaded && this.inProgress === 0) this.armIdleTimer();
     } catch (error) {
       this.warn(`cleanup model load failed: ${describe(error)}`);
     }

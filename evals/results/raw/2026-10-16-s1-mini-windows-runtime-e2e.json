@@ -23,7 +23,7 @@
   "name": "cold model: the first dictation gets the rules text at once, the load carries on",
   "ok": true,
   "detail": {
-   "waitedMs": 10,
+   "waitedMs": 11,
    "result": {
     "text": "So I need to send the report by Friday, no wait, Thursday.",
     "source": "rules",
@@ -48,7 +48,7 @@
   "name": "flag on: one worker process holds the model",
   "ok": true,
   "detail": {
-   "rssMb": 1168
+   "rssMb": 1198
   }
  },
  {

@@ -270,6 +270,44 @@ describe('LocalCleanupModel', () => {
     expect(model.isLoaded).toBe(true);
   });
 
+  it('arms the idle timer when a slow load finishes after the dictation ended (clean path)', async () => {
+    const { model, generator, clock } = make();
+    generator.holdLoad = true;
+    expect(await model.clean('a', LINE, clock.time + 1500)).toBeNull(); // cold: the load starts in the background
+    await clock.advance(61_000); // the idle time passes while the load is still running
+    generator.releaseLoad?.();
+    await settle();
+    expect(model.isLoaded).toBe(true);
+    await clock.advance(10 * 60_000);
+    expect(model.isLoaded).toBe(false);
+    expect(generator.events.at(-1)).toBe('unload');
+  });
+
+  it('arms the idle timer when a slow load finishes after begin and a quick end', async () => {
+    const { model, generator, clock } = make();
+    generator.holdLoad = true;
+    const begun = model.begin();
+    model.end(); // the dictation was over before the load finished
+    await clock.advance(61_000);
+    generator.releaseLoad?.();
+    await begun;
+    await settle();
+    expect(model.isLoaded).toBe(true);
+    await clock.advance(10 * 60_000);
+    expect(model.isLoaded).toBe(false);
+  });
+
+  it('does not arm the idle timer for a load that finishes while a dictation is still in progress', async () => {
+    const { model, generator, clock } = make();
+    generator.holdLoad = true;
+    const begun = model.begin();
+    await settle();
+    generator.releaseLoad?.();
+    await begun;
+    expect(model.isLoaded).toBe(true);
+    expect(clock.pendingTimers).toBe(0);
+  });
+
   it('ignores an end without a begin', async () => {
     const { model, clock } = make();
     model.end();
@@ -318,6 +356,7 @@ describe('LocalCleanupModel', () => {
 
   it('unload frees the weights now and cancels the timer', async () => {
     const { model, generator, clock } = make();
+    await warm(model);
     await model.clean('a', LINE, 1000);
     await model.unload();
     expect(model.isLoaded).toBe(false);

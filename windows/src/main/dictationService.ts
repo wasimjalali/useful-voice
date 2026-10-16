@@ -9,7 +9,7 @@ import type {
   MemoryLanguage,
 } from '../core/models.js';
 import { applyMemory } from '../core/memory/memoryPostProcessor.js';
-import type { AppCategory, AutoSendKey } from '../core/apps/appCategory.js';
+import { defaultStyle, type AppCategory, type AutoSendKey } from '../core/apps/appCategory.js';
 import {
   autoSendKeyFor,
   formatForApp,
@@ -805,7 +805,9 @@ export class DictationService {
                 language: storedLanguage,
                 // Like the macOS app: a dictation made in our own window has no app to fit.
                 category: session.noCategory ? null : context.category,
-                style: session.noCategory ? null : (press.categoryStyles[context.category] ?? null),
+                // A pick that equals the category's default is no pick (macOS stores nil then),
+                // so the model gets the default semi-formal.
+                style: session.noCategory ? null : pickedStyle(press.categoryStyles[context.category], context.category),
               })
             ).text
           : applyCleanupRules(rawText, storedLanguage);
@@ -1187,4 +1189,9 @@ function transcriptionFailureMessage(error: unknown): string {
 function describe(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+/** The style the person picked for a category, or null when none or when it is the category's default. */
+function pickedStyle(style: string | undefined, category: AppCategory): string | null {
+  return style === undefined || style === defaultStyle(category) ? null : style;
 }

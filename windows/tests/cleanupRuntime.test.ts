@@ -185,7 +185,7 @@ describe('run never rejects and never loses the dictation', () => {
     expect(result.text).toBe(RULES_TEXT);
   });
 
-  it('the disk check and the model share one deadline: a slow check leaves less time, never more', async () => {
+  it('a slow disk check is cut at the deadline, and the cold model adds no time of its own', async () => {
     const { runtime } = make({
       checkModel: () => new Promise<ModelAvailability>((resolve) => setTimeout(() => resolve('usable'), 100)),
       deadlineMs: 150,
@@ -194,7 +194,7 @@ describe('run never rejects and never loses the dictation', () => {
     const result = await runtime.run(input);
     const took = performance.now() - started;
     expect(result.text).toBe(RULES_TEXT);
-    expect(took).toBeLessThan(220); // 100 ms disk + the cold-model answer, never 100 + 150
+    expect(took).toBeLessThan(220); // the check (100 ms) and then the cold-model answer, not 100 + 150
   });
 
   it('a warm model that hangs is cut off at the deadline, counted from the start of the run', async () => {
@@ -297,6 +297,23 @@ describe('dictation start and end', () => {
     clock.fire();
     await settle();
     expect(generator.events).toEqual(['load', 'unload']);
+  });
+
+  it('a gated-out dictation (pinned German, never began) ending while another runs does not count the active one down', async () => {
+    const { runtime, generator, clock } = make();
+    runtime.beginDictation('en'); // A: loads the model
+    await settle();
+    runtime.beginDictation('de'); // B: gated out, never began
+    await settle();
+    runtime.endDictation(); // B ends first
+    expect(clock.pending).toBe(0); // A is still in progress: no idle timer
+    expect(await runtime.run(input)).toMatchObject({ source: 'model' });
+    expect(clock.pending).toBe(0);
+    runtime.endDictation(); // A ends
+    expect(clock.pending).toBe(1);
+    clock.fire();
+    await settle();
+    expect(generator.events).toEqual(['load', 'generate', 'unload']);
   });
 
   it('a run that finishes after the next hotkey down does not start the idle timer', async () => {

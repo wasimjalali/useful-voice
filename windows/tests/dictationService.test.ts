@@ -2519,7 +2519,8 @@ describe('hidden S1-mini cleanup port', () => {
     // Casual drops the full stop: the model text went on to category formatting.
     expect(ctx.sink.delivered).toEqual(['I need to send the report by Thursday']);
     expect(calls).toEqual([
-      { raw: 'So um I need to send the report by Friday, no wait, Thursday.', language: 'en', category: 'workChat', style: 'casual' },
+      // Casual is Work chat's default, so no style goes to the model.
+      { raw: 'So um I need to send the report by Friday, no wait, Thursday.', language: 'en', category: 'workChat', style: null },
     ]);
   });
 
@@ -2529,6 +2530,25 @@ describe('hidden S1-mini cleanup port', () => {
     await ctx.service.startRecording({ source: 'hotkey', context: capture('email') });
     await ctx.service.stopAndProcess();
     expect(calls[0]).toMatchObject({ category: 'email', style: null });
+  });
+
+  it('a pick that equals the category default is no pick: the model gets a null style, like macOS', async () => {
+    calls.length = 0;
+    const casualInWork = setup({ settings: { categoryStyles: { workChat: 'casual' } }, cleanup: port(async (raw) => ({ text: raw })) });
+    await casualInWork.service.startRecording({ source: 'hotkey', context: capture('workChat') });
+    await casualInWork.service.stopAndProcess();
+    const formalInEmail = setup({ settings: { categoryStyles: { email: 'formal' } }, cleanup: port(async (raw) => ({ text: raw })) });
+    await formalInEmail.service.startRecording({ source: 'hotkey', context: capture('email') });
+    await formalInEmail.service.stopAndProcess();
+    // Non-default picks still go through.
+    const formalInWork = setup({ settings: { categoryStyles: { workChat: 'formal' } }, cleanup: port(async (raw) => ({ text: raw })) });
+    await formalInWork.service.startRecording({ source: 'hotkey', context: capture('workChat') });
+    await formalInWork.service.stopAndProcess();
+    expect(calls.map((c) => [c.category, c.style])).toEqual([
+      ['workChat', null],
+      ['email', null],
+      ['workChat', 'formal'],
+    ]);
   });
 
   it('a dictation made in our own window has no category and no style, like the macOS app', async () => {

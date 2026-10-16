@@ -17,23 +17,22 @@ import { LlamaCleanupGenerator } from './llamaGenerator.js';
 import { downloadModel, modelAvailability, modelFilePath, type DownloadOptions, type ModelAvailability } from './modelDownloader.js';
 
 /**
- * Everything the app needs from the hidden S1-mini cleanup, behind one object. Phase 1 ships
- * it unwired. The hookup at the cleanup marker is:
+ * Everything the app needs from the hidden S1-mini cleanup, behind one object. `index.ts`
+ * creates it through `wireCleanup` (`cleanupWiring.ts`) and the dictation service calls `run`
+ * at the cleanup step of the formatted path, only when the hidden flag is on:
  *
- *   const cleanup = createCleanupRuntime({ userDataDir: app.getPath('userData'), argv: process.argv, env: process.env });
- *   ...
- *   cleanup.beginDictation(language);               // hotkey down: load while the person talks
+ *   cleanup.beginDictation(language);   // hotkey down: load while the person talks
  *   const { text } = await cleanup.run({ raw, language, category, style });
- *   cleanup.endDictation();                         // dictation over or cancelled: idle timer
- *   ...
- *   await cleanup.dispose();                        // before quit
+ *   cleanup.endDictation();             // dictation over or cancelled: idle timer
+ *   await cleanup.dispose();            // on quit: kills the worker, never waits for a load
  *
  * A dictation never waits for a model that cannot answer: while the weights are not loaded
  * (the first dictation after launch or an idle unload) `run` answers with the rules text at
- * once and the load carries on in the background. Nothing here ever costs a dictation: `run` does not reject, whatever fails (the disk, the
- * worker, the model) it answers with the rules text, and its disk check is inside the
- * deadline. With the flag off (the default) nothing touches the disk, spawns a process or
- * loads node-llama-cpp: `run` is just the rules.
+ * once and the load carries on in the background. Nothing here ever costs a dictation: `run`
+ * does not reject, whatever fails (the disk, the worker, the model) it answers with the rules
+ * text, and its disk check is inside the deadline. With the flag off (the default) nothing
+ * touches the disk, spawns a process or loads node-llama-cpp, and the service gets no port,
+ * so it runs its own rules step as it always did.
  */
 export interface CleanupRuntimeOptions {
   userDataDir: string;
@@ -194,16 +193,12 @@ export function createCleanupRuntime(options: CleanupRuntimeOptions): CleanupRun
     },
     async run(input) {
       try {
-        const started = performance.now();
+        // The disk check is bounded by the deadline. It is only ever slow before the file has
+        // been seen usable, and then the model is cold and answers null at once, so the model
+        // never gets a second deadline on top of a slow check.
         const current = await gatesWithin(deadlineMs);
         const active: CleanupModel | null = current.flagOn && current.modelInstalled ? model() : null;
-        return await runCleanupPipeline({
-          ...input,
-          gates: current,
-          model: active,
-          // The disk check came out of the same budget as the model.
-          deadlineMs: Math.max(0, deadlineMs - (performance.now() - started)),
-        });
+        return await runCleanupPipeline({ ...input, gates: current, model: active, deadlineMs });
       } catch (error) {
         warn(`cleanup failed, using the rules text: ${error instanceof Error ? error.message : String(error)}`);
         return rulesOnly(input);

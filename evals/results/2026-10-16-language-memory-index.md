@@ -28,8 +28,9 @@ with output byte-identical to the current matcher, and does Windows have the sam
   - macOS: GitHub `macos-15` (arm64), Swift 6.1.2 release, system ICU. Run 38898778290.
   - Windows core: Node 22.22 on Linux, `vitest`. Node 22 is V8 12.4, ICU 77, Unicode 16. The app
     ships Electron 43.7.0 (V8 15.0, ICU 78, Unicode 17), so every Windows number and the exhaustive
-    check below were measured on Node's engine, not Electron's. The review re-ran the exhaustive
-    fold check and a 5,000-case differential under Electron 43's runtime: 0 failures.
+    check below were measured on Node's engine, not Electron's. A review also ran the exhaustive
+    fold check and a differential under Electron 43's runtime and saw 0 failures, but that output
+    and its command were not kept, so it is not evidence here and Electron is unverified in this record.
 - Commands: `UV_LM_BENCH=1 UV_LM_BENCH_RUNS=5 swift test -c release -Xswiftc -enable-testing --filter LanguageMemoryBenchTests`
   and `UV_LM_BENCH=1 npx vitest run tests/languageMemoryBench.test.ts` (add `UV_LM_BENCH_SIDE=legacy` for the old code).
 - Raw output: `evals/results/raw/2026-10-16-language-memory-index-*`.
@@ -81,9 +82,9 @@ a cold start. Only the 1,000 auto row is cold (regex cache empty): 3.7 s before,
 is already warm; a true cold start at 5,000 terms was not measured.
 
 Windows shows the same slowdown on a cold start, so the index is mirrored there. It is not free
-when everything is warm: at 1,000 terms the indexed version is slower by a few percent to about 20%
-(three alternating pairs of 15-sample runs, auto scope: 222 to 246 ms before, 224 to 250 ms after,
-3% to 7%; de scope 139 before, 156 after, 12% in the table above, 15% to 20% in the pairs),
+when everything is warm: at 1,000 terms the indexed version is slower, by 12% in the de scope row
+of the table above (139 ms before, 156 after). Extra alternating-pair runs were done during review,
+but their raw output and commands were not kept, so their numbers are left out. The cost exists
 because the index is built on every pass and only pays for itself when it skips many regexes.
 
 ### Equivalence (the output did not change, apart from the cache note under What changed)
@@ -164,4 +165,4 @@ applied. The exhaustive test checks this on the CI runner's ICU for every scalar
 macOS version users run. The one case that can be closed in code is closed: on macOS a scalar that
 Swift's Unicode tables leave unassigned (which a newer ICU might case-map) turns the index off for
 that text, and a phrase containing one skips the index, so the regex decides. Windows has no
-such guard; there the exhaustive check above, run on Node's and Electron 43's engines, is the evidence.
+such guard; there the exhaustive check above, run on Node's engine (not verified on Electron 43, see Platforms), is the evidence.

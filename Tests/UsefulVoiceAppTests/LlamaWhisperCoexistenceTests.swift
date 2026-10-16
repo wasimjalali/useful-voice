@@ -271,8 +271,12 @@ struct LlamaWhisperCoexistenceTests {
             "can you open the file source slash app dot ts and rename the function get user to fetch user",
         ]
         print("MEASURE baseline \(memoryMB())")
-        print("MEASURE preferred placement \(LlamaRuntime.preferredPlacement().rawValue)")
-        for (placement, repeats) in [(LlamaRuntime.Placement.cpuOnly, 1), (.metal, 1)] {
+        let preferred = LlamaRuntime.preferredPlacement()
+        print("MEASURE preferred placement \(preferred.rawValue)")
+        // The five dictations on Metal and the Metal abort probes below run only where the app
+        // uses Metal: on CI's virtual Mac they took about 4.5 of the 10 minutes this test has.
+        let placements: [LlamaRuntime.Placement] = preferred == .metal ? [.cpuOnly, .metal] : [.cpuOnly]
+        for (placement, repeats) in placements.map({ ($0, 1) }) {
             let label = placement.rawValue
             do {
                 let t0 = ContinuousClock.now
@@ -326,7 +330,7 @@ struct LlamaWhisperCoexistenceTests {
         // then one near the 1,536 token cap, each run once in full, then with the deadline at a
         // quarter of its time to the first token. (On Metal `llama_decode` returns before the
         // GPU is done; the wait is in sampling.)
-        for items in [45, 78] { do {
+        for items in preferred == .metal ? [45, 78] : [] { do {
             let runtime = try LlamaRuntime(modelPath: s1, placement: .metal)
             let long = prompt((1...items).map { "item \($0) goes to room \($0 + 100) and costs \($0 * 3) dollars." }.joined(separator: " "))
             let full = try runtime.complete(prompt: long, deadline: .now.advanced(by: .seconds(120)))

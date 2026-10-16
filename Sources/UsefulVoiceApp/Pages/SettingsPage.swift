@@ -523,7 +523,7 @@ struct SettingsPage: View {
                 Toggle("", isOn: appFormattingEnabledBinding).labelsHidden()
                     .accessibilityLabel("Format for the app")
             }
-            SettingsRow(title: "Your name", detail: "Only used to sign emails.") {
+            SettingsRow(title: "Your name") {
                 TextField("Name", text: appNameBinding)
                     .premiumInputChrome()
                     .frame(width: 200)
@@ -570,10 +570,10 @@ struct SettingsPage: View {
     }
 
     private static let autoSendOptions: [(label: String, value: AutoSendKey)] = [
-        (label: "No auto-send", value: .off),
-        (label: "Auto-send Return", value: .return),
-        (label: "Auto-send Shift+Return", value: .shiftReturn),
-        (label: "Auto-send \u{2318}Return", value: .modReturn),
+        (label: "No send key", value: .off),
+        (label: "Send with Return", value: .return),
+        (label: "Send with Shift+Return", value: .shiftReturn),
+        (label: "Send with \u{2318}Return", value: .modReturn),
     ]
 
     /// The apps listed for a category: the ones seen in History, then any with a saved

@@ -111,6 +111,15 @@ import Foundation
         #expect(s.overrides.byApp == ["a.b": .coding])
     }
 
+    @Test func oneBadValueDropsOnlyItself() throws {
+        let s = try decode("""
+        {"styles": {"workChat": 5, "email": null, "personalChat": "veryCasual", "coding": ["x"]},
+         "autoSend": {"workChat": {"a": 1}, "other": "shiftReturn", "coding": true}}
+        """)
+        #expect(s.styles == ["personalChat": .veryCasual])
+        #expect(s.autoSend == ["other": .shiftReturn])
+    }
+
     @Test func aStyleTheCategoryDoesNotAllowIsIgnored() throws {
         let s = try decode(#"{"styles": {"email": "veryCasual", "personalChat": "veryCasual"}}"#)
         #expect(s.requestedStyle(for: .email) == nil)
@@ -136,6 +145,9 @@ import Foundation
     @Test func theNameIsTrimmedFlattenedAndCapped() throws {
         #expect(AppFormattingSettings.cleaned(name: "  Wasim \n") == "Wasim")
         #expect(AppFormattingSettings.cleaned(name: "Wasim\nJalali") == "Wasim Jalali")
+        #expect(AppFormattingSettings.cleaned(name: "Wasim \t  \n Jalali") == "Wasim Jalali")
+        #expect(AppFormattingSettings.cleaned(name: "Was\u{0}im\u{7}") == "Wasim")
+        #expect(AppFormattingSettings.cleaned(name: " \n\t ") == "")
         #expect(AppFormattingSettings.cleaned(name: String(repeating: "a", count: 500)).count == AppFormattingSettings.maxNameLength)
         #expect(try decode(#"{"userName": "  Sam  "}"#).userName == "Sam")
         var s = AppFormattingSettings()

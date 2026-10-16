@@ -89,9 +89,14 @@ public enum HiddenCleanupModel {
     }
 
     /// At quit: stops a load or run in flight and waits up to 2 s for its thread to leave
-    /// llama.cpp, so the process does not exit under a live thread. Does nothing with the flag off.
+    /// llama.cpp, so the process does not exit under a live thread. On Metal the stop lands
+    /// between tokens, not inside a decode, so a stalled GPU decode can outlast the wait; that
+    /// is logged. Does nothing with the flag off.
     public static func shutDown() {
-        shared?.shutDown(timeout: 2)
+        guard let shared else { return }
+        if !shared.shutDown(timeout: 2) {
+            Diagnostics.shared.error("cleanup-model", "a model thread was still inside llama.cpp after 2 s at quit")
+        }
     }
 
     /// At quit: keeps the bytes of a download in flight (resume data, written within a bounded

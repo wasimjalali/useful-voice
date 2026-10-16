@@ -138,8 +138,8 @@ public final class LlamaRuntime: @unchecked Sendable {
 
     /// Loads the weights. See `Placement`; the cleanup model uses `preferredPlacement()`.
     /// llama.cpp can only stop a running decode on the CPU: on Metal the deadline and the stop
-    /// signal land between tokens, so a run can overrun by one prompt decode (about 350 ms for
-    /// 900 tokens on an M4, evals/results/2026-10-16-s1-mini-macos-metal.md).
+    /// signal land between tokens, so a run can overrun by about one prompt decode (about 350 ms
+    /// at 900 and at 1,515 tokens on an M4, evals/results/2026-10-16-s1-mini-macos-metal.md).
     public init(modelPath: String, placement: Placement = .cpuOnly, threads: Int32? = nil, microBatch: UInt32? = nil, stop: StopSignal? = nil) throws {
         // A signal that is already set must not pay for backend init or the first part of the load.
         if stop?.isSet == true { throw RuntimeError.stopped }

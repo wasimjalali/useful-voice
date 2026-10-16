@@ -66,10 +66,11 @@ struct CleanupEvalRunTests {
         // Not scored: the first runs pay one-off costs (as run_eval.py's three warm-ups).
         for _ in 0..<3 {
             await model.begin()
-            _ = await CleanupPipeline.run(
+            let warm = await CleanupPipeline.run(
                 raw: "Hello there, um, this is a warm up.", language: "en", category: nil, style: nil,
                 gates: gates, model: model, deadline: .seconds(60))
             await model.end()
+            try #require(warm.model != .timedOut, "a warm-up ran past 60 s")
         }
 
         var rows: [[String: Any]] = []
@@ -94,15 +95,19 @@ struct CleanupEvalRunTests {
             switch result.model {
             case .accepted?, .rejected?:
                 row["output"] = (recorder.returned ?? nil) ?? rules
-            default:
-                // No answer in time: the app shows the rules text. Wait for a late run to end,
-                // so it cannot take the next case's deadline, and keep what it said.
+            case .timedOut?, .failed?:
+                // No answer in time: the app shows the rules text. Wait for the late run to end,
+                // so it cannot take the next case's deadline or answer for it, and keep what it said.
                 row["output"] = rules
                 let waitStart = ContinuousClock.now
                 while recorder.returned == nil, waitStart.duration(to: .now) < .seconds(60) {
                     try await Task.sleep(for: .milliseconds(10))
                 }
+                try #require(recorder.returned != nil, "the model was still running \(c.id) after 60 s")
                 if case .some(.some(let late)) = recorder.returned { row["late_output"] = late }
+            case .skipped?, nil:
+                // The model was never asked (rules left nothing, or a gate said skip).
+                row["output"] = result.text
             }
             rows.append(row)
             if (n + 1) % 25 == 0 { print("EVAL \(n + 1)/\(cases.count)") }

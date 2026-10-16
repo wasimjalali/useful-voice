@@ -301,12 +301,13 @@ struct LlamaWhisperCoexistenceTests {
         } catch {
             print("MEASURE metal failed: \(error)")
         }
-        // Does a deadline stop a Metal run before its first token? A prompt of about 1,000
-        // tokens, run once in full, then with the deadline at a quarter of its time to the first
-        // token. (On Metal `llama_decode` returns before the GPU is done; the wait is in sampling.)
-        do {
+        // Does a deadline stop a Metal run before its first token? A prompt of about 900 tokens,
+        // then one near the 1,536 token cap, each run once in full, then with the deadline at a
+        // quarter of its time to the first token. (On Metal `llama_decode` returns before the
+        // GPU is done; the wait is in sampling.)
+        for items in [45, 78] { do {
             let runtime = try LlamaRuntime(modelPath: s1, placement: .metal)
-            let long = prompt((1...45).map { "item \($0) goes to room \($0 + 100) and costs \($0 * 3) dollars." }.joined(separator: " "))
+            let long = prompt((1...items).map { "item \($0) goes to room \($0 + 100) and costs \($0 * 3) dollars." }.joined(separator: " "))
             let full = try runtime.complete(prompt: long, deadline: .now.advanced(by: .seconds(120)))
             let cut = Duration.milliseconds(Int(full.stats.prefillSeconds * 250))
             let t = ContinuousClock.now
@@ -315,6 +316,6 @@ struct LlamaWhisperCoexistenceTests {
             print("MEASURE metal abort: prompt \(full.stats.promptTokens) tokens, first token after \(full.stats.prefillSeconds * 1000) ms (native prompt \(full.stats.nativePromptMs) ms), whole run \(full.stats.totalSeconds * 1000) ms; deadline at \(ms(cut)) ms -> \(outcome) after \(ms(t.duration(to: .now))) ms")
         } catch {
             print("MEASURE metal abort failed: \(error)")
-        }
+        } }
     }
 }

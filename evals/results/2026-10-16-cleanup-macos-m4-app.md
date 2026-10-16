@@ -36,10 +36,14 @@ no timeouts, no failures, 336 ms at the slowest.
   dictation does. Three unscored warm-up runs first, as `run_eval.py` does. It writes a raw file
   in `run_eval.py`'s format, so `--rescore` scores it with the eval's metric and the shipped
   TypeScript guard.
-- Machine: the owner's Apple M4, 16 GB, macOS 27.0.1, load average 3.3 to 3.8 during the runs
-  (other agents were building).
-- Code: branch `claude/awesome-blackwell-369fb1` on `3725095`, llama.cpp b11669 XCFramework.
-- Weights: `s1-mini-q4_k_m.gguf`, SHA-256 `3b41ebe2...003c634`, the eval's file and CI's pin.
+- Machine: the owner's Apple M4, 16 GB, macOS 27.0.1 (`raw/2026-10-16-s1-mini-macos-metal-machine.txt`),
+  load average 3.3 to 3.8 during the runs (other agents were building).
+- Code: branch `claude/awesome-blackwell-369fb1` on `3725095` plus this PR's placement change
+  and harness, before review round 1. Round 1 then changed the harness only in branches no case
+  reached here (a timeout, a skipped model, rules that left nothing), so the runs were not
+  repeated. llama.cpp b11669 XCFramework.
+- Weights: `s1-mini-q4_k_m.gguf`, SHA-256 `3b41ebe2...003c634` (hashed on this Mac, in the
+  machine file above), the eval's file and CI's pin.
 - Cases: `evals/cleanup/cases.json` (188, in-sample) and `evals/cleanup/heldout.json` (73, held
   out, still never tuned on).
 - Commands, from the repo root:
@@ -103,7 +107,7 @@ Without k24, which is arguably a spelling change, the in-sample set still fails 
 - The app's raw answers are identical to round 4's Linux `llama-server` answers on 184 of 188
   in-sample and 72 of 73 held-out cases. Of the five that differ, two removed a loss the Linux
   run had: k09 ("that that" kept, so the guard rejected it as format-only) and h30 ("3 to 2" kept,
-  as on the macOS CI runner). The other three are format choices ("twelfth" against "12th", one
+  as the macOS CI runner's run 13 did, per `2026-10-16-cleanup.md`). The other three are format choices ("twelfth" against "12th", one
   comma) and g11, which the guard rejected either way.
 
 So Metal changed the speed, not the model's behaviour, and the eval's llama-server numbers were
@@ -113,15 +117,17 @@ a fair stand-in for the app.
 
 - **Recommendation: keep S1-mini on macOS behind the hidden flag, off, and don't ship it.** It
   fails the decision rule on both sets. Its gain is real (edit accuracy 90.0% against 48.0%
-  in-sample and 77.1% against 31.4% held-out, mostly self-corrections and spoken numbers), but
+  in-sample and 77.1% against 31.4% held-out; in-sample, self-corrections go from 0% to 95.8%,
+  spoken numbers and formats from 0% to 78.6%, and file mentions from 33.3% to 100%, per the
+  `by_group` scores in the scored files), but
   it still silently drops words from text that needed no edit, which is the worst thing a
   dictation app can do.
 - Why keep rather than drop: what blocks it now is the guard, not the model's speed or the
   runtime. All four losses are the guard's known function-word and mentioned-filler blind spot
   (`2026-10-16-cleanup.md`, known gap 1). This harness re-runs the whole eval through the app in
   under a minute, so a guard fix can be judged quickly.
-- The cost of keeping it: llama.framework adds about 24 MB (uncompressed, universal) to every
-  macOS download, for a feature no user can turn on. If the guard fix is not planned before 1.0,
+- The cost of keeping it: llama.framework adds about 24 MB (uncompressed, universal; 24,726,256
+  bytes of binary, in the machine file above) to every macOS download, for a feature no user can turn on. If the guard fix is not planned before 1.0,
   drop S1-mini on macOS and the framework with it.
 - Before anyone turns the flag on: fix the guard's function-word blind spot, write a fresh
   held-out set first (h34 came from this one, so tuning on it is out), then re-run

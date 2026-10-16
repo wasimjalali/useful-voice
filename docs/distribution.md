@@ -110,7 +110,9 @@ swift package resolve
 .build/artifacts/sparkle/Sparkle/bin/generate_keys --account useful-voice -x useful-voice-sparkle.key
 ```
 
-Store the exported private key in the password manager, then delete the file. Put the public key in
+Store the exported private key in the password manager, then delete the file. The first release run asks
+whether `sign_update` may use the "useful-voice" Keychain item: click Always Allow (it is the only
+tool besides `generate_keys` that reads it). Put the public key in
 `ED_PUBLIC_KEY` in `scripts/release-mac.mjs` in a PR. Never make a second key: every installed copy
 only trusts this one.
 

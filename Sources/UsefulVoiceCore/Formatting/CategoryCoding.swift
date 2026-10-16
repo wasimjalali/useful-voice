@@ -73,7 +73,7 @@ public enum CategoryCoding {
     /// to slash tmp" is `to /tmp`. After any other word the slash stays spoken: "we slash build
     /// times" and "20 slash src" are prose.
     private static let slashLeaders: Set<String> = [
-        "cd", "ls", "cat", "rm", "mv", "cp", "mkdir", "touch", "open", "edit", "use", "type", "press",
+        "cd", "ls", "cat", "rm", "mv", "cp", "mkdir", "touch", "open", "edit", "type", "press",
         "add", "insert", "put", "say", "in", "into", "to", "from", "at", "on", "of", "under", "inside",
         "the", "a", "an", "my", "your", "our", "this", "that",
     ]
@@ -227,14 +227,6 @@ public enum CategoryCoding {
     private static func endsWithSlash(_ t: Tok) -> Bool {
         if let built = t.built { return built.endsSlash }
         return t.core.last == "/"
-    }
-
-    /// "Next.js", "Node.js": a capitalised name with ".js" is a product, never a file to mention.
-    /// A path ("src/App.js") is still a file.
-    private static func isProductName(_ core: String) -> Bool {
-        let cs = Array(core)
-        guard let dot = cs.lastIndex(of: "."), dot > 0, String(cs[(dot + 1)...]) == "js" else { return false }
-        return cs[0].isUppercase && !cs[0..<dot].contains("/")
     }
 
     /// A written file name ("src/app.tsx", "my_util.py") clear enough to mention after "at": its
@@ -393,7 +385,8 @@ public enum CategoryCoding {
             } else if dotFile {
                 allowed = true
             } else if let l = left, let r = right {
-                allowed = isCodeLike(l) || isCodeLike(r)
+                // Around a slash the left word itself must be path-like: "run slash test" is prose.
+                allowed = slashes > 0 ? isCodeLike(l) || isPathRoot(l) : isCodeLike(l) || isCodeLike(r)
             } else if slashes == runLength && left == nil && right != nil {
                 // A leading slash only where nothing, punctuation or a path-taking word comes before it.
                 var leads = true
@@ -433,9 +426,9 @@ public enum CategoryCoding {
         return out
     }
 
-    /// "tag index.ts", "at index dot ts" and "at src/app.tsx" become mentions. After "at" a
-    /// written name must look like code (isCodeFileName), and a product name ("Next.js") never
-    /// becomes one.
+    /// "tag index.ts", "at index dot ts" and "at src/app.tsx" become mentions. "tag" always makes
+    /// one, and so does a file name spelled out by speech. After "at" a written name must look
+    /// like code (isCodeFileName), so "looking at Next.js" stays prose.
     private static func convertMentions(_ toks: [Tok]) -> [Tok] {
         var out: [Tok] = []
         var i = 0
@@ -445,8 +438,7 @@ public enum CategoryCoding {
             if tok.lead.isEmpty, tok.trail.isEmpty, word == "at" || word == "tag",
                i + 1 < toks.count, toks[i + 1].lead.isEmpty,
                toks[i + 1].file
-                || (word == "tag" ? looksLikeFileName(toks[i + 1].core) : isCodeFileName(toks[i + 1].core)),
-               !isProductName(toks[i + 1].core) {
+                || (word == "tag" ? looksLikeFileName(toks[i + 1].core) : isCodeFileName(toks[i + 1].core)) {
                 let next = toks[i + 1]
                 out.append(Tok(sep: tok.sep, lead: "", core: "@" + next.core, trail: next.trail, file: true))
                 i += 2

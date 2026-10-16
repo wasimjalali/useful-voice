@@ -2804,7 +2804,7 @@
    "id": "code-tag-product-name",
    "category": "coding",
    "input": "tag Next.js",
-   "expected": "tag Next.js"
+   "expected": "@Next.js"
   },
   {
    "id": "code-tag-path-capital-js",
@@ -2813,10 +2813,10 @@
    "expected": "@src/App.js"
   },
   {
-   "id": "code-at-spoken-product-name",
+   "id": "code-at-spoken-capital-js",
    "category": "coding",
    "input": "looking at Next dot js",
-   "expected": "looking at Next.js"
+   "expected": "looking @Next.js"
   },
   {
    "id": "code-at-spoken-file",
@@ -3002,6 +3002,60 @@
    "category": "email",
    "input": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope today. Thanks, Sam",
    "expected": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope today. Thanks, Sam"
+  },
+  {
+   "id": "code-tag-spoken-capital-js",
+   "category": "coding",
+   "input": "tag App dot js",
+   "expected": "@App.js"
+  },
+  {
+   "id": "code-at-spoken-capital-js-file",
+   "category": "coding",
+   "input": "at App dot js",
+   "expected": "@App.js"
+  },
+  {
+   "id": "code-tag-written-capital-js",
+   "category": "coding",
+   "input": "tag App.js",
+   "expected": "@App.js"
+  },
+  {
+   "id": "code-slash-verb-then-path-word",
+   "category": "coding",
+   "input": "run slash test",
+   "expected": "run slash test"
+  },
+  {
+   "id": "code-slash-verb-then-build",
+   "category": "coding",
+   "input": "run slash build",
+   "expected": "run slash build"
+  },
+  {
+   "id": "code-slash-use-then-path-word",
+   "category": "coding",
+   "input": "use slash app",
+   "expected": "use slash app"
+  },
+  {
+   "id": "code-slash-plain-then-path-word",
+   "category": "coding",
+   "input": "foo slash src",
+   "expected": "foo slash src"
+  },
+  {
+   "id": "code-slash-path-word-left-joins",
+   "category": "coding",
+   "input": "src slash app",
+   "expected": "src/app"
+  },
+  {
+   "id": "code-slash-code-like-left-joins",
+   "category": "coding",
+   "input": "my_dir slash x",
+   "expected": "my_dir/x"
   }
  ]
 }

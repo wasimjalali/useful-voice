@@ -85,7 +85,7 @@ const IDENTIFIER_PARTS = new Set([
  * times" and "20 slash src" are prose.
  */
 const SLASH_LEADERS = new Set([
-  'cd', 'ls', 'cat', 'rm', 'mv', 'cp', 'mkdir', 'touch', 'open', 'edit', 'use', 'type', 'press',
+  'cd', 'ls', 'cat', 'rm', 'mv', 'cp', 'mkdir', 'touch', 'open', 'edit', 'type', 'press',
   'add', 'insert', 'put', 'say', 'in', 'into', 'to', 'from', 'at', 'on', 'of', 'under', 'inside',
   'the', 'a', 'an', 'my', 'your', 'our', 'this', 'that',
 ]);
@@ -261,17 +261,6 @@ function hasAlnum(t: Tok): boolean {
 function endsWithSlash(t: Tok): boolean {
   if (t.built) return t.built.endsSlash;
   return t.core.endsWith('/');
-}
-
-/**
- * "Next.js", "Node.js": a capitalised name with ".js" is a product, never a file to mention.
- * A path ("src/App.js") is still a file.
- */
-function isProductName(core: string): boolean {
-  const cs = chars(core);
-  const dot = cs.lastIndexOf('.');
-  if (dot <= 0 || cs.slice(dot + 1).join('') !== 'js') return false;
-  return isUpper(cs[0] as string) && !cs.slice(0, dot).includes('/');
 }
 
 /**
@@ -454,7 +443,8 @@ function convertSymbols(toks: Tok[]): Tok[] {
     } else if (dotFile) {
       allowed = true;
     } else if (left !== null && right !== null) {
-      allowed = isCodeLike(left) || isCodeLike(right);
+      // Around a slash the left word itself must be path-like: "run slash test" is prose.
+      allowed = slashes > 0 ? isCodeLike(left) || isPathRoot(left) : isCodeLike(left) || isCodeLike(right);
     } else if (slashes === runLength && left === null && right !== null) {
       // A leading slash only where nothing, punctuation or a path-taking word comes before it.
       const leads =
@@ -500,9 +490,9 @@ function convertSymbols(toks: Tok[]): Tok[] {
 }
 
 /**
- * "tag index.ts", "at index dot ts" and "at src/app.tsx" become mentions. After "at" a
- * written name must look like code (isCodeFileName), and a product name ("Next.js") never
- * becomes one.
+ * "tag index.ts", "at index dot ts" and "at src/app.tsx" become mentions. "tag" always makes
+ * one, and so does a file name spelled out by speech. After "at" a written name must look
+ * like code (isCodeFileName), so "looking at Next.js" stays prose.
  */
 function convertMentions(toks: Tok[]): Tok[] {
   const out: Tok[] = [];
@@ -517,8 +507,7 @@ function convertMentions(toks: Tok[]): Tok[] {
       (word === 'at' || word === 'tag') &&
       next !== undefined &&
       next.lead === '' &&
-      (next.file || (word === 'tag' ? looksLikeFileName(next.core) : isCodeFileName(next.core))) &&
-      !isProductName(next.core)
+      (next.file || (word === 'tag' ? looksLikeFileName(next.core) : isCodeFileName(next.core)))
     ) {
       out.push({ sep: tok.sep, lead: '', core: `@${next.core}`, trail: next.trail, file: true });
       i += 2;

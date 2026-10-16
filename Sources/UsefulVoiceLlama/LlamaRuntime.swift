@@ -89,13 +89,14 @@ public final class LlamaRuntime: @unchecked Sendable {
     private let model: OpaquePointer
     private let vocab: OpaquePointer
     private let threads: Int32
+    private let microBatch: UInt32?
     public var threadCount: Int32 { threads }
     public let placement: Placement
     public let modelPath: String
 
     /// Loads the weights. See `Placement`; the CPU is the default for the cleanup model, and
     /// llama.cpp can only stop a running decode on the CPU. The PR notes have the numbers.
-    public init(modelPath: String, placement: Placement = .cpuOnly, threads: Int32? = nil) throws {
+    public init(modelPath: String, placement: Placement = .cpuOnly, threads: Int32? = nil, microBatch: UInt32? = nil) throws {
         _ = Self.backendReady
         var params = llama_model_default_params()
         params.n_gpu_layers = placement == .metal ? -1 : 0
@@ -117,6 +118,7 @@ public final class LlamaRuntime: @unchecked Sendable {
         self.placement = placement
         self.modelPath = modelPath
         self.threads = threads ?? Self.defaultThreadCount()
+        self.microBatch = microBatch
     }
 
     deinit {
@@ -159,6 +161,7 @@ public final class LlamaRuntime: @unchecked Sendable {
         var cparams = llama_context_default_params()
         cparams.n_ctx = UInt32(contextSize)
         cparams.n_batch = UInt32(contextSize)
+        if let microBatch { cparams.n_ubatch = microBatch }
         cparams.n_threads = threads
         cparams.n_threads_batch = threads
         cparams.no_perf = true

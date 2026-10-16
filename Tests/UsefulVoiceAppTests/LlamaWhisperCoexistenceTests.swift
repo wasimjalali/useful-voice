@@ -136,7 +136,7 @@ struct LlamaWhisperCoexistenceTests {
             "can you open the file source slash app dot ts and rename the function get user to fetch user",
         ]
         print("MEASURE baseline \(memoryMB())")
-        for (placement, repeats) in [(LlamaRuntime.Placement.cpuOnly, 1), (.cpuWithDevices, 1), (.metal, 1)] {
+        for (placement, repeats) in [(LlamaRuntime.Placement.cpuOnly, 1)] {
             let label = placement.rawValue
             do {
                 let t0 = ContinuousClock.now
@@ -162,17 +162,16 @@ struct LlamaWhisperCoexistenceTests {
             }
             print("MEASURE after \(label) unload \(memoryMB())")
         }
-        LlamaRuntime.debugDisableAbortCallback = true
-        defer { LlamaRuntime.debugDisableAbortCallback = false }
-        // Thread scaling on the CPU, with the abort callback off (compare with the rows above), one sentence each, same loaded model.
-        for threads in [Int32(1), 2, 3, 6] {
+        // Micro-batch size on the CPU: ggml routes matmuls with 32 or more rows to the BLAS
+        // (Accelerate) backend, which dequantizes the weights first. Compare 16 and 31 with 512.
+        for (ubatch, threads) in [(UInt32(16), Int32(3)), (31, 3), (64, 3), (512, 3), (16, 1), (16, 2)] {
             do {
-                let runtime = try LlamaRuntime(modelPath: s1, placement: .cpuOnly, threads: threads)
+                let runtime = try LlamaRuntime(modelPath: s1, placement: .cpuOnly, threads: threads, microBatch: ubatch)
                 let t = ContinuousClock.now
                 let r = try runtime.complete(prompt: prompt(cardInput), deadline: .now.advanced(by: .seconds(120)))
-                print("MEASURE threads \(threads) run \(ms(t.duration(to: .now))) ms (context \(r.stats.contextSeconds * 1000) ms, prompt decode \(r.stats.promptDecodeSeconds * 1000) ms, total \(r.stats.totalSeconds * 1000) ms)")
+                print("MEASURE ubatch \(ubatch) threads \(threads) run \(ms(t.duration(to: .now))) ms (context \(r.stats.contextSeconds * 1000) ms, prompt decode \(r.stats.promptDecodeSeconds * 1000) ms, total \(r.stats.totalSeconds * 1000) ms, out \(r.stats.outputTokens)) -> \(r.text.debugDescription)")
             } catch {
-                print("MEASURE threads \(threads) failed: \(error)")
+                print("MEASURE ubatch \(ubatch) failed: \(error)")
             }
         }
     }

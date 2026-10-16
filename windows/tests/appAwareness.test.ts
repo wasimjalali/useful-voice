@@ -230,6 +230,11 @@ describe('settings read from a file', () => {
     expect(normaliseUserName('ab\u0085cd\u009fef')).toBe('ab cd ef');
     expect(normaliseUserName('فاطمه\u200cزهرا')).toBe('فاطمه\u200cزهرا');
     expect(normaliseUserName('a\u200d\u200eb\u00adc')).toBe('a\u200d\u200eb\u00adc');
+    // Collapsing uses Swift's whitespace set: U+FEFF (a format character) stays, the rest collapse.
+    expect(normaliseUserName('a\ufeffb')).toBe('a\ufeffb');
+    expect(normaliseUserName('\ufeffAnna\ufeff')).toBe('\ufeffAnna\ufeff');
+    expect(normaliseUserName('a\u00a0\u2003\u3000 \u202fb')).toBe('a b');
+    expect(normaliseUserName('\u00a0 Wasim \u2009')).toBe('Wasim');
     expect(normaliseUserName(42)).toBe('');
     expect(normaliseUserName(undefined)).toBe('');
   });

@@ -44,11 +44,14 @@ test.afterEach(async () => {
   const current = run;
   run = null;
   if (!current) return;
+  // A press that failed in main shows up here even when the spec never looked.
+  const failures = await pressFailures(current.app).catch(() => [] as string[]);
   try {
     await current.stop();
   } finally {
     await remove(current.userData);
   }
+  expect(failures, 'a hotkey press failed in main').toEqual([]);
 });
 
 interface StartOptions {
@@ -96,12 +99,23 @@ const calls = async (app: Running['app']): Promise<Call[]> => (await hook(app, '
  * press, which for the stop press only settles once the dictation is transcribed and delivered.
  * An `evaluate` kept waiting that long on a promise nothing else holds can be dropped by
  * Playwright ("Resulting promise was garbage collected", seen in CI), so the press is started
- * detached and every caller polls for the state or outcome it expects.
+ * detached and every caller polls for the state or outcome it expects. A press that rejects
+ * is recorded in main (`__uvPressErrors`) and fails the spec with its message.
  */
 const press = (app: Running['app']): Promise<void> =>
   app.evaluate(() => {
-    void (globalThis as unknown as { __uv: { pressHotkey(): Promise<void> } }).__uv.pressHotkey();
+    const g = globalThis as unknown as { __uv: { pressHotkey(): Promise<void> }; __uvPressErrors?: string[] };
+    const errors = (g.__uvPressErrors ??= []);
+    Promise.resolve()
+      .then(() => g.__uv.pressHotkey())
+      .catch((error: unknown) => {
+        errors.push(error instanceof Error ? (error.stack ?? error.message) : String(error));
+      });
   });
+
+/** What the detached presses of this run rejected with, as text. */
+const pressFailures = (app: Running['app']): Promise<string[]> =>
+  app.evaluate(() => (globalThis as unknown as { __uvPressErrors?: string[] }).__uvPressErrors ?? []);
 
 /** One whole hotkey dictation: press, speak for a moment, press, wait until it is over. */
 async function hotkeyDictation(r: Running, transcript: string, seconds = 1.5): Promise<void> {
@@ -113,6 +127,7 @@ async function hotkeyDictation(r: Running, transcript: string, seconds = 1.5): P
   await press(r.app);
   await expect.poll(async () => (await log(r.win)).outcomes.length, { timeout: 30 * SECOND }).toBe(before + 1);
   await expect.poll(() => hook(r.app, 'serviceState')).toBe('idle');
+  expect(await pressFailures(r.app), 'a hotkey press failed in main').toEqual([]);
 }
 
 async function savedSettings(userData: string): Promise<Record<string, unknown>> {
@@ -474,6 +489,19 @@ test('the Apps list updates in place, follows History, leaves browsers out and d
   await expect(name).toHaveValue('Was');
   await name.fill('');
   await name.press('Tab');
+
+  // The rows follow the apps listed: newest in History first, then the choices of yours (by name). A new app
+  // goes to the top; an app dictated into again moves up, and the row that has the focus keeps it.
+  const order = async (): Promise<string[]> =>
+    group.getByRole('button', { name: / category$/ }).evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label') ?? ''));
+  expect(await order()).toEqual(['olk category', 'slack category', 'chrome category', 'notepad category']);
+  const notepad = group.getByRole('button', { name: 'notepad category' });
+  const notepadHandle = await notepad.elementHandle();
+  await notepad.focus();
+  await hook(r.app, 'fakeDesktop', { foreground: { processName: 'notepad', title: 'Untitled - Notepad' } });
+  await hotkeyDictation(r, 'Buy milk.');
+  await expect.poll(order).toEqual(['notepad category', 'olk category', 'slack category', 'chrome category']);
+  expect(await notepadHandle!.evaluate((node) => node.isConnected && document.activeElement === node)).toBe(true);
 
   // Clearing History drops the apps only History kept; a choice of yours keeps its row.
   await win.locator('#settings-data').getByRole('button', { name: 'Delete all dictations' }).click();

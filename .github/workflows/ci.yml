@@ -21,10 +21,37 @@ jobs:
       - name: Build (release)
         run: swift build -c release
 
+      # Real weights for the llama.cpp + whisper.cpp coexistence tests
+      # (Tests/UsefulVoiceAppTests/LlamaWhisperCoexistenceTests.swift). Pinned by revision and
+      # SHA-256, cached under a key made of those digests, and checked again after the cache.
+      - name: Cache model weights
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/uv-models
+          key: uv-models-3b41ebe2-921e4cf8
+
+      - name: Fetch model weights (SHA-256 checked)
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/uv-models"
+          fetch() { # url file sha256
+            if [ ! -f "$RUNNER_TEMP/uv-models/$2" ]; then
+              curl -fsSL --retry 3 -o "$RUNNER_TEMP/uv-models/$2" "$1"
+            fi
+            echo "$3  $RUNNER_TEMP/uv-models/$2" | shasum -a 256 -c -
+          }
+          fetch "https://huggingface.co/superwhisper/s1-mini-GGUF/resolve/34add00a48a2e5d24e5a4ee5405a99620a3a240c/s1-mini-q4_k_m.gguf" \
+            s1-mini-q4_k_m.gguf 3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634
+          fetch "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-tiny.en.bin" \
+            ggml-tiny.en.bin 921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f
+
       - name: Run tests
         # Xcode's toolchain ships Swift Testing, so plain `swift test` works on
         # CI (the Makefile's framework copy is only needed on the Command Line
         # Tools-only dev machine).
+        env:
+          UV_S1_MINI_PATH: ${{ runner.temp }}/uv-models/s1-mini-q4_k_m.gguf
+          UV_WHISPER_TINY_PATH: ${{ runner.temp }}/uv-models/ggml-tiny.en.bin
         run: swift test
 
   windows:

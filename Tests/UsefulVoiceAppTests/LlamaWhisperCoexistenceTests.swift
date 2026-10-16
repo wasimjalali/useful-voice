@@ -97,7 +97,8 @@ struct LlamaWhisperCoexistenceTests {
     /// the same process, through the app's own engine.
     @Test(.timeLimit(.minutes(5)))
     func whisperTranscribesARealClipAfterS1MiniRan() async throws {
-        let runtime = try LlamaRuntime(modelPath: s1)
+        let path = s1
+        let runtime = try await offThePool { try LlamaRuntime(modelPath: path) }
         let promptText = prompt(cardInput)
         let ran = try await offThePool { try runtime.complete(prompt: promptText, deadline: .now.advanced(by: .seconds(60))) }
         #expect(!ran.text.isEmpty)
@@ -177,24 +178,39 @@ struct LlamaWhisperCoexistenceTests {
         #expect(!ok.text.isEmpty)
     }
 
-    /// The quit path: a stop signal ends a load and a run that llama.cpp is in the middle of.
+    /// The quit path: a stop signal ends a load, and a run that is inside the prompt decode.
+    /// The second half needs llama.cpp's abort callback: the loop-top check never runs while
+    /// the decode is busy, so a run that ends early proves the callback saw the signal.
     @Test(.timeLimit(.minutes(5)))
     func aStopSignalEndsALoadAndARun() async throws {
+        let path = s1
         let beforeLoad = LlamaRuntime.StopSignal()
         beforeLoad.set()
         #expect(throws: LlamaRuntime.RuntimeError.stopped) {
-            try LlamaRuntime(modelPath: s1, stop: beforeLoad)
+            try LlamaRuntime(modelPath: path, stop: beforeLoad)
         }
 
         let signal = LlamaRuntime.StopSignal()
-        let runtime = try LlamaRuntime(modelPath: s1, stop: signal)
+        let runtime = try await offThePool { try LlamaRuntime(modelPath: path, stop: signal) }
         let promptText = prompt(cardInput)
+        // How long a whole run takes here (the signal is not set yet).
+        let fullStart = ContinuousClock.now
+        _ = try await offThePool { try runtime.complete(prompt: promptText, deadline: .now.advanced(by: .seconds(60))) }
+        let fullMs = ms(fullStart.duration(to: .now))
+        // The prompt decode is nearly the whole run, so a quarter of it (500 ms at most) lands inside it.
+        let setAfterMs = min(500, fullMs / 4)
+
+        let started = ContinuousClock.now
         let run = Task.detached {
             try await offThePool { try runtime.complete(prompt: promptText, deadline: .now.advanced(by: .seconds(60))) }
         }
-        try await Task.sleep(for: .milliseconds(5))
+        try await Task.sleep(for: .milliseconds(setAfterMs))
         signal.set()
         await #expect(throws: LlamaRuntime.RuntimeError.stopped) { try await run.value }
+        let stoppedMs = ms(started.duration(to: .now))
+        print("COEXIST stop signal set \(setAfterMs) ms into a run: ended after \(stoppedMs) ms, a whole run takes \(fullMs) ms")
+        // Well before the run would have finished by itself.
+        #expect(stoppedMs < fullMs * 0.6)
     }
 
     @Test(.timeLimit(.minutes(5)))

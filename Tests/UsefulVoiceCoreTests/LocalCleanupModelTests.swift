@@ -34,7 +34,13 @@ private final class FakeGenerator: CleanupTextGenerator, @unchecked Sendable {
         return answer
     }
 
-    func unload() { lock.withLock { _unloads += 1 } }
+    /// When set, `unload` blocks (after counting itself) until the test signals it.
+    var unloadGate: DispatchSemaphore?
+
+    func unload() {
+        lock.withLock { _unloads += 1 }
+        unloadGate?.wait()
+    }
 
     /// What a real runtime does on `requestStop`: a blocked load or run ends. Off by default.
     var releaseGatesOnStop = false
@@ -439,5 +445,30 @@ struct LocalCleanupModelTests {
         #expect(!model.shutDown(timeout: 0.2))
         gate.signal()
         _ = await run.value
+    }
+
+    @Test func shutDownWaitsForAnUnloadThatIsFreeingTheWeights() async {
+        let gen = FakeGenerator()
+        let gate = DispatchSemaphore(value: 0)
+        gen.unloadGate = gate
+        let model = LocalCleanupModel(modelURL: url, generator: gen, idleUnloadAfter: .seconds(60))
+        await model.begin()
+        await model.waitForLoad()
+        let unloading = Task { await model.unload() }
+        #expect(await waitUntil { gen.unloads == 1 })            // llama_model_free is running
+        #expect(!model.shutDown(timeout: 0.2))                    // quit must not pass it by
+        gate.signal()
+        await unloading.value
+        #expect(model.shutDown(timeout: 5))
+    }
+
+    @Test func noWeightsAreFreedOnceShutDownClosedTheGate() async {
+        let gen = FakeGenerator()
+        let model = LocalCleanupModel(modelURL: url, generator: gen, idleUnloadAfter: .seconds(60))
+        await model.begin()
+        await model.waitForLoad()
+        #expect(model.shutDown(timeout: 1))
+        await model.unload()
+        #expect(gen.unloads == 0)
     }
 }

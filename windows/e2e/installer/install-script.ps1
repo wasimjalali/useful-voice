@@ -7,7 +7,8 @@
 #      nothing is installed.
 #   2. The real installer installs per-user under Windows PowerShell 5.1: one uninstall
 #      entry, the release's version, the exe on disk.
-#   3. The same one-liner works again from PowerShell 7 (a reinstall over the first).
+#   3. The same one-liner works again from PowerShell 7 (a reinstall over the first, with the
+#      app running: the script closes it first).
 #
 # Usage: pwsh e2e/installer/install-script.ps1 <publish-local dir> <out dir>
 # <publish-local dir> is release.mjs output made with --base-url http://127.0.0.1:8719.
@@ -112,15 +113,27 @@ try {
   Start-Sleep -Seconds 3
   $running = @(Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue)
   Say "app processes after install: $($running.Count)"
-  if ($running.Count -eq 0) { throw 'install.ps1 did not start the app' }
-  Stop-App
-  Say 'OK: installed and started'
+  # The runner is an elevated session, where install.ps1 deliberately does not start the app.
+  $elevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  if ($elevated) {
+    if ($running.Count -ne 0) { throw 'install.ps1 started the app from an elevated shell' }
+    if ($r.Output -notmatch 'not started') { throw 'install.ps1 did not say it skipped starting the app' }
+    Start-Process -FilePath $exe
+    Start-Sleep -Seconds 3
+    if (@(Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue).Count -eq 0) { throw 'the installed app did not start' }
+    Say 'OK: installed, not started from an elevated shell'
+  } else {
+    if ($running.Count -eq 0) { throw 'install.ps1 did not start the app' }
+    Say 'OK: installed and started'
+  }
 
-  # 3. Again from PowerShell 7, over the first install.
+  # 3. Again from PowerShell 7, over the first install, with the app still running: the
+  # script must close it and say so.
   $r = Invoke-OneLiner 'pwsh'
   Say "== 3. real installer again, PowerShell 7: exit $($r.ExitCode)"
   Say $r.Output
   if ($r.ExitCode -ne 0) { throw "install.ps1 failed under PowerShell 7 (exit $($r.ExitCode))" }
+  if ($r.Output -notmatch 'Closing the running Useful Voice') { throw 'install.ps1 did not close the running app' }
   $entries = @(Get-UvEntries)
   if ($entries.Count -ne 1 -or $entries[0].DisplayVersion -ne $version) { throw "expected one $version entry after the reinstall, found $($entries.Count)" }
   Stop-App

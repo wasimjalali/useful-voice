@@ -731,5 +731,11 @@
     "output": "Wrap the title in <b>́ tags please.",
     "verdict": "accept",
     "text": "Wrap the title in <b>́ tags please."
+  },
+  {
+    "name": "a kept comma before wait is not a correction",
+    "rulesText": "I think we should, wait until Monday.",
+    "output": "Wait until Monday.",
+    "verdict": "droppedContent"
   }
 ]

@@ -704,7 +704,8 @@ function cueAt(tokens: Tok[], p: number): [number, number] | null {
   switch (t.text) {
     case 'wait':
       if (prev && (prev.text === 'no' || prev.text === 'oh') && commaOrStart(p - 1)) return [p - 1, p + 1];
-      if (commaOrStart(p)) return [p, p + 1];
+      // A lone "wait" needs a comma after it too: "should, wait until Monday" is not a correction.
+      if (commaOrStart(p) && t.commaAfter) return [p, p + 1];
       return null;
     case 'sorry':
       return t.commaBefore || t.commaAfter ? [p, p + 1] : null;

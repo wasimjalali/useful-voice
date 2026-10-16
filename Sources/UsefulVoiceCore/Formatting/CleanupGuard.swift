@@ -654,7 +654,8 @@ public enum CleanupGuard {
         switch t.text {
         case "wait":
             if let prev = prev, prev.text == "no" || prev.text == "oh", commaOrStart(p - 1) { return (p - 1)..<(p + 1) }
-            return commaOrStart(p) ? p..<(p + 1) : nil
+            // A lone "wait" needs a comma after it too: "should, wait until Monday" is not a correction.
+            return commaOrStart(p) && t.commaAfter ? p..<(p + 1) : nil
         case "sorry":
             return t.commaBefore || t.commaAfter ? p..<(p + 1) : nil
         case "mean":

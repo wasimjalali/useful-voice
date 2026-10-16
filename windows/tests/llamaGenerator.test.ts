@@ -106,6 +106,14 @@ describe('LlamaCleanupGenerator', () => {
     await expect(generator.generate('echo', performance.now() - 1)).rejects.toThrow('deadline');
   });
 
+  it('does not start a run when the reload after a crash used up the deadline', async () => {
+    await generator.load('ok.gguf');
+    await expect(generator.generate('crash', FAR())).rejects.toThrow('exited (3)');
+    await expect(generator.generate('echo', performance.now() + 1)).rejects.toThrow('deadline');
+    expect(generator.isRunning).toBe(true);
+    expect(await generator.generate('echo', FAR())).toMatch(/^echo:/);
+  });
+
   it('refuses a run before any load', async () => {
     await expect(generator.generate('echo', FAR())).rejects.toThrow('not loaded');
   });

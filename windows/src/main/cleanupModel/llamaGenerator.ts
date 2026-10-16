@@ -13,7 +13,8 @@ import { s1MiniPromptPrefix } from '../../core/formatting/s1MiniModel.js';
  *
  * `LocalCleanupModel` queues calls, so at most one `load`, `generate` or `unload` runs at a
  * time. A `generate` past its deadline tells the worker to stop and rejects at once; if the
- * worker does not confirm in `abortGraceMs` it is killed, and the next call starts a new one.
+ * worker does not confirm in `abortGraceMs` (3 s: a kill costs a full reload, and a busy machine
+ * can take a moment to notice the abort) it is killed, and the next call starts a new one.
  */
 export interface LlamaGeneratorOptions {
   /** Absolute path of the compiled `cleanupWorker.js`. */
@@ -50,7 +51,7 @@ export class LlamaCleanupGenerator implements CleanupTextGenerator {
     this.options = {
       warn: () => undefined,
       loadTimeoutMs: 120_000,
-      abortGraceMs: 500,
+      abortGraceMs: 3000,
       exitGraceMs: 3000,
       now: () => performance.now(),
       ...options,
@@ -86,6 +87,8 @@ export class LlamaCleanupGenerator implements CleanupTextGenerator {
     if (!this.child) {
       if (!this.modelPath) throw new Error('the model is not loaded');
       await this.load(this.modelPath);
+      // The load may have used the whole budget; the weights stay loaded for the next call.
+      if (now() >= deadline) throw new Error('deadline');
     }
     const child = this.child;
     if (!child) throw new Error('the worker is not running');

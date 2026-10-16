@@ -41,4 +41,17 @@ public enum S1MiniModel {
             + "<|im_start|>user\n\(controlLine)\n\(text)<|im_end|>\n"
             + "<|im_start|>assistant\n<think>\n\n</think>\n\n"
     }
+
+    /// The control-line style for the user's chosen app style, for `CleanupControlLine`:
+    /// Formal is formal, Casual is semi-casual and Very casual is casual. No choice (nil)
+    /// leaves the card's default, semi-formal. The eval found that picking casual by app
+    /// category alone hurt restraint, so only an explicit choice moves off the default.
+    public static func controlStyle(for style: FormattingStyle?) -> String? {
+        switch style {
+        case .formal: return "formal"
+        case .casual: return "semi-casual"
+        case .veryCasual: return "casual"
+        case nil: return nil
+        }
+    }
 }

@@ -183,6 +183,14 @@ struct CleanupPipelineTests {
         #expect(model.calls.isEmpty)
     }
 
+    @Test func whitespaceOnlyNeverReachesTheModel() async {
+        let model = FakeModel(.answer("anything"))
+        let r = await run("  \n ", model: model)
+        #expect(r.text == "  \n ")
+        #expect(r.source == .raw)
+        #expect(model.calls.isEmpty)
+    }
+
     @Test func emptyRawStaysEmpty() async {
         let r = await run("", model: FakeModel(.answer("x")))
         #expect(r.text == "")

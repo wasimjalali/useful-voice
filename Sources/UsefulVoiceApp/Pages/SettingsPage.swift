@@ -498,6 +498,15 @@ struct SettingsPage: View {
                         detail: "English only. Say period, comma or new line.") {
                 Toggle("", isOn: spokenPunctuationBinding).labelsHidden().accessibilityLabel("Speak punctuation")
             }
+            // The hidden S1-mini cleanup's credit (its license requires it): one line, only
+            // while the hidden flag is on.
+            if CleanupModelFlag.isOn {
+                SettingsBlock {
+                    Text("AI cleanup: \(S1MiniModel.credit)")
+                        .font(.uv(.ui, .medium))
+                        .foregroundStyle(Theme.ink)
+                }
+            }
         } footer: {
             if engine == .deepgram {
                 // Disclosed because it is charged and was previously invisible: the app sends

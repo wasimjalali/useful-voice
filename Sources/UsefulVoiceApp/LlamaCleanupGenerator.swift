@@ -31,20 +31,28 @@ public final class LlamaCleanupGenerator: CleanupTextGenerator, @unchecked Senda
     }
 }
 
-/// The few lines the dictation flow needs once it is wired in (phase 2):
-///
-///     let cleanup = HiddenCleanupModel.shared          // nil unless the flag is on
-///     Task { await cleanup?.begin() }                    // dictation starts
-///     ... later, at the cleanup marker ...
-///     let result = await CleanupPipeline.run(raw: text, language: lang, category: cat,
-///         style: style, gates: .current(), model: cleanup)
-///     Task { await cleanup?.end() }                      // dictation ends or is cancelled
+/// The hidden cleanup model the dictation controller is given. Nil while the hidden
+/// `UV_CLEANUP_MODEL` flag is off, so a normal launch builds nothing and loads nothing. The
+/// controller preloads it at the press, the pipeline runs it at the cleanup step, and it
+/// unloads itself after `CleanupModelPolicy.defaultIdleUnload`. Nothing runs at quit: the
+/// process exit frees the weights.
 public enum HiddenCleanupModel {
-    /// Nil while the hidden flag is off, so a normal launch builds nothing and loads nothing.
     public static let shared: LocalCleanupModel? = {
         guard CleanupModelFlag.isOn else { return nil }
         let store = LocalModelStore()
         return LocalCleanupModel(
             modelURL: store.fileURL(for: S1MiniModel.model), generator: LlamaCleanupGenerator())
     }()
+
+    private static let downloader = ModelDownloader(store: LocalModelStore())
+
+    /// With the hidden flag on, on a Mac with enough memory, fetches the pinned weights once
+    /// through the existing downloader (resumable, SHA-256 checked before it installs). With the
+    /// flag off, or the weights already there, it does nothing. Returns at once.
+    public static func downloadIfNeeded() {
+        guard shared != nil,
+              CleanupModelPolicy.memoryAllowsModel(physicalMemoryBytes: ProcessInfo.processInfo.physicalMemory),
+              LocalModelStore().availability(of: S1MiniModel.model) != .usable else { return }
+        downloader.start(model: S1MiniModel.model)
+    }
 }

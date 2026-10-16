@@ -626,8 +626,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             sendKey: { chord in TextInserter.postSendKey(chord) },
             ownAppID: Bundle.main.bundleIdentifier,
             ownFieldIsEditable: { Self.ownEditableFieldHasFocus() },
-            autoFormat: { [settings] in settings.formattingEnabled }
+            autoFormat: { [settings] in settings.formattingEnabled },
+            // Nil unless the hidden UV_CLEANUP_MODEL flag is on; with nil the dictation
+            // path is exactly as it was.
+            cleanupModel: HiddenCleanupModel.shared
         )
+        HiddenCleanupModel.downloadIfNeeded()
         controller.onStateChange = { [weak self] state in
             if state == .recording, let target = self?.controller?.deliveryTarget {
                 FocusTracker.shared.noteRecent(target)

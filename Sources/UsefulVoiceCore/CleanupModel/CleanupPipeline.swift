@@ -8,7 +8,7 @@ import Foundation
 /// starts, and anything short of a guard-approved answer yields the rules-only text.
 ///
 ///   1. `CleanupRules` run on the raw text (English only).
-///   2. Rules left nothing (the whole dictation was fillers): the raw text is the result, so
+///   2. Rules left nothing or only whitespace (the whole dictation was fillers): the raw text is the result, so
 ///      History and the clipboard never get an empty entry. The model is not asked.
 ///   3. `CleanupModelPolicy.decide` (flag, model downloaded, 8 GB class of RAM, English): when it
 ///      says skip, the rules text is the result.
@@ -68,7 +68,9 @@ public enum CleanupPipeline {
     ) async -> Result {
         let start = ContinuousClock.now
         let rulesText = CleanupRules.apply(to: raw, language: language)
-        if rulesText.isEmpty { return Result(text: raw, source: .raw, model: nil) }
+        if rulesText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return Result(text: raw, source: .raw, model: nil)
+        }
         let rulesSource: Source = rulesText == raw ? .raw : .rules
 
         let decision = CleanupModelPolicy.decide(

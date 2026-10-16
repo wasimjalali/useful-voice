@@ -17,7 +17,7 @@ public final class DictationController {
             // The target (with its window title and page address) is for the dictation
             // in flight only: once it settles, it is dropped.
             switch state {
-            case .idle, .error: activeTarget = nil; activePress = nil
+            case .idle, .error: activeTarget = nil; activePress = nil; endCleanupModelDictation()
             case .recording, .transcribing, .delivering: break
             }
             onStateChange?(state)
@@ -89,6 +89,16 @@ public final class DictationController {
     /// "Auto-format transcript". Read at the press. Cleanup rules and category formatting
     /// run only while it is on.
     private let autoFormat: () -> Bool
+    /// The hidden local cleanup model (S1-mini), nil unless the hidden flag is on. With nil
+    /// this controller behaves exactly as before.
+    private let cleanupModel: LocalCleanupModel?
+    /// The gates the model step checks, read at the press and again at the cleanup step.
+    private let cleanupGates: () -> CleanupPipeline.Gates
+    /// True between the press that preloaded the model and the dictation settling, so
+    /// `end` is sent once per `begin` on every path (stop, cancel, error, delivery).
+    private var cleanupDictationOpen = false
+    /// Orders `begin` and `end`, which run as tasks, so an `end` can never overtake its `begin`.
+    private var cleanupLifecycle: Task<Void, Never>?
     private var pendingRawMode = false
     /// Where the dictation now in flight was started, and the app it will paste
     /// into. Written once, when recording starts, and never by the stop toggle,
@@ -177,7 +187,9 @@ public final class DictationController {
                 sendKey: @escaping (SendKeyChord) -> Void = { _ in },
                 ownAppID: String? = nil,
                 ownFieldIsEditable: @escaping () -> Bool = { false },
-                autoFormat: @escaping () -> Bool = { false }) {
+                autoFormat: @escaping () -> Bool = { false },
+                cleanupModel: LocalCleanupModel? = nil,
+                cleanupGates: @escaping () -> CleanupPipeline.Gates = { CleanupPipeline.Gates.current() }) {
         self.recorder = recorder
         self.providers = providers
         self.store = store
@@ -204,6 +216,8 @@ public final class DictationController {
         self.ownAppID = ownAppID
         self.ownFieldIsEditable = ownFieldIsEditable
         self.autoFormat = autoFormat
+        self.cleanupModel = cleanupModel
+        self.cleanupGates = cleanupGates
         // The recorder calls this on the main thread and only for its live
         // session (see AudioRecording.onAutoStop), so it acts at once: no extra
         // hop in which a stale call could end the NEXT recording. The state check
@@ -333,9 +347,51 @@ public final class DictationController {
             activeAppName = target?.appName
             activePress = capturePress(for: target, inOwnApp: inOwnApp || effectiveSource == .window)
             state = .recording
+            beginCleanupModelDictation()
         } catch {
             state = .error(DictationError.startFailure(error))
         }
+    }
+
+    /// Preloads the cleanup model while the person is still talking, when the hidden flag is
+    /// on and the gates pass (the language is not known yet, so English is assumed). Fire and
+    /// forget: nothing here waits for the load, and a failed load only means the model step
+    /// falls back to the rules text later.
+    private func beginCleanupModelDictation() {
+        guard let model = cleanupModel, !cleanupDictationOpen else { return }
+        let gates = cleanupGates()
+        guard case .run = CleanupModelPolicy.decide(
+            flagOn: gates.flagOn, modelInstalled: gates.modelInstalled,
+            physicalMemoryBytes: gates.physicalMemoryBytes, language: "en") else { return }
+        cleanupDictationOpen = true
+        let previous = cleanupLifecycle
+        cleanupLifecycle = Task { await previous?.value; await model.begin() }
+    }
+
+    /// Tells the model the dictation settled (idle or error), once per preload, whatever the path.
+    private func endCleanupModelDictation() {
+        guard let model = cleanupModel, cleanupDictationOpen else { return }
+        cleanupDictationOpen = false
+        let previous = cleanupLifecycle
+        cleanupLifecycle = Task { await previous?.value; await model.end() }
+    }
+
+    /// The cleanup step of the formatted path. Without the hidden model it is the rules and
+    /// nothing else; with it, the pipeline (rules, then the model behind its gates, deadline
+    /// and guard). Either way an empty result keeps the transcript, so nothing is lost.
+    private func cleanedTranscript(_ text: String, language: String, press: PressCapture) async -> String {
+        let cleaned: String
+        if let cleanupModel {
+            let result = await CleanupPipeline.run(
+                raw: text, language: language,
+                category: press.inOwnApp ? nil : press.category.rawValue,
+                style: press.inOwnApp ? nil : S1MiniModel.controlStyle(for: press.settings.requestedStyle(for: press.category)),
+                gates: cleanupGates(), model: cleanupModel)
+            cleaned = result.text
+        } else {
+            cleaned = CleanupRules.apply(to: text, language: language)
+        }
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? text : cleaned
     }
 
     /// Resolves the category of the target and starts reading the text before the caret.
@@ -537,11 +593,11 @@ public final class DictationController {
             // has the last word. Both steps run only while "Auto-format transcript" is on,
             // and anything unsure keeps the text.
             var pipelineText = transcript.text
-            if press?.autoFormat == true {
+            if let press, press.autoFormat {
                 // Cleanup rules (#48): fillers and stutters, English only. An empty result
-                // would lose the dictation, so the transcript is kept instead.
-                let cleaned = CleanupRules.apply(to: pipelineText, language: effectivePin.rawValue)
-                if !cleaned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { pipelineText = cleaned }
+                // would lose the dictation, so the transcript is kept instead. With the hidden
+                // flag on, the local model runs after the rules, behind its gates.
+                pipelineText = await cleanedTranscript(pipelineText, language: effectivePin.rawValue, press: press)
             }
             if let press, press.autoFormat, press.settings.enabled, !press.inOwnApp {
                 let plan = AppFormattingPlan(

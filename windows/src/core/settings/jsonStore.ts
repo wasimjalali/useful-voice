@@ -79,6 +79,9 @@ export async function readJson<T>(filePath: string): Promise<LoadResult<T>> {
   }
 }
 
+/** Makes each temp name unique: two writes in the same millisecond would otherwise share one. */
+let tempCounter = 0;
+
 /**
  * Write JSON atomically: a temp file in the same directory, then a rename.
  *
@@ -86,9 +89,6 @@ export async function readJson<T>(filePath: string): Promise<LoadResult<T>> {
  * report "Saved" while nothing reached disk, so the user discovered the loss at
  * the next launch.
  */
-/** Makes each temp name unique: two writes in the same millisecond would otherwise share one. */
-let tempCounter = 0;
-
 export async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {
   const directory = path.dirname(filePath);
   await fs.mkdir(directory, { recursive: true });

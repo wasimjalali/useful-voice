@@ -68,7 +68,10 @@ struct LanguageMemoryTextIndex {
         guard !trimmed.isEmpty, trimmed.count <= LanguageMemoryMatcher.maxPhraseLength else { return nil }
         // A phrase with a scalar the tables do not assign is a wildcard: unindexed path.
         if trimmed.unicodeScalars.contains(where: Self.isUncertain) { return nil }
-        return Signature(skeleton: skeleton(of: trimmed))
+        let reduced = skeletonWithWordFlags(of: trimmed.unicodeScalars)
+        // A scalar that did not reduce within the depth limit is uncertain too: unindexed path.
+        if reduced.capped { return nil }
+        return Signature(skeleton: reduced.skeleton)
     }
 
     /// Makes `text` the current text and adds the windows of its skeleton to the index.
@@ -89,7 +92,7 @@ struct LanguageMemoryTextIndex {
         }
 
         let middle = Self.skeletonWithWordFlags(of: new[prefix..<(new.count - suffix)])
-        if !holdsUncertainScalar, new[prefix..<(new.count - suffix)].contains(where: Self.isUncertain) {
+        if !holdsUncertainScalar, middle.capped || new[prefix..<(new.count - suffix)].contains(where: Self.isUncertain) {
             holdsUncertainScalar = true
         }
         let keepHead = starts[prefix]
@@ -205,7 +208,9 @@ struct LanguageMemoryTextIndex {
     }
 
     /// `starts` has one entry per scalar plus one: where that scalar's skeleton begins.
-    static func skeletonWithWordFlags<S: Collection>(of text: S) -> (skeleton: [UInt32], isASCIIWord: [Bool], starts: [Int])
+    /// `capped` is true when a scalar did not reduce within the depth limit: its skeleton is
+    /// not canonical, so the caller must treat the text or phrase as uncertain.
+    static func skeletonWithWordFlags<S: Collection>(of text: S) -> (skeleton: [UInt32], isASCIIWord: [Bool], starts: [Int], capped: Bool)
     where S.Element == Unicode.Scalar {
         var out: [UInt32] = []
         var flags: [Bool] = []
@@ -213,6 +218,7 @@ struct LanguageMemoryTextIndex {
         out.reserveCapacity(text.count)
         flags.reserveCapacity(text.count)
         starts.reserveCapacity(text.count + 1)
+        var capped = false
         for scalar in text {
             starts.append(out.count)
             let v = scalar.value
@@ -221,17 +227,23 @@ struct LanguageMemoryTextIndex {
                 flags.append((v >= 0x30 && v <= 0x39) || (v >= 0x41 && v <= 0x5A) || (v >= 0x61 && v <= 0x7A) || v == 0x5F)
             } else {
                 let before = out.count
-                appendSkeleton(of: scalar, to: &out, depth: 0)
+                appendSkeleton(of: scalar, to: &out, depth: 0, capped: &capped)
                 flags.append(contentsOf: repeatElement(false, count: out.count - before))
             }
         }
         starts.append(out.count)
-        return (out, flags, starts)
+        return (out, flags, starts, capped)
     }
 
-    private static func appendSkeleton(of scalar: Unicode.Scalar, to out: inout [UInt32], depth: Int) {
+    private static func appendSkeleton(of scalar: Unicode.Scalar, to out: inout [UInt32], depth: Int, capped: inout Bool) {
         let props = scalar.properties
-        guard depth < 4, props.changesWhenCaseMapped || props.changesWhenCaseFolded else {
+        guard props.changesWhenCaseMapped || props.changesWhenCaseFolded else {
+            out.append(scalar.value)
+            return
+        }
+        guard depth < 4 else {
+            assertionFailure("case-mapping of U+\(String(scalar.value, radix: 16)) did not settle in 4 rounds")
+            capped = true
             out.append(scalar.value)
             return
         }
@@ -240,7 +252,7 @@ struct LanguageMemoryTextIndex {
                 if lower == scalar {
                     out.append(lower.value)
                 } else {
-                    appendSkeleton(of: lower, to: &out, depth: depth + 1)
+                    appendSkeleton(of: lower, to: &out, depth: depth + 1, capped: &capped)
                 }
             }
         }

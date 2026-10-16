@@ -35,18 +35,25 @@ function isASCIIWord(cp: number): boolean {
   return (cp >= 0x30 && cp <= 0x39) || (cp >= 0x41 && cp <= 0x5a) || (cp >= 0x61 && cp <= 0x7a) || cp === 0x5f;
 }
 
-function appendSkeleton(cp: number, out: number[], depth: number): void {
+/** Returns false when a code point did not reduce within the depth limit (its skeleton is not canonical). */
+function appendSkeleton(cp: number, out: number[], depth: number): boolean {
   const ch = String.fromCodePoint(cp);
   const mapped = ch.toUpperCase().toLowerCase();
-  if (mapped === ch || depth >= MAX_FIXPOINT_DEPTH) {
+  if (mapped === ch) {
     out.push(cp);
-    return;
+    return true;
   }
+  if (depth >= MAX_FIXPOINT_DEPTH) {
+    out.push(cp);
+    return false;
+  }
+  let settled = true;
   for (const next of mapped) {
     const nextCp = next.codePointAt(0) as number;
     if (nextCp === cp) out.push(nextCp);
-    else appendSkeleton(nextCp, out, depth + 1);
+    else if (!appendSkeleton(nextCp, out, depth + 1)) settled = false;
   }
+  return settled;
 }
 
 export interface Skeleton {
@@ -54,6 +61,8 @@ export interface Skeleton {
   ascii: Uint8Array;
   /** For each UTF-16 index of the text (plus its length), where that code point's skeleton starts. */
   starts: Uint32Array;
+  /** True when some code point did not reduce within the depth limit: the skeleton is not trustworthy. */
+  capped: boolean;
 }
 
 export function skeletonOf(text: string): Skeleton {
@@ -61,6 +70,7 @@ export function skeletonOf(text: string): Skeleton {
   const flags: number[] = [];
   const starts = new Uint32Array(text.length + 1);
   let unit = 0;
+  let capped = false;
   for (const ch of text) {
     const cp = ch.codePointAt(0) as number;
     const before = out.length;
@@ -68,7 +78,7 @@ export function skeletonOf(text: string): Skeleton {
       out.push(cp >= 0x41 && cp <= 0x5a ? cp + 0x20 : cp);
       flags.push(isASCIIWord(cp) ? 1 : 0);
     } else {
-      appendSkeleton(cp, out, 0);
+      if (!appendSkeleton(cp, out, 0)) capped = true;
       for (let i = before; i < out.length; i += 1) flags.push(0);
     }
     starts[unit] = before;
@@ -76,7 +86,7 @@ export function skeletonOf(text: string): Skeleton {
     unit += ch.length;
   }
   starts[text.length] = out.length;
-  return { skeleton: Uint32Array.from(out), ascii: Uint8Array.from(flags), starts };
+  return { skeleton: Uint32Array.from(out), ascii: Uint8Array.from(flags), starts, capped };
 }
 
 /**
@@ -122,20 +132,23 @@ export function phraseSignature(phrase: string): PhraseSignature | null {
   const cached = SIGNATURE_CACHE.get(phrase);
   if (cached !== undefined) return cached;
   const trimmed = phrase.trim();
-  const signature = trimmed.length === 0 ? null : { skeleton: phraseSkeleton(trimmed) };
+  const signature = trimmed.length === 0 ? null : phraseSignatureOf(trimmed);
   if (SIGNATURE_CACHE.size < SIGNATURE_CACHE_LIMIT) SIGNATURE_CACHE.set(phrase, signature);
   return signature;
 }
 
-/** `skeletonOf(text).skeleton`, with a straight loop for the common all-ASCII phrase. */
-function phraseSkeleton(text: string): Uint32Array {
+/** The signature, with a straight loop for the common all-ASCII phrase; null when the skeleton is uncertain. */
+function phraseSignatureOf(text: string): PhraseSignature | null {
   const out = new Uint32Array(text.length);
   for (let i = 0; i < text.length; i += 1) {
     const unit = text.charCodeAt(i);
-    if (unit >= 0x80) return skeletonOf(text).skeleton;
+    if (unit >= 0x80) {
+      const full = skeletonOf(text);
+      return full.capped ? null : { skeleton: full.skeleton };
+    }
     out[i] = unit >= 0x41 && unit <= 0x5a ? unit + 0x20 : unit;
   }
-  return out;
+  return { skeleton: out };
 }
 
 function hash2(a: number, b: number): number {
@@ -156,6 +169,8 @@ export class TextIndex {
   private currentASCII: Uint8Array = new Uint8Array(0);
   private starts: Uint32Array = new Uint32Array(1);
   private startsLength = 1;
+  /** Set once any version of the text held a code point that did not reduce: the index then rules nothing out. */
+  private uncertain = false;
 
   constructor(text: string) {
     this.absorb(text);
@@ -186,6 +201,7 @@ export class TextIndex {
     if (suffix > 0 && isLowSurrogate(text.charCodeAt(newLength - suffix))) suffix -= 1;
 
     const middle = skeletonOf(text.slice(prefix, newLength - suffix));
+    if (middle.capped) this.uncertain = true;
     const keepHead = this.starts[prefix] as number;
     const keepTailFrom = this.starts[oldLength - suffix] as number;
     const removedSkeleton = keepTailFrom - keepHead;
@@ -236,7 +252,7 @@ export class TextIndex {
   /** False only when the regex for this phrase certainly finds nothing in the current text. */
   mayContain(signature: PhraseSignature): boolean {
     const p = signature.skeleton;
-    if (p.length === 0) return true;
+    if (p.length === 0 || this.uncertain) return true;
     return this.windowsPresent(p) && this.occursInCurrentText(p);
   }
 

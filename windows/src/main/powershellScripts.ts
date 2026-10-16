@@ -68,23 +68,45 @@ ${GUARD_CS}
 const SEND_KEYS = /^[+^]?\{ENTER\}$/;
 
 /**
- * Press the auto-send key, but only while `expectedForeground` is in front and before the
- * deadline, checked in the same script as the keystroke like the paste. `sendKeys` is
+ * Press the auto-send key, but only while `expectedForeground` is in front, before the
+ * deadline and (when `expectedFocus` is given) while the same child control has the
+ * keyboard focus. All of it is checked in the same script as the keystroke, like the
+ * paste: a send key must never reach another field of the same window. `sendKeys` is
  * fixed by the setting (`{ENTER}`, `+{ENTER}` or `^{ENTER}`), never text from a dictation.
  * Prints `sent`, `moved`, `timeout` or `failed`.
  */
-export function sendKeyScript(expectedForeground: number, deadlineEpochMs: number, sendKeys: string): string {
+export function sendKeyScript(
+  expectedForeground: number,
+  deadlineEpochMs: number,
+  sendKeys: string,
+  expectedFocus?: number,
+): string {
   if (!isHandle(expectedForeground)) throw new Error('sendKeyScript needs a window handle');
   if (!SEND_KEYS.test(sendKeys)) throw new Error('sendKeyScript needs Return, Shift+Return or Ctrl+Return');
+  const guardFocus = isHandle(expectedFocus);
   return `
 $ErrorActionPreference = 'Stop'
 try {
   Add-Type @"
 ${GUARD_CS}
-"@
+"@${
+    guardFocus
+      ? `
+  Add-Type @"
+${FOREGROUND_CS}
+"@`
+      : ''
+  }
   ${deadlineLine(deadlineEpochMs)}
   if ([UvGuard]::GetForegroundWindow() -ne [IntPtr]${expectedForeground}) { Write-Output "moved"; exit 0 }
-  if ([DateTime]::UtcNow -ge $deadline) { Write-Output "timeout"; exit 0 }
+  if ([DateTime]::UtcNow -ge $deadline) { Write-Output "timeout"; exit 0 }${
+    guardFocus
+      ? `
+  $procId = 0
+  $thread = [UvForeground]::GetWindowThreadProcessId([UvGuard]::GetForegroundWindow(), [ref]$procId)
+  if ([UvForeground]::Focus($thread) -ne ${expectedFocus}) { Write-Output "moved"; exit 0 }`
+      : ''
+  }
   $wshell = New-Object -ComObject WScript.Shell
   $wshell.SendKeys("${sendKeys}")
   Write-Output "sent"

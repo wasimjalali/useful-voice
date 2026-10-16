@@ -1319,7 +1319,8 @@ class UsefulVoiceApp {
           clipboardHoldsText: (value) => clipboardHoldsText(value),
           paste: (lockTarget, until) => desktop.pasteClipboard(lockTarget.windowHandle ?? 0, until, kill),
           typeOut: (lockTarget, batches, until) => desktop.typeText(batches, lockTarget.windowHandle ?? 0, until, kill),
-          sendKey: (lockTarget, key, until) => desktop.sendKey(lockTarget.windowHandle ?? 0, key, until, kill),
+          sendKey: (lockTarget, key, until) =>
+            desktop.sendKey(lockTarget.windowHandle ?? 0, key, until, kill, lockTarget.focusHandle),
           wait: (ms) => delay(ms),
           log: (category, message) => this.diagnostics.log(category, message),
         },

@@ -117,6 +117,8 @@ public final class LlamaRuntime: @unchecked Sendable {
     /// Loads the weights. See `Placement`; the CPU is the default for the cleanup model, and
     /// llama.cpp can only stop a running decode on the CPU. The PR notes have the numbers.
     public init(modelPath: String, placement: Placement = .cpuOnly, threads: Int32? = nil, microBatch: UInt32? = nil, stop: StopSignal? = nil) throws {
+        // A signal that is already set must not pay for backend init or the first part of the load.
+        if stop?.isSet == true { throw RuntimeError.stopped }
         _ = Self.backendReady
         var params = llama_model_default_params()
         params.n_gpu_layers = placement == .metal ? -1 : 0

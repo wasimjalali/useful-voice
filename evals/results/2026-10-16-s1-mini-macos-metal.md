@@ -43,10 +43,11 @@ app to Metal on real hardware hold up, and what does it cost?
     model loop), so the check's prompt was changed to numbered items for runs 2 and 3. Run 4
     adds a second prompt near the 1,536 token cap (review round 1 asked for the worst case).
   - The same variables with `swift test --skip-build --filter LlamaWhisper --skip 'LlamaWhisperCoexistenceTests/measure'`,
-    twice (before and after review round 1): 7 tests, 8 cases, all passed both times.
+    three times (before review, after round 1, after round 2): 7 tests and 8 cases, then 8 tests
+    and 9 cases with the quit test, all passed.
 - Raw logs (paths replaced by `<scratch>`, `<repo>` and `~`, nothing else edited):
   `raw/2026-10-16-s1-mini-macos-metal-measure-run{1,2,3,4}.log`,
-  `raw/2026-10-16-s1-mini-macos-metal-coexistence.log` and `...-coexistence-2.log`, plus the
+  `raw/2026-10-16-s1-mini-macos-metal-coexistence.log`, `...-coexistence-2.log` and `-3.log`, plus the
   machine, weight hashes and framework size in `raw/2026-10-16-s1-mini-macos-metal-machine.txt`.
 - Cost: none.
 
@@ -96,8 +97,14 @@ What that means for the app: the dictation never waits past 1.5 s either way
 (`CleanupPipeline.withDeadline` returns at the deadline and drops a late answer). The worst
 overrun measured is the model thread finishing one prompt decode: about 350 ms past the
 deadline at both 900 and 1,515 tokens on this M4. A quit waits up to 2 s for that thread, so it
-is covered here; on a slower or busier GPU it might not be, and a quit that times out is now
-logged as an error instead of passing silently. The stop-signal test stays on the CPU, where it proves the mid-decode abort.
+is covered here, and a new test proves it on the app's own path: `aQuitDuringALongRunEndsWithinTheWait`
+starts a 1,500 token cleanup through `LocalCleanupModel` and `LlamaCleanupGenerator` (Metal), calls
+`shutDown(timeout: 2)` 150 ms in and expects the thread to leave llama.cpp in time. It did after
+278 to 382 ms in four runs (three alone, one in `...-coexistence-3.log`). On a slower or busier
+GPU the wait might not be enough; a quit that times out is now logged as an error instead of
+passing silently. A GPU decode that never returns would also leave the model busy (every later
+cleanup gets the rules text) until relaunch; that holds for a hung CPU decode too, and nothing
+here suggests it happens. The stop-signal test stays on the CPU, where it proves the mid-decode abort.
 
 ## Conclusion
 

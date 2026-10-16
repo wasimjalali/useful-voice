@@ -214,6 +214,27 @@ struct LlamaWhisperCoexistenceTests {
         #expect(stoppedMs < fullMs * 0.6)
     }
 
+    /// The quit path on the placement the app picks here (Metal on a real Apple-silicon Mac,
+    /// where llama.cpp cannot abort inside a decode): `shutDown(timeout: 2)` during a run of a
+    /// prompt near the 1,536 token cap must see the model thread leave llama.cpp within the wait.
+    @Test(.timeLimit(.minutes(5)))
+    func aQuitDuringALongRunEndsWithinTheWait() async throws {
+        let generator = LlamaCleanupGenerator()
+        let model = LocalCleanupModel(modelURL: URL(fileURLWithPath: s1), generator: generator, idleUnloadAfter: .seconds(600))
+        await model.begin()
+        await model.waitForLoad()
+        try #require(await model.isLoaded)
+        let text = (1...78).map { "item \($0) goes to room \($0 + 100) and costs \($0 * 3) dollars." }.joined(separator: " ")
+        let run = Task { await model.clean(text, controlLine: control, deadline: .now.advanced(by: .seconds(60))) }
+        try await Task.sleep(for: .milliseconds(150))
+        let started = ContinuousClock.now
+        let left = model.shutDown(timeout: 2)
+        let tookMs = ms(started.duration(to: .now))
+        print("COEXIST quit 150 ms into a long \(String(describing: generator.loadedPlacement)) run: thread left=\(left) after \(tookMs) ms")
+        #expect(left)
+        #expect(await run.value == nil)
+    }
+
     @Test(.timeLimit(.minutes(5)))
     func pipelineWithTheRealModel() async throws {
         let generator = LlamaCleanupGenerator()

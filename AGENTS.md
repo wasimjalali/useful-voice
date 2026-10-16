@@ -103,9 +103,11 @@ Keychain service `ai.useful.voice`), signed by `make bundle` with the self-signe
 certificate. Never create a new one: a new certificate resets every user's Accessibility and Microphone grants.
 On another Mac, import the `.p12` from the password manager (`scripts/setup-signing.sh` prints how).
 The rename itself needs one Accessibility and Microphone re-grant per user (macOS keys those grants to the bundle id).
-The migration sets `uv.firstRunRecheckGrants` when the old identity had finished setup, so the first-run flow shows again
-(skippable) while a grant is missing, and the install is marked done silently once both are back. A completed install without
-that flag is never walked through setup again.
+The migration sets `uv.firstRunRecheckGrants` when the old identity had finished setup, so the first-run flow shows again while
+a grant is missing. Its Microphone (access off) and Accessibility (not yet on) steps offer "Set up later", which finishes setup,
+clears the flag and leaves the window banners to say what's off. A login-item launch never opens the window for this recheck
+(`FirstRunGate.opensWindowAtLaunch`, the Windows rule); it shows the next time the window is opened. If both grants are back by
+the next launch, the install is marked done silently. A completed install without the flag is never walked through setup again.
 Builds before the rename were `ai.karko.sadaa` with data in `Sadaa/`; `Sources/UsefulVoiceCore/Migration/IdentityMigration.swift`
 moves the files, preferences and Keychain item once at launch (snapshot and `UV_FIRST_RUN=force` runs never migrate; they read
 `Sadaa/` while it still holds data). An old-identity copy still running is asked to quit first; if it stays, the app shows an

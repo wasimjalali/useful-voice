@@ -172,14 +172,14 @@ final class FirstRunModel: ObservableObject {
 
         self.snapshot = FirstRunGate.EngineSelection(
             engine: settings.transcriptionEngine, modelID: settings.localModelID)
-        // Key PRESENCE (attributes only, never prompts) or a usable local model.
-        // Never the key cache, which may not have loaded yet, and a stored key
-        // that cannot be read right now still counts as configured.
         let completed = defaults.bool(forKey: FirstRunGate.completedKey)
         // Setup finished under the previous identity: its grants are gone.
         let grantsNeedRecheck = defaults.bool(forKey: FirstRunGate.recheckGrantsKey)
         self.recheckOnly = FirstRunGate.isRecheckOnly(
             completed: completed, grantsNeedRecheck: grantsNeedRecheck, forced: forced)
+        // Key PRESENCE (attributes only, never prompts) or a usable local model.
+        // Never the key cache, which may not have loaded yet, and a stored key
+        // that cannot be read right now still counts as configured.
         let decision = FirstRunGate.decide(
             completed: completed,
             engineConfigured: FirstRunGate.engineConfigured(

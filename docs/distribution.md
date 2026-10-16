@@ -84,7 +84,7 @@ The version comes from `--version`; the build number (`CFBundleVersion`, which S
 from `main` after the PR is merged and pulled: the script fetches `origin/main` and refuses a `HEAD`
 that isn't on it, and refuses a shallow clone. A change that a release needs, such as a new
 `ED_PUBLIC_KEY`, goes in a PR first, is merged, and the release is built from `main` afterwards.
-The script refuses a dirty tree, a missing
+The script refuses a dirty tree (untracked files count, build output in `dist/` and `.build/` is ignored), a missing
 "Useful Voice Release" identity, and an update key in the Keychain that differs from the public key
 in the script. It builds through `make bundle` with the version, the certificate and the feed, checks
 the designated requirement is `identifier "ai.useful.voice" and certificate root = H"0911ad55..."`

@@ -111,8 +111,8 @@ if (adHoc) {
 const git = (...args) => execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();
 // A release must match a commit (its build number is the commit count).
 if (values["allow-dirty"] && !adHoc) fail("--allow-dirty is for --ad-hoc test builds only");
-if (!values["allow-dirty"] && git("status", "--porcelain", "--untracked-files=no") !== "") {
-  fail("the tree has uncommitted changes; commit them or pass --allow-dirty for a test build");
+if (!values["allow-dirty"] && git("status", "--porcelain") !== "") {
+  fail("the tree has uncommitted or untracked files (dist/ and .build/ are ignored); commit or remove them, or pass --allow-dirty for a test build");
 }
 // Sparkle compares CFBundleVersion, so it must only ever grow: the commit count
 // does, but only along main. A branch that merged main into itself and was then

@@ -40,6 +40,15 @@ by OpenAI; see the model cards
 ([whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo),
 [whisper-large-v3](https://huggingface.co/openai/whisper-large-v3)).
 
+## Sparkle
+
+Checks for and installs updates in release builds of the macOS app (`Sparkle.framework`, release
+2.10.0, from [sparkle-project/Sparkle](https://github.com/sparkle-project/Sparkle)). MIT License,
+Copyright (c) 2006-2013 Andy Matuschak and the other authors listed in the license, which also
+carries the licenses of the code Sparkle includes (bsdiff, sais and others).
+
+- [licenses/Sparkle/LICENSE](licenses/Sparkle/LICENSE)
+
 ## llama.cpp
 
 Runs S1-mini on macOS (`llama.xcframework`, release b11669, from

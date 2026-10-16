@@ -113,8 +113,7 @@ public actor LocalCleanupModel: CleanupModel {
         if state == .loading || running {
             unloadWhenIdle = true
         } else if state == .loaded {
-            generator.unload()
-            state = .unloaded
+            unloadWeights()
         }
     }
 
@@ -140,8 +139,7 @@ public actor LocalCleanupModel: CleanupModel {
         running = false
         if unloadWhenIdle {
             unloadWhenIdle = false
-            generator.unload()
-            state = .unloaded
+            unloadWeights()
         }
         switch outcome {
         case .success(let output): return output
@@ -192,8 +190,7 @@ public actor LocalCleanupModel: CleanupModel {
         }
         if unloadWhenIdle {
             unloadWhenIdle = false
-            generator.unload()
-            state = .unloaded
+            unloadWeights()
             return
         }
         state = .loaded
@@ -230,8 +227,17 @@ public actor LocalCleanupModel: CleanupModel {
 
     private func unloadIfIdle(generation: Int) {
         guard generation == idleGeneration, state == .loaded, !running else { return }
-        generator.unload()
-        state = .unloaded
+        unloadWeights()
         idleTask = nil
+    }
+
+    /// Frees the weights inside the thread gate, so `shutDown` waits for it like for a load or
+    /// a run. Once the gate is closed (quit) nothing is freed and the state stays as it was:
+    /// the process is exiting.
+    private func unloadWeights() {
+        guard gate.enter() else { return }
+        generator.unload()
+        gate.leave()
+        state = .unloaded
     }
 }

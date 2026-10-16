@@ -9,12 +9,15 @@ private final class FakeGenerator: CleanupTextGenerator, @unchecked Sendable {
     var failLoad = false
     var failGenerate = false
     var answer = "I need to send the report by Thursday."
+    /// When set, `load` blocks until the test signals it: a load that is still running.
+    var loadGate: DispatchSemaphore?
 
     var loads: Int { lock.withLock { _loads } }
     var unloads: Int { lock.withLock { _unloads } }
     var prompts: [String] { lock.withLock { _prompts } }
 
     func load(modelAt url: URL) throws {
+        loadGate?.wait()
         if failLoad { throw Failure() }
         lock.withLock { _loads += 1 }
     }
@@ -63,10 +66,15 @@ struct LocalCleanupModelTests {
         return await condition()
     }
 
-    @Test func loadsOnDemandAndRendersTheCardPrompt() async {
+    @Test func aColdCleanAnswersNilAtOnceAndStartsTheLoad() async {
         let gen = FakeGenerator()
         let model = LocalCleanupModel(modelURL: url, generator: gen, idleUnloadAfter: .seconds(60))
         #expect(await !model.isLoaded)
+        #expect(await model.clean("so um hello", controlLine: line, deadline: soon) == nil)
+        #expect(gen.prompts.isEmpty)
+        await model.waitForLoad()
+        #expect(await model.isLoaded)
+        #expect(gen.loads == 1)
         let out = await model.clean("so um hello", controlLine: line, deadline: soon)
         #expect(out == gen.answer)
         #expect(gen.loads == 1)
@@ -81,6 +89,7 @@ struct LocalCleanupModelTests {
         let gen = FakeGenerator()
         let model = LocalCleanupModel(modelURL: url, generator: gen, idleUnloadAfter: .seconds(60))
         await model.begin()
+        await model.waitForLoad()
         #expect(await model.isLoaded)
         #expect(gen.loads == 1)
         _ = await model.clean("x", controlLine: line, deadline: soon)
@@ -95,15 +104,20 @@ struct LocalCleanupModelTests {
         let timer = ManualSleeper()
         let model = LocalCleanupModel(
             modelURL: url, generator: gen, idleUnloadAfter: .seconds(60), sleep: { try await timer.sleep($0) })
-        _ = await model.clean("x", controlLine: line, deadline: soon)
+        await model.begin()
+        await model.waitForLoad()
+        await model.end()
         #expect(await model.isLoaded)
         #expect(await waitUntil { timer.issued == 1 })
         timer.fireAll()
         #expect(await waitUntil { await !model.isLoaded })
         #expect(gen.unloads == 1)
-        // The next dictation loads it again.
-        _ = await model.clean("y", controlLine: line, deadline: soon)
+        // The first dictation after the unload is not kept waiting: nil at once, and the
+        // load that call started serves the next one.
+        #expect(await model.clean("y", controlLine: line, deadline: soon) == nil)
+        await model.waitForLoad()
         #expect(gen.loads == 2)
+        #expect(await model.clean("z", controlLine: line, deadline: soon) == gen.answer)
         await model.unload()
     }
 
@@ -113,6 +127,7 @@ struct LocalCleanupModelTests {
         let model = LocalCleanupModel(
             modelURL: url, generator: gen, idleUnloadAfter: .seconds(60), sleep: { try await timer.sleep($0) })
         await model.begin()
+        await model.waitForLoad()
         // No timer runs while the dictation is going, however long it lasts.
         try? await Task.sleep(for: .milliseconds(50))
         #expect(timer.issued == 0)
@@ -138,9 +153,10 @@ struct LocalCleanupModelTests {
             modelURL: url, generator: gen, idleUnloadAfter: .seconds(60), sleep: { try await timer.sleep($0) })
         // Dictation 1 is still "ending" (clean running) when dictation 2 begins.
         await model.begin()
+        await model.waitForLoad()
         let first = Task { await model.clean("one", controlLine: line, deadline: soon) }
         await model.begin()
-        _ = await first.value
+        #expect(await first.value == gen.answer)
         // Dictation 1's clean finished while dictation 2 is in progress: no timer may run.
         try? await Task.sleep(for: .milliseconds(50))
         #expect(timer.issued == 0)
@@ -169,6 +185,7 @@ struct LocalCleanupModelTests {
         await model.end()
         await model.end()
         await model.begin()
+        await model.waitForLoad()
         try? await Task.sleep(for: .milliseconds(50))
         let issuedWhileActive = timer.issued
         #expect(await model.isLoaded)
@@ -182,8 +199,12 @@ struct LocalCleanupModelTests {
         gen.failLoad = true
         let model = LocalCleanupModel(modelURL: url, generator: gen, idleUnloadAfter: .seconds(60))
         #expect(await model.clean("x", controlLine: line, deadline: soon) == nil)
+        await model.waitForLoad()
         #expect(await !model.isLoaded)
         gen.failLoad = false
+        // The failed load is retried by the next dictation; it answers once that load is done.
+        #expect(await model.clean("x", controlLine: line, deadline: soon) == nil)
+        await model.waitForLoad()
         #expect(await model.clean("x", controlLine: line, deadline: soon) == gen.answer)
         await model.unload()
     }
@@ -192,6 +213,8 @@ struct LocalCleanupModelTests {
         let gen = FakeGenerator()
         gen.failGenerate = true
         let model = LocalCleanupModel(modelURL: url, generator: gen, idleUnloadAfter: .seconds(60))
+        await model.begin()
+        await model.waitForLoad()
         #expect(await model.clean("x", controlLine: line, deadline: soon) == nil)
         #expect(await model.isLoaded)
         await model.unload()
@@ -200,8 +223,71 @@ struct LocalCleanupModelTests {
     @Test func aDeadlineThatAlreadyPassedSkipsTheRun() async {
         let gen = FakeGenerator()
         let model = LocalCleanupModel(modelURL: url, generator: gen, idleUnloadAfter: .seconds(60))
+        await model.begin()
+        await model.waitForLoad()
         #expect(await model.clean("x", controlLine: line, deadline: .now.advanced(by: .milliseconds(-1))) == nil)
         #expect(gen.prompts.isEmpty)
         await model.unload()
+    }
+
+    @Test func aLoadInFlightNeverMakesACleanWait() async {
+        let gen = FakeGenerator()
+        let gate = DispatchSemaphore(value: 0)
+        gen.loadGate = gate
+        let model = LocalCleanupModel(modelURL: url, generator: gen, idleUnloadAfter: .seconds(60))
+        await model.begin()                       // the load starts and blocks in the generator
+        let started = ContinuousClock.now
+        #expect(await model.clean("x", controlLine: line, deadline: soon) == nil)
+        #expect(started.duration(to: .now) < .seconds(5))
+        #expect(await !model.isLoaded)
+        #expect(gen.prompts.isEmpty)
+        #expect(gen.loads == 0)
+        gate.signal()
+        await model.waitForLoad()
+        #expect(await model.isLoaded)
+        #expect(gen.loads == 1)                   // the cold clean did not start a second load
+        #expect(await model.clean("x", controlLine: line, deadline: soon) == gen.answer)
+        await model.unload()
+    }
+
+    @Test func anUnloadDuringALoadFreesTheWeightsWhenItEnds() async {
+        let gen = FakeGenerator()
+        let gate = DispatchSemaphore(value: 0)
+        gen.loadGate = gate
+        let model = LocalCleanupModel(modelURL: url, generator: gen, idleUnloadAfter: .seconds(60))
+        await model.begin()
+        await model.unload()
+        #expect(gen.unloads == 0)                 // nothing to free yet
+        gate.signal()
+        await model.waitForLoad()
+        #expect(await !model.isLoaded)
+        #expect(gen.unloads == 1)
+        // A begin that arrives while loading cancels a pending unload.
+        let gate2 = DispatchSemaphore(value: 0)
+        gen.loadGate = gate2
+        await model.begin()
+        await model.unload()
+        await model.begin()
+        gate2.signal()
+        await model.waitForLoad()
+        #expect(await model.isLoaded)
+        #expect(gen.unloads == 1)
+        await model.end()
+        await model.end()
+        await model.unload()
+    }
+
+    @Test func aLoadNobodyUsesIsFreedAfterTheIdleWindow() async {
+        let gen = FakeGenerator()
+        let timer = ManualSleeper()
+        let model = LocalCleanupModel(
+            modelURL: url, generator: gen, idleUnloadAfter: .seconds(60), sleep: { try await timer.sleep($0) })
+        #expect(await model.clean("x", controlLine: line, deadline: soon) == nil)   // starts a load, no dictation
+        await model.waitForLoad()
+        #expect(await model.isLoaded)
+        #expect(await waitUntil { timer.issued >= 1 })
+        timer.fireAll()
+        #expect(await waitUntil { await !model.isLoaded })
+        #expect(gen.unloads == 1)
     }
 }

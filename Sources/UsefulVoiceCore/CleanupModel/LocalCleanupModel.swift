@@ -2,25 +2,35 @@ import Foundation
 
 /// Runs the cleanup model on demand and keeps it in memory only while it is being used.
 ///
-/// - `begin()` is called when a dictation starts: it loads the weights while the person is
-///   still talking, counts the dictation as in progress and cancels any pending unload.
+/// - `begin()` is called when a dictation starts: it starts loading the weights in the
+///   background while the person is still talking, counts the dictation as in progress and
+///   cancels any pending unload.
 /// - `end()` is called when that dictation ends or is cancelled, once per `begin`: when no
 ///   dictation is left in progress it starts the idle timer.
-/// - `clean` loads on demand if `begin` was not called or the weights were unloaded, runs the
-///   model, and starts the idle timer only when no dictation is in progress. So a `clean`
-///   that finishes after the next dictation's `begin` cannot unload under that dictation.
+/// - `clean` answers nil at once when the weights are not loaded (never loaded, unloaded
+///   after idling, or a load is still running): a dictation never waits for a model that
+///   cannot answer in time. A cold `clean` starts the load, so the next dictation finds the
+///   model ready. When the weights are loaded it runs the model, and starts the idle timer
+///   only when no dictation is in progress, so a `clean` that finishes after the next
+///   dictation's `begin` cannot unload under that dictation.
 ///   Nothing here ever throws to the caller: a load or run error is logged and `clean`
 ///   returns nil, so the pipeline keeps the rules text.
 /// - After `idleUnloadAfter` (60 s by default) with no dictation in progress and no `clean`,
 ///   the weights are freed.
 ///
-/// An actor, so a load, a run and an unload never overlap.
+/// An actor with a small state machine: the blocking load runs off the actor, a run and an
+/// unload run on it, and the state guarantees the three never overlap.
 public actor LocalCleanupModel: CleanupModel {
+    private enum State { case unloaded, loading, loaded }
+
     private let generator: any CleanupTextGenerator
     private let modelURL: URL
     private let idleUnloadAfter: Duration
     private let sleep: @Sendable (Duration) async throws -> Void
-    private var loaded = false
+    private var state = State.unloaded
+    private var loadTask: Task<Void, Never>?
+    /// `unload()` arrived while a load was running: free the weights as soon as it ends.
+    private var unloadWhenLoaded = false
     private var activeDictations = 0
     private var idleTask: Task<Void, Never>?
     private var idleGeneration = 0
@@ -36,12 +46,17 @@ public actor LocalCleanupModel: CleanupModel {
         self.sleep = sleep
     }
 
-    public var isLoaded: Bool { loaded }
+    public var isLoaded: Bool { state == .loaded }
+
+    /// Returns when a load that is running has finished (tests, and the real-weights check).
+    public func waitForLoad() async {
+        await loadTask?.value
+    }
 
     public func begin() {
         activeDictations += 1
         cancelIdleTimer()
-        _ = ensureLoaded()
+        startLoadIfNeeded()
     }
 
     public func end() {
@@ -51,16 +66,25 @@ public actor LocalCleanupModel: CleanupModel {
 
     public func unload() {
         cancelIdleTimer()
-        if loaded {
+        switch state {
+        case .loaded:
             generator.unload()
-            loaded = false
+            state = .unloaded
+        case .loading:
+            unloadWhenLoaded = true
+        case .unloaded:
+            break
         }
     }
 
     public func clean(_ text: String, controlLine: String, deadline: ContinuousClock.Instant) async -> String? {
         cancelIdleTimer()
-        defer { if activeDictations == 0 { armIdleTimer() } }
-        guard ContinuousClock.now < deadline, ensureLoaded() else { return nil }
+        defer { if activeDictations == 0 && state == .loaded { armIdleTimer() } }
+        guard state == .loaded else {
+            startLoadIfNeeded()
+            return nil
+        }
+        guard ContinuousClock.now < deadline else { return nil }
         do {
             return try generator.generate(
                 prompt: S1MiniModel.prompt(controlLine: controlLine, text: text), deadline: deadline)
@@ -70,15 +94,37 @@ public actor LocalCleanupModel: CleanupModel {
         }
     }
 
-    private func ensureLoaded() -> Bool {
-        if loaded { return true }
-        do {
-            try generator.load(modelAt: modelURL)
-            loaded = true
-        } catch {
-            Diagnostics.shared.warning("cleanup-model", "load failed: \(error)")
+    private func startLoadIfNeeded() {
+        // A dictation that starts while an unload-after-load is pending wants the weights kept.
+        if state == .loading { unloadWhenLoaded = false }
+        guard state == .unloaded else { return }
+        state = .loading
+        unloadWhenLoaded = false
+        let generator = self.generator
+        let url = modelURL
+        loadTask = Task.detached(priority: .userInitiated) { [weak self] in
+            var failure: (any Error)?
+            do { try generator.load(modelAt: url) } catch { failure = error }
+            await self?.finishLoad(failure)
         }
-        return loaded
+    }
+
+    private func finishLoad(_ failure: (any Error)?) {
+        loadTask = nil
+        if let failure {
+            Diagnostics.shared.warning("cleanup-model", "load failed: \(failure)")
+            state = .unloaded
+            return
+        }
+        if unloadWhenLoaded {
+            unloadWhenLoaded = false
+            generator.unload()
+            state = .unloaded
+            return
+        }
+        state = .loaded
+        // A load that nobody is using (started by a cold `clean`) must not stay in memory.
+        if activeDictations == 0 { armIdleTimer() }
     }
 
     private func cancelIdleTimer() {
@@ -100,9 +146,9 @@ public actor LocalCleanupModel: CleanupModel {
     }
 
     private func unloadIfIdle(generation: Int) {
-        guard generation == idleGeneration, loaded else { return }
+        guard generation == idleGeneration, state == .loaded else { return }
         generator.unload()
-        loaded = false
+        state = .unloaded
         idleTask = nil
     }
 }

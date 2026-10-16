@@ -15,12 +15,15 @@ import Foundation
         var failLoad = false
         /// Waits until the deadline like a real run that is too slow, then throws.
         var stallUntilDeadline = false
+        /// When set, `load` blocks until the test signals it: a load that is still running.
+        var loadGate: DispatchSemaphore?
 
         var loads: Int { lock.withLock { _loads } }
         var unloads: Int { lock.withLock { _unloads } }
         var prompts: [String] { lock.withLock { _prompts } }
 
         func load(modelAt url: URL) throws {
+            loadGate?.wait()
             if failLoad { throw Boom() }
             lock.withLock { _loads += 1 }
         }
@@ -183,15 +186,41 @@ import Foundation
 
     @Test func aSlowModelNeverHoldsTheDictationPastTheDeadline() async {
         generator.stallUntilDeadline = true
-        let controller = makeController(text: spoken, model: makeModel())
+        let model = makeModel()
+        let controller = makeController(text: spoken, model: model)
         controller.toggle()
-        #expect(await waitUntil { self.generator.loads == 1 })
+        #expect(await waitUntil { await model.isLoaded })
         let started = ContinuousClock.now
         await controller.toggleAndWait()
         let took = started.duration(to: .now)
         #expect(delivered == [rulesText])
         #expect(took >= .milliseconds(1400))
         #expect(took < .seconds(10))
+    }
+
+    @Test func aColdModelNeverHoldsTheFirstDictationAndServesTheNext() async {
+        generator.answer = "I need to send the report by Thursday."
+        let gate = DispatchSemaphore(value: 0)
+        generator.loadGate = gate
+        let model = makeModel()
+        let first = makeController(text: spoken, model: model)
+        first.toggle()                            // the press starts a load that has not finished
+        let started = ContinuousClock.now
+        await first.toggleAndWait()
+        // The rules text, at once: no wait for the model, let alone the 1.5 s deadline.
+        #expect(delivered == [rulesText])
+        #expect(started.duration(to: .now) < .milliseconds(1400))
+        #expect(generator.prompts.isEmpty)
+        gate.signal()
+        #expect(await waitUntil { await model.isLoaded })
+        // The next dictation finds the model ready and uses it.
+        delivered = []
+        let second = makeController(text: spoken, model: model)
+        second.toggle()
+        await second.toggleAndWait()
+        #expect(delivered == ["I need to send the report by Thursday."])
+        #expect(generator.prompts.count == 1)
+        #expect(generator.loads == 1)
     }
 
     @Test func gatesThatFailMeanNoPreloadAndNoModelCall() async {

@@ -107,6 +107,7 @@ struct LlamaWhisperCoexistenceTests {
         let generator = LlamaCleanupGenerator()
         let model = LocalCleanupModel(modelURL: URL(fileURLWithPath: s1), generator: generator, idleUnloadAfter: .seconds(60))
         await model.begin()
+        await model.waitForLoad()
         #expect(await model.isLoaded)
         let gates = CleanupPipeline.Gates(flagOn: true, modelInstalled: true, physicalMemoryBytes: 16 << 30)
         let result = await CleanupPipeline.run(

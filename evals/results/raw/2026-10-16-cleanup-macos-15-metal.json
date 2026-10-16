@@ -1,0 +1,1501 @@
+{
+ "raw": {
+  "cases_ids": [
+   "f01",
+   "f10",
+   "f19",
+   "s07",
+   "c04",
+   "c14",
+   "c23",
+   "n08",
+   "m04",
+   "g07",
+   "p01",
+   "k04",
+   "k13",
+   "k23",
+   "k32",
+   "k42",
+   "k51",
+   "k60",
+   "k70",
+   "k79"
+  ],
+  "rules_text": {
+   "f01": "So I need to send the report today.",
+   "f10": "Sure, I can do that.",
+   "f19": "Okay. Let's begin.",
+   "s07": "I'm not sure about this.",
+   "c04": "The budget is four thousand, sorry, forty thousand dollars.",
+   "c14": "Can you meet Friday? Sorry, Saturday?",
+   "c23": "The package weighs five kilos, sorry, fifteen kilos.",
+   "n08": "Write to support at acme dot co dot uk.",
+   "m04": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+   "g07": "Add a --verbose flag to the CLI, and document it in the README.",
+   "p01": "Look at app dot ts and the readme dot md.",
+   "k04": "Okay.",
+   "k13": "I mean what I said: the plan needs a second review.",
+   "k23": "gonna grab a coffee, back in 10",
+   "k32": "Hmm, interesting question.",
+   "k42": "It's 5 o'clock somewhere.",
+   "k51": "The file is 2.5 GB and takes about 10 minutes to download.",
+   "k60": "Run npm test and fix any failing specs.",
+   "k70": "Set DEBUG=true and run npm run dev -- --port 8081.",
+   "k79": "The config lives in .github/workflows/ci.yml, not in the root."
+  },
+  "runs": {
+   "rules+s1": [
+    {
+     "output": "So I need to send the report today.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 2095.2,
+     "prompt_tokens": 87,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 298.98,
+      "predicted_ms": 1793.138,
+      "predicted_per_second": 5.019134054378414
+     },
+     "id": "f01",
+     "model_input": "So I need to send the report today."
+    },
+    {
+     "output": "Sure, I can do that.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1986.1,
+     "prompt_tokens": 85,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 400.506,
+      "predicted_ms": 1582.922,
+      "predicted_per_second": 4.422201472972136
+     },
+     "id": "f10",
+     "model_input": "Sure, I can do that."
+    },
+    {
+     "output": "Okay, let's begin.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1639.0,
+     "prompt_tokens": 84,
+     "completion_tokens": 7,
+     "timings": {
+      "prompt_ms": 313.238,
+      "predicted_ms": 1323.145,
+      "predicted_per_second": 4.5346503973487415
+     },
+     "id": "f19",
+     "model_input": "Okay. Let's begin."
+    },
+    {
+     "output": "I'm not sure about this.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 3308.4,
+     "prompt_tokens": 85,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 1443.812,
+      "predicted_ms": 1851.324,
+      "predicted_per_second": 3.7810777584042556
+     },
+     "id": "s07",
+     "model_input": "I'm not sure about this."
+    },
+    {
+     "output": "The budget is $40,000.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 2847.6,
+     "prompt_tokens": 90,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 383.597,
+      "predicted_ms": 2457.558,
+      "predicted_per_second": 4.475987952268064
+     },
+     "id": "c04",
+     "model_input": "The budget is four thousand, sorry, forty thousand dollars."
+    },
+    {
+     "output": "Can you meet Saturday?",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1475.4,
+     "prompt_tokens": 87,
+     "completion_tokens": 6,
+     "timings": {
+      "prompt_ms": 323.839,
+      "predicted_ms": 1148.679,
+      "predicted_per_second": 4.35282615944054
+     },
+     "id": "c14",
+     "model_input": "Can you meet Friday? Sorry, Saturday?"
+    },
+    {
+     "output": "The package weighs 15 kilos.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 2021.0,
+     "prompt_tokens": 91,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 282.23,
+      "predicted_ms": 1734.668,
+      "predicted_per_second": 5.18831269153521
+     },
+     "id": "c23",
+     "model_input": "The package weighs five kilos, sorry, fifteen kilos."
+    },
+    {
+     "output": "Write to support@acme.co.uk.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 2048.9,
+     "prompt_tokens": 89,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 289.702,
+      "predicted_ms": 1755.902,
+      "predicted_per_second": 5.125570789258171
+     },
+     "id": "n08",
+     "model_input": "Write to support at acme dot co dot uk."
+    },
+    {
+     "output": "Hi Tom,\n\nThanks for the quick reply. I'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 6914.3,
+     "prompt_tokens": 104,
+     "completion_tokens": 26,
+     "timings": {
+      "prompt_ms": 880.936,
+      "predicted_ms": 6027.006,
+      "predicted_per_second": 4.1479965342659355
+     },
+     "id": "m04",
+     "model_input": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave."
+    },
+    {
+     "output": "Add a --verbose flag to the CLI, and document it in the README.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 3610.0,
+     "prompt_tokens": 94,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 346.687,
+      "predicted_ms": 3258.6,
+      "predicted_per_second": 4.910084085189959
+     },
+     "id": "g07",
+     "model_input": "Add a --verbose flag to the CLI, and document it in the README."
+    },
+    {
+     "output": "Look at app.ts and the readme.md.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 2773.2,
+     "prompt_tokens": 89,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 255.523,
+      "predicted_ms": 2515.482,
+      "predicted_per_second": 3.5778431330456746
+     },
+     "id": "p01",
+     "model_input": "Look at app dot ts and the readme dot md."
+    },
+    {
+     "output": "Okay.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 951.0,
+     "prompt_tokens": 80,
+     "completion_tokens": 3,
+     "timings": {
+      "prompt_ms": 257.155,
+      "predicted_ms": 691.584,
+      "predicted_per_second": 2.8919119007958543
+     },
+     "id": "k04",
+     "model_input": "Okay."
+    },
+    {
+     "output": "I mean what I said: the plan needs a second review.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 2970.3,
+     "prompt_tokens": 91,
+     "completion_tokens": 14,
+     "timings": {
+      "prompt_ms": 283.301,
+      "predicted_ms": 2684.187,
+      "predicted_per_second": 4.843179703947601
+     },
+     "id": "k13",
+     "model_input": "I mean what I said: the plan needs a second review."
+    },
+    {
+     "output": "I'm going to grab a coffee, back in 10.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 2924.4,
+     "prompt_tokens": 89,
+     "completion_tokens": 15,
+     "timings": {
+      "prompt_ms": 246.367,
+      "predicted_ms": 2675.514,
+      "predicted_per_second": 5.232639410595496
+     },
+     "id": "k23",
+     "model_input": "gonna grab a coffee, back in 10"
+    },
+    {
+     "output": "Hmm, interesting question.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1156.0,
+     "prompt_tokens": 83,
+     "completion_tokens": 6,
+     "timings": {
+      "prompt_ms": 196.994,
+      "predicted_ms": 956.731,
+      "predicted_per_second": 5.226129392692408
+     },
+     "id": "k32",
+     "model_input": "Hmm, interesting question."
+    },
+    {
+     "output": "It's 5 o'clock somewhere.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 2409.4,
+     "prompt_tokens": 86,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 297.719,
+      "predicted_ms": 2108.95,
+      "predicted_per_second": 3.7933568837573204
+     },
+     "id": "k42",
+     "model_input": "It's 5 o'clock somewhere."
+    },
+    {
+     "output": "The file is 2.5 GB and takes about 10 minutes to download.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 3629.0,
+     "prompt_tokens": 96,
+     "completion_tokens": 19,
+     "timings": {
+      "prompt_ms": 323.163,
+      "predicted_ms": 3301.083,
+      "predicted_per_second": 5.452755959180669
+     },
+     "id": "k51",
+     "model_input": "The file is 2.5 GB and takes about 10 minutes to download."
+    },
+    {
+     "output": "Run npm test and fix any failing specs.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1867.8,
+     "prompt_tokens": 87,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 317.324,
+      "predicted_ms": 1548.121,
+      "predicted_per_second": 5.813499074038786
+     },
+     "id": "k60",
+     "model_input": "Run npm test and fix any failing specs."
+    },
+    {
+     "output": "Set DEBUG=true and run npm run dev -- port 8081.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 2962.3,
+     "prompt_tokens": 95,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 272.271,
+      "predicted_ms": 2687.631,
+      "predicted_per_second": 5.953198188292962
+     },
+     "id": "k70",
+     "model_input": "Set DEBUG=true and run npm run dev -- --port 8081."
+    },
+    {
+     "output": "The config lives in .github/workflows/ci.yml, not in the root.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 4258.7,
+     "prompt_tokens": 95,
+     "completion_tokens": 18,
+     "timings": {
+      "prompt_ms": 385.395,
+      "predicted_ms": 3869.039,
+      "predicted_per_second": 4.393855942005237
+     },
+     "id": "k79",
+     "model_input": "The config lives in .github/workflows/ci.yml, not in the root."
+    }
+   ],
+   "rules+sf": [
+    {
+     "output": "So I need to send the report today.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 2359.2,
+     "prompt_tokens": 263,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 601.239,
+      "predicted_ms": 1753.68,
+      "predicted_per_second": 5.132065143013548
+     },
+     "id": "f01",
+     "model_input": "So I need to send the report today."
+    },
+    {
+     "output": "Sure, I can do that.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1909.7,
+     "prompt_tokens": 261,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 535.022,
+      "predicted_ms": 1372.0,
+      "predicted_per_second": 5.1020408163265305
+     },
+     "id": "f10",
+     "model_input": "Sure, I can do that."
+    },
+    {
+     "output": "Okay. Let's begin.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 2217.8,
+     "prompt_tokens": 260,
+     "completion_tokens": 7,
+     "timings": {
+      "prompt_ms": 446.5,
+      "predicted_ms": 1768.084,
+      "predicted_per_second": 3.393503928546381
+     },
+     "id": "f19",
+     "model_input": "Okay. Let's begin."
+    },
+    {
+     "output": "I'm not sure about this.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1879.3,
+     "prompt_tokens": 261,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 538.846,
+      "predicted_ms": 1336.464,
+      "predicted_per_second": 5.237701875995163
+     },
+     "id": "s07",
+     "model_input": "I'm not sure about this."
+    },
+    {
+     "output": "The budget is forty thousand dollars.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 2015.6,
+     "prompt_tokens": 266,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 547.245,
+      "predicted_ms": 1464.467,
+      "predicted_per_second": 4.779896030432915
+     },
+     "id": "c04",
+     "model_input": "The budget is four thousand, sorry, forty thousand dollars."
+    },
+    {
+     "output": "Can you meet Saturday?",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1572.6,
+     "prompt_tokens": 263,
+     "completion_tokens": 6,
+     "timings": {
+      "prompt_ms": 617.4,
+      "predicted_ms": 952.759,
+      "predicted_per_second": 5.247916839410596
+     },
+     "id": "c14",
+     "model_input": "Can you meet Friday? Sorry, Saturday?"
+    },
+    {
+     "output": "The package weighs fifteen kilos.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1737.5,
+     "prompt_tokens": 265,
+     "completion_tokens": 7,
+     "timings": {
+      "prompt_ms": 532.147,
+      "predicted_ms": 1201.819,
+      "predicted_per_second": 4.992432304698128
+     },
+     "id": "c23",
+     "model_input": "The package weighs five kilos, sorry, fifteen kilos."
+    },
+    {
+     "output": "Write to support@acme.co.uk.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 2711.6,
+     "prompt_tokens": 265,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 558.268,
+      "predicted_ms": 2149.833,
+      "predicted_per_second": 4.18637168561465
+     },
+     "id": "n08",
+     "model_input": "Write to support at acme dot co dot uk."
+    },
+    {
+     "output": "Hi Tom,\n\nThanks for the quick reply.\n\nI'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 6407.3,
+     "prompt_tokens": 280,
+     "completion_tokens": 30,
+     "timings": {
+      "prompt_ms": 784.479,
+      "predicted_ms": 5615.911,
+      "predicted_per_second": 5.163899499119555
+     },
+     "id": "m04",
+     "model_input": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave."
+    },
+    {
+     "output": "Add a --verbose flag to the CLI, and document it in the README.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 3951.9,
+     "prompt_tokens": 270,
+     "completion_tokens": 17,
+     "timings": {
+      "prompt_ms": 468.019,
+      "predicted_ms": 3474.505,
+      "predicted_per_second": 4.60497250687508
+     },
+     "id": "g07",
+     "model_input": "Add a --verbose flag to the CLI, and document it in the README."
+    },
+    {
+     "output": "Look at app.ts and the readme.md.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 3060.7,
+     "prompt_tokens": 265,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 1196.58,
+      "predicted_ms": 1852.705,
+      "predicted_per_second": 4.857762029033225
+     },
+     "id": "p01",
+     "model_input": "Look at app dot ts and the readme dot md."
+    },
+    {
+     "output": "Okay.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 832.5,
+     "prompt_tokens": 256,
+     "completion_tokens": 3,
+     "timings": {
+      "prompt_ms": 392.101,
+      "predicted_ms": 434.976,
+      "predicted_per_second": 4.597954829691753
+     },
+     "id": "k04",
+     "model_input": "Okay."
+    },
+    {
+     "output": "The plan needs a second review.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 2531.4,
+     "prompt_tokens": 267,
+     "completion_tokens": 8,
+     "timings": {
+      "prompt_ms": 549.673,
+      "predicted_ms": 1978.769,
+      "predicted_per_second": 3.5375528927328053
+     },
+     "id": "k13",
+     "model_input": "I mean what I said: the plan needs a second review."
+    },
+    {
+     "output": "gonna grab a coffee, back in 10",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 3043.1,
+     "prompt_tokens": 265,
+     "completion_tokens": 12,
+     "timings": {
+      "prompt_ms": 711.366,
+      "predicted_ms": 2325.898,
+      "predicted_per_second": 4.729356145454357
+     },
+     "id": "k23",
+     "model_input": "gonna grab a coffee, back in 10"
+    },
+    {
+     "output": "Hmm, interesting question.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 1377.6,
+     "prompt_tokens": 259,
+     "completion_tokens": 6,
+     "timings": {
+      "prompt_ms": 473.244,
+      "predicted_ms": 901.095,
+      "predicted_per_second": 5.548804510068306
+     },
+     "id": "k32",
+     "model_input": "Hmm, interesting question."
+    },
+    {
+     "output": "It's 5 o'clock somewhere.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 2377.8,
+     "prompt_tokens": 262,
+     "completion_tokens": 9,
+     "timings": {
+      "prompt_ms": 982.899,
+      "predicted_ms": 1391.249,
+      "predicted_per_second": 5.750228751287512
+     },
+     "id": "k42",
+     "model_input": "It's 5 o'clock somewhere."
+    },
+    {
+     "output": "The file is 2.5 GB and takes about 10 minutes to download.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 4124.5,
+     "prompt_tokens": 272,
+     "completion_tokens": 19,
+     "timings": {
+      "prompt_ms": 461.949,
+      "predicted_ms": 3654.802,
+      "predicted_per_second": 4.925027402305242
+     },
+     "id": "k51",
+     "model_input": "The file is 2.5 GB and takes about 10 minutes to download."
+    },
+    {
+     "output": "Run npm test and fix any failing specs.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 2129.5,
+     "prompt_tokens": 263,
+     "completion_tokens": 10,
+     "timings": {
+      "prompt_ms": 428.867,
+      "predicted_ms": 1697.241,
+      "predicted_per_second": 5.302723655626985
+     },
+     "id": "k60",
+     "model_input": "Run npm test and fix any failing specs."
+    },
+    {
+     "output": "Set DEBUG=true and run npm run dev -- --port 8081.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 4704.8,
+     "prompt_tokens": 271,
+     "completion_tokens": 18,
+     "timings": {
+      "prompt_ms": 573.399,
+      "predicted_ms": 4128.268,
+      "predicted_per_second": 4.117949706753534
+     },
+     "id": "k70",
+     "model_input": "Set DEBUG=true and run npm run dev -- --port 8081."
+    },
+    {
+     "output": "The config lives in .github/workflows/ci.yml, not in the root.",
+     "reasoning": false,
+     "finish": "stop",
+     "latency_ms": 3566.9,
+     "prompt_tokens": 271,
+     "completion_tokens": 18,
+     "timings": {
+      "prompt_ms": 499.804,
+      "predicted_ms": 3062.751,
+      "predicted_per_second": 5.550565488346914
+     },
+     "id": "k79",
+     "model_input": "The config lives in .github/workflows/ci.yml, not in the root."
+    }
+   ]
+  },
+  "servers": {
+   "s1": {
+    "cmd": [
+     "/Users/runner/work/_temp/cleanup/llama/llama-b11669/llama-server",
+     "-m",
+     "/Users/runner/work/_temp/cleanup/models/s1-mini-q4_k_m.gguf",
+     "--jinja",
+     "--chat-template-kwargs",
+     "{\"enable_thinking\":false}",
+     "--temp",
+     "0",
+     "-c",
+     "8192",
+     "-np",
+     "1",
+     "--port",
+     "8110",
+     "--host",
+     "127.0.0.1",
+     "-ngl",
+     "99"
+    ],
+    "peak_rss_mb": 1694.5,
+    "model": {
+     "name": "S1-mini by Superwhisper",
+     "repo": "superwhisper/s1-mini-GGUF",
+     "revision": "34add00a48a2e5d24e5a4ee5405a99620a3a240c",
+     "file": "s1-mini-q4_k_m.gguf",
+     "sha256": "3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634",
+     "size": 484219808
+    }
+   },
+   "sf": {
+    "cmd": [
+     "/Users/runner/work/_temp/cleanup/llama/llama-b11669/llama-server",
+     "-m",
+     "/Users/runner/work/_temp/cleanup/models/SpeakoFlow-Mini-0.8B-Q4_K_M.gguf",
+     "--jinja",
+     "--chat-template-kwargs",
+     "{\"enable_thinking\":false}",
+     "--temp",
+     "0",
+     "-c",
+     "8192",
+     "-np",
+     "1",
+     "--port",
+     "8111",
+     "--host",
+     "127.0.0.1",
+     "-ngl",
+     "99"
+    ],
+    "peak_rss_mb": 1421.7,
+    "model": {
+     "name": "SpeakoFlow Mini 0.8B",
+     "repo": "SpeakoFlow/speakoflow-mini",
+     "revision": "835431771f72820251fe6c6b4b07f12b000e2647",
+     "file": "SpeakoFlow-Mini-0.8B-Q4_K_M.gguf",
+     "sha256": "530e0a5d4e9314e3bae2c92aecf3ab39ca48e8cfecac41372058f9fcb742329d",
+     "size": 541903616
+    }
+   }
+  },
+  "meta": {
+   "date": "2026-10-16",
+   "platform": "macOS-15.7.9-arm64-arm-64bit",
+   "machine": "arm64",
+   "cpu_count": 3,
+   "python": "3.12.10",
+   "llama_cpp": "b11669",
+   "ngl": 99,
+   "threads": null,
+   "ctx": 8192,
+   "warmup": 3,
+   "subset": 20,
+   "label": "macos-15-metal",
+   "node": "v22.23.2"
+  }
+ },
+ "result": {
+  "summary": {
+   "none": {
+    "all": {
+     "n": 20,
+     "n_clean": 9,
+     "n_edit": 11,
+     "restraint": 100.0,
+     "edit_accuracy": 0.0,
+     "edit_accuracy_rules_fixable": 0.0,
+     "edit_accuracy_model_needed": 0.0,
+     "n_rules_fixable": 6,
+     "n_model_needed": 5,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": []
+    },
+    "dev": {
+     "n": 10,
+     "n_clean": 4,
+     "n_edit": 6,
+     "restraint": 100.0,
+     "edit_accuracy": 0.0,
+     "edit_accuracy_rules_fixable": 0.0,
+     "edit_accuracy_model_needed": 0.0,
+     "n_rules_fixable": 2,
+     "n_model_needed": 4,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": []
+    },
+    "test": {
+     "n": 10,
+     "n_clean": 5,
+     "n_edit": 5,
+     "restraint": 100.0,
+     "edit_accuracy": 0.0,
+     "edit_accuracy_rules_fixable": 0.0,
+     "edit_accuracy_model_needed": 0.0,
+     "n_rules_fixable": 4,
+     "n_model_needed": 1,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": []
+    },
+    "by_group": {
+     "clean": {
+      "n": 9,
+      "exact": 100.0
+     },
+     "coding_agent": {
+      "n": 1,
+      "exact": 0.0
+     },
+     "email": {
+      "n": 1,
+      "exact": 0.0
+     },
+     "file_mention": {
+      "n": 1,
+      "exact": 0.0
+     },
+     "filler": {
+      "n": 3,
+      "exact": 0.0
+     },
+     "format": {
+      "n": 1,
+      "exact": 0.0
+     },
+     "self_correction": {
+      "n": 3,
+      "exact": 0.0
+     },
+     "stutter": {
+      "n": 1,
+      "exact": 0.0
+     }
+    }
+   },
+   "rules": {
+    "all": {
+     "n": 20,
+     "n_clean": 9,
+     "n_edit": 11,
+     "restraint": 100.0,
+     "edit_accuracy": 54.5,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 0.0,
+     "n_rules_fixable": 6,
+     "n_model_needed": 5,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": []
+    },
+    "dev": {
+     "n": 10,
+     "n_clean": 4,
+     "n_edit": 6,
+     "restraint": 100.0,
+     "edit_accuracy": 33.3,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 0.0,
+     "n_rules_fixable": 2,
+     "n_model_needed": 4,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": []
+    },
+    "test": {
+     "n": 10,
+     "n_clean": 5,
+     "n_edit": 5,
+     "restraint": 100.0,
+     "edit_accuracy": 80.0,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 0.0,
+     "n_rules_fixable": 4,
+     "n_model_needed": 1,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": []
+    },
+    "by_group": {
+     "clean": {
+      "n": 9,
+      "exact": 100.0
+     },
+     "coding_agent": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "email": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "file_mention": {
+      "n": 1,
+      "exact": 0.0
+     },
+     "filler": {
+      "n": 3,
+      "exact": 100.0
+     },
+     "format": {
+      "n": 1,
+      "exact": 0.0
+     },
+     "self_correction": {
+      "n": 3,
+      "exact": 0.0
+     },
+     "stutter": {
+      "n": 1,
+      "exact": 100.0
+     }
+    }
+   },
+   "rules+s1": {
+    "all": {
+     "n": 20,
+     "n_clean": 9,
+     "n_edit": 11,
+     "restraint": 77.8,
+     "edit_accuracy": 90.9,
+     "edit_accuracy_rules_fixable": 83.3,
+     "edit_accuracy_model_needed": 100.0,
+     "n_rules_fixable": 6,
+     "n_model_needed": 5,
+     "content_loss": 5.0,
+     "content_add": 5.0,
+     "clean_wrong": [
+      "k23",
+      "k70"
+     ],
+     "loss_ids": [
+      "k23"
+     ]
+    },
+    "dev": {
+     "n": 10,
+     "n_clean": 4,
+     "n_edit": 6,
+     "restraint": 75.0,
+     "edit_accuracy": 100.0,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 100.0,
+     "n_rules_fixable": 2,
+     "n_model_needed": 4,
+     "content_loss": 10.0,
+     "content_add": 10.0,
+     "clean_wrong": [
+      "k23"
+     ],
+     "loss_ids": [
+      "k23"
+     ]
+    },
+    "test": {
+     "n": 10,
+     "n_clean": 5,
+     "n_edit": 5,
+     "restraint": 80.0,
+     "edit_accuracy": 80.0,
+     "edit_accuracy_rules_fixable": 75.0,
+     "edit_accuracy_model_needed": 100.0,
+     "n_rules_fixable": 4,
+     "n_model_needed": 1,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [
+      "k70"
+     ],
+     "loss_ids": []
+    },
+    "by_group": {
+     "clean": {
+      "n": 9,
+      "exact": 77.8
+     },
+     "coding_agent": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "email": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "file_mention": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "filler": {
+      "n": 3,
+      "exact": 66.7
+     },
+     "format": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "self_correction": {
+      "n": 3,
+      "exact": 100.0
+     },
+     "stutter": {
+      "n": 1,
+      "exact": 100.0
+     }
+    }
+   },
+   "rules+s1+guard": {
+    "all": {
+     "n": 20,
+     "n_clean": 9,
+     "n_edit": 11,
+     "restraint": 100.0,
+     "edit_accuracy": 100.0,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 100.0,
+     "n_rules_fixable": 6,
+     "n_model_needed": 5,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": [],
+     "guard_reject": 75.0
+    },
+    "dev": {
+     "n": 10,
+     "n_clean": 4,
+     "n_edit": 6,
+     "restraint": 100.0,
+     "edit_accuracy": 100.0,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 100.0,
+     "n_rules_fixable": 2,
+     "n_model_needed": 4,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": [],
+     "guard_reject": 60.0
+    },
+    "test": {
+     "n": 10,
+     "n_clean": 5,
+     "n_edit": 5,
+     "restraint": 100.0,
+     "edit_accuracy": 100.0,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 100.0,
+     "n_rules_fixable": 4,
+     "n_model_needed": 1,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": [],
+     "guard_reject": 90.0
+    },
+    "by_group": {
+     "clean": {
+      "n": 9,
+      "exact": 100.0
+     },
+     "coding_agent": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "email": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "file_mention": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "filler": {
+      "n": 3,
+      "exact": 100.0
+     },
+     "format": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "self_correction": {
+      "n": 3,
+      "exact": 100.0
+     },
+     "stutter": {
+      "n": 1,
+      "exact": 100.0
+     }
+    }
+   },
+   "rules+sf": {
+    "all": {
+     "n": 20,
+     "n_clean": 9,
+     "n_edit": 11,
+     "restraint": 88.9,
+     "edit_accuracy": 90.9,
+     "edit_accuracy_rules_fixable": 83.3,
+     "edit_accuracy_model_needed": 100.0,
+     "n_rules_fixable": 6,
+     "n_model_needed": 5,
+     "content_loss": 5.0,
+     "content_add": 0.0,
+     "clean_wrong": [
+      "k13"
+     ],
+     "loss_ids": [
+      "k13"
+     ]
+    },
+    "dev": {
+     "n": 10,
+     "n_clean": 4,
+     "n_edit": 6,
+     "restraint": 100.0,
+     "edit_accuracy": 100.0,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 100.0,
+     "n_rules_fixable": 2,
+     "n_model_needed": 4,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": []
+    },
+    "test": {
+     "n": 10,
+     "n_clean": 5,
+     "n_edit": 5,
+     "restraint": 80.0,
+     "edit_accuracy": 80.0,
+     "edit_accuracy_rules_fixable": 75.0,
+     "edit_accuracy_model_needed": 100.0,
+     "n_rules_fixable": 4,
+     "n_model_needed": 1,
+     "content_loss": 10.0,
+     "content_add": 0.0,
+     "clean_wrong": [
+      "k13"
+     ],
+     "loss_ids": [
+      "k13"
+     ]
+    },
+    "by_group": {
+     "clean": {
+      "n": 9,
+      "exact": 88.9
+     },
+     "coding_agent": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "email": {
+      "n": 1,
+      "exact": 0.0
+     },
+     "file_mention": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "filler": {
+      "n": 3,
+      "exact": 100.0
+     },
+     "format": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "self_correction": {
+      "n": 3,
+      "exact": 100.0
+     },
+     "stutter": {
+      "n": 1,
+      "exact": 100.0
+     }
+    }
+   },
+   "rules+sf+guard": {
+    "all": {
+     "n": 20,
+     "n_clean": 9,
+     "n_edit": 11,
+     "restraint": 88.9,
+     "edit_accuracy": 100.0,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 100.0,
+     "n_rules_fixable": 6,
+     "n_model_needed": 5,
+     "content_loss": 5.0,
+     "content_add": 0.0,
+     "clean_wrong": [
+      "k13"
+     ],
+     "loss_ids": [
+      "k13"
+     ],
+     "guard_reject": 70.0
+    },
+    "dev": {
+     "n": 10,
+     "n_clean": 4,
+     "n_edit": 6,
+     "restraint": 100.0,
+     "edit_accuracy": 100.0,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 100.0,
+     "n_rules_fixable": 2,
+     "n_model_needed": 4,
+     "content_loss": 0.0,
+     "content_add": 0.0,
+     "clean_wrong": [],
+     "loss_ids": [],
+     "guard_reject": 60.0
+    },
+    "test": {
+     "n": 10,
+     "n_clean": 5,
+     "n_edit": 5,
+     "restraint": 80.0,
+     "edit_accuracy": 100.0,
+     "edit_accuracy_rules_fixable": 100.0,
+     "edit_accuracy_model_needed": 100.0,
+     "n_rules_fixable": 4,
+     "n_model_needed": 1,
+     "content_loss": 10.0,
+     "content_add": 0.0,
+     "clean_wrong": [
+      "k13"
+     ],
+     "loss_ids": [
+      "k13"
+     ],
+     "guard_reject": 80.0
+    },
+    "by_group": {
+     "clean": {
+      "n": 9,
+      "exact": 88.9
+     },
+     "coding_agent": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "email": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "file_mention": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "filler": {
+      "n": 3,
+      "exact": 100.0
+     },
+     "format": {
+      "n": 1,
+      "exact": 100.0
+     },
+     "self_correction": {
+      "n": 3,
+      "exact": 100.0
+     },
+     "stutter": {
+      "n": 1,
+      "exact": 100.0
+     }
+    }
+   }
+  },
+  "latency": {
+   "rules+s1": {
+    "n": 20,
+    "median_ms": 2591.3,
+    "p95_ms": 4258.7,
+    "mean_ms": 2692.4,
+    "max_ms": 6914.3,
+    "share_over_1s": 95.0,
+    "share_over_2s": 70.0,
+    "share_over_3s": 25.0,
+    "reasoning_outputs": 0,
+    "think_tag_outputs": 0
+   },
+   "rules+sf": {
+    "n": 20,
+    "median_ms": 2368.5,
+    "p95_ms": 4704.8,
+    "mean_ms": 2725.6,
+    "max_ms": 6407.3,
+    "share_over_1s": 95.0,
+    "share_over_2s": 70.0,
+    "share_over_3s": 35.0,
+    "reasoning_outputs": 0,
+    "think_tag_outputs": 0
+   }
+  },
+  "latency_pooled": {
+   "s1": {
+    "n": 20,
+    "median_ms": 2591.3,
+    "p95_ms": 4258.7,
+    "mean_ms": 2692.4,
+    "max_ms": 6914.3
+   },
+   "sf": {
+    "n": 20,
+    "median_ms": 2368.5,
+    "p95_ms": 4704.8,
+    "mean_ms": 2725.6,
+    "max_ms": 6407.3
+   }
+  },
+  "guard": {
+   "rules+s1+guard": {
+    "rejects": 15,
+    "reasons": {
+     "noWordChange": 14,
+     "droppedContent": 1
+    },
+    "reject_of_exact_output": 12,
+    "reject_of_inexact_output": 3,
+    "ids": {
+     "f01": "noWordChange",
+     "f10": "noWordChange",
+     "f19": "noWordChange",
+     "s07": "noWordChange",
+     "m04": "noWordChange",
+     "g07": "noWordChange",
+     "k04": "noWordChange",
+     "k13": "noWordChange",
+     "k23": "droppedContent",
+     "k32": "noWordChange",
+     "k42": "noWordChange",
+     "k51": "noWordChange",
+     "k60": "noWordChange",
+     "k70": "noWordChange",
+     "k79": "noWordChange"
+    }
+   },
+   "rules+sf+guard": {
+    "rejects": 14,
+    "reasons": {
+     "noWordChange": 14
+    },
+    "reject_of_exact_output": 13,
+    "reject_of_inexact_output": 1,
+    "ids": {
+     "f01": "noWordChange",
+     "f10": "noWordChange",
+     "f19": "noWordChange",
+     "s07": "noWordChange",
+     "m04": "noWordChange",
+     "g07": "noWordChange",
+     "k04": "noWordChange",
+     "k23": "noWordChange",
+     "k32": "noWordChange",
+     "k42": "noWordChange",
+     "k51": "noWordChange",
+     "k60": "noWordChange",
+     "k70": "noWordChange",
+     "k79": "noWordChange"
+    }
+   }
+  },
+  "rules_ok_ids": [
+   "f01",
+   "f10",
+   "f19",
+   "s07",
+   "m04",
+   "g07",
+   "k04",
+   "k13",
+   "k23",
+   "k32",
+   "k42",
+   "k51",
+   "k60",
+   "k70",
+   "k79"
+  ]
+ },
+ "finals": {
+  "none": {
+   "f01": "So um I need to send the report today.",
+   "f10": "Uh, sure, I can do that.",
+   "f19": "Um. Okay. Let's begin.",
+   "s07": "I'm I'm not sure about this.",
+   "c04": "The budget is four thousand, sorry, forty thousand dollars.",
+   "c14": "Can you meet Friday? Sorry, Saturday?",
+   "c23": "The package weighs five kilos, sorry, fifteen kilos.",
+   "n08": "Write to support at acme dot co dot uk.",
+   "m04": "Hi Tom, thanks for the quick reply. Um, I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+   "g07": "Add a --verbose flag to the CLI, hmm, and document it in the README.",
+   "p01": "Look at app dot ts and the readme dot md.",
+   "k04": "Okay.",
+   "k13": "I mean what I said: the plan needs a second review.",
+   "k23": "gonna grab a coffee, back in 10",
+   "k32": "Hmm, interesting question.",
+   "k42": "It's 5 o'clock somewhere.",
+   "k51": "The file is 2.5 GB and takes about 10 minutes to download.",
+   "k60": "Run npm test and fix any failing specs.",
+   "k70": "Set DEBUG=true and run npm run dev -- --port 8081.",
+   "k79": "The config lives in .github/workflows/ci.yml, not in the root."
+  },
+  "rules": {
+   "f01": "So I need to send the report today.",
+   "f10": "Sure, I can do that.",
+   "f19": "Okay. Let's begin.",
+   "s07": "I'm not sure about this.",
+   "c04": "The budget is four thousand, sorry, forty thousand dollars.",
+   "c14": "Can you meet Friday? Sorry, Saturday?",
+   "c23": "The package weighs five kilos, sorry, fifteen kilos.",
+   "n08": "Write to support at acme dot co dot uk.",
+   "m04": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+   "g07": "Add a --verbose flag to the CLI, and document it in the README.",
+   "p01": "Look at app dot ts and the readme dot md.",
+   "k04": "Okay.",
+   "k13": "I mean what I said: the plan needs a second review.",
+   "k23": "gonna grab a coffee, back in 10",
+   "k32": "Hmm, interesting question.",
+   "k42": "It's 5 o'clock somewhere.",
+   "k51": "The file is 2.5 GB and takes about 10 minutes to download.",
+   "k60": "Run npm test and fix any failing specs.",
+   "k70": "Set DEBUG=true and run npm run dev -- --port 8081.",
+   "k79": "The config lives in .github/workflows/ci.yml, not in the root."
+  },
+  "rules+s1": {
+   "f01": "So I need to send the report today.",
+   "f10": "Sure, I can do that.",
+   "f19": "Okay, let's begin.",
+   "s07": "I'm not sure about this.",
+   "c04": "The budget is $40,000.",
+   "c14": "Can you meet Saturday?",
+   "c23": "The package weighs 15 kilos.",
+   "n08": "Write to support@acme.co.uk.",
+   "m04": "Hi Tom,\n\nThanks for the quick reply. I'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave",
+   "g07": "Add a --verbose flag to the CLI, and document it in the README.",
+   "p01": "Look at app.ts and the readme.md.",
+   "k04": "Okay.",
+   "k13": "I mean what I said: the plan needs a second review.",
+   "k23": "I'm going to grab a coffee, back in 10.",
+   "k32": "Hmm, interesting question.",
+   "k42": "It's 5 o'clock somewhere.",
+   "k51": "The file is 2.5 GB and takes about 10 minutes to download.",
+   "k60": "Run npm test and fix any failing specs.",
+   "k70": "Set DEBUG=true and run npm run dev -- port 8081.",
+   "k79": "The config lives in .github/workflows/ci.yml, not in the root."
+  },
+  "rules+s1+guard": {
+   "f01": "So I need to send the report today.",
+   "f10": "Sure, I can do that.",
+   "f19": "Okay. Let's begin.",
+   "s07": "I'm not sure about this.",
+   "c04": "The budget is $40,000.",
+   "c14": "Can you meet Saturday?",
+   "c23": "The package weighs 15 kilos.",
+   "n08": "Write to support@acme.co.uk.",
+   "m04": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+   "g07": "Add a --verbose flag to the CLI, and document it in the README.",
+   "p01": "Look at app.ts and the readme.md.",
+   "k04": "Okay.",
+   "k13": "I mean what I said: the plan needs a second review.",
+   "k23": "gonna grab a coffee, back in 10",
+   "k32": "Hmm, interesting question.",
+   "k42": "It's 5 o'clock somewhere.",
+   "k51": "The file is 2.5 GB and takes about 10 minutes to download.",
+   "k60": "Run npm test and fix any failing specs.",
+   "k70": "Set DEBUG=true and run npm run dev -- --port 8081.",
+   "k79": "The config lives in .github/workflows/ci.yml, not in the root."
+  },
+  "rules+sf": {
+   "f01": "So I need to send the report today.",
+   "f10": "Sure, I can do that.",
+   "f19": "Okay. Let's begin.",
+   "s07": "I'm not sure about this.",
+   "c04": "The budget is forty thousand dollars.",
+   "c14": "Can you meet Saturday?",
+   "c23": "The package weighs fifteen kilos.",
+   "n08": "Write to support@acme.co.uk.",
+   "m04": "Hi Tom,\n\nThanks for the quick reply.\n\nI'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave",
+   "g07": "Add a --verbose flag to the CLI, and document it in the README.",
+   "p01": "Look at app.ts and the readme.md.",
+   "k04": "Okay.",
+   "k13": "The plan needs a second review.",
+   "k23": "gonna grab a coffee, back in 10",
+   "k32": "Hmm, interesting question.",
+   "k42": "It's 5 o'clock somewhere.",
+   "k51": "The file is 2.5 GB and takes about 10 minutes to download.",
+   "k60": "Run npm test and fix any failing specs.",
+   "k70": "Set DEBUG=true and run npm run dev -- --port 8081.",
+   "k79": "The config lives in .github/workflows/ci.yml, not in the root."
+  },
+  "rules+sf+guard": {
+   "f01": "So I need to send the report today.",
+   "f10": "Sure, I can do that.",
+   "f19": "Okay. Let's begin.",
+   "s07": "I'm not sure about this.",
+   "c04": "The budget is forty thousand dollars.",
+   "c14": "Can you meet Saturday?",
+   "c23": "The package weighs fifteen kilos.",
+   "n08": "Write to support@acme.co.uk.",
+   "m04": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
+   "g07": "Add a --verbose flag to the CLI, and document it in the README.",
+   "p01": "Look at app.ts and the readme.md.",
+   "k04": "Okay.",
+   "k13": "The plan needs a second review.",
+   "k23": "gonna grab a coffee, back in 10",
+   "k32": "Hmm, interesting question.",
+   "k42": "It's 5 o'clock somewhere.",
+   "k51": "The file is 2.5 GB and takes about 10 minutes to download.",
+   "k60": "Run npm test and fix any failing specs.",
+   "k70": "Set DEBUG=true and run npm run dev -- --port 8081.",
+   "k79": "The config lives in .github/workflows/ci.yml, not in the root."
+  }
+ }
+}

@@ -1,0 +1,100 @@
+[
+ {
+  "name": "flag off: rules text, model skipped",
+  "ok": true,
+  "detail": {
+   "text": "So I need to send the report by Friday, no wait, Thursday.",
+   "source": "rules",
+   "model": {
+    "kind": "skipped",
+    "reason": "flagOff"
+   }
+  }
+ },
+ {
+  "name": "flag off: no worker process",
+  "ok": true
+ },
+ {
+  "name": "flag on: gates see the downloaded model",
+  "ok": true
+ },
+ {
+  "name": "flag on: S1-mini answer accepted by the guard",
+  "ok": true,
+  "detail": {
+   "text": "So I need to send the report by Thursday.",
+   "source": "model",
+   "model": {
+    "kind": "accepted"
+   }
+  }
+ },
+ {
+  "name": "flag on: one worker process holds the model",
+  "ok": true,
+  "detail": {
+   "rssMb": 1203
+  }
+ },
+ {
+  "name": "20 ms deadline: rules text after about 20 ms, not after the model",
+  "ok": true,
+  "detail": {
+   "waitedMs": 20,
+   "result": {
+    "text": "So I need to send the report by Friday, no wait, Thursday.",
+    "source": "rules",
+    "model": {
+     "kind": "timedOut"
+    }
+   }
+  }
+ },
+ {
+  "name": "warm runtime still answers",
+  "ok": true,
+  "detail": {
+   "text": "So I need to send the report by Thursday.",
+   "source": "model",
+   "model": {
+    "kind": "accepted"
+   }
+  }
+ },
+ {
+  "name": "4 GiB: model skipped for memory",
+  "ok": true,
+  "detail": {
+   "text": "So I need to send the report by Friday, no wait, Thursday.",
+   "source": "rules",
+   "model": {
+    "kind": "skipped",
+    "reason": "notEnoughMemory"
+   }
+  }
+ },
+ {
+  "name": "idle unload: worker process gone after the idle time",
+  "ok": true,
+  "detail": {
+   "before": 1,
+   "after": 0
+  }
+ },
+ {
+  "name": "after unload: loads again and answers",
+  "ok": true,
+  "detail": {
+   "text": "I think we should wait until Monday.",
+   "source": "rules",
+   "model": {
+    "kind": "timedOut"
+   }
+  }
+ },
+ {
+  "name": "dispose: no worker left",
+  "ok": true
+ }
+]

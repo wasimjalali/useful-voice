@@ -1,0 +1,29 @@
+PASS  flag off: rules text, model skipped  {"text":"So I need to send the report by Friday, no wait, Thursday.","source":"rules","model":{"kind":"skipped","reason":"flagOff"}}
+PASS  flag off: no worker process
+PASS  flag on: gates see the downloaded model
+warn: cleanup model run failed: deadline
+warn: cleanup model run failed: deadline
+warn: the model worker did not stop at the deadline; restarting it
+warn: cleanup model run failed: deadline
+warn: cleanup model run failed: deadline
+warn: cleanup model run failed: deadline
+warn: the model worker did not stop at the deadline; restarting it
+warn: cleanup model run failed: deadline
+warn: cleanup model run failed: deadline
+warn: cleanup model run failed: deadline
+warn: the model worker did not stop at the deadline; restarting it
+warn: cleanup model run failed: deadline
+warn: cleanup model run failed: deadline
+warn: cleanup model run failed: deadline
+warn: cleanup model run failed: deadline
+PASS  flag on: S1-mini answer accepted by the guard  {"text":"So I need to send the report by Thursday.","source":"model","model":{"kind":"accepted"}}
+PASS  flag on: one worker process holds the model  {"rssMb":1203}
+PASS  20 ms deadline: rules text after about 20 ms, not after the model  {"waitedMs":20,"result":{"text":"So I need to send the report by Friday, no wait, Thursday.","source":"rules","model":{"kind":"timedOut"}}}
+PASS  warm runtime still answers  {"text":"So I need to send the report by Thursday.","source":"model","model":{"kind":"accepted"}}
+warn: cleanup model run failed: deadline
+PASS  4 GiB: model skipped for memory  {"text":"So I need to send the report by Friday, no wait, Thursday.","source":"rules","model":{"kind":"skipped","reason":"notEnoughMemory"}}
+PASS  idle unload: worker process gone after the idle time  {"before":1,"after":0}
+PASS  after unload: loads again and answers  {"text":"I think we should wait until Monday.","source":"rules","model":{"kind":"timedOut"}}
+warn: cleanup model run failed: deadline
+PASS  dispose: no worker left
+exit 0

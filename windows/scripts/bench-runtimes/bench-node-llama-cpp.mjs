@@ -10,7 +10,7 @@ const rss=()=>Math.round(process.memoryUsage().rss/1048576);
 const t0=performance.now();
 const llama=await getLlama({gpu:false, build:'never', logLevel:'error'});
 const model=await llama.loadModel({modelPath:model_path, useMmap:true});
-const ctx=await model.createContext({contextSize:ctxSize, flashAttention:false});
+const ctx=await model.createContext({contextSize:ctxSize, flashAttention:false, threads: Number(process.env.THREADS||0)});
 const tLoad=performance.now()-t0;
 console.log('load ms',Math.round(tLoad),'rss MB after load',rss());
 const seq=ctx.getSequence();

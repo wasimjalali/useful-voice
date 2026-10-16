@@ -27,6 +27,13 @@ jobs:
         # Tools-only dev machine).
         run: swift test
 
+      # Temporary (perf/language-memory-index): the macOS numbers for the write-up.
+      - name: Language Memory benchmark
+        env:
+          UV_LM_BENCH: "1"
+          UV_LM_BENCH_RUNS: "3"
+        run: swift test --filter LanguageMemoryBenchTests
+
   windows:
     runs-on: windows-latest
     defaults:

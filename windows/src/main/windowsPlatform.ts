@@ -483,8 +483,9 @@ export class Diagnostics {
   async flush(): Promise<void> {
     try {
       await fs.writeFile(this.filePath, this.entries.join('\n') + '\n', 'utf8');
-    } catch {
-      // Diagnostics must never be the reason something else fails.
+    } catch (error) {
+      // Diagnostics must never be the reason something else fails, so this only reaches the console.
+      console.error(`could not write ${this.filePath}: ${(error as Error).message}`);
     }
   }
 }

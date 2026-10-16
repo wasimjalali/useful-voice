@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 
 import { DataStore } from '../core/settings/dataStore.js';
-import { removeStaleTempFiles } from '../core/settings/jsonStore.js';
+import { removeStaleTempFiles, writeJsonAtomic } from '../core/settings/jsonStore.js';
 import { planLoginItem, wasAutoStarted } from '../core/settings/autostart.js';
 import { deliverToTarget } from '../core/delivery/deliveryFlow.js';
 import { appIdFor, isKnownBrowser, type DeliveryTarget } from '../core/delivery/deliveryTarget.js';
@@ -167,6 +167,7 @@ class UsefulVoiceApp {
   private hudHideTimer: NodeJS.Timeout | null = null;
   /** Where the user left the HUD, per display, as an offset from its default spot. */
   private hudOffsets: Record<string, { dx: number; dy: number }> = {};
+  private hudPositionWrite: Promise<void> = Promise.resolve();
   private hudDrag: {
     bounds: Electron.Rectangle;
     x: number;
@@ -693,11 +694,13 @@ class UsefulVoiceApp {
     };
     // A forced first-run session saves nothing.
     if (this.firstRun.sandbox) return;
-    try {
-      writeFileSync(this.hudPositionFile(), JSON.stringify(this.hudOffsets), 'utf8');
-    } catch (error) {
-      this.diagnostics.log('hud', `could not save the HUD position: ${(error as Error).message}`);
-    }
+    // One write at a time, each taking the offsets when its turn comes, so a quick second drag
+    // can never be overwritten by the first one's older snapshot.
+    this.hudPositionWrite = this.hudPositionWrite
+      .then(() => writeJsonAtomic(this.hudPositionFile(), this.hudOffsets))
+      .catch((error: Error) => {
+        this.diagnostics.log('hud', `could not save the HUD position: ${error.message}`);
+      });
   }
 
   private hudPositionFile(): string {

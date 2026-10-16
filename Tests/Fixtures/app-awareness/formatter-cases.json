@@ -2971,6 +2971,37 @@
    "category": "coding",
    "input": "yes dot md, no dot md, will dot md, not dot md",
    "expected": "yes dot md, no dot md, will dot md, not dot md"
+  },
+  {
+   "id": "code-tag-lowercase-js-file",
+   "category": "coding",
+   "input": "tag app.js",
+   "expected": "@app.js"
+  },
+  {
+   "id": "code-tilde-after-parent-not-a-root",
+   "category": "coding",
+   "input": "cd .. slash ~ slash x",
+   "expected": "cd ../~ slash x"
+  },
+  {
+   "id": "cont-start-of-line-after-single-quote",
+   "category": "other",
+   "before": "Hello\n'",
+   "input": "The answer",
+   "expected": "The answer"
+  },
+  {
+   "id": "email-25-words-sign-off-lays-out",
+   "category": "email",
+   "input": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again today. Thanks, Sam",
+   "expected": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope again today.\n\nThanks,\nSam"
+  },
+  {
+   "id": "email-24-words-sign-off-stays",
+   "category": "email",
+   "input": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope today. Thanks, Sam",
+   "expected": "We reviewed the plan this morning and agreed that the schedule is tight but still workable if nobody changes the scope today. Thanks, Sam"
   }
  ]
 }

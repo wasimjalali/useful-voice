@@ -45,8 +45,8 @@ function isSubsequence(small: string[], big: string[]): boolean {
 }
 
 describe('applyCleanupRules fixtures', () => {
-  it('has a row for every decision branch', () => {
-    expect(rules.length).toBeGreaterThanOrEqual(80);
+  it('has at least 120 rows', () => {
+    expect(rules.length).toBeGreaterThanOrEqual(120);
   });
 
   for (const row of rules) {
@@ -66,6 +66,54 @@ describe('applyCleanupRules fixtures', () => {
     for (const row of rules) {
       const once = applyCleanupRules(row.input, 'en');
       expect(applyCleanupRules(once, 'en'), row.name).toBe(once);
+    }
+  });
+});
+
+/**
+ * Seeded generator shared with CleanupTests.swift (same LCG, vocabulary and separators), so both
+ * suites check the same 3,000 generated inputs.
+ */
+const PROPERTY_VOCAB = [
+  'um', 'Um', 'um,', 'Um,', 'uh', 'Uh,', 'er', 'Er', 'erm,', 'hmm', 'Hmm,', 'hmm.', 'um.', 'uh...',
+  'huh', 'huh?', 'mm', 'the', 'The', 'the,', 'I', 'I,', 'it', 'It', 'so', 'So', 'that', 'is', 'and,',
+  'and', 'five', 'Five', '5', '0', 'ho', 'Ho', 'word', 'said', 'said,', 'Dr.', 'Mrs.', 'etc.', 'well,',
+  'Well,', 'apples,', 'pears,', 'go.', 'stop.', 'Okay.', 'okay', 'We', 'we', 'ship', 'Friday,', 'or',
+  'Monday.', 'app.ts', 'iPhone', "don't", 'I\u2019m', 'caf\u00E9', 'No', 'no,', 'my', 'My', '(um)',
+];
+const PROPERTY_SEPARATORS = [' ', ' ', ' ', '  ', '\n', '\r\n', '\u00A0'];
+
+function propertyInputs(seed: number, count: number): string[] {
+  let state = seed >>> 0;
+  const next = (n: number): number => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return (state >>> 8) % n;
+  };
+  const out: string[] = [];
+  for (let k = 0; k < count; k += 1) {
+    const length = 1 + next(12);
+    let text = '';
+    for (let t = 0; t < length; t += 1) {
+      if (t > 0) text += PROPERTY_SEPARATORS[next(PROPERTY_SEPARATORS.length)];
+      text += PROPERTY_VOCAB[next(PROPERTY_VOCAB.length)];
+    }
+    out.push(text);
+  }
+  return out;
+}
+
+describe('applyCleanupRules properties (seeded)', () => {
+  const inputs = propertyInputs(20261016, 3000);
+  it('is idempotent on generated inputs', () => {
+    for (const input of inputs) {
+      const once = applyCleanupRules(input, 'en');
+      expect(applyCleanupRules(once, 'en'), JSON.stringify(input)).toBe(once);
+    }
+  });
+  it('only deletes words on generated inputs', () => {
+    for (const input of inputs) {
+      const out = wordList(applyCleanupRules(input, 'en'));
+      expect(isSubsequence(out, wordList(input)), JSON.stringify(input)).toBe(true);
     }
   });
 });

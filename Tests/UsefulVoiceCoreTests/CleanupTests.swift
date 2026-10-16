@@ -56,7 +56,7 @@ struct CleanupTests {
 
     @Test func rulesMatchTheSharedFixtures() throws {
         let rows = try fixture("rules.json", as: [RulesRow].self)
-        #expect(rows.count >= 80)
+        #expect(rows.count >= 120)
         var failures: [String] = []
         for row in rows {
             let got = CleanupRules.apply(to: row.input, language: "en")
@@ -77,6 +77,54 @@ struct CleanupTests {
             let once = CleanupRules.apply(to: row.input, language: "en")
             #expect(CleanupRules.apply(to: once, language: "en") == once, "\(row.name)")
         }
+    }
+
+    /// Seeded generator shared with `windows/tests/cleanup.test.ts` (same LCG, vocabulary and
+    /// separators), so both suites check the same 3,000 generated inputs.
+    private static let propertyVocab: [String] = [
+        "um", "Um", "um,", "Um,", "uh", "Uh,", "er", "Er", "erm,", "hmm", "Hmm,", "hmm.", "um.", "uh...",
+        "huh", "huh?", "mm", "the", "The", "the,", "I", "I,", "it", "It", "so", "So", "that", "is", "and,",
+        "and", "five", "Five", "5", "0", "ho", "Ho", "word", "said", "said,", "Dr.", "Mrs.", "etc.", "well,",
+        "Well,", "apples,", "pears,", "go.", "stop.", "Okay.", "okay", "We", "we", "ship", "Friday,", "or",
+        "Monday.", "app.ts", "iPhone", "don't", "I\u{2019}m", "caf\u{00E9}", "No", "no,", "my", "My", "(um)",
+    ]
+    private static let propertySeparators: [String] = [" ", " ", " ", "  ", "\n", "\r\n", "\u{00A0}"]
+
+    private func propertyInputs(seed: UInt32, count: Int) -> [String] {
+        var state = seed
+        func next(_ n: Int) -> Int {
+            state = state &* 1664525 &+ 1013904223
+            return Int((state >> 8) % UInt32(n))
+        }
+        var out: [String] = []
+        for _ in 0..<count {
+            let length = 1 + next(12)
+            var text = ""
+            for t in 0..<length {
+                if t > 0 { text += Self.propertySeparators[next(Self.propertySeparators.count)] }
+                text += Self.propertyVocab[next(Self.propertyVocab.count)]
+            }
+            out.append(text)
+        }
+        return out
+    }
+
+    @Test func rulesAreIdempotentOnGeneratedInputs() {
+        var failures: [String] = []
+        for input in propertyInputs(seed: 20261016, count: 3000) {
+            let once = CleanupRules.apply(to: input, language: "en")
+            if CleanupRules.apply(to: once, language: "en") != once { failures.append(input.debugDescription) }
+        }
+        #expect(failures.isEmpty, "\(failures.prefix(5).joined(separator: "\n"))")
+    }
+
+    @Test func rulesOnlyDeleteWordsOnGeneratedInputs() {
+        var failures: [String] = []
+        for input in propertyInputs(seed: 20261016, count: 3000) {
+            let out = wordList(CleanupRules.apply(to: input, language: "en"))
+            if !isSubsequence(out, of: wordList(input)) { failures.append(input.debugDescription) }
+        }
+        #expect(failures.isEmpty, "\(failures.prefix(5).joined(separator: "\n"))")
     }
 
     @Test func rulesCleanEnglishCodesOnly() {

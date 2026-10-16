@@ -11,15 +11,28 @@ import Foundation
 /// a missed "um" is invisible, a deleted word is a bug report, so every rule leaves the
 /// text alone when it is unsure.
 ///
-/// Fillers. A token is a filler only when it is exactly one of `fillers` (lowercase or
-/// Capitalised, never ALL CAPS: "ER" is the emergency room) with at most a comma, a full
+/// Fillers. A token is a filler candidate only when it is exactly one of `fillers` (lowercase
+/// or Capitalised, never ALL CAPS: "ER" is the emergency room) with at most a comma, a full
 /// stop or an ellipsis after it. "uh-huh", "um.txt", "(um)" and "Hmm?" are not touched.
 /// "like", "you know", "I mean" and "sort of" are real words as often as fillers, so they
-/// stay, and so does a sentence-initial "hmm" ("Hmm, interesting question."). Deleting a filler tidies only the punctuation it leaves behind:
+/// stay. A candidate is deleted only in two places:
+///   - mid-sentence, when it is lowercase ("so um I need" -> "so I need"). A Capitalised one
+///     mid-sentence is a name or a mention ("Dr. Er will see you", "Ask Er about it"), so it
+///     stays, and so does one right after a mention word ("The word um is", "I said hmm and");
+///   - at a real sentence start (text start, a new line, or after . ! ? that is not an
+///     abbreviation such as "Dr." or "etc."), when a comma follows it ("Um, so we") or the next
+///     word is not capitalised ("Uh so we"). "Um Kulthum" and "Um I think" stay. A
+///     sentence-initial "hmm" always stays ("Hmm, interesting question.").
+/// A filler followed by "huh" or "hmm" is a backchannel, not a hesitation: "uh huh", "um hmm",
+/// "mm hmm" and "Uh, huh?" stay whole.
+/// Deleting a filler tidies only the punctuation it leaves behind:
 ///   - its own trailing comma goes with it: "Well, um, I think" -> "Well, I think";
 ///   - a comma before it goes when the filler ends the text or the sentence ("went home,
-///     um." -> "went home.") or when the word before is one that never takes a comma
-///     ("the, um, store" -> "the store");
+///     um." -> "went home."), when the word before is one that never takes a comma
+///     ("the, um, store" -> "the store"), and when the filler sits between two commas that
+///     only bracket it ("The results, um, show" -> "The results show"). That last comma stays
+///     after a sentence's first word ("Well,"), after a discourse word ("okay,", "actually,"),
+///     before a conjunction ("Friday, um, or Monday") and in a list ("apples, um, pears,");
 ///   - a filler that ends a sentence ("I went, um.") hands its full stop to the word before.
 /// Sentence-initial capital: when the deleted filler was Capitalised and started a
 /// sentence ("Um, so we"), the next word gets the capital back ("So we"). That restores the
@@ -30,15 +43,18 @@ import Foundation
 /// "npm" does get the capital ("Um, npm install" -> "Npm install"), which is the known cost
 /// of restoring sentence casing without a dictionary.
 ///
-/// Stutters. A run of the same word, case-insensitively, collapses to its first
-/// occurrence: three or more in a row (except emphasis words: "no no no", "very very
-/// very"), or two in a row when the word is a function word that never legitimately
-/// doubles ("the the", "I I", "to to"). "had had", "that that", "is is" and "no no" are
-/// grammatical or emphatic, so pairs of those stay. A comma between the repeats is part of
-/// the stutter ("I, I think" -> "I think"), a full stop is not.
+/// Stutters. Only a closed list of function words ever collapses, to its first occurrence:
+/// two in a row when the word never legitimately doubles ("the the", "I I", "to to"), three
+/// or more in a row for a few more ("it it it", "so so so", "that that that", "is is is").
+/// Every other word is left alone however often it repeats: numbers ("five five five", "nine
+/// nine nine"), emphasis and idiom ("Stop stop stop", "Knock knock knock", "Ho ho ho", "Well
+/// well well", "My my"). "had had", "that that" and "is is" are grammatical, so pairs of
+/// those stay. A comma between the repeats is part of the stutter ("I, I think" -> "I
+/// think"); a full stop or a line break is not.
 ///
 /// Whitespace is only ever removed together with the token it belonged to. Text with no
-/// filler or stutter comes back byte for byte. Text that is nothing but fillers becomes "".
+/// filler or stutter comes back byte for byte. Text that is nothing but filler candidates
+/// becomes "" ("Um.", "Um, uh, er.").
 /// English only: other languages have real words that look like these fillers ("um" is
 /// Portuguese for "a").
 public enum CleanupRules {
@@ -58,17 +74,41 @@ public enum CleanupRules {
         "were", "be", "i", "we", "you", "they", "he", "she", "it",
     ]
 
-    /// Function words whose doubling is always a stutter.
+    /// Function words whose doubling is always a stutter. "my" is not one: "My my, look at that."
     private static let doubleStutter: Set<String> = [
         "the", "a", "an", "i", "we", "you", "they", "he", "she", "to", "of", "in", "on", "at", "for",
-        "with", "by", "from", "and", "or", "my", "your", "our", "their", "his", "her", "its", "if", "as",
+        "with", "by", "from", "and", "or", "your", "our", "their", "his", "her", "its", "if", "as",
         "i'm", "i've", "i'll", "i'd", "we're", "it's", "don't", "can't", "didn't", "won't",
     ]
 
-    /// Words repeated three or more times on purpose.
-    private static let emphasis: Set<String> = [
-        "no", "yes", "very", "so", "bye", "ha", "never", "more", "really", "hey", "oh", "wow", "go",
-        "please", "sorry", "okay", "ok", "again", "yeah", "blah", "la", "na",
+    /// Function words that collapse from three repeats on (the pairs list collapses from two).
+    private static let tripleStutter: Set<String> = doubleStutter.union(["it", "so", "that", "is", "but", "was", "this"])
+
+    /// Words after which a filler is being mentioned, not used: "the word um", "I said hmm".
+    private static let mention: Set<String> = [
+        "word", "words", "said", "say", "says", "saying", "type", "typed", "write", "wrote", "spell",
+        "spelled", "term", "called", "named",
+    ]
+
+    /// A full stop after these does not end the sentence. Compared lowercase, whole token.
+    private static let abbreviations: Set<String> = [
+        "dr.", "mr.", "mrs.", "ms.", "st.", "prof.", "sr.", "jr.", "vs.", "etc.", "mt.", "e.g.", "i.e.",
+    ]
+
+    /// "uh huh", "um hmm", "mm hmm": the first word with one of the second is a backchannel.
+    private static let backchannelFirst: Set<String> = ["uh", "um", "uhm", "mm", "mhm", "hm", "hmm"]
+    private static let backchannelSecond: Set<String> = ["huh", "hmm", "hmmm", "hm", "mhm"]
+
+    /// A comma before a bracketed filler stays after these words ("Well, um, I think").
+    private static let keepCommaBefore: Set<String> = [
+        "well", "so", "okay", "ok", "yes", "yeah", "no", "oh", "right", "now", "sure", "anyway",
+        "actually", "however", "also", "alright", "hi", "hello", "hey", "thanks", "honestly", "basically",
+    ]
+
+    /// A comma before a bracketed filler stays when one of these follows it ("Friday, um, or Monday").
+    private static let conjunctions: Set<String> = [
+        "and", "or", "but", "so", "then", "because", "which", "who", "where", "when", "while",
+        "although", "though", "unless", "if",
     ]
 
     private struct Token {
@@ -79,6 +119,8 @@ public enum CleanupRules {
     private static func english(_ text: String) -> String {
         let (tokens, trailing) = splitTokens(text)
         if tokens.isEmpty { return text }
+        // Text that is nothing but fillers ("Um.", "Um, uh, er.") was never meant to be typed.
+        if tokens.allSatisfy({ parseFiller($0.text) != nil }) { return "" }
         let collapsed = collapseStutters(removeFillers(tokens))
         if collapsed.isEmpty { return "" }
         return collapsed.map { $0.space + $0.text }.joined() + trailing
@@ -101,6 +143,11 @@ public enum CleanupRules {
         default:
             return false
         }
+    }
+
+    private static func isUpperLetter(_ s: Unicode.Scalar) -> Bool {
+        let category = s.properties.generalCategory
+        return category == .uppercaseLetter || category == .titlecaseLetter
     }
 
     private static func isApostrophe(_ s: Unicode.Scalar) -> Bool { s == "'" || s == "\u{2019}" }
@@ -206,7 +253,23 @@ public enum CleanupRules {
 
     private static func endsSentence(_ text: String) -> Bool {
         guard let last = lastMeaningful(text) else { return false }
-        return last == "." || last == "!" || last == "?"
+        guard last == "." || last == "!" || last == "?" else { return false }
+        return !abbreviations.contains(lowerAscii(text))
+    }
+
+    /// The word lowercased with trailing , . ! ? and ellipsis removed; nil unless plain ASCII letters.
+    private static func plainCore(_ text: String) -> String? {
+        let chars = Array(text.unicodeScalars)
+        var end = chars.count
+        while end > 0 && ",.!?\u{2026}".unicodeScalars.contains(chars[end - 1]) { end -= 1 }
+        let core = chars[0..<end]
+        if core.isEmpty || !core.allSatisfy({ isAsciiLower($0) || isAsciiUpper($0) }) { return nil }
+        return lowerAscii(string(core))
+    }
+
+    private static func startsCapitalised(_ text: String) -> Bool {
+        guard let first = text.unicodeScalars.first else { return false }
+        return isUpperLetter(first)
     }
 
     private static func endsWithStop(_ text: String) -> Bool {
@@ -223,23 +286,42 @@ public enum CleanupRules {
     }
 
     private static func removeFillers(_ tokens: [Token]) -> [Token] {
+        var backchannel = Set<Int>()
+        if tokens.count >= 2 {
+            for i in 0..<(tokens.count - 1) {
+                if let a = plainCore(tokens[i].text), let b = plainCore(tokens[i + 1].text),
+                   backchannelFirst.contains(a), backchannelSecond.contains(b) {
+                    backchannel.insert(i)
+                    backchannel.insert(i + 1)
+                }
+            }
+        }
+
         var out: [Token] = []
         var pendingCapital = false
         var carriedSpace: String?
+        // A word that follows a deleted sentence-initial filler starts the sentence in its place.
+        var startCarried = false
         for (i, tok) in tokens.enumerated() {
             let hasPrev = !out.isEmpty
             let prevIndex = out.count - 1
-            let atSentenceStart = !hasPrev || endsSentence(out[prevIndex].text) || containsNewline(tok.space)
-            var parsed = parseFiller(tok.text)
-            // "Hmm, interesting question." is as often a reaction as a hesitation, so a sentence-initial
-            // "hmm" stays. Mid-sentence ("Okay, hmm, that works") it is a filler.
-            if let f = parsed, f.word.hasPrefix("hm"), atSentenceStart { parsed = nil }
+            // The next word that is not itself a filler candidate: "Uh, um so we" decides on "so".
+            var n = i + 1
+            while n < tokens.count && parseFiller(tokens[n].text) != nil { n += 1 }
+            let next: Token? = n < tokens.count ? tokens[n] : nil
+            let atSentenceStart = startCarried || !hasPrev || endsSentence(out[prevIndex].text)
+                || containsNewline(tok.space)
+            var parsed = backchannel.contains(i) ? nil : parseFiller(tok.text)
+            if let f = parsed, !deletable(f, atSentenceStart: atSentenceStart, prev: hasPrev ? out[prevIndex] : nil, next: next) {
+                parsed = nil
+            }
             guard let filler = parsed else {
                 var kept = tok
                 if let carried = carriedSpace { kept.space = carried }
                 carriedSpace = nil
                 if pendingCapital { kept.text = capitaliseIfPlain(kept.text) }
                 pendingCapital = false
+                startCarried = false
                 out.append(kept)
                 continue
             }
@@ -258,14 +340,44 @@ public enum CleanupRules {
                     } else if !endsWithStop(out[prevIndex].text) {
                         out[prevIndex].text += terminal
                     }
-                } else if endsComma && (isLast || noCommaAfter.contains(bareWord(out[prevIndex].text))) {
+                } else if endsComma
+                    && (isLast || noCommaAfter.contains(bareWord(out[prevIndex].text))
+                        || (filler.trail == "," && bracketOnly(out, next: next))) {
                     out[prevIndex].text = dropLastScalar(out[prevIndex].text)
                 }
             }
             if atSentenceStart && filler.capitalised && terminal.isEmpty { pendingCapital = true }
+            startCarried = atSentenceStart
             if carriedSpace == nil && (!hasPrev || containsNewline(tok.space)) { carriedSpace = tok.space }
         }
         return out
+    }
+
+    /// Whether a filler candidate is a hesitation to delete (see the header comment).
+    private static func deletable(_ filler: Filler, atSentenceStart: Bool, prev: Token?, next: Token?) -> Bool {
+        if atSentenceStart {
+            // "Hmm, interesting question." is as often a reaction as a hesitation.
+            if filler.word.hasPrefix("hm") { return false }
+            if filler.trail == "," { return true }
+            guard let next = next else { return false }
+            return !startsCapitalised(next.text)
+        }
+        if filler.capitalised { return false }
+        if let prev = prev, lastScalar(prev.text) != ",", mention.contains(bareWord(prev.text)) { return false }
+        return true
+    }
+
+    /// True when the comma before a ", um," filler was only there to bracket it, so it goes too:
+    /// not after a sentence's first word or a discourse word, not before a conjunction, not in a list.
+    private static func bracketOnly(_ out: [Token], next: Token?) -> Bool {
+        guard let prev = out.last else { return false }
+        let prevStartsSentence = out.count < 2 || endsSentence(out[out.count - 2].text) || containsNewline(prev.space)
+        if prevStartsSentence { return false }
+        if keepCommaBefore.contains(bareWord(prev.text)) { return false }
+        guard let next = next else { return false }
+        if conjunctions.contains(bareWord(next.text)) { return false }
+        if lastScalar(next.text) == "," { return false }
+        return true
     }
 
     /// "so," -> "So,". Anything that is not a plain lowercase word ("iPhone", "app.ts", "3d") is returned as is.
@@ -321,13 +433,14 @@ public enum CleanupRules {
             var j = i + 1
             var lastShape = first
             while j < tokens.count {
-                guard let s = shape(tokens[j].text), s.lead.isEmpty, stutterKey(s.core) == key else { break }
+                guard let s = shape(tokens[j].text), s.lead.isEmpty, stutterKey(s.core) == key,
+                      !containsNewline(tokens[j].space) else { break }
                 if !lastShape.trail.isEmpty && lastShape.trail != "," { break }
                 lastShape = s
                 j += 1
             }
             let run = j - i
-            let collapse = (run >= 3 && !emphasis.contains(key)) || (run >= 2 && doubleStutter.contains(key))
+            let collapse = (run >= 3 && tripleStutter.contains(key)) || (run >= 2 && doubleStutter.contains(key))
             if collapse {
                 out.append(Token(space: tok.space, text: first.lead + first.core + lastShape.trail))
             } else {

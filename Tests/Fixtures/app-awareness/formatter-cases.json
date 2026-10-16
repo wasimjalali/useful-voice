@@ -2638,6 +2638,89 @@
    "category": "workChat",
    "input": "..",
    "expected": ".."
+  },
+  {
+   "id": "cont-two-letter-opener-full-stop",
+   "category": "other",
+   "before": "and",
+   "input": "No. Thanks",
+   "expected": " no. Thanks"
+  },
+  {
+   "id": "cont-unrelated-dictionary-word",
+   "category": "other",
+   "before": "and",
+   "words": [
+    "Wasim"
+   ],
+   "input": "The cat",
+   "expected": " the cat"
+  },
+  {
+   "id": "email-dictionary-possessive-kept",
+   "category": "email",
+   "words": [
+    "jones"
+   ],
+   "input": "Hi Sam, jones' car is here.",
+   "expected": "Hi Sam,\n\njones' car is here."
+  },
+  {
+   "id": "email-dictionary-curly-possessive-kept",
+   "category": "email",
+   "words": [
+    "jones"
+   ],
+   "input": "Hi Sam, jones’ car is here.",
+   "expected": "Hi Sam,\n\njones’ car is here."
+  },
+  {
+   "id": "code-tilde-home-path",
+   "category": "coding",
+   "input": "cd ~ slash projects",
+   "expected": "cd ~/projects"
+  },
+  {
+   "id": "code-parent-dir-path",
+   "category": "coding",
+   "input": "cd .. slash src",
+   "expected": "cd ../src"
+  },
+  {
+   "id": "code-current-dir-path",
+   "category": "coding",
+   "input": "run . slash build",
+   "expected": "run ./build"
+  },
+  {
+   "id": "code-parent-dir-twice",
+   "category": "coding",
+   "input": "cd .. slash .. slash src",
+   "expected": "cd ../../src"
+  },
+  {
+   "id": "code-slash-then-parent",
+   "category": "coding",
+   "input": "src slash ..",
+   "expected": "src/.."
+  },
+  {
+   "id": "code-tilde-no-slash-untouched",
+   "category": "coding",
+   "input": "cd ~ dot ssh",
+   "expected": "cd ~ dot ssh"
+  },
+  {
+   "id": "code-ellipsis-not-a-root",
+   "category": "coding",
+   "input": "wait ... slash src",
+   "expected": "wait ... /src"
+  },
+  {
+   "id": "code-dot-slash-spoken-still-works",
+   "category": "coding",
+   "input": "dot slash build",
+   "expected": "./build"
   }
  ]
 }

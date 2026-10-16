@@ -28,6 +28,15 @@ public enum CategoryCoding {
         "init", "start", "example", "sample", "demo", "script", "readme", "license", "makefile",
     ]
 
+    /// A path made only of "~", "." and ".." parts ("~", "..", "../.."). Not a word, but it
+    /// joins a spoken slash: "cd ~ slash projects" is `cd ~/projects`.
+    private static func isPathRoot(_ t: Tok) -> Bool {
+        if !t.lead.isEmpty || t.core.isEmpty { return false }
+        var parts = t.core.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        if parts.count > 1, parts.last == "" { parts.removeLast() }
+        return parts.enumerated().allSatisfy { i, p in p == "." || p == ".." || (p == "~" && i == 0) }
+    }
+
     /// Names that are a dot file when spoken alone: "dot gitignore" is `.gitignore`. They are
     /// not in `extensions`: "copy dot env" is "copy .env", never `copy.env`.
     private static let dotfiles: Set<String> = [
@@ -262,9 +271,14 @@ public enum CategoryCoding {
                 j += 1
             }
             var left: Tok? = nil
-            if let lastOut = out.last, isNameWord(lastOut), lastOut.trail.isEmpty { left = lastOut }
+            if let lastOut = out.last, lastOut.trail.isEmpty,
+               isNameWord(lastOut) || (slashes > 0 && isPathRoot(lastOut)) {
+                left = lastOut
+            }
             var right: Tok? = nil
-            if j < toks.count, isNameWord(toks[j]), toks[j].lead.isEmpty { right = toks[j] }
+            if j < toks.count, toks[j].lead.isEmpty, isNameWord(toks[j]) || (slashes > 0 && isPathRoot(toks[j])) {
+                right = toks[j]
+            }
             let runLength = j - i
 
             // Around a slash, only path-like words join: "slash 20 percent" is prose.

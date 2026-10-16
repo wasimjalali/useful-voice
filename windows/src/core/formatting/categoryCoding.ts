@@ -33,6 +33,17 @@ const COMMON_BASENAMES = new Set([
 ]);
 
 /**
+ * A path made only of "~", "." and ".." parts ("~", "..", "../.."). Not a word, but it
+ * joins a spoken slash: "cd ~ slash projects" is `cd ~/projects`.
+ */
+function isPathRoot(t: Tok): boolean {
+  if (t.lead !== '' || t.core === '') return false;
+  const parts = t.core.split('/');
+  if (parts[parts.length - 1] === '' && parts.length > 1) parts.pop();
+  return parts.every((p, i) => p === '.' || p === '..' || (p === '~' && i === 0));
+}
+
+/**
  * Names that are a dot file when spoken alone: "dot gitignore" is `.gitignore`. They are
  * not in EXTENSIONS: "copy dot env" is "copy .env", never `copy.env`.
  */
@@ -299,10 +310,18 @@ function convertSymbols(toks: Tok[]): Tok[] {
     }
     const lastOut = out[out.length - 1];
     let left: Tok | null =
-      lastOut !== undefined && isNameWord(lastOut) && lastOut.trail === '' ? lastOut : null;
+      lastOut !== undefined &&
+      lastOut.trail === '' &&
+      (isNameWord(lastOut) || (slashes > 0 && isPathRoot(lastOut)))
+        ? lastOut
+        : null;
     const nextTok = toks[j];
     let right: Tok | null =
-      nextTok !== undefined && isNameWord(nextTok) && nextTok.lead === '' ? nextTok : null;
+      nextTok !== undefined &&
+      nextTok.lead === '' &&
+      (isNameWord(nextTok) || (slashes > 0 && isPathRoot(nextTok)))
+        ? nextTok
+        : null;
     const runLength = j - i;
 
     // Around a slash, only path-like words join: "slash 20 percent" is prose.

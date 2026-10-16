@@ -95,7 +95,7 @@ is first exercised live, once two releases exist.
 1. Bump `windows/package.json` `version` with the Mac version and merge to `main`.
 2. Download the release set from the `Windows release` run on that `main` commit:
    `gh run download <run id> --repo wasimjalali/useful-voice --name useful-voice-windows-release --dir /tmp/uv-win`
-3. Check it: `cd /tmp/uv-win && sha256sum -c SHA256SUMS-windows.txt`.
+3. Check it: `cd /tmp/uv-win && shasum -a 256 -c SHA256SUMS-windows.txt`.
 4. Attach every file to the `vX.Y.Z` release in `wasimjalali/useful-voice-releases`, next to
    the Mac files, while it is still a draft:
    `gh release upload vX.Y.Z /tmp/uv-win/* --repo wasimjalali/useful-voice-releases`

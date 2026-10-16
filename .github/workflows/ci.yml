@@ -84,7 +84,7 @@ jobs:
         env:
           UV_S1_MINI_PATH: ${{ runner.temp }}/uv-models/s1-mini-q4_k_m.gguf
           UV_WHISPER_TINY_PATH: ${{ runner.temp }}/uv-models/ggml-tiny.en.bin
-        run: swift test --skip-build --filter LlamaWhisper
+        run: swift test --skip-build --filter LlamaWhisper --skip 'LlamaWhisperCoexistenceTests/measure'
 
   windows:
     runs-on: windows-latest

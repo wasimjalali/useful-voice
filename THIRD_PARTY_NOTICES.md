@@ -3,6 +3,11 @@
 Useful Voice is MIT licensed ([LICENSE](LICENSE)). It includes or downloads the following.
 Every license and notice file is kept verbatim under [licenses/](licenses).
 
+This root file and `licenses/` are what the macOS app ships (copied into `Contents/Resources` by
+`make bundle` and `make bundle-release`). The Windows installer ships
+[windows/THIRD_PARTY_NOTICES.md](windows/THIRD_PARTY_NOTICES.md) and `windows/licenses/` instead; the
+two overlap on purpose, so each package is complete on its own.
+
 ## S1-mini by Superwhisper
 
 The optional local cleanup model (hidden for now). It is downloaded on request, not bundled.
@@ -16,6 +21,14 @@ Credit here and in the app: **S1-mini by Superwhisper**.
 
 - [licenses/s1-mini/LICENSE](licenses/s1-mini/LICENSE)
 - [licenses/s1-mini/NOTICE](licenses/s1-mini/NOTICE)
+
+## whisper.cpp
+
+Runs local transcription on macOS (`whisper.xcframework`, release v1.9.2, from
+[ggml-org/whisper.cpp](https://github.com/ggml-org/whisper.cpp)). MIT License, Copyright (c) 2023-2026
+The ggml authors.
+
+- [licenses/whisper.cpp/LICENSE](licenses/whisper.cpp/LICENSE)
 
 ## llama.cpp
 

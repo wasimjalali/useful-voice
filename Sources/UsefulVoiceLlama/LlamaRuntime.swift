@@ -93,14 +93,13 @@ public final class LlamaRuntime: @unchecked Sendable {
     private let vocab: OpaquePointer
     private let threads: Int32
     private let microBatch: UInt32?
-    private let usesThreadpool: Bool
     public var threadCount: Int32 { threads }
     public let placement: Placement
     public let modelPath: String
 
     /// Loads the weights. See `Placement`; the CPU is the default for the cleanup model, and
     /// llama.cpp can only stop a running decode on the CPU. The PR notes have the numbers.
-    public init(modelPath: String, placement: Placement = .cpuOnly, threads: Int32? = nil, microBatch: UInt32? = nil, threadpool: Bool = false) throws {
+    public init(modelPath: String, placement: Placement = .cpuOnly, threads: Int32? = nil, microBatch: UInt32? = nil) throws {
         _ = Self.backendReady
         var params = llama_model_default_params()
         params.n_gpu_layers = placement == .metal ? -1 : 0
@@ -123,7 +122,6 @@ public final class LlamaRuntime: @unchecked Sendable {
         self.modelPath = modelPath
         self.threads = threads ?? Self.defaultThreadCount()
         self.microBatch = microBatch
-        self.usesThreadpool = threadpool
     }
 
     deinit {
@@ -150,8 +148,27 @@ public final class LlamaRuntime: @unchecked Sendable {
     public func complete(
         prompt: String, deadline: ContinuousClock.Instant, maxPromptTokens: Int = 1536
     ) throws -> Completion {
+        try complete(segments: [PromptSegment(text: prompt, parseSpecial: true)], deadline: deadline, maxPromptTokens: maxPromptTokens)
+    }
+
+    /// A piece of the prompt and whether its text may contain the model's control tokens
+    /// (`<|im_start|>` and the like). The person's own words are never parsed for them.
+    public struct PromptSegment: Equatable, Sendable {
+        public var text: String
+        public var parseSpecial: Bool
+
+        public init(text: String, parseSpecial: Bool) {
+            self.text = text
+            self.parseSpecial = parseSpecial
+        }
+    }
+
+    /// Like `complete(prompt:)`, with each segment tokenized on its own and the tokens joined.
+    public func complete(
+        segments: [PromptSegment], deadline: ContinuousClock.Instant, maxPromptTokens: Int = 1536
+    ) throws -> Completion {
         let start = ContinuousClock.now
-        var tokens = try tokenize(prompt)
+        var tokens = try tokenize(segments: segments)
         guard tokens.count <= maxPromptTokens else {
             throw RuntimeError.promptTooLong(tokens: tokens.count, limit: maxPromptTokens)
         }
@@ -184,13 +201,6 @@ public final class LlamaRuntime: @unchecked Sendable {
         let contextStart = ContinuousClock.now
         guard let ctx = llama_init_from_model(model, cparams) else { throw RuntimeError.contextFailed }
         defer { llama_free(ctx) }
-        var pool: OpaquePointer?
-        if usesThreadpool {
-            var tp = ggml_threadpool_params_default(Int32(threads))
-            pool = ggml_threadpool_new(&tp)
-            if let pool { llama_attach_threadpool(ctx, pool, nil) }
-        }
-        defer { if let pool { llama_detach_threadpool(ctx); ggml_threadpool_free(pool) } }
         let contextEnd = ContinuousClock.now
         var promptDecodedAt: ContinuousClock.Instant?
 
@@ -269,12 +279,19 @@ public final class LlamaRuntime: @unchecked Sendable {
         return lines
     }
 
-    private func tokenize(_ text: String) throws -> [llama_token] {
+    /// The tokens of the segments, each tokenized on its own and joined.
+    public func tokenize(segments: [PromptSegment]) throws -> [Int32] {
+        var tokens: [llama_token] = []
+        for segment in segments { tokens += try tokenize(segment.text, parseSpecial: segment.parseSpecial) }
+        return tokens
+    }
+
+    private func tokenize(_ text: String, parseSpecial: Bool = true) throws -> [llama_token] {
         let byteCount = Int32(text.utf8.count)
         var capacity = byteCount + 16
         for _ in 0..<2 {
             var tokens = [llama_token](repeating: 0, count: Int(capacity))
-            let n = text.withCString { llama_tokenize(vocab, $0, byteCount, &tokens, capacity, false, true) }
+            let n = text.withCString { llama_tokenize(vocab, $0, byteCount, &tokens, capacity, false, parseSpecial) }
             if n >= 0 {
                 tokens.removeLast(tokens.count - Int(n))
                 return tokens

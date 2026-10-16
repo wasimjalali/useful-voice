@@ -61,9 +61,22 @@ struct CleanupPipelineTests {
     @Test func controlLineFollowsCategoryAndStyle() async {
         let model = FakeModel(.answer(nil))
         _ = await CleanupPipeline.run(
-            raw: raw, language: "en", category: "email", style: "formal",
+            raw: raw, language: "en", category: "email", style: .formal,
             gates: on, model: model, deadline: .seconds(2))
         #expect(model.calls[0].controlLine == "[Styling: formal] [Structure: prose] [Context: email]")
+    }
+
+    @Test func theAppStyleIsMappedInsideThePipeline() async {
+        let expected: [(FormattingStyle?, String)] = [
+            (nil, "semi-formal"), (.formal, "formal"), (.casual, "semi-casual"), (.veryCasual, "casual"),
+        ]
+        for (style, styling) in expected {
+            let model = FakeModel(.answer(nil))
+            _ = await CleanupPipeline.run(
+                raw: raw, language: "en", category: "personalChat", style: style,
+                gates: on, model: model, deadline: .seconds(2))
+            #expect(model.calls[0].controlLine.hasPrefix("[Styling: \(styling)]"), "\(String(describing: style))")
+        }
     }
 
     @Test func flagOffNeverCallsTheModel() async {
@@ -105,7 +118,7 @@ struct CleanupPipelineTests {
         struct DiskError: Error {}
         final class Broken: CleanupTextGenerator, @unchecked Sendable {
             func load(modelAt url: URL) throws { throw DiskError() }
-            func generate(prompt: String, deadline: ContinuousClock.Instant) throws -> String { throw DiskError() }
+            func generate(prompt: CleanupPrompt, deadline: ContinuousClock.Instant) throws -> String { throw DiskError() }
             func unload() {}
         }
         let model = LocalCleanupModel(modelURL: URL(fileURLWithPath: "/nonexistent/s1.gguf"), generator: Broken())

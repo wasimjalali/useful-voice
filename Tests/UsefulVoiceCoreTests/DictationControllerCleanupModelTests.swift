@@ -27,8 +27,8 @@ import Foundation
             if failLoad { throw Boom() }
             lock.withLock { _loads += 1 }
         }
-        func generate(prompt: String, deadline: ContinuousClock.Instant) throws -> String {
-            lock.withLock { _prompts.append(prompt) }
+        func generate(prompt: CleanupPrompt, deadline: ContinuousClock.Instant) throws -> String {
+            lock.withLock { _prompts.append(prompt.text) }
             if stallUntilDeadline {
                 while ContinuousClock.now < deadline { Thread.sleep(forTimeInterval: 0.01) }
                 throw Boom()
@@ -140,11 +140,16 @@ import Foundation
 
     @Test func autoFormatOffNeverTouchesTheModel() async {
         generator.answer = "I need to send the report by Thursday."
-        let controller = makeController(text: spoken, model: makeModel(), autoFormat: false)
+        let model = makeModel()
+        let controller = makeController(text: spoken, model: model, autoFormat: false)
         controller.toggle()
         await controller.toggleAndWait()
+        await controller.awaitCleanupLifecycle()
+        await model.waitForLoad()
         #expect(delivered == [spoken])
         #expect(generator.prompts.isEmpty)
+        #expect(generator.loads == 0)             // no preload either: the cleanup step cannot run
+        #expect(timer.armed == 0)
     }
 
     @Test func modelTextIsDeliveredWhenAllGatesPass() async {

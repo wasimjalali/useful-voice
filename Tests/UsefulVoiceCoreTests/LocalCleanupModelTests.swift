@@ -5,26 +5,32 @@ import Testing
 private final class FakeGenerator: CleanupTextGenerator, @unchecked Sendable {
     struct Failure: Error {}
     private let lock = NSLock()
-    private var _loads = 0, _unloads = 0, _prompts: [String] = []
+    private var _loads = 0, _unloads = 0, _attempts = 0, _prompts: [String] = []
     var failLoad = false
     var failGenerate = false
     var answer = "I need to send the report by Thursday."
     /// When set, `load` blocks until the test signals it: a load that is still running.
     var loadGate: DispatchSemaphore?
+    /// When set, `generate` blocks (after recording its prompt) until the test signals it.
+    var generateGate: DispatchSemaphore?
 
     var loads: Int { lock.withLock { _loads } }
+    /// Every call to `load`, successful or not.
+    var attempts: Int { lock.withLock { _attempts } }
     var unloads: Int { lock.withLock { _unloads } }
     var prompts: [String] { lock.withLock { _prompts } }
 
     func load(modelAt url: URL) throws {
+        lock.withLock { _attempts += 1 }
         loadGate?.wait()
         if failLoad { throw Failure() }
         lock.withLock { _loads += 1 }
     }
 
-    func generate(prompt: String, deadline: ContinuousClock.Instant) throws -> String {
+    func generate(prompt: CleanupPrompt, deadline: ContinuousClock.Instant) throws -> String {
         if failGenerate { throw Failure() }
-        lock.withLock { _prompts.append(prompt) }
+        lock.withLock { _prompts.append(prompt.text) }
+        generateGate?.wait()
         return answer
     }
 
@@ -194,19 +200,56 @@ struct LocalCleanupModelTests {
         await model.unload()
     }
 
-    @Test func loadFailureReturnsNilAndRetriesNextTime() async {
+    @Test func aFailedLoadIsNotRetriedUntilTheFileChanges() async throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("lcm-\(UUID().uuidString).gguf")
+        try Data("one".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
         let gen = FakeGenerator()
         gen.failLoad = true
-        let model = LocalCleanupModel(modelURL: url, generator: gen, idleUnloadAfter: .seconds(60))
+        let model = LocalCleanupModel(modelURL: file, generator: gen, idleUnloadAfter: .seconds(60))
         #expect(await model.clean("x", controlLine: line, deadline: soon) == nil)
         await model.waitForLoad()
+        #expect(gen.attempts == 1)
         #expect(await !model.isLoaded)
+        // Presses and cold cleans after the failure do not touch the broken file again.
+        for _ in 0..<3 {
+            await model.begin()
+            await model.waitForLoad()
+            await model.end()
+            #expect(await model.clean("x", controlLine: line, deadline: soon) == nil)
+        }
+        #expect(gen.attempts == 1)
+        // The file changes (a repaired download): the next press tries once more.
         gen.failLoad = false
-        // The failed load is retried by the next dictation; it answers once that load is done.
-        #expect(await model.clean("x", controlLine: line, deadline: soon) == nil)
+        try Data("a different size".utf8).write(to: file)
+        await model.begin()
         await model.waitForLoad()
+        #expect(gen.attempts == 2)
+        #expect(await model.isLoaded)
         #expect(await model.clean("x", controlLine: line, deadline: soon) == gen.answer)
+        await model.end()
         await model.unload()
+    }
+
+    @Test func aSecondCleanWhileOneRunsAnswersNilAndAnUnloadWaitsForTheRun() async {
+        let gen = FakeGenerator()
+        let gate = DispatchSemaphore(value: 0)
+        gen.generateGate = gate
+        let model = LocalCleanupModel(modelURL: url, generator: gen, idleUnloadAfter: .seconds(60))
+        await model.begin()
+        await model.waitForLoad()
+        let first = Task { await model.clean("a", controlLine: line, deadline: soon) }
+        #expect(await waitUntil { gen.prompts.count == 1 })   // the run is in the generator
+        // The actor is free while the model runs: this answers at once, and nothing overlaps.
+        #expect(await model.clean("b", controlLine: line, deadline: soon) == nil)
+        #expect(gen.prompts.count == 1)
+        await model.unload()
+        #expect(gen.unloads == 0)                              // not under a running decode
+        #expect(await model.isLoaded)
+        gate.signal()
+        #expect(await first.value == gen.answer)
+        #expect(await !model.isLoaded)
+        #expect(gen.unloads == 1)
     }
 
     @Test func runFailureReturnsNilAndKeepsTheModelLoaded() async {

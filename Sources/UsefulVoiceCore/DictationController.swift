@@ -359,12 +359,13 @@ public final class DictationController {
     }
 
     /// Preloads the cleanup model while the person is still talking, when the hidden flag is
-    /// on and the gates pass. A pinned language other than English skips it (the model only runs
+    /// on, Auto-format transcript is on and the gates pass. A pinned language other than English skips it (the model only runs
     /// for English, so loading it would be wasted); auto assumes English until the transcript
     /// says otherwise, and that run-time language check still applies. Fire and forget: nothing here waits for the load, and a failed load only means the model step
     /// falls back to the rules text later.
     private func beginCleanupModelDictation() {
-        guard let model = cleanupModel, !cleanupDictationOpen else { return }
+        // Without Auto-format transcript the cleanup step never runs, so there is nothing to load for.
+        guard let model = cleanupModel, !cleanupDictationOpen, autoFormat() else { return }
         let gates = cleanupGates()
         let pin = hint().languagePin
         guard case .run = CleanupModelPolicy.decide(
@@ -393,7 +394,7 @@ public final class DictationController {
             let result = await CleanupPipeline.run(
                 raw: text, language: language,
                 category: press.inOwnApp ? nil : press.category.rawValue,
-                style: press.inOwnApp ? nil : S1MiniModel.controlStyle(for: press.settings.requestedStyle(for: press.category)),
+                style: press.inOwnApp ? nil : press.settings.requestedStyle(for: press.category),
                 gates: cleanupGates(), model: cleanupModel)
             cleaned = result.text
         } else {
@@ -732,7 +733,7 @@ public final class DictationController {
     /// How long the transcript waits for the text-before-cursor read, which started at the
     /// press and is normally long finished. The app layer caps its own read at 150 ms; this
     /// only keeps a stuck reader from holding up a dictation.
-    private static let cursorReadWait: TimeInterval = 0.3
+    static let cursorReadWait: TimeInterval = 0.3
 
     private func boundedCursorRead(_ read: Task<String?, Never>?) async -> String? {
         guard let read else { return nil }

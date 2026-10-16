@@ -62,7 +62,7 @@ public enum CleanupPipeline {
     }
 
     public static func run(
-        raw: String, language: String?, category: String?, style: String?,
+        raw: String, language: String?, category: String?, style: FormattingStyle?,
         gates: Gates, model: (any CleanupModel)?,
         deadline: Duration = CleanupModelPolicy.defaultDeadline
     ) async -> Result {
@@ -83,7 +83,7 @@ public enum CleanupPipeline {
             return Result(text: rulesText, source: rulesSource, model: .skipped(.noModel))
         }
 
-        let controlLine = CleanupControlLine.line(category: category, style: style)
+        let controlLine = CleanupControlLine.line(category: category, style: S1MiniModel.controlStyle(for: style))
         let limit = start.advanced(by: deadline)
         let answer = await withDeadline(limit) {
             await model.clean(rulesText, controlLine: controlLine, deadline: limit)

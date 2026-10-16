@@ -328,6 +328,12 @@ import Foundation
         #expect(delivered == ["We could go"])
     }
 
+    /// The caps that keep a stuck reader from holding a dictation up. The wall-clock behaviour
+    /// is not timed (a stalled runner would fail it); the values are pinned here instead.
+    @Test func theCursorReadCapsArePinned() {
+        #expect(DictationController.cursorReadWait == 0.3)
+    }
+
     @Test(.timeLimit(.minutes(1)))
     func aReaderThatNeverAnswersCannotHoldUpTheDictation() async {
         focus = slack

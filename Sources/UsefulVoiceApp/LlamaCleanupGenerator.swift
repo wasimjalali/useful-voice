@@ -21,9 +21,10 @@ public final class LlamaCleanupGenerator: CleanupTextGenerator, @unchecked Senda
         runtime = try LlamaRuntime(modelPath: url.path, placement: placement)
     }
 
-    public func generate(prompt: String, deadline: ContinuousClock.Instant) throws -> String {
+    public func generate(prompt: CleanupPrompt, deadline: ContinuousClock.Instant) throws -> String {
         guard let runtime else { throw LlamaRuntime.RuntimeError.modelLoadFailed("not loaded") }
-        return try runtime.complete(prompt: prompt, deadline: deadline).text
+        let segments = prompt.segments.map { LlamaRuntime.PromptSegment(text: $0.text, parseSpecial: $0.parseSpecial) }
+        return try runtime.complete(segments: segments, deadline: deadline).text
     }
 
     public func unload() {

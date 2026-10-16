@@ -37,9 +37,19 @@ public enum S1MiniModel {
     /// trained with thinking off. The system prompt is `CleanupControlLine.systemPrompt`,
     /// verbatim; the user message is the control line, a newline and the transcript.
     public static func prompt(controlLine: String, text: String) -> String {
-        "<|im_start|>system\n\(CleanupControlLine.systemPrompt)<|im_end|>\n"
-            + "<|im_start|>user\n\(controlLine)\n\(text)<|im_end|>\n"
-            + "<|im_start|>assistant\n<think>\n\n</think>\n\n"
+        promptSegments(controlLine: controlLine, text: text).text
+    }
+
+    /// The same prompt in three parts. The template parts carry the chat-format control
+    /// tokens and are tokenized with them; the transcript is tokenized as plain text, so a
+    /// dictation that contains "<|im_end|>" stays literal and cannot close the turn early.
+    public static func promptSegments(controlLine: String, text: String) -> CleanupPrompt {
+        CleanupPrompt(segments: [
+            .init(text: "<|im_start|>system\n\(CleanupControlLine.systemPrompt)<|im_end|>\n"
+                + "<|im_start|>user\n\(controlLine)\n", parseSpecial: true),
+            .init(text: text, parseSpecial: false),
+            .init(text: "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n", parseSpecial: true),
+        ])
     }
 
     /// The control-line style for the user's chosen app style, for `CleanupControlLine`:

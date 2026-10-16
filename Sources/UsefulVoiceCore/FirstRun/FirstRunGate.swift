@@ -67,6 +67,16 @@ public enum FirstRunGate {
         return flowActive && !recheckOnly
     }
 
+    /// Whether the flow is on screen at launch. Only then does it stand in for the
+    /// launch permission requests and the "Accessibility access is off" pill. A
+    /// recheck left behind a closed window at login is not, so the app asks and
+    /// shows the pill (and the menu's fix item) as it does without setup.
+    public static func flowOnScreenAtLaunch(flowActive: Bool, recheckOnly: Bool,
+                                            userInitiated: Bool) -> Bool {
+        flowActive && opensWindowAtLaunch(flowActive: flowActive, recheckOnly: recheckOnly,
+                                          userInitiated: userInitiated)
+    }
+
     /// Whether the app has a way to dictate without any further setup: a Deepgram
     /// key is stored (presence only, so a key that cannot be read right now still
     /// counts) or a local model file is usable. Never reads a cache, so a slow or

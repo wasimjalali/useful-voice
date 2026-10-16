@@ -131,6 +131,37 @@ struct FirstRunGateTests {
         }
     }
 
+    // MARK: Who asks for the permissions at launch
+
+    /// The recheck at login keeps the window closed, so nothing on screen asks for
+    /// Accessibility: the app must ask, show the pill and offer the menu's fix item.
+    @Test func aRecheckKeptBehindAClosedWindowIsNotOnScreen() {
+        #expect(!FirstRunGate.flowOnScreenAtLaunch(flowActive: true, recheckOnly: true,
+                                                   userInitiated: false))
+    }
+
+    @Test func aRecheckTheUserOpenedIsOnScreen() {
+        #expect(FirstRunGate.flowOnScreenAtLaunch(flowActive: true, recheckOnly: true,
+                                                  userInitiated: true))
+    }
+
+    @Test func aSetupNeverFinishedIsOnScreenEvenAtLogin() {
+        #expect(FirstRunGate.flowOnScreenAtLaunch(flowActive: true, recheckOnly: false,
+                                                  userInitiated: false))
+        #expect(FirstRunGate.flowOnScreenAtLaunch(flowActive: true, recheckOnly: false,
+                                                  userInitiated: true))
+    }
+
+    /// The window opening for an ordinary launch does not mean a flow is showing.
+    @Test func noFlowIsNeverOnScreen() {
+        for recheck in [true, false] {
+            for user in [true, false] {
+                #expect(!FirstRunGate.flowOnScreenAtLaunch(flowActive: false, recheckOnly: recheck,
+                                                           userInitiated: user))
+            }
+        }
+    }
+
     @Test func completingSetupWithoutARecheckOnlyMarksItDone() {
         let suite = "first-run-gate-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

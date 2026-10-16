@@ -164,11 +164,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
-        // While the first-run flow is up, it asks for each permission at its own
-        // step, so nothing is requested here.
+        // While the first-run flow is on screen, it asks for each permission at its
+        // own step, so nothing is requested here and there's no Accessibility pill.
+        // A grant recheck kept behind a closed window at login does both, like any
+        // other launch, so the pill and the menu's fix item still say what's off.
         let firstRunActive = firstRun?.active == true
-        if !firstRunActive { requestPermissions() }
-        startHotkeys()
+        let recheckOnly = firstRun?.recheckOnly == true
+        let userInitiated = LaunchReason.current(from: notification) == .userInitiated
+        let flowOnScreen = FirstRunGate.flowOnScreenAtLaunch(
+            flowActive: firstRunActive, recheckOnly: recheckOnly, userInitiated: userInitiated)
+        if !flowOnScreen { requestPermissions() }
+        startHotkeys(flowOnScreen: flowOnScreen)
 
         // Only open the window when the user asked for the app. A login-item or
         // restored-state launch must stay quiet in the menu bar: opening a
@@ -179,9 +185,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // with the flow over it even on a login launch. Not for the grant recheck
         // after the rename: that waits until the user opens the window.
         if FirstRunGate.opensWindowAtLaunch(
-            flowActive: firstRunActive,
-            recheckOnly: firstRun?.recheckOnly == true,
-            userInitiated: LaunchReason.current(from: notification) == .userInitiated) {
+            flowActive: firstRunActive, recheckOnly: recheckOnly, userInitiated: userInitiated) {
             openMainWindow()
         }
     }
@@ -881,7 +885,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func startHotkeys() {
+    /// `flowOnScreen`: the first-run flow is showing at launch, and its own
+    /// Accessibility step replaces the pill.
+    private func startHotkeys(flowOnScreen: Bool) {
         hotkeys.activationKeycode = Int64(settings.hotkeyKeycode)
         viewModel?.onHotkeyKeycodeChange = { [weak self] code in
             self?.hotkeys.activationKeycode = Int64(code)
@@ -923,7 +929,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Not Accessibility-trusted yet. Poll until the user grants it, then
         // start the tap without requiring a relaunch.
         // The first-run flow has its own Accessibility step, so no pill there.
-        if firstRun?.active != true {
+        if !flowOnScreen {
             hud.show(.error(HUDError(message: "Accessibility access is off", symbol: "hand.raised",
                                      fix: .openAccessibilitySettings)))
         }

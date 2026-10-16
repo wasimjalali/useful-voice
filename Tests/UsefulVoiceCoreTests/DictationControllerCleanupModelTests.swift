@@ -205,11 +205,13 @@ import Foundation
         let model = makeModel()
         let first = makeController(text: spoken, model: model)
         first.toggle()                            // the press starts a load that has not finished
-        let started = ContinuousClock.now
         await first.toggleAndWait()
-        // The rules text, at once: no wait for the model, let alone the 1.5 s deadline.
+        // The rules text is delivered while the load is still blocked: the dictation never
+        // depended on the model. (That `clean` itself returns at once is proved without any
+        // clock in LocalCleanupModelTests.aLoadInFlightNeverMakesACleanWait: its load is
+        // blocked until after the call returns.)
         #expect(delivered == [rulesText])
-        #expect(started.duration(to: .now) < .milliseconds(1400))
+        #expect(await !model.isLoaded)
         #expect(generator.prompts.isEmpty)
         gate.signal()
         #expect(await waitUntil { await model.isLoaded })

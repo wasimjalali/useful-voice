@@ -4,6 +4,10 @@ import Testing
 
 /// Which of our own first responders count as "an editable field of ours has focus", the
 /// test that decides whether the hotkey pastes into Useful Voice or copies (window dictation).
+/// A field that can be a field editor's delegate, as AppKit's own fields are.
+private final class PlainField: NSTextField, NSTextViewDelegate {}
+private final class SecureField: NSSecureTextField, NSTextViewDelegate {}
+
 @MainActor
 @Suite("Own field focus")
 struct OwnFieldFocusTests {
@@ -14,7 +18,7 @@ struct OwnFieldFocusTests {
     }
 
     @Test func aTextFieldsEditorCounts() {
-        let field = NSTextField()
+        let field = PlainField()
         let editor = NSTextView()
         editor.isFieldEditor = true
         editor.isEditable = true
@@ -23,7 +27,7 @@ struct OwnFieldFocusTests {
     }
 
     @Test func aPasswordFieldsEditorDoesNot() {
-        let field = NSSecureTextField()
+        let field = SecureField()
         let editor = NSTextView()
         editor.isFieldEditor = true
         editor.isEditable = true

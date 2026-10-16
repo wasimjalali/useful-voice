@@ -250,18 +250,18 @@
    "c23": "The package weighs five kilos, sorry, fifteen kilos.",
    "c24": "I'll see you on the tenth, no wait, the twelfth.",
    "n01": "You can reach me at john at example dot com.",
-   "n02": "Send it to sarah dot lee at company dot io please.",
+   "n02": "Send it to sarah dot lee at example dot org please.",
    "n03": "The site is example dot com slash pricing.",
    "n04": "The total is twelve hundred dollars.",
    "n05": "The meeting is on March third at two thirty p m.",
    "n06": "My number is five, oh one two three.",
    "n07": "About twenty five percent of users opted in.",
-   "n08": "Write to support at acme dot co dot uk.",
+   "n08": "Write to support at help dot example dot com.",
    "n09": "The event runs from nine a m to five p m.",
    "n10": "The file is two point five gigabytes.",
    "n11": "Meet me at four thirty.",
    "n12": "Revenue was three point two million dollars.",
-   "n13": "My email is mike underscore jones at mail dot com.",
+   "n13": "My email is mike underscore jones at example dot com.",
    "n14": "Version two point one is out.",
    "m01": "Hi Sarah, can you send the numbers by Friday? Thanks, John.",
    "m02": "Hello team, the release is delayed until Monday. Best regards, Priya.",
@@ -1268,7 +1268,7 @@
      "model_input": "You can reach me at john at example dot com."
     },
     {
-     "output": "Send it to sarah.lee@company.io please.",
+     "output": "Send it to sarah.lee@example.org please.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 552.4,
@@ -1280,7 +1280,7 @@
       "predicted_per_second": 34.7719251476358
      },
      "id": "n02",
-     "model_input": "Send it to sarah dot lee at company dot io please."
+     "model_input": "Send it to sarah dot lee at example dot org please."
     },
     {
      "output": "The site is example.com/pricing.",
@@ -1358,7 +1358,7 @@
      "model_input": "About twenty five percent of users opted in."
     },
     {
-     "output": "Write to support@acme.co.uk.",
+     "output": "Write to support@help.example.com.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 5242.2,
@@ -1370,7 +1370,7 @@
       "predicted_per_second": 2.0167863853473746
      },
      "id": "n08",
-     "model_input": "Write to support at acme dot co dot uk."
+     "model_input": "Write to support at help dot example dot com."
     },
     {
      "output": "The event runs from 9am to 5pm.",
@@ -1433,7 +1433,7 @@
      "model_input": "Revenue was three point two million dollars."
     },
     {
-     "output": "My email is mike_jones@mail.com.",
+     "output": "My email is mike_jones@example.com.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 268.0,
@@ -1445,7 +1445,7 @@
       "predicted_per_second": 43.8079847353511
      },
      "id": "n13",
-     "model_input": "My email is mike underscore jones at mail dot com."
+     "model_input": "My email is mike underscore jones at example dot com."
     },
     {
      "output": "Version 2.1 is out.",
@@ -3038,7 +3038,7 @@
      "model_input": "Compare index.html with docs/old/index.html and list the differences."
     },
     {
-     "output": "open ~/projects/useful-voice/Makefile and C:\\Users\\Wasim\\notes.txt",
+     "output": "open ~/projects/useful-voice/Makefile and C:\\Users\\Alex\\notes.txt",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 644.8,
@@ -4090,7 +4090,7 @@
      "model_input": "You can reach me at john at example dot com."
     },
     {
-     "output": "Send it to sarah.lee@company.io please.",
+     "output": "Send it to sarah.lee@example.org please.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 546.4,
@@ -4102,7 +4102,7 @@
       "predicted_per_second": 26.23432499081799
      },
      "id": "n02",
-     "model_input": "Send it to sarah dot lee at company dot io please."
+     "model_input": "Send it to sarah dot lee at example dot org please."
     },
     {
      "output": "The site is example.com/pricing.",
@@ -4180,7 +4180,7 @@
      "model_input": "About twenty five percent of users opted in."
     },
     {
-     "output": "Write to support@acme.co.uk.",
+     "output": "Write to support@help.example.com.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 337.7,
@@ -4192,7 +4192,7 @@
       "predicted_per_second": 39.576966205668306
      },
      "id": "n08",
-     "model_input": "Write to support at acme dot co dot uk."
+     "model_input": "Write to support at help dot example dot com."
     },
     {
      "output": "The event runs from 9am to 5pm.",
@@ -4255,7 +4255,7 @@
      "model_input": "Revenue was three point two million dollars."
     },
     {
-     "output": "My email is mike_jones@mail.com.",
+     "output": "My email is mike_jones@example.com.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 264.1,
@@ -4267,7 +4267,7 @@
       "predicted_per_second": 46.913361446599566
      },
      "id": "n13",
-     "model_input": "My email is mike underscore jones at mail dot com."
+     "model_input": "My email is mike underscore jones at example dot com."
     },
     {
      "output": "Version 2.1 is out.",
@@ -5860,7 +5860,7 @@
      "model_input": "Compare index.html with docs/old/index.html and list the differences."
     },
     {
-     "output": "Open ~/projects/useful-voice/Makefile and C:\\Users\\Wasim\\notes.txt.",
+     "output": "Open ~/projects/useful-voice/Makefile and C:\\Users\\Alex\\notes.txt.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 3256.9,
@@ -6912,7 +6912,7 @@
      "model_input": "You can reach me at john at example dot com."
     },
     {
-     "output": "Send it to sarah.lee@company.io please.",
+     "output": "Send it to sarah.lee@example.org please.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 356.3,
@@ -6924,7 +6924,7 @@
       "predicted_per_second": 41.86874149541188
      },
      "id": "n02",
-     "model_input": "Send it to sarah dot lee at company dot io please."
+     "model_input": "Send it to sarah dot lee at example dot org please."
     },
     {
      "output": "The site is example.com/pricing.",
@@ -7002,7 +7002,7 @@
      "model_input": "About twenty five percent of users opted in."
     },
     {
-     "output": "Write to support@acme.co.uk.",
+     "output": "Write to support@help.example.com.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 280.5,
@@ -7014,7 +7014,7 @@
       "predicted_per_second": 41.23220143304806
      },
      "id": "n08",
-     "model_input": "Write to support at acme dot co dot uk."
+     "model_input": "Write to support at help dot example dot com."
     },
     {
      "output": "The event runs from 9am to 5pm.",
@@ -7077,7 +7077,7 @@
      "model_input": "Revenue was three point two million dollars."
     },
     {
-     "output": "My email is mike_jones@mail.com.",
+     "output": "My email is mike_jones@example.com.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 287.2,
@@ -7089,7 +7089,7 @@
       "predicted_per_second": 40.243428024628976
      },
      "id": "n13",
-     "model_input": "My email is mike underscore jones at mail dot com."
+     "model_input": "My email is mike underscore jones at example dot com."
     },
     {
      "output": "Version 2.1 is out.",
@@ -8682,7 +8682,7 @@
      "model_input": "Compare index.html with docs/old/index.html and list the differences."
     },
     {
-     "output": "open ~/projects/useful-voice/Makefile and C:\\Users\\Wasim\\notes.txt",
+     "output": "open ~/projects/useful-voice/Makefile and C:\\Users\\Alex\\notes.txt",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 677.4,
@@ -9734,7 +9734,7 @@
      "model_input": "You can reach me at john at example dot com."
     },
     {
-     "output": "Send it to sarah.lee@company.io please.",
+     "output": "Send it to sarah.lee@example.org please.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 709.9,
@@ -9746,7 +9746,7 @@
       "predicted_per_second": 22.182786157941436
      },
      "id": "n02",
-     "model_input": "Send it to sarah dot lee at company dot io please."
+     "model_input": "Send it to sarah dot lee at example dot org please."
     },
     {
      "output": "The site is example.com/pricing.",
@@ -9824,7 +9824,7 @@
      "model_input": "About twenty five percent of users opted in."
     },
     {
-     "output": "Write to support@acme.co.uk.",
+     "output": "Write to support@help.example.com.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 665.0,
@@ -9836,7 +9836,7 @@
       "predicted_per_second": 19.175169433927692
      },
      "id": "n08",
-     "model_input": "Write to support at acme dot co dot uk."
+     "model_input": "Write to support at help dot example dot com."
     },
     {
      "output": "The event runs from nine a m to five p m.",
@@ -9899,7 +9899,7 @@
      "model_input": "Revenue was three point two million dollars."
     },
     {
-     "output": "My email is mike.jones@mail.com.",
+     "output": "My email is mike.jones@example.com.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 609.1,
@@ -9911,7 +9911,7 @@
       "predicted_per_second": 27.045593461457326
      },
      "id": "n13",
-     "model_input": "My email is mike underscore jones at mail dot com."
+     "model_input": "My email is mike underscore jones at example dot com."
     },
     {
      "output": "Version two point one is out.",
@@ -12556,7 +12556,7 @@
      "model_input": "You can reach me at john at example dot com."
     },
     {
-     "output": "Send it to sarah.lee@company.io please.",
+     "output": "Send it to sarah.lee@example.org please.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 666.3,
@@ -12568,7 +12568,7 @@
       "predicted_per_second": 26.283338772524274
      },
      "id": "n02",
-     "model_input": "Send it to sarah dot lee at company dot io please."
+     "model_input": "Send it to sarah dot lee at example dot org please."
     },
     {
      "output": "The site is example.com/pricing.",
@@ -12646,7 +12646,7 @@
      "model_input": "About twenty five percent of users opted in."
     },
     {
-     "output": "Write to support@acme.co.uk.",
+     "output": "Write to support@help.example.com.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 644.9,
@@ -12658,7 +12658,7 @@
       "predicted_per_second": 21.107139841837164
      },
      "id": "n08",
-     "model_input": "Write to support at acme dot co dot uk."
+     "model_input": "Write to support at help dot example dot com."
     },
     {
      "output": "The event runs from nine a m to five p m.",
@@ -12721,7 +12721,7 @@
      "model_input": "Revenue was three point two million dollars."
     },
     {
-     "output": "My email is mike.jones@mail.com.",
+     "output": "My email is mike.jones@example.com.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 594.9,
@@ -12733,7 +12733,7 @@
       "predicted_per_second": 26.493715690638183
      },
      "id": "n13",
-     "model_input": "My email is mike underscore jones at mail dot com."
+     "model_input": "My email is mike underscore jones at example dot com."
     },
     {
      "output": "Version two point one is out.",
@@ -16537,18 +16537,18 @@
    "c23": "The package weighs five kilos, sorry, fifteen kilos.",
    "c24": "I'll see you on the tenth, no wait, the twelfth.",
    "n01": "You can reach me at john at example dot com.",
-   "n02": "Send it to sarah dot lee at company dot io please.",
+   "n02": "Send it to sarah dot lee at example dot org please.",
    "n03": "The site is example dot com slash pricing.",
    "n04": "The total is twelve hundred dollars.",
    "n05": "The meeting is on March third at two thirty p m.",
    "n06": "My number is five five five, oh one two three.",
    "n07": "About twenty five percent of users opted in.",
-   "n08": "Write to support at acme dot co dot uk.",
+   "n08": "Write to support at help dot example dot com.",
    "n09": "The event runs from nine a m to five p m.",
    "n10": "The file is two point five gigabytes.",
    "n11": "Meet me at four thirty.",
    "n12": "Revenue was three point two million dollars.",
-   "n13": "My email is mike underscore jones at mail dot com.",
+   "n13": "My email is mike underscore jones at example dot com.",
    "n14": "Version two point one is out.",
    "m01": "Hi Sarah, um, can you send the numbers by Friday? Thanks, John.",
    "m02": "Hello team, uh, the release is delayed until Monday. Best regards, Priya.",
@@ -16727,18 +16727,18 @@
    "c23": "The package weighs five kilos, sorry, fifteen kilos.",
    "c24": "I'll see you on the tenth, no wait, the twelfth.",
    "n01": "You can reach me at john at example dot com.",
-   "n02": "Send it to sarah dot lee at company dot io please.",
+   "n02": "Send it to sarah dot lee at example dot org please.",
    "n03": "The site is example dot com slash pricing.",
    "n04": "The total is twelve hundred dollars.",
    "n05": "The meeting is on March third at two thirty p m.",
    "n06": "My number is five, oh one two three.",
    "n07": "About twenty five percent of users opted in.",
-   "n08": "Write to support at acme dot co dot uk.",
+   "n08": "Write to support at help dot example dot com.",
    "n09": "The event runs from nine a m to five p m.",
    "n10": "The file is two point five gigabytes.",
    "n11": "Meet me at four thirty.",
    "n12": "Revenue was three point two million dollars.",
-   "n13": "My email is mike underscore jones at mail dot com.",
+   "n13": "My email is mike underscore jones at example dot com.",
    "n14": "Version two point one is out.",
    "m01": "Hi Sarah, can you send the numbers by Friday? Thanks, John.",
    "m02": "Hello team, the release is delayed until Monday. Best regards, Priya.",
@@ -16917,18 +16917,18 @@
    "c23": "The package weighs 15 kilos.",
    "c24": "I'll see you on the twelfth",
    "n01": "You can reach me at john@example.com.",
-   "n02": "Send it to sarah.lee@company.io please.",
+   "n02": "Send it to sarah.lee@example.org please.",
    "n03": "The site is example.com/pricing.",
    "n04": "The total is $1,200.",
    "n05": "The meeting is on March 3rd at 2:30pm.",
    "n06": "my number is 50123",
    "n07": "About 25% of users opted in.",
-   "n08": "Write to support@acme.co.uk.",
+   "n08": "Write to support@help.example.com.",
    "n09": "The event runs from 9am to 5pm.",
    "n10": "The file is 2.5 gigabytes.",
    "n11": "meet me at 4:30",
    "n12": "Revenue was $3.2 million.",
-   "n13": "My email is mike_jones@mail.com.",
+   "n13": "My email is mike_jones@example.com.",
    "n14": "Version 2.1 is out.",
    "m01": "Hi Sarah,\n\nCan you send the numbers by Friday?\n\nThanks,\nJohn",
    "m02": "Hello Team,\n\nThe release is delayed until Monday.\n\nBest regards,\nPriya",
@@ -17035,7 +17035,7 @@
    "k75": "edit @src/server.ts to add a health route",
    "k76": "check package.json for the test script",
    "k77": "compare index.html with docs/old/index.html and list the differences",
-   "k78": "open ~/projects/useful-voice/Makefile and C:\\Users\\Wasim\\notes.txt",
+   "k78": "open ~/projects/useful-voice/Makefile and C:\\Users\\Alex\\notes.txt",
    "k79": "the config lives in .github/workflows/ci.yml, not in the root",
    "k80": "update docs/setup.md and the CHANGELOG.md",
    "k81": "Dr. Smith will see you at 9am on Monday. Please bring your ID.",
@@ -17107,18 +17107,18 @@
    "c23": "The package weighs 15 kilos.",
    "c24": "I'll see you on the twelfth",
    "n01": "You can reach me at john@example.com.",
-   "n02": "Send it to sarah.lee@company.io please.",
+   "n02": "Send it to sarah.lee@example.org please.",
    "n03": "The site is example.com/pricing.",
    "n04": "The total is $1,200.",
    "n05": "The meeting is on March third at two thirty p m.",
    "n06": "my number is 50123",
    "n07": "About 25% of users opted in.",
-   "n08": "Write to support@acme.co.uk.",
+   "n08": "Write to support@help.example.com.",
    "n09": "The event runs from nine a m to five p m.",
    "n10": "The file is two point five gigabytes.",
    "n11": "meet me at 4:30",
    "n12": "Revenue was three point two million dollars.",
-   "n13": "My email is mike_jones@mail.com.",
+   "n13": "My email is mike_jones@example.com.",
    "n14": "Version two point one is out.",
    "m01": "Hi Sarah,\n\nCan you send the numbers by Friday?\n\nThanks,\nJohn",
    "m02": "Hello Team,\n\nThe release is delayed until Monday.\n\nBest regards,\nPriya",
@@ -17225,7 +17225,7 @@
    "k75": "edit @src/server.ts to add a health route",
    "k76": "check package.json for the test script",
    "k77": "compare index.html with docs/old/index.html and list the differences",
-   "k78": "open ~/projects/useful-voice/Makefile and C:\\Users\\Wasim\\notes.txt",
+   "k78": "open ~/projects/useful-voice/Makefile and C:\\Users\\Alex\\notes.txt",
    "k79": "the config lives in .github/workflows/ci.yml, not in the root",
    "k80": "update docs/setup.md and the CHANGELOG.md",
    "k81": "Dr. Smith will see you at 9am on Monday. Please bring your ID.",
@@ -17297,18 +17297,18 @@
    "c23": "The package weighs 15 kilos.",
    "c24": "I'll see you on the twelfth.",
    "n01": "You can reach me at john@example.com.",
-   "n02": "Send it to sarah.lee@company.io please.",
+   "n02": "Send it to sarah.lee@example.org please.",
    "n03": "The site is example.com/pricing.",
    "n04": "The total is $1,200.",
    "n05": "The meeting is on March 3rd at 2:30pm.",
    "n06": "My number is 50123.",
    "n07": "About 25% of users opted in.",
-   "n08": "Write to support@acme.co.uk.",
+   "n08": "Write to support@help.example.com.",
    "n09": "The event runs from 9am to 5pm.",
    "n10": "The file is 2.5 gigabytes.",
    "n11": "Meet me at 4:30.",
    "n12": "Revenue was $3.2 million.",
-   "n13": "My email is mike_jones@mail.com.",
+   "n13": "My email is mike_jones@example.com.",
    "n14": "Version 2.1 is out.",
    "m01": "Hi Sarah, can you send the numbers by Friday? Thanks, John.",
    "m02": "Hello team, the release is delayed until Monday. Best regards, Priya.",
@@ -17415,7 +17415,7 @@
    "k75": "Edit @src/server.ts to add a health route.",
    "k76": "Check package.json for the test script.",
    "k77": "Compare Index.html with docs/old/index.html and list the differences.",
-   "k78": "Open ~/projects/useful-voice/Makefile and C:\\Users\\Wasim\\notes.txt.",
+   "k78": "Open ~/projects/useful-voice/Makefile and C:\\Users\\Alex\\notes.txt.",
    "k79": "The config lives in .github/workflows/ci.yml, not in the root.",
    "k80": "Update docs/setup.md and the CHANGELOG.md.",
    "k81": "Dr. Smith will see you at 9am on Monday. Please bring your ID.",
@@ -17487,18 +17487,18 @@
    "c23": "The package weighs 15 kilos.",
    "c24": "I'll see you on the twelfth.",
    "n01": "You can reach me at john@example.com.",
-   "n02": "Send it to sarah.lee@company.io please.",
+   "n02": "Send it to sarah.lee@example.org please.",
    "n03": "The site is example.com/pricing.",
    "n04": "The total is $1,200.",
    "n05": "The meeting is on March third at two thirty p m.",
    "n06": "My number is 50123.",
    "n07": "About 25% of users opted in.",
-   "n08": "Write to support@acme.co.uk.",
+   "n08": "Write to support@help.example.com.",
    "n09": "The event runs from nine a m to five p m.",
    "n10": "The file is two point five gigabytes.",
    "n11": "Meet me at 4:30.",
    "n12": "Revenue was three point two million dollars.",
-   "n13": "My email is mike_jones@mail.com.",
+   "n13": "My email is mike_jones@example.com.",
    "n14": "Version two point one is out.",
    "m01": "Hi Sarah, can you send the numbers by Friday? Thanks, John.",
    "m02": "Hello team, the release is delayed until Monday. Best regards, Priya.",
@@ -17605,7 +17605,7 @@
    "k75": "Edit @src/server.ts to add a health route.",
    "k76": "Check package.json for the test script.",
    "k77": "Compare Index.html with docs/old/index.html and list the differences.",
-   "k78": "Open ~/projects/useful-voice/Makefile and C:\\Users\\Wasim\\notes.txt.",
+   "k78": "Open ~/projects/useful-voice/Makefile and C:\\Users\\Alex\\notes.txt.",
    "k79": "The config lives in .github/workflows/ci.yml, not in the root.",
    "k80": "Update docs/setup.md and the CHANGELOG.md.",
    "k81": "Dr. Smith will see you at 9am on Monday. Please bring your ID.",
@@ -17677,18 +17677,18 @@
    "c23": "The package weighs 15 kilos.",
    "c24": "I'll see you on the twelfth",
    "n01": "You can reach me at john@example.com.",
-   "n02": "Send it to sarah.lee@company.io please.",
+   "n02": "Send it to sarah.lee@example.org please.",
    "n03": "The site is example.com/pricing.",
    "n04": "The total is $1,200.",
    "n05": "The meeting is on March 3rd at 2:30pm.",
    "n06": "my number is 5550123",
    "n07": "About 25% of users opted in.",
-   "n08": "Write to support@acme.co.uk.",
+   "n08": "Write to support@help.example.com.",
    "n09": "The event runs from 9am to 5pm.",
    "n10": "The file is 2.5 gigabytes.",
    "n11": "meet me at 4:30",
    "n12": "Revenue was $3.2 million.",
-   "n13": "My email is mike_jones@mail.com.",
+   "n13": "My email is mike_jones@example.com.",
    "n14": "Version 2.1 is out.",
    "m01": "Hi Sarah,\n\nCan you send the numbers by Friday?\n\nThanks,\nJohn",
    "m02": "Hello Team,\n\nThe release is delayed until Monday.\n\nBest regards,\nPriya",
@@ -17795,7 +17795,7 @@
    "k75": "edit @src/server.ts to add a health route",
    "k76": "check package.json for the test script",
    "k77": "compare index.html with docs/old/index.html and list the differences",
-   "k78": "open ~/projects/useful-voice/Makefile and C:\\Users\\Wasim\\notes.txt",
+   "k78": "open ~/projects/useful-voice/Makefile and C:\\Users\\Alex\\notes.txt",
    "k79": "the config lives in .github/workflows/ci.yml, not in the root",
    "k80": "update docs/setup.md and the CHANGELOG.md",
    "k81": "Dr. Smith will see you at 9am on Monday. Please bring your ID.",
@@ -17867,18 +17867,18 @@
    "c23": "The package weighs 15 kilos.",
    "c24": "I'll see you on the twelfth",
    "n01": "You can reach me at john@example.com.",
-   "n02": "Send it to sarah.lee@company.io please.",
+   "n02": "Send it to sarah.lee@example.org please.",
    "n03": "The site is example.com/pricing.",
    "n04": "The total is $1,200.",
    "n05": "The meeting is on March third at two thirty p m.",
    "n06": "my number is 5550123",
    "n07": "About 25% of users opted in.",
-   "n08": "Write to support@acme.co.uk.",
+   "n08": "Write to support@help.example.com.",
    "n09": "The event runs from nine a m to five p m.",
    "n10": "The file is two point five gigabytes.",
    "n11": "meet me at 4:30",
    "n12": "Revenue was three point two million dollars.",
-   "n13": "My email is mike_jones@mail.com.",
+   "n13": "My email is mike_jones@example.com.",
    "n14": "Version two point one is out.",
    "m01": "Hi Sarah,\n\nCan you send the numbers by Friday?\n\nThanks,\nJohn",
    "m02": "Hello Team,\n\nThe release is delayed until Monday.\n\nBest regards,\nPriya",
@@ -17985,7 +17985,7 @@
    "k75": "edit @src/server.ts to add a health route",
    "k76": "check package.json for the test script",
    "k77": "compare index.html with docs/old/index.html and list the differences",
-   "k78": "open ~/projects/useful-voice/Makefile and C:\\Users\\Wasim\\notes.txt",
+   "k78": "open ~/projects/useful-voice/Makefile and C:\\Users\\Alex\\notes.txt",
    "k79": "the config lives in .github/workflows/ci.yml, not in the root",
    "k80": "update docs/setup.md and the CHANGELOG.md",
    "k81": "Dr. Smith will see you at 9am on Monday. Please bring your ID.",
@@ -18057,18 +18057,18 @@
    "c23": "The package weighs fifteen kilos.",
    "c24": "I'll see you on the twelfth.",
    "n01": "You can reach me at john@example.com.",
-   "n02": "Send it to sarah.lee@company.io please.",
+   "n02": "Send it to sarah.lee@example.org please.",
    "n03": "The site is example.com/pricing.",
    "n04": "The total is twelve hundred dollars.",
    "n05": "The meeting is on March third at two thirty p m.",
    "n06": "My number is one two three.",
    "n07": "About twenty five percent of users opted in.",
-   "n08": "Write to support@acme.co.uk.",
+   "n08": "Write to support@help.example.com.",
    "n09": "The event runs from nine a m to five p m.",
    "n10": "The file is two point five gigabytes.",
    "n11": "Meet me at four thirty.",
    "n12": "Revenue was three million dollars.",
-   "n13": "My email is mike.jones@mail.com.",
+   "n13": "My email is mike.jones@example.com.",
    "n14": "Version two point one is out.",
    "m01": "Hi Sarah,\n\nCan you send the numbers by Friday?\n\nThanks,\nJohn",
    "m02": "Hello team,\n\nThe release is delayed until Monday.\n\nBest regards,\nPriya",
@@ -18247,18 +18247,18 @@
    "c23": "The package weighs fifteen kilos.",
    "c24": "I'll see you on the twelfth.",
    "n01": "You can reach me at john@example.com.",
-   "n02": "Send it to sarah.lee@company.io please.",
+   "n02": "Send it to sarah.lee@example.org please.",
    "n03": "The site is example.com/pricing.",
    "n04": "The total is twelve hundred dollars.",
    "n05": "The meeting is on March third at two thirty p m.",
    "n06": "My number is one two three.",
    "n07": "About twenty five percent of users opted in.",
-   "n08": "Write to support@acme.co.uk.",
+   "n08": "Write to support@help.example.com.",
    "n09": "The event runs from nine a m to five p m.",
    "n10": "The file is two point five gigabytes.",
    "n11": "Meet me at four thirty.",
    "n12": "Revenue was three point two million dollars.",
-   "n13": "My email is mike.jones@mail.com.",
+   "n13": "My email is mike.jones@example.com.",
    "n14": "Version two point one is out.",
    "m01": "Hi Sarah,\n\nCan you send the numbers by Friday?\n\nThanks,\nJohn",
    "m02": "Hello team,\n\nThe release is delayed until Monday.\n\nBest regards,\nPriya",
@@ -18437,18 +18437,18 @@
    "c23": "The package weighs fifteen kilos.",
    "c24": "I'll see you on the twelfth.",
    "n01": "You can reach me at john@example.com.",
-   "n02": "Send it to sarah.lee@company.io please.",
+   "n02": "Send it to sarah.lee@example.org please.",
    "n03": "The site is example.com/pricing.",
    "n04": "The total is twelve hundred dollars.",
    "n05": "The meeting is on March third at two thirty p m.",
    "n06": "My number is five five five, oh one two three.",
    "n07": "About twenty five percent of users opted in.",
-   "n08": "Write to support@acme.co.uk.",
+   "n08": "Write to support@help.example.com.",
    "n09": "The event runs from nine a m to five p m.",
    "n10": "The file is two point five gigabytes.",
    "n11": "Meet me at four thirty.",
    "n12": "Revenue was three million dollars.",
-   "n13": "My email is mike.jones@mail.com.",
+   "n13": "My email is mike.jones@example.com.",
    "n14": "Version two point one is out.",
    "m01": "Hi Sarah,\n\nCan you send the numbers by Friday?\n\nThanks,\nJohn",
    "m02": "Hello team,\n\nThe release is delayed until Monday.\n\nBest regards,\nPriya",
@@ -18627,18 +18627,18 @@
    "c23": "The package weighs fifteen kilos.",
    "c24": "I'll see you on the twelfth.",
    "n01": "You can reach me at john@example.com.",
-   "n02": "Send it to sarah.lee@company.io please.",
+   "n02": "Send it to sarah.lee@example.org please.",
    "n03": "The site is example.com/pricing.",
    "n04": "The total is twelve hundred dollars.",
    "n05": "The meeting is on March third at two thirty p m.",
    "n06": "My number is five five five, oh one two three.",
    "n07": "About twenty five percent of users opted in.",
-   "n08": "Write to support@acme.co.uk.",
+   "n08": "Write to support@help.example.com.",
    "n09": "The event runs from nine a m to five p m.",
    "n10": "The file is two point five gigabytes.",
    "n11": "Meet me at four thirty.",
    "n12": "Revenue was three point two million dollars.",
-   "n13": "My email is mike.jones@mail.com.",
+   "n13": "My email is mike.jones@example.com.",
    "n14": "Version two point one is out.",
    "m01": "Hi Sarah,\n\nCan you send the numbers by Friday?\n\nThanks,\nJohn",
    "m02": "Hello team,\n\nThe release is delayed until Monday.\n\nBest regards,\nPriya",

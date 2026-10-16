@@ -30,7 +30,7 @@
    "c04": "The budget is four thousand, sorry, forty thousand dollars.",
    "c14": "Can you meet Friday? Sorry, Saturday?",
    "c23": "The package weighs five kilos, sorry, fifteen kilos.",
-   "n08": "Write to support at acme dot co dot uk.",
+   "n08": "Write to support at help dot example dot com.",
    "m04": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
    "g07": "Add a --verbose flag to the CLI, and document it in the README.",
    "p01": "Look at app dot ts and the readme dot md.",
@@ -152,7 +152,7 @@
      "model_input": "The package weighs five kilos, sorry, fifteen kilos."
     },
     {
-     "output": "Write to support@acme.co.uk.",
+     "output": "Write to support@help.example.com.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 2048.9,
@@ -164,7 +164,7 @@
       "predicted_per_second": 5.125570789258171
      },
      "id": "n08",
-     "model_input": "Write to support at acme dot co dot uk."
+     "model_input": "Write to support at help dot example dot com."
     },
     {
      "output": "Hi Tom,\n\nThanks for the quick reply. I'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave",
@@ -454,7 +454,7 @@
      "model_input": "The package weighs five kilos, sorry, fifteen kilos."
     },
     {
-     "output": "Write to support@acme.co.uk.",
+     "output": "Write to support@help.example.com.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 2711.6,
@@ -466,7 +466,7 @@
       "predicted_per_second": 4.18637168561465
      },
      "id": "n08",
-     "model_input": "Write to support at acme dot co dot uk."
+     "model_input": "Write to support at help dot example dot com."
     },
     {
      "output": "Hi Tom,\n\nThanks for the quick reply.\n\nI'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave",
@@ -1373,7 +1373,7 @@
    "c04": "The budget is four thousand, sorry, forty thousand dollars.",
    "c14": "Can you meet Friday? Sorry, Saturday?",
    "c23": "The package weighs five kilos, sorry, fifteen kilos.",
-   "n08": "Write to support at acme dot co dot uk.",
+   "n08": "Write to support at help dot example dot com.",
    "m04": "Hi Tom, thanks for the quick reply. Um, I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
    "g07": "Add a --verbose flag to the CLI, hmm, and document it in the README.",
    "p01": "Look at app dot ts and the readme dot md.",
@@ -1395,7 +1395,7 @@
    "c04": "The budget is four thousand, sorry, forty thousand dollars.",
    "c14": "Can you meet Friday? Sorry, Saturday?",
    "c23": "The package weighs five kilos, sorry, fifteen kilos.",
-   "n08": "Write to support at acme dot co dot uk.",
+   "n08": "Write to support at help dot example dot com.",
    "m04": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
    "g07": "Add a --verbose flag to the CLI, and document it in the README.",
    "p01": "Look at app dot ts and the readme dot md.",
@@ -1417,7 +1417,7 @@
    "c04": "The budget is $40,000.",
    "c14": "Can you meet Saturday?",
    "c23": "The package weighs 15 kilos.",
-   "n08": "Write to support@acme.co.uk.",
+   "n08": "Write to support@help.example.com.",
    "m04": "Hi Tom,\n\nThanks for the quick reply. I'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave",
    "g07": "Add a --verbose flag to the CLI, and document it in the README.",
    "p01": "Look at app.ts and the readme.md.",
@@ -1439,7 +1439,7 @@
    "c04": "The budget is $40,000.",
    "c14": "Can you meet Saturday?",
    "c23": "The package weighs 15 kilos.",
-   "n08": "Write to support@acme.co.uk.",
+   "n08": "Write to support@help.example.com.",
    "m04": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
    "g07": "Add a --verbose flag to the CLI, and document it in the README.",
    "p01": "Look at app.ts and the readme.md.",
@@ -1461,7 +1461,7 @@
    "c04": "The budget is forty thousand dollars.",
    "c14": "Can you meet Saturday?",
    "c23": "The package weighs fifteen kilos.",
-   "n08": "Write to support@acme.co.uk.",
+   "n08": "Write to support@help.example.com.",
    "m04": "Hi Tom,\n\nThanks for the quick reply.\n\nI'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave",
    "g07": "Add a --verbose flag to the CLI, and document it in the README.",
    "p01": "Look at app.ts and the readme.md.",
@@ -1483,7 +1483,7 @@
    "c04": "The budget is forty thousand dollars.",
    "c14": "Can you meet Saturday?",
    "c23": "The package weighs fifteen kilos.",
-   "n08": "Write to support@acme.co.uk.",
+   "n08": "Write to support@help.example.com.",
    "m04": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
    "g07": "Add a --verbose flag to the CLI, and document it in the README.",
    "p01": "Look at app.ts and the readme.md.",

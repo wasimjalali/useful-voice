@@ -82,9 +82,9 @@
    "c17": "Call me at five five five, oh wait, five five six.",
    "c20": "So I need to send the report by Friday, no wait, make that Thursday.",
    "c23": "The package weighs five kilos, sorry, fifteen kilos.",
-   "n02": "Send it to sarah dot lee at company dot io please.",
+   "n02": "Send it to sarah dot lee at example dot org please.",
    "n05": "The meeting is on March third at two thirty p m.",
-   "n08": "Write to support at acme dot co dot uk.",
+   "n08": "Write to support at help dot example dot com.",
    "n11": "Meet me at four thirty.",
    "m01": "Hi Sarah can you send the numbers by Friday? Thanks, John.",
    "m04": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
@@ -412,7 +412,7 @@
      "model_input": "The package weighs five kilos, sorry, fifteen kilos."
     },
     {
-     "output": "Send it to sarah.lee@company.io please.",
+     "output": "Send it to sarah.lee@example.org please.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 483.4,
@@ -424,7 +424,7 @@
       "predicted_per_second": 36.97472777356677
      },
      "id": "n02",
-     "model_input": "Send it to sarah dot lee at company dot io please."
+     "model_input": "Send it to sarah dot lee at example dot org please."
     },
     {
      "output": "The meeting is on March 3rd at 2:30pm.",
@@ -442,7 +442,7 @@
      "model_input": "The meeting is on March third at two thirty p m."
     },
     {
-     "output": "Write to support@acme.co.uk.",
+     "output": "Write to support@help.example.com.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 345.1,
@@ -454,7 +454,7 @@
       "predicted_per_second": 44.610771022825844
      },
      "id": "n08",
-     "model_input": "Write to support at acme dot co dot uk."
+     "model_input": "Write to support at help dot example dot com."
     },
     {
      "output": "Meet me at 4:30.",
@@ -1314,7 +1314,7 @@
      "model_input": "The package weighs five kilos, sorry, fifteen kilos."
     },
     {
-     "output": "Send it to sarah.lee@company.io please.",
+     "output": "Send it to sarah.lee@example.org please.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 444.3,
@@ -1326,7 +1326,7 @@
       "predicted_per_second": 43.1242048974722
      },
      "id": "n02",
-     "model_input": "Send it to sarah dot lee at company dot io please."
+     "model_input": "Send it to sarah dot lee at example dot org please."
     },
     {
      "output": "The meeting is on March third at two thirty p m.",
@@ -1344,7 +1344,7 @@
      "model_input": "The meeting is on March third at two thirty p m."
     },
     {
-     "output": "Write to support@acme.co.uk.",
+     "output": "Write to support@help.example.com.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 375.7,
@@ -1356,7 +1356,7 @@
       "predicted_per_second": 44.2996229609868
      },
      "id": "n08",
-     "model_input": "Write to support at acme dot co dot uk."
+     "model_input": "Write to support at help dot example dot com."
     },
     {
      "output": "Meet me at four thirty.",
@@ -2758,9 +2758,9 @@
    "c17": "Call me at five five five, oh wait, five five six.",
    "c20": "Um so I need to send the the report by uh Friday, no wait, make that Thursday.",
    "c23": "The package weighs five kilos, sorry, fifteen kilos.",
-   "n02": "Send it to sarah dot lee at company dot io please.",
+   "n02": "Send it to sarah dot lee at example dot org please.",
    "n05": "The meeting is on March third at two thirty p m.",
-   "n08": "Write to support at acme dot co dot uk.",
+   "n08": "Write to support at help dot example dot com.",
    "n11": "Meet me at four thirty.",
    "m01": "Hi Sarah, um, can you send the numbers by Friday? Thanks, John.",
    "m04": "Hi Tom, thanks for the quick reply. Um, I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
@@ -2820,9 +2820,9 @@
    "c17": "Call me at five five five, oh wait, five five six.",
    "c20": "So I need to send the report by Friday, no wait, make that Thursday.",
    "c23": "The package weighs five kilos, sorry, fifteen kilos.",
-   "n02": "Send it to sarah dot lee at company dot io please.",
+   "n02": "Send it to sarah dot lee at example dot org please.",
    "n05": "The meeting is on March third at two thirty p m.",
-   "n08": "Write to support at acme dot co dot uk.",
+   "n08": "Write to support at help dot example dot com.",
    "n11": "Meet me at four thirty.",
    "m01": "Hi Sarah can you send the numbers by Friday? Thanks, John.",
    "m04": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
@@ -2882,9 +2882,9 @@
    "c17": "Call me at 556.",
    "c20": "So I need to send the report by Thursday.",
    "c23": "The package weighs 15 kilos.",
-   "n02": "Send it to sarah.lee@company.io please.",
+   "n02": "Send it to sarah.lee@example.org please.",
    "n05": "The meeting is on March 3rd at 2:30pm.",
-   "n08": "Write to support@acme.co.uk.",
+   "n08": "Write to support@help.example.com.",
    "n11": "Meet me at 4:30.",
    "m01": "Hi Sarah,\n\nCan you send the numbers by Friday?\n\nThanks,\nJohn",
    "m04": "Hi Tom,\n\nThanks for the quick reply. I'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave",
@@ -2944,9 +2944,9 @@
    "c17": "Call me at 556.",
    "c20": "So I need to send the report by Thursday.",
    "c23": "The package weighs 15 kilos.",
-   "n02": "Send it to sarah.lee@company.io please.",
+   "n02": "Send it to sarah.lee@example.org please.",
    "n05": "The meeting is on March 3rd at 2:30pm.",
-   "n08": "Write to support@acme.co.uk.",
+   "n08": "Write to support@help.example.com.",
    "n11": "Meet me at 4:30.",
    "m01": "Hi Sarah can you send the numbers by Friday? Thanks, John.",
    "m04": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",
@@ -3006,9 +3006,9 @@
    "c17": "Call me at five five six.",
    "c20": "So I need to send the report by Thursday.",
    "c23": "The package weighs fifteen kilos.",
-   "n02": "Send it to sarah.lee@company.io please.",
+   "n02": "Send it to sarah.lee@example.org please.",
    "n05": "The meeting is on March third at two thirty p m.",
-   "n08": "Write to support@acme.co.uk.",
+   "n08": "Write to support@help.example.com.",
    "n11": "Meet me at four thirty.",
    "m01": "Hi Sarah,\n\nCan you send the numbers by Friday?\n\nThanks,\nJohn",
    "m04": "Hi Tom,\n\nThanks for the quick reply.\n\nI'll review the contract tonight and get back to you tomorrow.\n\nCheers,\nDave",
@@ -3068,9 +3068,9 @@
    "c17": "Call me at five five six.",
    "c20": "So I need to send the report by Thursday.",
    "c23": "The package weighs fifteen kilos.",
-   "n02": "Send it to sarah.lee@company.io please.",
+   "n02": "Send it to sarah.lee@example.org please.",
    "n05": "The meeting is on March third at two thirty p m.",
-   "n08": "Write to support@acme.co.uk.",
+   "n08": "Write to support@help.example.com.",
    "n11": "Meet me at four thirty.",
    "m01": "Hi Sarah can you send the numbers by Friday? Thanks, John.",
    "m04": "Hi Tom, thanks for the quick reply. I'll review the contract tonight and get back to you tomorrow. Cheers, Dave.",

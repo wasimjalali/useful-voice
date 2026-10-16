@@ -1,0 +1,4 @@
+{"side":"production","terms":1000,"scope":"auto","chars":15149,"first_ms":536.07,"median_ms":395.12,"min_ms":290.33,"rules_median_ms":105.48,"runs":5,"fired":117,"hits":78,"snippets":0,"fingerprint":"cb1c7f628b92f096"}
+{"side":"production","terms":1000,"scope":"de","chars":15149,"first_ms":205.19,"median_ms":205.19,"min_ms":179.64,"rules_median_ms":44.13,"runs":5,"fired":90,"hits":49,"snippets":0,"fingerprint":"df8d4302a4d045a2"}
+{"side":"production","terms":5000,"scope":"auto","chars":15149,"first_ms":1556.52,"median_ms":1556.52,"min_ms":1393.44,"rules_median_ms":413.29,"runs":5,"fired":361,"hits":367,"snippets":0,"fingerprint":"45ce512466c0c454"}
+{"side":"production","terms":5000,"scope":"de","chars":15149,"first_ms":1021.37,"median_ms":833.83,"min_ms":767.73,"rules_median_ms":256.98,"runs":5,"fired":255,"hits":241,"snippets":0,"fingerprint":"e030a59bc70f19f4"}

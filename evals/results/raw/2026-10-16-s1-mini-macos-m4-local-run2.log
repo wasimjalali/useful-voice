@@ -1,0 +1,87 @@
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "S1-mini next to whisper.cpp (needs the real weights; CI runs it alone)" started.
+◇ Test measure() started.
+MEASURE baseline (resident: 40.5625, footprint: 8.344413757324219)
+MEASURE cpuOnly load 581.322292 ms threads 4 cores 10 mem (resident: 866.4375, footprint: 507.7670669555664)
+MEASURE cpuOnly run 2612.412833 ms prompt 97 out 10 ctx 512 prefill 2268.42125 ms (context 6.7355 ms, prompt decode 2260.7016670000003 ms, native prompt 2259.9 ms, native generate 340.781 ms) -> "So I need to send the report by Thursday."
+MEASURE cpuOnly run 2668.385792 ms prompt 92 out 15 ctx 512 prefill 2144.61 ms (context 4.863625 ms, prompt decode 2139.3155410000004 ms, native prompt 2139.299 ms, native generate 521.488 ms) -> "Send it to john.smith@example.com by Friday the 3rd."
+MEASURE cpuOnly run 2759.616417 ms prompt 95 out 16 ctx 512 prefill 2209.569042 ms (context 5.018209 ms, prompt decode 2204.1077910000004 ms, native prompt 2204.097 ms, native generate 547.771 ms) -> "The meeting is at 2:30pm on March 16."
+MEASURE cpuOnly run 2996.232625 ms prompt 99 out 20 ctx 512 prefill 2306.2095409999997 ms (context 4.927 ms, prompt decode 2300.861958 ms, native prompt 2300.85 ms, native generate 687.41 ms) -> "So the budget is $45,000, and we need to confirm with Sarah."
+MEASURE cpuOnly run 2879.107042 ms prompt 97 out 18 ctx 512 prefill 2259.8835 ms (context 5.165833 ms, prompt decode 2254.271334 ms, native prompt 2254.26 ms, native generate 616.527 ms) -> "Can you open the file source/app.ts and rename the function get user to fetch user?"
+MEASURE cpuOnly median 2759.616417 ms max 2996.232625 ms mem after (resident: 871.921875, footprint: 472.1576919555664)
+whisper_init_from_file_with_params_no_state: loading model from '<scratch>/uv-models/ggml-tiny.en.bin'
+whisper_init_with_params_no_state: use gpu    = 0
+whisper_init_with_params_no_state: flash attn = 1
+whisper_init_with_params_no_state: gpu_device = 0
+whisper_init_with_params_no_state: dtw        = 0
+ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+ggml_metal_library_init: using embedded metal library
+ggml_metal_library_init: loaded in 0.025 sec
+ggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)
+ggml_metal_device_init: GPU name:   MTL0 (Apple M4)
+ggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)
+ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+ggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)
+ggml_metal_device_init: simdgroup reduction   = true
+ggml_metal_device_init: simdgroup matrix mul. = true
+ggml_metal_device_init: has unified memory    = true
+ggml_metal_device_init: has bfloat            = true
+ggml_metal_device_init: has tensor            = false
+ggml_metal_device_init: use residency sets    = true
+ggml_metal_device_init: use shared buffers    = true
+ggml_metal_device_init: recommendedMaxWorkingSetSize  = 12713.12 MB
+whisper_init_with_params_no_state: devices    = 3
+whisper_init_with_params_no_state: backends   = 3
+whisper_model_load: loading model
+whisper_model_load: n_vocab       = 51864
+whisper_model_load: n_audio_ctx   = 1500
+whisper_model_load: n_audio_state = 384
+whisper_model_load: n_audio_head  = 6
+whisper_model_load: n_audio_layer = 4
+whisper_model_load: n_text_ctx    = 448
+whisper_model_load: n_text_state  = 384
+whisper_model_load: n_text_head   = 6
+whisper_model_load: n_text_layer  = 4
+whisper_model_load: n_mels        = 80
+whisper_model_load: ftype         = 1
+whisper_model_load: qntvr         = 0
+whisper_model_load: type          = 1 (tiny)
+whisper_model_load: adding 1607 extra tokens
+whisper_model_load: n_langs       = 99
+whisper_model_load:          CPU total size =    77.11 MB
+whisper_model_load: model size    =   77.11 MB
+whisper_backend_init_gpu: no GPU found
+whisper_backend_init: using BLAS backend
+whisper_init_state: kv self size  =    3.15 MB
+whisper_init_state: kv cross size =    9.44 MB
+whisper_init_state: kv pad  size  =    2.36 MB
+whisper_init_state: loading Core ML model from '<scratch>/uv-models/ggml-tiny.en-encoder.mlmodelc'
+whisper_init_state: first run on a device may take a while ...
+whisper_init_state: failed to load Core ML model from '<scratch>/uv-models/ggml-tiny.en-encoder.mlmodelc'
+whisper_init_state: compute buffer (conv)   =   13.21 MB
+whisper_init_state: compute buffer (encode) =   17.72 MB
+whisper_init_state: compute buffer (cross)  =    3.89 MB
+whisper_init_state: compute buffer (decode) =   95.91 MB
+MEASURE cpuOnly with whisper tiny loadable=true in 74.2725 ms mem (resident: 908.203125, footprint: 536.1733856201172)
+MEASURE after cpuOnly unload (resident: 195.234375, footprint: 118.92285919189453)
+MEASURE probe cpuOnly context 4.9470410000000005 ms, prompt 97 tokens
+MEASURE probe cpuOnly prompt decode #0 status 0 2267.531958 ms
+MEASURE probe cpuOnly prompt decode #1 status 0 2260.940375 ms
+MEASURE probe cpuOnly prompt decode #2 status 0 2262.580292 ms
+MEASURE probe cpuOnly prompt decode #3 status 0 2269.4622080000004 ms
+MEASURE probe cpuOnly single-token decodes ms 35 34 35 35 35 35 34 34 37 35
+MEASURE probe metal context 15.399042 ms, prompt 97 tokens
+MEASURE probe metal prompt decode #0 status 0 4.247708 ms
+MEASURE probe metal prompt decode #1 status 0 64.256 ms
+MEASURE probe metal prompt decode #2 status 0 49.654542000000006 ms
+MEASURE probe metal prompt decode #3 status 0 48.906583000000005 ms
+MEASURE probe metal single-token decodes ms 49 7 7 6 6 7 7 6 7 6
+MEASURE metal load 119.393042 ms mem (resident: 669.46875, footprint: 141.03257751464844)
+MEASURE metal run 134.3905 ms (context 16.183875 ms, prompt decode 1.2274580000000002 ms, native prompt 50.342 ms, native generate 66.105 ms, out 10)
+MEASURE metal run 139.667333 ms (context 20.765875 ms, prompt decode 1.373958 ms, native prompt 50.376 ms, native generate 66.70100000000001 ms, out 10)
+MEASURE metal run 134.083625 ms (context 17.625249999999998 ms, prompt decode 1.169208 ms, native prompt 49.391 ms, native generate 65.315 ms, out 10)
+✔ Test measure() passed after 25.312 seconds.
+✔ Suite "S1-mini next to whisper.cpp (needs the real weights; CI runs it alone)" passed after 25.312 seconds.
+✔ Test run with 1 test in 1 suite passed after 25.312 seconds.

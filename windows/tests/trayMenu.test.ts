@@ -35,6 +35,7 @@ function handlers() {
     onToggleDictation: spy('toggle'),
     onOpenWindow: (page) => void calls.push(`open:${page}`),
     onQuit: spy('quit'),
+    onRestartToUpdate: spy('restartToUpdate'),
     onRetry: spy('retry'),
     onCopyLast: spy('copyLast'),
     onCancel: spy('cancel'),

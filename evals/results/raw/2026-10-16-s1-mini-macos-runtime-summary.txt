@@ -1,0 +1,54 @@
+Computed by 2026-10-16-s1-mini-macos-runtime-summarize.py from the raw log.
+
+after unload footprint (MB): min 49.9 (run 38899709145, S1-mini and whisper.cpp in one process (real weights)), max 58.5 (run 38902782660, S1-mini latency in a fresh process), n=9
+after unload resident (MB): min 164.9 (run 38905410608, S1-mini latency in a fresh process), max 262.8 (run 38902782660, S1-mini and whisper.cpp in one process (real weights)), n=9
+baseline footprint (MB): min 7.5 (run 38902782660, S1-mini latency in a fresh process), max 53.2 (run 38905410608, S1-mini and whisper.cpp in one process (real weights)), n=9
+baseline resident (MB): min 21.0 (run 38901063521, S1-mini latency, release build of the tests), max 261.2 (run 38902782660, S1-mini and whisper.cpp in one process (real weights)), n=9
+cpuOnly cleanup, median of 5 (ms): min 7494.8 (run 38905410608, S1-mini and whisper.cpp in one process (real weights)), max 11088.0 (run 38902782660, S1-mini latency in a fresh process), n=9
+cpuOnly cleanup, prompt decode (ms): min 5659.7 (run 38905410608, S1-mini and whisper.cpp in one process (real weights)), max 10758.4 (run 38902782660, S1-mini latency in a fresh process), n=45
+cpuOnly cleanup, whole call (ms): min 6843.0 (run 38905410608, S1-mini and whisper.cpp in one process (real weights)), max 13952.8 (run 38902782660, S1-mini latency in a fresh process), n=45
+cpuOnly loaded footprint (MB): min 422.8 (run 38899709145, S1-mini and whisper.cpp in one process (real weights)), max 436.6 (run 38901063521, S1-mini latency, release build of the tests), n=9
+cpuOnly loaded resident (MB): min 836.5 (run 38901063521, S1-mini latency, release build of the tests), max 966.5 (run 38902782660, S1-mini and whisper.cpp in one process (real weights)), n=9
+earlier probe by thread QoS, whole call (ms): min 7098.0 (run 38901063521, S1-mini latency in a fresh process), max 11332.5 (run 38901063521, S1-mini and whisper.cpp in one process (real weights)), n=18
+earlier probe with a ggml threadpool attached, 3 threads, whole call (ms): min 7694.9 (run 38899709145, S1-mini and whisper.cpp in one process (real weights)), max 9826.6 (run 38899709145, S1-mini latency in a fresh process), n=8
+metal cleanup, prompt decode (ms): min 6246.8 (run 38902782660, S1-mini latency in a fresh process), max 7556.4 (run 38902782660, S1-mini latency in a fresh process), n=12
+metal cleanup, whole call (ms): min 8881.9 (run 38905410608, S1-mini latency in a fresh process), max 10478.5 (run 38902782660, S1-mini latency in a fresh process), n=12
+metal loaded footprint (MB): min 425.6 (run 38902782660, S1-mini and whisper.cpp in one process (real weights)), max 433.7 (run 38902782660, S1-mini latency in a fresh process), n=4
+metal loaded resident (MB): min 891.5 (run 38902782660, S1-mini latency in a fresh process), max 968.1 (run 38902782660, S1-mini and whisper.cpp in one process (real weights)), n=4
+probe cpuOnly, prompt decode of 97 tokens (ms): min 5835.0 (run 38905410608, S1-mini and whisper.cpp in one process (real weights)), max 6158.4 (run 38905410608, S1-mini latency in a fresh process), n=8
+probe cpuOnly, single-token decode (ms): min 77.0 (run 38905410608, S1-mini and whisper.cpp in one process (real weights)), max 156.0 (run 38905410608, S1-mini and whisper.cpp in one process (real weights)), n=20
+probe metal, prompt decode of 97 tokens (ms): min 6103.6 (run 38905410608, S1-mini and whisper.cpp in one process (real weights)), max 7173.2 (run 38905410608, S1-mini and whisper.cpp in one process (real weights)), n=8
+probe metal, single-token decode (ms): min 217.0 (run 38905410608, S1-mini and whisper.cpp in one process (real weights)), max 342.0 (run 38905410608, S1-mini and whisper.cpp in one process (real weights)), n=20
+
+Load times (ms) per run and step:
+  run 38899709145 | S1-mini latency in a fresh process | cpuOnly load 24650
+  run 38899709145 | S1-mini and whisper.cpp in one process (real weights) | cpuOnly load 900
+  run 38901063521 | S1-mini latency in a fresh process | cpuOnly load 18445
+  run 38901063521 | S1-mini latency, release build of the tests | cpuOnly load 1699
+  run 38901063521 | S1-mini and whisper.cpp in one process (real weights) | cpuOnly load 886
+  run 38902782660 | S1-mini latency in a fresh process | cpuOnly load 23606
+  run 38902782660 | S1-mini latency in a fresh process | metal load 1324
+  run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | cpuOnly load 610
+  run 38902782660 | S1-mini and whisper.cpp in one process (real weights) | metal load 902
+  run 38905410608 | S1-mini latency in a fresh process | cpuOnly load 18771
+  run 38905410608 | S1-mini latency in a fresh process | metal load 906
+  run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | cpuOnly load 680
+  run 38905410608 | S1-mini and whisper.cpp in one process (real weights) | metal load 1006
+
+llama-bench (official release CLI, tokens per second; ms per token = 1000 / tg):
+  run 38899709145 | default, 3 threads | pp100 244.5
+  run 38899709145 | default, 3 threads | tg16 86.8  (11.5 ms per token)
+  run 38901063521 | default, 3 threads | pp100 299.0
+  run 38901063521 | default, 3 threads | tg16 104.0  (9.6 ms per token)
+  run 38902782660 | default, 3 threads | pp100 304.8
+  run 38902782660 | default, 3 threads | tg16 76.8  (13.0 ms per token)
+  run 38902782660 | CPU only (-dev none), 3 threads | pp100 255.7
+  run 38902782660 | CPU only (-dev none), 3 threads | tg16 78.5  (12.7 ms per token)
+  run 38902782660 | CPU only (-dev none), 1 threads | pp100 113.7
+  run 38902782660 | CPU only (-dev none), 1 threads | tg16 39.0  (25.7 ms per token)
+  run 38905410608 | default, 3 threads | pp100 398.4
+  run 38905410608 | default, 3 threads | tg16 113.4  (8.8 ms per token)
+  run 38905410608 | CPU only (-dev none), 3 threads | pp100 361.6
+  run 38905410608 | CPU only (-dev none), 3 threads | tg16 104.8  (9.5 ms per token)
+  run 38905410608 | CPU only (-dev none), 1 threads | pp100 139.4
+  run 38905410608 | CPU only (-dev none), 1 threads | tg16 58.7  (17.0 ms per token)

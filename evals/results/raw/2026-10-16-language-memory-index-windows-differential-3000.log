@@ -1,0 +1,10 @@
+ RUN  v2.1.9 /home/user/useful-voice/.claude/worktrees/perf-language-memory-index/windows
+ ✓ tests/languageMemoryIndex.test.ts (6 tests) 796138ms
+   ✓ indexed Language Memory against the old matcher > applyMemory agrees on random memory 359249ms
+   ✓ indexed Language Memory against the old matcher > RuleSet agrees on random rule sets 21223ms
+   ✓ indexed Language Memory against the old matcher > matchingTermIds agrees on random dictionaries 184025ms
+   ✓ indexed Language Memory against the old matcher > the index never rejects a phrase the regex matches 227699ms
+   ✓ indexed Language Memory against the old matcher > an incrementally updated index equals a fresh one and keeps every window 3423ms
+   ✓ indexed Language Memory against the old matcher > the skeleton covers every case folding the regex knows 517ms
+      Tests  6 passed (6)
+   Duration  796.71s (transform 147ms, setup 0ms, collect 178ms, tests 796.14s, environment 0ms, prepare 80ms)

@@ -5,6 +5,7 @@ import type {
   ReplacementRule,
 } from '../models.js';
 import { canonical, containsWordBoundaryPhrase, languageMatches } from '../dictionary/termMatcher.js';
+import { INDEX_MIN_CANDIDATES, phraseSignature, TextIndex } from './textIndex.js';
 
 /**
  * Build the effective local correction rules that run after transcription.
@@ -107,19 +108,48 @@ export function termIdFromSyntheticRule(ruleId: string): string | null {
   return parts[1] ?? null;
 }
 
-/** Dictionary terms whose phrase appears in one of the given texts. */
+/**
+ * Dictionary terms whose phrase appears in one of the given texts.
+ *
+ * A large dictionary is checked through a `TextIndex`, so a candidate only reaches its regex
+ * when the text could contain it. The texts are visited one after another through one index
+ * (they are versions of the same dictation and differ by a few words, so each hand-over is a
+ * small update), and a term already found is not checked again. The answer is the same as
+ * checking every candidate against every text.
+ */
 export function matchingTermIds(
   terms: readonly MemoryTerm[],
   texts: readonly string[],
   language: MemoryLanguage,
 ): string[] {
-  const hits: string[] = [];
-  for (const term of terms) {
-    if (!languageMatches(term.language, language)) continue;
-    const candidates = [term.phrase, ...term.aliases, ...term.pronunciations];
-    const found = candidates.some((candidate) =>
-      texts.some((text) => containsWordBoundaryPhrase(candidate, text)));
-    if (found && !hits.includes(term.id)) hits.push(term.id);
+  const usable = terms.filter((term) => languageMatches(term.language, language));
+  const candidatesOf = usable.map((term) => [term.phrase, ...term.aliases, ...term.pronunciations]);
+  const candidateCount = candidatesOf.reduce((sum, list) => sum + list.length, 0);
+  const useIndex = candidateCount >= INDEX_MIN_CANDIDATES;
+  const signaturesOf = useIndex ? candidatesOf.map((list) => list.map(phraseSignature)) : [];
+  const index = useIndex ? new TextIndex('') : null;
+
+  const found = usable.map(() => false);
+  for (const text of new Set(texts)) {
+    index?.absorb(text);
+    usable.forEach((_term, t) => {
+      if (found[t]) return;
+      const candidates = candidatesOf[t] as string[];
+      found[t] = candidates.some((candidate, c) => {
+        const signature = signaturesOf[t]?.[c];
+        if (index && signature && !index.mayContain(signature)) return false;
+        return containsWordBoundaryPhrase(candidate, text);
+      });
+    });
   }
+
+  const hits: string[] = [];
+  const seen = new Set<string>();
+  usable.forEach((term, t) => {
+    if (found[t] && !seen.has(term.id)) {
+      seen.add(term.id);
+      hits.push(term.id);
+    }
+  });
   return hits;
 }

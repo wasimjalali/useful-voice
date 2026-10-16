@@ -1,0 +1,17 @@
+◇ Test run started.
+✔ Test testDisabledEmptyAndOverlongRulesAreLeftAlone() passed after 73.963 seconds.
+✔ Test testCanonicallyEqualRewriteStillFeedsTheIndex() passed after 73.963 seconds.
+✔ Test testIncrementallyUpdatedIndexEqualsAFreshOne() passed after 73.963 seconds.
+✔ Test testFoldingThatChangesLength() passed after 73.963 seconds.
+✔ Test testRuleLaterInTheListCanMatchTextAnEarlierRuleWrote() passed after 73.963 seconds.
+✔ Test testShortPhrasesAndMetacharactersAgree() passed after 73.963 seconds.
+✔ Test testReplacementEngineMatchesLegacyOnRandomRuleSets() passed after 73.963 seconds.
+✔ Test testCascadeInsideOnePassReachesLaterRules() passed after 73.963 seconds.
+✔ Test testSecondPassStillCatchesWhatSnippetsIntroduce() passed after 73.963 seconds.
+✔ Test testIndexSkeletonCoversEveryCaseFoldingTheRegexKnows() passed after 73.962 seconds.
+✔ Test testDuplicateTermIDsAreReportedOnce() passed after 73.963 seconds.
+✔ Test testIndexNeverRejectsAPhraseTheRegexMatches() passed after 261.126 seconds.
+✔ Test testApplyDeterministicMatchesLegacyOnRandomMemory() passed after 314.108 seconds.
+✔ Test testMatchingTermIDsMatchesLegacyOnRandomDictionaries() passed after 620.735 seconds.
+✔ Suite LanguageMemoryIndexTests passed after 620.742 seconds.
+✔ Test run with 14 tests passed after 620.743 seconds.

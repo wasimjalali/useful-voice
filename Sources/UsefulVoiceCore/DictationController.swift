@@ -391,10 +391,12 @@ public final class DictationController {
     private func cleanedTranscript(_ text: String, language: String, press: PressCapture) async -> String {
         let cleaned: String
         if let cleanupModel {
+            // Own app, or "Format for the app" off: no category and no stored style reach the model.
+            let appContext = !press.inOwnApp && press.settings.enabled
             let result = await CleanupPipeline.run(
                 raw: text, language: language,
-                category: press.inOwnApp ? nil : press.category.rawValue,
-                style: press.inOwnApp ? nil : press.settings.requestedStyle(for: press.category),
+                category: appContext ? press.category.rawValue : nil,
+                style: appContext ? press.settings.requestedStyle(for: press.category) : nil,
                 gates: cleanupGates(), model: cleanupModel)
             cleaned = result.text
         } else {

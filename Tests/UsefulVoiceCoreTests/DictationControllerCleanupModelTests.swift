@@ -75,7 +75,8 @@ import Foundation
 
     private func makeController(
         text: String, language: String? = "en", model: LocalCleanupModel?,
-        gates: CleanupPipeline.Gates? = nil, autoFormat: Bool = true, pin: LanguagePin = .auto
+        gates: CleanupPipeline.Gates? = nil, autoFormat: Bool = true, pin: LanguagePin = .auto,
+        appFormatting: AppFormattingSettings = AppFormattingSettings(enabled: false), target: DeliveryTarget? = nil
     ) -> DictationController {
         let provider = FakeProvider(name: "fake", result: .success(
             Transcript(text: text, detectedLanguage: language, durationSeconds: 1)))
@@ -89,6 +90,8 @@ import Foundation
                 done(.success(mode == .paste ? .pasted : .copied))
             },
             record: { [weak self] in self?.records.append($0) },
+            focusTarget: target.map { target in { target } },
+            appFormatting: { appFormatting },
             autoFormat: { autoFormat },
             cleanupModel: model,
             cleanupGates: { gates })
@@ -284,6 +287,33 @@ import Foundation
         await controller.toggleAndWait()
         #expect(delivered == ["also ähm das ist gut"])
         #expect(generator.prompts.isEmpty)
+    }
+
+    @Test func formatForTheAppOffSendsNoCategoryAndNoStoredStyleToTheModel() async {
+        let messages = DeliveryTarget(appID: "com.apple.MobileSMS", appName: "Messages", processID: 220,
+                                      windowID: "win#2", elementID: "AXTextArea#7")
+        var settings = AppFormattingSettings()
+        settings.setStyle(.veryCasual, for: .personalChat)
+        generator.answer = "I need to send the report by Thursday."
+
+        // On: the model is told the category and the stored style.
+        let onModel = makeModel()
+        let enabled = makeController(text: spoken, model: onModel, appFormatting: settings, target: messages)
+        enabled.toggle()
+        #expect(await waitUntil { await onModel.isLoaded })
+        await enabled.toggleAndWait()
+        #expect(generator.prompts.count == 1)
+        #expect(generator.prompts[0].contains("[Styling: casual] [Structure: prose] [Context: general]\n\(rulesText)"))
+
+        // Off: same captured app and stored style, but the switch wins.
+        settings.enabled = false
+        let offModel = makeModel()
+        let disabled = makeController(text: spoken, model: offModel, appFormatting: settings, target: messages)
+        disabled.toggle()
+        #expect(await waitUntil { await offModel.isLoaded })
+        await disabled.toggleAndWait()
+        #expect(generator.prompts.count == 2)
+        #expect(generator.prompts[1].contains("[Styling: semi-formal] [Structure: prose] [Context: general]\n\(rulesText)"))
     }
 
     @Test func cancelAndErrorPathsSettleTheModelToo() async {

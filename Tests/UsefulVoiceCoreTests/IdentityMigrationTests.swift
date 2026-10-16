@@ -647,10 +647,25 @@ struct IdentityMigrationDefaultsTests {
     }
 
     /// Once the user finishes setup the flag is cleared; a later launch must not bring it back.
-    @Test func theRecheckIsSetOnceAndNotAgainOnTheNextLaunch() {
+    /// (The second run returns early on the migrated flag. The next test takes that away.)
+    @Test func aLaterLaunchAfterTheMigrationDoesNotBringTheRecheckBack() {
         let h = Harness(legacyDefaults: [FirstRunGate.completedKey: true]); defer { h.cleanUp() }
         _ = h.migration().run(diagnostics: h.silentDiagnostics())
         h.defaults.removeObject(forKey: FirstRunGate.recheckGrantsKey)   // setup finished
+
+        _ = h.migration().run(diagnostics: h.silentDiagnostics())
+
+        #expect(!h.defaults.bool(forKey: FirstRunGate.recheckGrantsKey))
+        #expect(h.defaults.bool(forKey: FirstRunGate.completedKey))
+    }
+
+    /// Even if the migration runs again (migrated flag gone), a setup the new identity has
+    /// already answered must not get the recheck back: the `existing[completed] == nil` guard.
+    @Test func theRecheckIsNotSetAgainOnceTheNewIdentityHoldsItsOwnAnswer() {
+        let h = Harness(legacyDefaults: [FirstRunGate.completedKey: true]); defer { h.cleanUp() }
+        _ = h.migration().run(diagnostics: h.silentDiagnostics())
+        h.defaults.removeObject(forKey: FirstRunGate.recheckGrantsKey)   // setup finished
+        h.defaults.removeObject(forKey: IdentityMigration.migratedFlag)  // the migration runs again
 
         _ = h.migration().run(diagnostics: h.silentDiagnostics())
 

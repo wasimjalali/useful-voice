@@ -30,6 +30,16 @@ The ggml authors.
 
 - [licenses/whisper.cpp/LICENSE](licenses/whisper.cpp/LICENSE)
 
+## Whisper model weights
+
+The local transcription engine downloads one of two models on request, not bundled: OpenAI
+Whisper large-v3-turbo (MIT License) or large-v3 (Apache License 2.0). The files are the ggml
+conversions published at [huggingface.co/ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp)
+(model card license: MIT). The app checks each download against a pinned SHA-256. The models are
+by OpenAI; their licenses are the ones on the model cards linked from the app's model list
+([whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo),
+[whisper-large-v3](https://huggingface.co/openai/whisper-large-v3)).
+
 ## llama.cpp
 
 Runs S1-mini on macOS (`llama.xcframework`, release b11669, from

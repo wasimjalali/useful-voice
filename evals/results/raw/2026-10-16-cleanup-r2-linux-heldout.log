@@ -1,0 +1,17 @@
+  rules+s1: 25/73
+  rules+s1: 50/73
+  rules+sf: 25/73
+  rules+sf: 50/73
+variant                  restraint edit acc rules-fix model-need  lost  lost%  added guard rej
+none                         100.0      0.0       0.0        0.0     0    0.0      0          
+rules                        100.0     31.4     100.0        0.0     0    0.0      0          
+rules+s1                      84.2     85.7      90.9       83.3     4    2.7      1          
+rules+s1+guard                92.1     77.1      90.9       70.8     4    2.7      1      68.5
+rules+sf                      92.1     71.4     100.0       58.3     5    2.7      3          
+rules+sf+guard               100.0     68.6     100.0       54.2     0    0.0      1      78.1
+latency rules+s1             median 417.0 ms  p95 727.7 ms  (n=73)
+latency rules+sf             median 713.9 ms  p95 1278.2 ms  (n=73)
+latency pooled s1            median 417.0 ms  p95 727.7 ms  (n=73)
+latency pooled sf            median 713.9 ms  p95 1278.2 ms  (n=73)
+peak RSS s1: 1635.0 MB
+peak RSS sf: 1010.8 MB

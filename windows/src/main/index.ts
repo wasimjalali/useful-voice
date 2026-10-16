@@ -9,7 +9,7 @@ import { DataStore } from '../core/settings/dataStore.js';
 import { planLoginItem, wasAutoStarted } from '../core/settings/autostart.js';
 import { deliverToTarget } from '../core/delivery/deliveryFlow.js';
 import { appIdFor, isKnownBrowser, type DeliveryTarget } from '../core/delivery/deliveryTarget.js';
-import { captureContext, type ContextCapture } from '../core/apps/appAwareness.js';
+import { captureContext, snapshotPress, type ContextCapture } from '../core/apps/appAwareness.js';
 import { PendingAddress, focusReader, forgetPageDetails, killOnTimeout, toDeliveryTarget } from './deliveryGlue.js';
 import {
   normaliseMemoryLanguage,
@@ -1172,6 +1172,8 @@ class UsefulVoiceApp {
   private async toggleDictation(requested: DictationSource): Promise<void> {
     // While the setup flow is open the hotkey dictates into the flow's own field, never
     // into the app in front.
+    // The settings this dictation uses, copied now: Settings changed while it runs apply to the next.
+    const press = snapshotPress(this.settings.all);
     let source: DictationSource = requested === 'hotkey' && this.firstRun.open ? 'window' : requested;
     this.lastToggleSource = source;
     // A dictation that starts while the flow is open is the flow's practice dictation.
@@ -1213,16 +1215,15 @@ class UsefulVoiceApp {
         // The category and the text before the cursor belong to the same moment as the
         // target: read beside the recording, so the press never waits for them. The text
         // is only read when it will be used, and only ever kept in memory.
-        const settings = this.settings.all;
-        const wantsText = settings.appAwareFormatting && settings.formattingEnabled;
+        const wantsText = press.appAwareFormatting && press.formattingEnabled;
         const handle = front?.handle;
-        context = captureContext(target?.appId, settings.appCategories, {
+        context = captureContext(target?.appId, press.appCategories, {
           ...(address ? { address: () => address as Promise<string | null> } : {}),
           ...(wantsText && handle !== undefined ? { textBeforeCursor: () => this.desktop.textBeforeCursor(handle) } : {}),
         });
       }
     }
-    await this.service.toggle({ source, targetApp, targetHandle, target, context });
+    await this.service.toggle({ source, targetApp, targetHandle, target, context, press });
     void this.data.flush();
   }
 

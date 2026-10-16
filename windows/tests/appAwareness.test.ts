@@ -224,6 +224,7 @@ describe('settings read from a file', () => {
     expect(normaliseUserName('  Wasim  ')).toBe('Wasim');
     expect(normaliseUserName('Wasim\nJalali\t')).toBe('Wasim Jalali');
     expect(normaliseUserName('x'.repeat(200))).toHaveLength(60);
+    expect(normaliseUserName('Was\u0000im   \u2028 Jalali\u007f')).toBe('Was im Jalali');
     expect(normaliseUserName(42)).toBe('');
     expect(normaliseUserName(undefined)).toBe('');
   });

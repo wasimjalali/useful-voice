@@ -242,9 +242,10 @@ export interface DictationRecord {
   language: MemoryLanguage;
   appName: string;
   /**
-   * The app the dictation was captured for (its executable name, e.g. `slack.exe`) and the
-   * category it was formatted for. Absent on a window dictation and on history written
-   * before app-aware formatting, so an old file decodes unchanged.
+   * The app the dictation was captured for (its executable name, e.g. `slack.exe`). Absent
+   * on a window dictation and on history written before app-aware formatting, so an old
+   * file decodes unchanged. `category` is the category of that app, and is stored only with
+   * an `appID`; it is kept whether or not formatting was on, because it feeds the app list.
    */
   appID?: string;
   category?: AppCategory;

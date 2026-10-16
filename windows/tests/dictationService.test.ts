@@ -2205,18 +2205,24 @@ describe('app-aware formatting', () => {
     expect(ctx.sink.delivered).toEqual(['See you at five.']);
   });
 
-  it('a window dictation, and a press with no target, are Other', async () => {
+  it('a window dictation, and a press with no target, are Other, and are filed under no app', async () => {
     const window = setup({ settings: { categoryStyles: { other: 'casual' } } });
     await dictate(window, 'See you at five.', { source: 'window', context: capture('workChat') });
     // The window source drops the context: Other, whatever was handed in.
     expect(window.sink.delivered).toEqual(['See you at five']);
-    expect(window.last()).toMatchObject({ category: 'other' });
     expect(window.last()?.appID).toBeUndefined();
+    expect(window.last()?.category).toBeUndefined();
 
     const none = setup();
     await dictate(none, 'See you at five.', { source: 'hotkey' });
-    expect(none.last()).toMatchObject({ category: 'other' });
     expect(none.last()?.appID).toBeUndefined();
+    expect(none.last()?.category).toBeUndefined();
+  });
+
+  it('stores the category only with an app, whether or not formatting was on', async () => {
+    const off = setup({ settings: { appAwareFormatting: false } });
+    await dictate(off, 'See you at five.', { source: 'hotkey', context: capture('workChat') });
+    expect(off.last()).toMatchObject({ appID: 'slack.exe', category: 'workChat' });
   });
 
   it('skips the formatter in raw mode, with Auto-format off, and with Format for the app off', async () => {
@@ -2228,32 +2234,137 @@ describe('app-aware formatting', () => {
     }
   });
 
-  it("the user's own rules and snippets run after it and win", async () => {
+  it("the user's own rules run after it and win: a rule's own full stop and capital survive Casual and Very casual", async () => {
+    const rule = (id: string, match: string, replacement: string) => ({
+      id, match, replacement, matchMode: 'wordBoundaryPhrase' as const, language: 'auto', isEnabled: true,
+      usageCount: 0, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    // Casual drops the closing full stop of a one-sentence message. Formatting after the
+    // rule would strip the one the rule wrote.
+    const casual = setup({ memory: { replacements: [rule('r1', 'see you soon', 'Catch you soon.')] } });
+    await dictate(casual, 'See you soon.', { source: 'hotkey', context: capture('workChat') });
+    expect(casual.sink.delivered).toEqual(['Catch you soon.']);
+
+    // Very casual lowercases the first word. Formatting after the rule would lowercase "Hello".
+    const veryCasual = setup({
+      settings: { categoryStyles: { personalChat: 'veryCasual' } },
+      memory: { replacements: [rule('r2', 'hello there', 'Hello Team')] },
+    });
+    await dictate(veryCasual, 'Hello there.', { source: 'hotkey', context: capture('personalChat', null, 'whatsapp.exe') });
+    expect(veryCasual.sink.delivered).toEqual(['Hello Team']);
+  });
+
+  it("a snippet's expansion is not re-cased by the formatting", async () => {
     const ctx = setup({
       memory: {
-        replacements: [{
-          id: 'r1', match: 'see you', replacement: 'Catch you', matchMode: 'wordBoundaryPhrase', language: 'auto',
-          isEnabled: true, usageCount: 0, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
-        }],
         snippets: [{
           id: 's1', trigger: 'my sign off', expansion: 'Cheers, Wasim.', language: 'auto', isEnabled: true,
           usageCount: 0, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
         }],
       },
     });
-    // Casual would drop the final full stop and, as a continuation, lowercase the start. The snippet's own text is left alone.
-    await dictate(ctx, 'See you soon. my sign off.', { source: 'hotkey', context: capture('workChat') });
-    expect(ctx.sink.delivered[0]).toContain('Catch you soon.');
-    expect(ctx.sink.delivered[0]).toContain('Cheers, Wasim.');
+    await dictate(ctx, 'my sign off', { source: 'hotkey', context: capture('personalChat', null, 'whatsapp.exe') });
+    expect(ctx.sink.delivered).toEqual(['Cheers, Wasim.']);
   });
 
   it('delivers the text as it was when the formatter throws', async () => {
     const ctx = setup();
-    // The live settings object the service reads: a style lookup that blows up.
-    Object.defineProperty(ctx.settings, 'categoryStyles', { get: () => { throw new Error('boom'); } });
-    await dictate(ctx, 'See you at five.', { source: 'hotkey', context: capture('workChat') });
+    // The settings of this dictation, with a style lookup that blows up.
+    const press = {
+      formattingEnabled: true, appAwareFormatting: true, userName: '', autoSend: {}, appCategories: {},
+      get categoryStyles(): never {
+        throw new Error('boom');
+      },
+    };
+    await dictate(ctx, 'See you at five.', { source: 'hotkey', context: capture('workChat'), press });
     expect(ctx.sink.delivered).toEqual(['See you at five.']);
     expect(ctx.last()).toMatchObject({ mode: 'raw' });
+  });
+
+  describe('cleanup rules and the press snapshot', () => {
+    const english = (text: string) => ({ text, durationSeconds: 1, detectedLanguage: 'en' });
+
+    it('cleans fillers and stutters first, then formats for the app, then runs the user rules', async () => {
+      const ctx = setup({
+        memory: {
+          replacements: [{
+            id: 'r1', match: 'ship it', replacement: 'Ship it.', matchMode: 'wordBoundaryPhrase', language: 'auto',
+            isEnabled: true, usageCount: 0, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+          }],
+        },
+      });
+      ctx.transcriber.transcript = english('Um, so we should, uh, ship it.');
+      await ctx.service.startRecording({ source: 'hotkey', context: capture('workChat') });
+      await ctx.service.stopAndProcess();
+      // Cleaned ("So we should ship it."), casual dropped the full stop, the user's rule wrote its own.
+      expect(ctx.sink.delivered).toEqual(['So we should Ship it.']);
+      expect(ctx.last()).toMatchObject({ mode: 'formatted', rawText: 'Um, so we should, uh, ship it.' });
+    });
+
+    it('cleans for an app that has no category formatting, and with Format for the app off', async () => {
+      for (const settings of [{ appAwareFormatting: false }, {}]) {
+        const ctx = setup({ settings });
+        ctx.transcriber.transcript = english('Um, so we should, uh, ship it.');
+        await ctx.service.startRecording({ source: 'hotkey', context: capture('docsNotes') });
+        await ctx.service.stopAndProcess();
+        expect(ctx.sink.delivered).toEqual(['So we should ship it.']);
+        expect(ctx.last()?.mode).toBe('formatted');
+      }
+    });
+
+    it('is skipped in raw mode and with Auto-format transcript off', async () => {
+      for (const [settings, rawMode] of [[{}, true], [{ formattingEnabled: false }, false]] as const) {
+        const ctx = setup({ settings });
+        ctx.transcriber.transcript = english('Um, so we should, uh, ship it.');
+        await ctx.service.startRecording({ source: 'hotkey', rawMode, context: capture('workChat') });
+        await ctx.service.stopAndProcess();
+        expect(ctx.sink.delivered).toEqual(['Um, so we should, uh, ship it.']);
+        expect(ctx.last()?.mode).toBe('raw');
+      }
+    });
+
+    it('keeps the transcript when the cleaned text is empty, and leaves other languages alone', async () => {
+      const filler = setup();
+      filler.transcriber.transcript = english('Um.');
+      await filler.service.startRecording({ source: 'window' });
+      await filler.service.stopAndProcess();
+      expect(filler.sink.delivered).toEqual(['Um.']);
+
+      const german = setup();
+      german.transcriber.transcript = { text: 'Um, ich glaube es geht.', durationSeconds: 1, detectedLanguage: 'de' };
+      await german.service.startRecording({ source: 'window' });
+      await german.service.stopAndProcess();
+      expect(german.sink.delivered).toEqual(['Um, ich glaube es geht.']);
+    });
+
+    it('uses the settings of the press, not the ones changed while it ran', async () => {
+      const ctx = setup({ settings: { userName: 'Wasim' } });
+      ctx.transcriber.transcript = { text: 'See you at five.', durationSeconds: 1, detectedLanguage: null };
+      await ctx.service.startRecording({ source: 'hotkey', context: capture('workChat') });
+      // Settings changed while recording: Formal for Work chat, a send key, the switch off.
+      Object.assign(ctx.settings, { categoryStyles: { workChat: 'formal' }, autoSend: { workChat: 'return' }, appAwareFormatting: false });
+      await ctx.service.stopAndProcess();
+      expect(ctx.sink.delivered).toEqual(['See you at five']);
+      expect((ctx.sink.requests.at(-1) as { autoSend?: string }).autoSend).toBeUndefined();
+    });
+
+    it('a retry keeps the app, the category and the settings of the dictation that failed, and stays a copy', async () => {
+      const ctx = setup({ settings: { categoryStyles: { workChat: 'casual' }, autoSend: { workChat: 'return' } } });
+      ctx.transcriber.error = new ProviderError('transport', 'down');
+      await ctx.service.startRecording({ source: 'hotkey', context: capture('workChat', 'We agreed, ') });
+      await ctx.service.stopAndProcess();
+      expect(ctx.service.canRetry).toBe(true);
+      // The user changes Settings, and the network comes back.
+      Object.assign(ctx.settings, { categoryStyles: { workChat: 'formal' }, autoSend: {} });
+      ctx.transcriber.error = null;
+      ctx.transcriber.transcript = { text: 'See you at five.', durationSeconds: 1, detectedLanguage: null };
+      await ctx.service.retryLast();
+      // Casual from the press, no continuation (the text before the cursor is never kept), copied not pasted.
+      expect(ctx.sink.delivered).toEqual(['See you at five']);
+      expect((ctx.sink.requests.at(-1) as { mode: string; autoSend?: string })).toMatchObject({ mode: 'copy' });
+      expect((ctx.sink.requests.at(-1) as { autoSend?: string }).autoSend).toBeUndefined();
+      expect(ctx.last()).toMatchObject({ appID: 'slack.exe', category: 'workChat' });
+    });
   });
 
   describe('a late read', () => {

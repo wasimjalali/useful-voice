@@ -1,6 +1,6 @@
 import { api } from '../api.js';
 import { el, icon, ICONS } from '../components/dom.js';
-import { dropdown } from '../components/dropdown.js';
+import { dropdown, type DropdownHandle } from '../components/dropdown.js';
 import { previewFeatures } from '../components/flags.js';
 import { runSetupAgain } from '../components/firstRun.js';
 import { languagePicker } from '../components/languagePicker.js';
@@ -17,8 +17,9 @@ import {
   type FormattingStyle,
 } from '../../core/apps/appCategory.js';
 import { isBrowser, normalizeAppID, resolveCategory } from '../../core/apps/appCategoryRegistry.js';
-import { autoSendOffered, MAX_USER_NAME_CHARS, styleOffered } from '../../core/apps/appAwareness.js';
-import { state, refresh, renderChrome, activeLanguagePicker } from '../shell.js';
+import { autoSendOffered, MAX_USER_NAME_CHARS, registryAppID, styleOffered } from '../../core/apps/appAwareness.js';
+import { serialSaver } from '../../core/apps/serialSave.js';
+import { state, refresh, renderChrome, activeLanguagePicker, settingsLive } from '../shell.js';
 import type { SettingsDTO } from '../../preload/types.js';
 
 // ---- Settings ---------------------------------------------------------
@@ -189,6 +190,12 @@ export function renderSettingsPage(anchor?: string): HTMLElement {
   toastHost = host;
 
   const diagnostics = api.getDiagnostics();
+
+  // History may have changed since it was loaded: the Apps list reads it when Settings opens.
+  void api.getHistory().then((history) => {
+    state.history = history;
+    settingsLive.historyChanged?.();
+  }).catch((error) => console.warn('history refresh failed', error));
 
   const sections = new Map<string, HTMLElement>();
   const groupsColumn = el('div', { class: 's-groups' });
@@ -594,6 +601,9 @@ function seenApps(settings: SettingsDTO): string[] {
   return apps;
 }
 
+/** Every write from the Apps group, one at a time and built when its turn comes. */
+const saveApps = serialSaver<Partial<SettingsDTO>>((patch) => save(patch));
+
 function appsGroup(settings: SettingsDTO): HTMLElement {
   const name = el('input', {
     class: 'field-input s-name',
@@ -604,22 +614,33 @@ function appsGroup(settings: SettingsDTO): HTMLElement {
     spellcheck: false,
   } as never);
   name.addEventListener('change', () => {
-    void save({ userName: name.value }).then(() => {
+    const typed = name.value;
+    void saveApps(() => ({ userName: typed })).then(() => {
       // Show what is stored: the name comes back trimmed and on one line.
       name.value = state.settings?.userName ?? '';
     });
   });
 
+  const styleHandles: DropdownHandle[] = [];
+  const syncStyleDisabled = (): void => {
+    const off = !(state.settings?.appAwareFormatting ?? settings.appAwareFormatting);
+    for (const handle of styleHandles) handle.setDisabled(off);
+  };
+
   const styleControl = (category: AppCategory): HTMLElement | null => {
     if (!styleOffered(category)) return null;
     const stored = settings.categoryStyles[category];
-    return dropdown({
+    const handle = dropdown({
       value: stored ?? defaultStyle(category),
       options: allowedStyles(category).map((style) => ({ value: style, label: STYLE_NAMES[style] })),
       label: `${APP_CATEGORY_NAMES[category]} style`,
       onChange: (value) =>
-        void save({ categoryStyles: { ...(state.settings?.categoryStyles ?? {}), [category]: value as FormattingStyle } }),
-    }).element;
+        void saveApps(() => ({
+          categoryStyles: { ...(state.settings?.categoryStyles ?? {}), [category]: value as FormattingStyle },
+        })),
+    });
+    styleHandles.push(handle);
+    return handle.element;
   };
 
   const sendControl = (category: AppCategory): HTMLElement | null => {
@@ -628,12 +649,13 @@ function appsGroup(settings: SettingsDTO): HTMLElement {
       value: settings.autoSend[category] ?? 'off',
       options: AUTO_SEND_KEYS.map((key) => ({ value: key, label: SEND_KEY_NAMES[key] })),
       label: `${APP_CATEGORY_NAMES[category]} send key`,
-      onChange: (value) => {
-        const next = { ...(state.settings?.autoSend ?? {}) };
-        if (value === 'off') delete next[category];
-        else next[category] = value as AutoSendKey;
-        void save({ autoSend: next });
-      },
+      onChange: (value) =>
+        void saveApps(() => {
+          const next = { ...(state.settings?.autoSend ?? {}) };
+          if (value === 'off') delete next[category];
+          else next[category] = value as AutoSendKey;
+          return { autoSend: next };
+        }),
     }).element;
   };
 
@@ -641,12 +663,20 @@ function appsGroup(settings: SettingsDTO): HTMLElement {
     const controls = [styleControl(category), sendControl(category)].filter((node): node is HTMLElement => node !== null);
     return row(APP_CATEGORY_NAMES[category], controls.length > 0 ? el('div', { class: 's-pair' }, ...controls) : null);
   });
+  syncStyleDisabled();
 
   return el(
     'div',
     {},
     surface(
-      row('Format for the app', switchControl('Format for the app', settings.appAwareFormatting, (value) => save({ appAwareFormatting: value }))),
+      row(
+        'Format for the app',
+        switchControl('Format for the app', settings.appAwareFormatting, async (value) => {
+          const ok = await saveApps(() => ({ appAwareFormatting: value }));
+          syncStyleDisabled();
+          return ok;
+        }),
+      ),
       row('Your name', name),
       ...categoryRows,
     ),
@@ -654,47 +684,97 @@ function appsGroup(settings: SettingsDTO): HTMLElement {
   );
 }
 
-/** Each app seen in History with the category it is treated as, and a way back to the automatic one. */
-function appCategoriesSurface(settings: SettingsDTO): HTMLElement {
-  for (const id of seenApps(settings)) appRows.add(id);
-  const overrides = (): Record<string, AppCategory> => state.settings?.appCategories ?? settings.appCategories;
-  const wrapper = el('div', { class: 's-apps' });
+/** One app's row in the list: the row itself and the controls that change in place. */
+interface AppRow {
+  node: HTMLElement;
+  picker: DropdownHandle;
+  reset: HTMLButtonElement;
+}
 
-  const draw = (): void => {
-    const rows = [...appRows].map((id) => {
-      const current = overrides();
-      const overridden = Object.keys(current).some((key) => normalizeAppID(key) === id);
-      const category = resolveCategory({ appID: id, overrides: current });
-      const picker = dropdown({
-        value: category,
-        options: APP_CATEGORIES.map((value) => ({ value, label: APP_CATEGORY_NAMES[value] })),
-        label: `${appLabel(id)} category`,
-        onChange: (value) => void choose(id, value as AppCategory),
-      });
-      const reset = el(
-        'button',
-        { class: 'btn btn-ghost', type: 'button', 'aria-label': `Reset ${appLabel(id)}`, onclick: () => void choose(id, null) } as never,
-        'Reset',
-      );
-      reset.hidden = !overridden;
-      return row(appLabel(id), el('div', { class: 's-pair' }, picker.element, reset));
+/** The apps this page lists: History and the user's own choices, without browsers. */
+function listedApps(settings: SettingsDTO): string[] {
+  return seenApps(settings).filter((id) => !isBrowser(registryAppID(id) ?? id));
+}
+
+/**
+ * Each app seen in History with the category it is treated as, and a way back to the
+ * automatic one. A pick or Reset updates its row in place: rebuilding the list would
+ * drop the keyboard focus the user is working with.
+ */
+function appCategoriesSurface(settings: SettingsDTO): HTMLElement {
+  const overrides = (): Record<string, AppCategory> => state.settings?.appCategories ?? settings.appCategories;
+  const rows = new Map<string, AppRow>();
+  const list = surface(row('App categories', null));
+  const empty = el('p', { class: 's-note' }, 'Apps you dictate into show up here.');
+  const wrapper = el('div', { class: 's-apps' }, list, empty);
+
+  const update = (id: string, appRow: AppRow): void => {
+    const current = overrides();
+    const overridden = Object.keys(current).some((key) => normalizeAppID(key) === id);
+    appRow.picker.setValue(resolveCategory({ appID: id, overrides: current }));
+    const wasFocused = document.activeElement === appRow.reset;
+    appRow.reset.hidden = !overridden;
+    // A hidden button can't keep focus: hand it to the picker next to it.
+    if (wasFocused && !overridden) appRow.picker.element.querySelector<HTMLElement>('.select-trigger')?.focus();
+  };
+
+  const build = (id: string): AppRow => {
+    const picker = dropdown({
+      value: resolveCategory({ appID: id, overrides: overrides() }),
+      options: APP_CATEGORIES.map((value) => ({ value, label: APP_CATEGORY_NAMES[value] })),
+      label: `${appLabel(id)} category`,
+      onChange: (value) => void choose(id, value as AppCategory),
     });
-    wrapper.replaceChildren(surface(row('App categories', null), ...rows));
-    if (rows.length === 0) wrapper.append(el('p', { class: 's-note' }, 'Apps you dictate into show up here.'));
+    const reset = el(
+      'button',
+      { class: 'btn btn-ghost', type: 'button', 'aria-label': `Reset ${appLabel(id)}`, onclick: () => void choose(id, null) } as never,
+      'Reset',
+    ) as HTMLButtonElement;
+    return { node: row(appLabel(id), el('div', { class: 's-pair' }, picker.element, reset)), picker, reset };
+  };
+
+  /** Bring the rows in line with the apps listed, keeping the ones already drawn. */
+  const sync = (): void => {
+    if (state.settings) for (const id of listedApps(state.settings)) appRows.add(id);
+    for (const [id, appRow] of rows) {
+      if (appRows.has(id)) continue;
+      appRow.node.remove();
+      rows.delete(id);
+    }
+    for (const id of appRows) {
+      let appRow = rows.get(id);
+      if (!appRow) {
+        appRow = build(id);
+        rows.set(id, appRow);
+        list.append(appRow.node);
+      }
+      update(id, appRow);
+    }
+    empty.hidden = rows.size > 0;
   };
 
   /** A category for the app, or null to go back to the automatic one. */
   const choose = async (id: string, category: AppCategory | null): Promise<void> => {
-    const next: Record<string, AppCategory> = {};
-    for (const [key, value] of Object.entries(overrides())) if (normalizeAppID(key) !== id) next[key] = value;
-    // The category it already has without a choice of yours is not a choice.
-    const natural = isBrowser(id) ? null : resolveCategory({ appID: id });
-    if (category !== null && category !== natural) next[id] = category;
-    await save({ appCategories: next });
-    draw();
+    await saveApps(() => {
+      const next: Record<string, AppCategory> = {};
+      for (const [key, value] of Object.entries(overrides())) if (normalizeAppID(key) !== id) next[key] = value;
+      // The category it already has without a choice of yours is not a choice.
+      const natural = resolveCategory({ appID: id });
+      if (category !== null && category !== natural) next[id] = category;
+      return { appCategories: next };
+    });
+    sync();
   };
 
-  draw();
+  // History changed while Settings is open: add the new apps, and on a cleared History drop
+  // the rows that only History kept. The rows are patched, never rebuilt.
+  settingsLive.historyChanged = () => {
+    if (state.history.length === 0) appRows.clear();
+    sync();
+  };
+
+  for (const id of listedApps(settings)) appRows.add(id);
+  sync();
   return wrapper;
 }
 
@@ -1054,6 +1134,7 @@ async function confirmDelete(page: HTMLElement, opener: HTMLElement): Promise<vo
         return;
       }
       state.history = [];
+      settingsLive.historyChanged?.();
       close();
       toast(`Deleted ${grouped(count)} ${noun}`);
     })();

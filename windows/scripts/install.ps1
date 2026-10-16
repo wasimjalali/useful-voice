@@ -39,6 +39,35 @@
   $work = Join-Path ([IO.Path]::GetTempPath()) ('useful-voice-install-' + [Guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Path $work | Out-Null
   try {
+    # Where a per-user copy lives: the registry entry of an earlier install, else the default.
+    function Get-InstalledExe {
+      $exe = Join-Path $env:LOCALAPPDATA 'Programs\Useful Voice\Useful Voice.exe'
+      $entry = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
+        ForEach-Object { Get-ItemProperty $_.PSPath } |
+        Where-Object { $_.DisplayName -like 'Useful Voice*' } |
+        Select-Object -First 1
+      # electron-builder's per-user entry may leave InstallLocation empty; its UninstallString
+      # always names the uninstaller beside the exe.
+      if ($entry -and $entry.InstallLocation) {
+        $exe = Join-Path $entry.InstallLocation 'Useful Voice.exe'
+      } elseif ($entry -and $entry.UninstallString -match '^"([^"]+)"') {
+        $exe = Join-Path (Split-Path -Parent $Matches[1]) 'Useful Voice.exe'
+      }
+      return $exe
+    }
+
+    # Re-running this one-liner while the app is running: refuse before downloading and change
+    # nothing. Killing it would lose a recording in progress, the notes draft and unsaved history.
+    # Matched by install path, so another program with the same name does not block the install.
+    $running = Get-InstalledExe
+    # A 32-bit Windows PowerShell can't read a 64-bit process's path, and a normal window can't
+    # read an elevated one's. An unreadable path counts as ours: otherwise the silent installer
+    # would close that copy itself.
+    $copies = @(Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue | Where-Object { -not $_.Path -or $_.Path -eq $running })
+    if ($copies.Count -gt 0) {
+      Fail 'Useful Voice is running. Quit it from its tray icon, then run this again. Nothing was changed.'
+    }
+
     $installer = Join-Path $work "Useful-Voice-$Version-setup.exe"
     Write-Host "Downloading Useful Voice $Version..."
     try {
@@ -57,32 +86,6 @@
     if ($got -ne $Sha256) {
       Remove-Item -LiteralPath $installer -Force
       Fail "the download does not match this release (sha256 $got, expected $Sha256). Nothing was installed."
-    }
-
-    # Where a per-user copy lives: the registry entry of an earlier install, else the default.
-    function Get-InstalledExe {
-      $exe = Join-Path $env:LOCALAPPDATA 'Programs\Useful Voice\Useful Voice.exe'
-      $entry = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
-        ForEach-Object { Get-ItemProperty $_.PSPath } |
-        Where-Object { $_.DisplayName -like 'Useful Voice*' } |
-        Select-Object -First 1
-      # electron-builder's per-user entry may leave InstallLocation empty; its UninstallString
-      # always names the uninstaller beside the exe.
-      if ($entry -and $entry.InstallLocation) {
-        $exe = Join-Path $entry.InstallLocation 'Useful Voice.exe'
-      } elseif ($entry -and $entry.UninstallString -match '^"([^"]+)"') {
-        $exe = Join-Path (Split-Path -Parent $Matches[1]) 'Useful Voice.exe'
-      }
-      return $exe
-    }
-
-    # Re-running this one-liner while the app is running: refuse and change nothing. Killing it
-    # would lose a recording in progress, the notes draft and unsaved history. Matched by install
-    # path, so another program with the same name does not block the install.
-    $running = Get-InstalledExe
-    $copies = @(Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $running })
-    if ($copies.Count -gt 0) {
-      Fail 'Useful Voice is running. Quit it from its tray icon, then run this again. Nothing was changed.'
     }
 
     Write-Host 'Installing...'

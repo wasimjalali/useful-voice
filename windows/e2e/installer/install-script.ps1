@@ -58,11 +58,11 @@ function Start-Server([string]$dir) {
 
 # Runs the one-liner in a fresh shell and returns its exit code and output.
 function Invoke-OneLiner([string]$shell) {
-  $outFile = Join-Path $Out "oneliner-$shell-$([Guid]::NewGuid().ToString('N')).txt"
+  $outFile = Join-Path $Out "oneliner-$([IO.Path]::GetFileNameWithoutExtension($shell))-$([Guid]::NewGuid().ToString('N')).txt"
   # A child Windows PowerShell inherits PowerShell 7's PSModulePath and then cannot load its
   # own modules. A user's console starts with Windows PowerShell's default, so test with that.
   $savedModulePath = $env:PSModulePath
-  if ($shell -eq 'powershell.exe') {
+  if ($shell -like '*powershell.exe') {
     $env:PSModulePath = "$env:USERPROFILE\Documents\WindowsPowerShell\Modules;$env:ProgramFiles\WindowsPowerShell\Modules;$env:SystemRoot\system32\WindowsPowerShell\v1.0\Modules"
   }
   try {
@@ -131,19 +131,34 @@ try {
   # 3. Again from PowerShell 7, over the first install, with the app still running: the
   # script must refuse, leave the app running and change nothing.
   $before = @(Get-UvEntries)
-  $pidsBefore = @(Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
-  if ($pidsBefore.Count -eq 0) { throw 'the app is not running before the refusal check' }
+  # The main process starts first; Chromium may replace its helper processes at any time.
+  $main = Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue | Sort-Object StartTime | Select-Object -First 1
+  if (-not $main) { throw 'the app is not running before the refusal check' }
   $r = Invoke-OneLiner 'pwsh'
   Say "== 3. real installer while the app runs, PowerShell 7: exit $($r.ExitCode)"
   Say $r.Output
   if ($r.ExitCode -eq 0) { throw 'install.ps1 exited 0 while the app was running' }
   if ($r.Output -notmatch 'Useful Voice is running\. Quit it from its tray icon') { throw 'install.ps1 did not tell the user to quit the app' }
-  $pidsAfter = @(Get-Process -Name 'Useful Voice' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
-  if (@($pidsBefore | Where-Object { $pidsAfter -notcontains $_ }).Count -ne 0) { throw 'install.ps1 killed the running app' }
+  if (-not (Get-Process -Id $main.Id -ErrorAction SilentlyContinue)) { throw 'install.ps1 killed the running app' }
   $after = @(Get-UvEntries)
   if ($after.Count -ne 1 -or $after[0].DisplayVersion -ne $before[0].DisplayVersion -or $after[0].Key -ne $before[0].Key) { throw 'the refused run changed the uninstall entry' }
   if (-not (Test-Path -LiteralPath $exe)) { throw 'the refused run removed the installed exe' }
   Say 'OK: refused, app still running, install untouched'
+
+  # 3a. The same from a 32-bit Windows PowerShell, which can't read the 64-bit app's path: it must
+  # still refuse rather than let the silent installer close the app.
+  $wow = Join-Path $env:SystemRoot 'SysWOW64\WindowsPowerShell\v1.0\powershell.exe'
+  if (Test-Path -LiteralPath $wow) {
+    $r = Invoke-OneLiner $wow
+    Say "== 3a. real installer while the app runs, 32-bit Windows PowerShell: exit $($r.ExitCode)"
+    Say $r.Output
+    if ($r.ExitCode -eq 0) { throw '32-bit install.ps1 exited 0 while the app was running' }
+    if ($r.Output -notmatch 'Useful Voice is running\. Quit it from its tray icon') { throw '32-bit install.ps1 did not tell the user to quit the app' }
+    if (-not (Get-Process -Id $main.Id -ErrorAction SilentlyContinue)) { throw '32-bit install.ps1 killed the running app' }
+    Say 'OK: refused from a 32-bit shell too'
+  } else {
+    Say 'SKIP 3a: no 32-bit Windows PowerShell on this machine'
+  }
 
   # Quit the app the way a user would (here: stop it), then the same one-liner reinstalls.
   Stop-App

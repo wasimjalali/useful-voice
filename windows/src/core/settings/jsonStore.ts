@@ -86,10 +86,13 @@ export async function readJson<T>(filePath: string): Promise<LoadResult<T>> {
  * report "Saved" while nothing reached disk, so the user discovered the loss at
  * the next launch.
  */
+/** Makes each temp name unique: two writes in the same millisecond would otherwise share one. */
+let tempCounter = 0;
+
 export async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {
   const directory = path.dirname(filePath);
   await fs.mkdir(directory, { recursive: true });
-  const temp = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  const temp = `${filePath}.tmp-${process.pid}-${Date.now()}-${(tempCounter += 1)}`;
   try {
     await fs.writeFile(temp, JSON.stringify(value, null, 2), 'utf8');
     await renameRetryingLocks(temp, filePath);

@@ -359,6 +359,10 @@ class UsefulVoiceApp {
     if (this.settings.saveError) {
       this.diagnostics.log('settings', this.settings.saveError.message);
     }
+    // A write that still failed after its retries (a file held open for long) leaves a trace.
+    this.settings.onSaveStatus((status) => {
+      if (!status.ok) this.diagnostics.log('settings', `save failed: ${this.settings.saveError?.message}`);
+    });
 
     // Before any window exists, so the first paint is already in the right theme.
     applyAppearance(this.settings.all.appearance);

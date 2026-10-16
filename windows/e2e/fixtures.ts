@@ -4,6 +4,9 @@ import path from 'node:path';
 
 const MIN = 60_000;
 
+/** What the e2e Deepgram stub answers for every dictation (`main/e2eStub.ts`). */
+export const E2E_TRANSCRIPT_FIXTURE = 'Hello from Useful Voice.';
+
 function record(id: string, text: string, language: string, minutesAgo: number, appName = 'Slack') {
   const createdAt = new Date(Date.now() - minutesAgo * MIN).toISOString();
   return {
@@ -14,7 +17,7 @@ function record(id: string, text: string, language: string, minutesAgo: number, 
 }
 
 /** A scratch user-data folder with a realistic mix: English, German and Persian, over several days. */
-export async function seedUserData(options: { firstRunCompleted?: boolean } = {}): Promise<string> {
+export async function seedUserData(options: { firstRunCompleted?: boolean; emptyHistory?: boolean } = {}): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'uv-e2e-'));
   const history = [
     record('h1', 'Can you check whether the build is green before the release?', 'en', 4, 'Cursor'),
@@ -28,7 +31,7 @@ export async function seedUserData(options: { firstRunCompleted?: boolean } = {}
     { id: 'n1', title: 'Launch checklist', body: '- [ ] Record the demo\n- [ ] Ship the installer',
       createdAt: new Date(Date.now() - 500 * MIN).toISOString(), updatedAt: new Date(Date.now() - 30 * MIN).toISOString() },
   ];
-  const payload = { terms: [], replacements: [], snippets: [], suggestions: [], history, notes };
+  const payload = { terms: [], replacements: [], snippets: [], suggestions: [], history: options.emptyHistory ? [] : history, notes };
   await fs.writeFile(path.join(dir, 'data.json'), JSON.stringify({ version: 1, payload }, null, 2));
   // A seeded folder is an install that has been set up, so the first-run flow stays out of
   // the way of every spec that is not about it. The first-run spec passes `false`.

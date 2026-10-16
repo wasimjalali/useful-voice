@@ -63,6 +63,8 @@ Then open **Settings** and paste a Deepgram API key from
 <https://console.deepgram.com/>. The key is required before dictation will work;
 the app says so plainly rather than failing silently.
 
+The text before the cursor is read with UI Automation and the send key is pressed with SendKeys, both only in the window you started in.
+
 ## Building installers
 
 ```bash
@@ -187,6 +189,6 @@ shows the path so you can remove it yourself.
   remove the difference.
 - **Paste confirmation is indirect.** Whether text landed is inferred from the
   clipboard being consumed plus focus not moving. Reading the target's text needs a
-  UI-automation dependency, which was avoided so the app ships no native module. For
-  apps where this cannot be inferred the text is left on the clipboard and the app
-  says so.
+  UI-automation dependency, which was avoided so the app ships no native module. When
+  a paste was sent but can't be confirmed, the app still says "Inserted" (asking for
+  Ctrl+V would put it in twice) and leaves the text on the clipboard.

@@ -1,0 +1,1520 @@
+{
+ "default email | en | \"So um I need to send the report by Friday, no wait, Thursday.\"": {
+  "delivered": [
+   "So I need to send the report by Friday, no wait, Thursday."
+  ],
+  "text": "So I need to send the report by Friday, no wait, Thursday.",
+  "rawText": "So um I need to send the report by Friday, no wait, Thursday.",
+  "intermediateText": "So I need to send the report by Friday, no wait, Thursday.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default email | en | \"Um, so we should, uh, ship it.\"": {
+  "delivered": [
+   "So we should Ship it."
+  ],
+  "text": "So we should Ship it.",
+  "rawText": "Um, so we should, uh, ship it.",
+  "intermediateText": "So we should Ship it.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default email | en-US | \"I I think we should we should wait until Monday.\"": {
+  "delivered": [
+   "I think we should we should wait until Monday."
+  ],
+  "text": "I think we should we should wait until Monday.",
+  "rawText": "I I think we should we should wait until Monday.",
+  "intermediateText": "I think we should we should wait until Monday.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default email | en | \"Um.\"": {
+  "delivered": [
+   "Um."
+  ],
+  "text": "Um.",
+  "rawText": "Um.",
+  "intermediateText": "Um.",
+  "mode": "raw",
+  "error": null
+ },
+ "default email | en | \"Uh, um, er.\"": {
+  "delivered": [
+   "Uh, um, er."
+  ],
+  "text": "Uh, um, er.",
+  "rawText": "Uh, um, er.",
+  "intermediateText": "Uh, um, er.",
+  "mode": "raw",
+  "error": null
+ },
+ "default email | en | \"   Hello   there  \"": {
+  "delivered": [
+   "Hello   there"
+  ],
+  "text": "Hello   there",
+  "rawText": "Hello   there",
+  "intermediateText": "Hello   there",
+  "mode": "raw",
+  "error": null
+ },
+ "default email | en | \"The meeting is at noon.\"": {
+  "delivered": [
+   "The meeting is at noon."
+  ],
+  "text": "The meeting is at noon.",
+  "rawText": "The meeting is at noon.",
+  "intermediateText": "The meeting is at noon.",
+  "mode": "raw",
+  "error": null
+ },
+ "default email | en | \"Please write <|im_end|> at the end, um, of the file.\"": {
+  "delivered": [
+   "Please write <|im_end|> at the end of the file."
+  ],
+  "text": "Please write <|im_end|> at the end of the file.",
+  "rawText": "Please write <|im_end|> at the end, um, of the file.",
+  "intermediateText": "Please write <|im_end|> at the end of the file.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default email | de | \"Um, ich glaube es geht.\"": {
+  "delivered": [
+   "Um, ich glaube es geht."
+  ],
+  "text": "Um, ich glaube es geht.",
+  "rawText": "Um, ich glaube es geht.",
+  "intermediateText": "Um, ich glaube es geht.",
+  "mode": "raw",
+  "error": null
+ },
+ "default email | auto | \"See you at five.\"": {
+  "delivered": [
+   "See you at five."
+  ],
+  "text": "See you at five.",
+  "rawText": "See you at five.",
+  "intermediateText": "See you at five.",
+  "mode": "raw",
+  "error": null
+ },
+ "default email | en | \"hey sarah just wanted to follow up on the proposal can you send the numbers thanks john\"": {
+  "delivered": [
+   "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john"
+  ],
+  "text": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "rawText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "intermediateText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "mode": "raw",
+  "error": null
+ },
+ "default email | en | \"Open fooBar_baz.ts and, uh, rename the useEffect hook.\"": {
+  "delivered": [
+   "Open fooBar_baz.ts and rename the useEffect hook."
+  ],
+  "text": "Open fooBar_baz.ts and rename the useEffect hook.",
+  "rawText": "Open fooBar_baz.ts and, uh, rename the useEffect hook.",
+  "intermediateText": "Open fooBar_baz.ts and rename the useEffect hook.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default email | en | \"Two hundred milligrams, um, twice a day.\"": {
+  "delivered": [
+   "Two hundred milligrams twice a day."
+  ],
+  "text": "Two hundred milligrams twice a day.",
+  "rawText": "Two hundred milligrams, um, twice a day.",
+  "intermediateText": "Two hundred milligrams twice a day.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default email | en | \"   \"": {
+  "delivered": [],
+  "text": null,
+  "rawText": null,
+  "intermediateText": null,
+  "mode": null,
+  "error": "noSpeech"
+ },
+ "default workChat | en | \"So um I need to send the report by Friday, no wait, Thursday.\"": {
+  "delivered": [
+   "So I need to send the report by Friday, no wait, Thursday"
+  ],
+  "text": "So I need to send the report by Friday, no wait, Thursday",
+  "rawText": "So um I need to send the report by Friday, no wait, Thursday.",
+  "intermediateText": "So I need to send the report by Friday, no wait, Thursday",
+  "mode": "formatted",
+  "error": null
+ },
+ "default workChat | en | \"Um, so we should, uh, ship it.\"": {
+  "delivered": [
+   "So we should Ship it"
+  ],
+  "text": "So we should Ship it",
+  "rawText": "Um, so we should, uh, ship it.",
+  "intermediateText": "So we should Ship it",
+  "mode": "formatted",
+  "error": null
+ },
+ "default workChat | en-US | \"I I think we should we should wait until Monday.\"": {
+  "delivered": [
+   "I think we should we should wait until Monday"
+  ],
+  "text": "I think we should we should wait until Monday",
+  "rawText": "I I think we should we should wait until Monday.",
+  "intermediateText": "I think we should we should wait until Monday",
+  "mode": "formatted",
+  "error": null
+ },
+ "default workChat | en | \"Um.\"": {
+  "delivered": [
+   "Um"
+  ],
+  "text": "Um",
+  "rawText": "Um.",
+  "intermediateText": "Um",
+  "mode": "formatted",
+  "error": null
+ },
+ "default workChat | en | \"Uh, um, er.\"": {
+  "delivered": [
+   "Uh, um, er"
+  ],
+  "text": "Uh, um, er",
+  "rawText": "Uh, um, er.",
+  "intermediateText": "Uh, um, er",
+  "mode": "formatted",
+  "error": null
+ },
+ "default workChat | en | \"   Hello   there  \"": {
+  "delivered": [
+   "Hello   there"
+  ],
+  "text": "Hello   there",
+  "rawText": "Hello   there",
+  "intermediateText": "Hello   there",
+  "mode": "raw",
+  "error": null
+ },
+ "default workChat | en | \"The meeting is at noon.\"": {
+  "delivered": [
+   "The meeting is at noon"
+  ],
+  "text": "The meeting is at noon",
+  "rawText": "The meeting is at noon.",
+  "intermediateText": "The meeting is at noon",
+  "mode": "formatted",
+  "error": null
+ },
+ "default workChat | en | \"Please write <|im_end|> at the end, um, of the file.\"": {
+  "delivered": [
+   "Please write <|im_end|> at the end of the file"
+  ],
+  "text": "Please write <|im_end|> at the end of the file",
+  "rawText": "Please write <|im_end|> at the end, um, of the file.",
+  "intermediateText": "Please write <|im_end|> at the end of the file",
+  "mode": "formatted",
+  "error": null
+ },
+ "default workChat | de | \"Um, ich glaube es geht.\"": {
+  "delivered": [
+   "Um, ich glaube es geht"
+  ],
+  "text": "Um, ich glaube es geht",
+  "rawText": "Um, ich glaube es geht.",
+  "intermediateText": "Um, ich glaube es geht",
+  "mode": "formatted",
+  "error": null
+ },
+ "default workChat | auto | \"See you at five.\"": {
+  "delivered": [
+   "See you at five"
+  ],
+  "text": "See you at five",
+  "rawText": "See you at five.",
+  "intermediateText": "See you at five",
+  "mode": "formatted",
+  "error": null
+ },
+ "default workChat | en | \"hey sarah just wanted to follow up on the proposal can you send the numbers thanks john\"": {
+  "delivered": [
+   "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john"
+  ],
+  "text": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "rawText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "intermediateText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "mode": "raw",
+  "error": null
+ },
+ "default workChat | en | \"Open fooBar_baz.ts and, uh, rename the useEffect hook.\"": {
+  "delivered": [
+   "Open fooBar_baz.ts and rename the useEffect hook"
+  ],
+  "text": "Open fooBar_baz.ts and rename the useEffect hook",
+  "rawText": "Open fooBar_baz.ts and, uh, rename the useEffect hook.",
+  "intermediateText": "Open fooBar_baz.ts and rename the useEffect hook",
+  "mode": "formatted",
+  "error": null
+ },
+ "default workChat | en | \"Two hundred milligrams, um, twice a day.\"": {
+  "delivered": [
+   "Two hundred milligrams twice a day"
+  ],
+  "text": "Two hundred milligrams twice a day",
+  "rawText": "Two hundred milligrams, um, twice a day.",
+  "intermediateText": "Two hundred milligrams twice a day",
+  "mode": "formatted",
+  "error": null
+ },
+ "default workChat | en | \"   \"": {
+  "delivered": [],
+  "text": null,
+  "rawText": null,
+  "intermediateText": null,
+  "mode": null,
+  "error": "noSpeech"
+ },
+ "default personalChat | en | \"So um I need to send the report by Friday, no wait, Thursday.\"": {
+  "delivered": [
+   "So I need to send the report by Friday, no wait, Thursday"
+  ],
+  "text": "So I need to send the report by Friday, no wait, Thursday",
+  "rawText": "So um I need to send the report by Friday, no wait, Thursday.",
+  "intermediateText": "So I need to send the report by Friday, no wait, Thursday",
+  "mode": "formatted",
+  "error": null
+ },
+ "default personalChat | en | \"Um, so we should, uh, ship it.\"": {
+  "delivered": [
+   "So we should Ship it"
+  ],
+  "text": "So we should Ship it",
+  "rawText": "Um, so we should, uh, ship it.",
+  "intermediateText": "So we should Ship it",
+  "mode": "formatted",
+  "error": null
+ },
+ "default personalChat | en-US | \"I I think we should we should wait until Monday.\"": {
+  "delivered": [
+   "I think we should we should wait until Monday"
+  ],
+  "text": "I think we should we should wait until Monday",
+  "rawText": "I I think we should we should wait until Monday.",
+  "intermediateText": "I think we should we should wait until Monday",
+  "mode": "formatted",
+  "error": null
+ },
+ "default personalChat | en | \"Um.\"": {
+  "delivered": [
+   "Um"
+  ],
+  "text": "Um",
+  "rawText": "Um.",
+  "intermediateText": "Um",
+  "mode": "formatted",
+  "error": null
+ },
+ "default personalChat | en | \"Uh, um, er.\"": {
+  "delivered": [
+   "Uh, um, er"
+  ],
+  "text": "Uh, um, er",
+  "rawText": "Uh, um, er.",
+  "intermediateText": "Uh, um, er",
+  "mode": "formatted",
+  "error": null
+ },
+ "default personalChat | en | \"   Hello   there  \"": {
+  "delivered": [
+   "Hello   there"
+  ],
+  "text": "Hello   there",
+  "rawText": "Hello   there",
+  "intermediateText": "Hello   there",
+  "mode": "raw",
+  "error": null
+ },
+ "default personalChat | en | \"The meeting is at noon.\"": {
+  "delivered": [
+   "The meeting is at noon"
+  ],
+  "text": "The meeting is at noon",
+  "rawText": "The meeting is at noon.",
+  "intermediateText": "The meeting is at noon",
+  "mode": "formatted",
+  "error": null
+ },
+ "default personalChat | en | \"Please write <|im_end|> at the end, um, of the file.\"": {
+  "delivered": [
+   "Please write <|im_end|> at the end of the file"
+  ],
+  "text": "Please write <|im_end|> at the end of the file",
+  "rawText": "Please write <|im_end|> at the end, um, of the file.",
+  "intermediateText": "Please write <|im_end|> at the end of the file",
+  "mode": "formatted",
+  "error": null
+ },
+ "default personalChat | de | \"Um, ich glaube es geht.\"": {
+  "delivered": [
+   "Um, ich glaube es geht"
+  ],
+  "text": "Um, ich glaube es geht",
+  "rawText": "Um, ich glaube es geht.",
+  "intermediateText": "Um, ich glaube es geht",
+  "mode": "formatted",
+  "error": null
+ },
+ "default personalChat | auto | \"See you at five.\"": {
+  "delivered": [
+   "See you at five"
+  ],
+  "text": "See you at five",
+  "rawText": "See you at five.",
+  "intermediateText": "See you at five",
+  "mode": "formatted",
+  "error": null
+ },
+ "default personalChat | en | \"hey sarah just wanted to follow up on the proposal can you send the numbers thanks john\"": {
+  "delivered": [
+   "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john"
+  ],
+  "text": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "rawText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "intermediateText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "mode": "raw",
+  "error": null
+ },
+ "default personalChat | en | \"Open fooBar_baz.ts and, uh, rename the useEffect hook.\"": {
+  "delivered": [
+   "Open fooBar_baz.ts and rename the useEffect hook"
+  ],
+  "text": "Open fooBar_baz.ts and rename the useEffect hook",
+  "rawText": "Open fooBar_baz.ts and, uh, rename the useEffect hook.",
+  "intermediateText": "Open fooBar_baz.ts and rename the useEffect hook",
+  "mode": "formatted",
+  "error": null
+ },
+ "default personalChat | en | \"Two hundred milligrams, um, twice a day.\"": {
+  "delivered": [
+   "Two hundred milligrams twice a day"
+  ],
+  "text": "Two hundred milligrams twice a day",
+  "rawText": "Two hundred milligrams, um, twice a day.",
+  "intermediateText": "Two hundred milligrams twice a day",
+  "mode": "formatted",
+  "error": null
+ },
+ "default personalChat | en | \"   \"": {
+  "delivered": [],
+  "text": null,
+  "rawText": null,
+  "intermediateText": null,
+  "mode": null,
+  "error": "noSpeech"
+ },
+ "default coding | en | \"So um I need to send the report by Friday, no wait, Thursday.\"": {
+  "delivered": [
+   "So I need to send the report by Friday, no wait, Thursday."
+  ],
+  "text": "So I need to send the report by Friday, no wait, Thursday.",
+  "rawText": "So um I need to send the report by Friday, no wait, Thursday.",
+  "intermediateText": "So I need to send the report by Friday, no wait, Thursday.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default coding | en | \"Um, so we should, uh, ship it.\"": {
+  "delivered": [
+   "So we should Ship it."
+  ],
+  "text": "So we should Ship it.",
+  "rawText": "Um, so we should, uh, ship it.",
+  "intermediateText": "So we should Ship it.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default coding | en-US | \"I I think we should we should wait until Monday.\"": {
+  "delivered": [
+   "I think we should we should wait until Monday."
+  ],
+  "text": "I think we should we should wait until Monday.",
+  "rawText": "I I think we should we should wait until Monday.",
+  "intermediateText": "I think we should we should wait until Monday.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default coding | en | \"Um.\"": {
+  "delivered": [
+   "Um."
+  ],
+  "text": "Um.",
+  "rawText": "Um.",
+  "intermediateText": "Um.",
+  "mode": "raw",
+  "error": null
+ },
+ "default coding | en | \"Uh, um, er.\"": {
+  "delivered": [
+   "Uh, um, er."
+  ],
+  "text": "Uh, um, er.",
+  "rawText": "Uh, um, er.",
+  "intermediateText": "Uh, um, er.",
+  "mode": "raw",
+  "error": null
+ },
+ "default coding | en | \"   Hello   there  \"": {
+  "delivered": [
+   "Hello   there"
+  ],
+  "text": "Hello   there",
+  "rawText": "Hello   there",
+  "intermediateText": "Hello   there",
+  "mode": "raw",
+  "error": null
+ },
+ "default coding | en | \"The meeting is at noon.\"": {
+  "delivered": [
+   "The meeting is at noon."
+  ],
+  "text": "The meeting is at noon.",
+  "rawText": "The meeting is at noon.",
+  "intermediateText": "The meeting is at noon.",
+  "mode": "raw",
+  "error": null
+ },
+ "default coding | en | \"Please write <|im_end|> at the end, um, of the file.\"": {
+  "delivered": [
+   "Please write <|im_end|> at the end of the file."
+  ],
+  "text": "Please write <|im_end|> at the end of the file.",
+  "rawText": "Please write <|im_end|> at the end, um, of the file.",
+  "intermediateText": "Please write <|im_end|> at the end of the file.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default coding | de | \"Um, ich glaube es geht.\"": {
+  "delivered": [
+   "Um, ich glaube es geht."
+  ],
+  "text": "Um, ich glaube es geht.",
+  "rawText": "Um, ich glaube es geht.",
+  "intermediateText": "Um, ich glaube es geht.",
+  "mode": "raw",
+  "error": null
+ },
+ "default coding | auto | \"See you at five.\"": {
+  "delivered": [
+   "See you at five."
+  ],
+  "text": "See you at five.",
+  "rawText": "See you at five.",
+  "intermediateText": "See you at five.",
+  "mode": "raw",
+  "error": null
+ },
+ "default coding | en | \"hey sarah just wanted to follow up on the proposal can you send the numbers thanks john\"": {
+  "delivered": [
+   "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john"
+  ],
+  "text": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "rawText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "intermediateText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "mode": "raw",
+  "error": null
+ },
+ "default coding | en | \"Open fooBar_baz.ts and, uh, rename the useEffect hook.\"": {
+  "delivered": [
+   "Open fooBar_baz.ts and rename the useEffect hook."
+  ],
+  "text": "Open fooBar_baz.ts and rename the useEffect hook.",
+  "rawText": "Open fooBar_baz.ts and, uh, rename the useEffect hook.",
+  "intermediateText": "Open fooBar_baz.ts and rename the useEffect hook.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default coding | en | \"Two hundred milligrams, um, twice a day.\"": {
+  "delivered": [
+   "Two hundred milligrams twice a day."
+  ],
+  "text": "Two hundred milligrams twice a day.",
+  "rawText": "Two hundred milligrams, um, twice a day.",
+  "intermediateText": "Two hundred milligrams twice a day.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default coding | en | \"   \"": {
+  "delivered": [],
+  "text": null,
+  "rawText": null,
+  "intermediateText": null,
+  "mode": null,
+  "error": "noSpeech"
+ },
+ "default docsNotes | en | \"So um I need to send the report by Friday, no wait, Thursday.\"": {
+  "delivered": [
+   "So I need to send the report by Friday, no wait, Thursday."
+  ],
+  "text": "So I need to send the report by Friday, no wait, Thursday.",
+  "rawText": "So um I need to send the report by Friday, no wait, Thursday.",
+  "intermediateText": "So I need to send the report by Friday, no wait, Thursday.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default docsNotes | en | \"Um, so we should, uh, ship it.\"": {
+  "delivered": [
+   "So we should Ship it."
+  ],
+  "text": "So we should Ship it.",
+  "rawText": "Um, so we should, uh, ship it.",
+  "intermediateText": "So we should Ship it.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default docsNotes | en-US | \"I I think we should we should wait until Monday.\"": {
+  "delivered": [
+   "I think we should we should wait until Monday."
+  ],
+  "text": "I think we should we should wait until Monday.",
+  "rawText": "I I think we should we should wait until Monday.",
+  "intermediateText": "I think we should we should wait until Monday.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default docsNotes | en | \"Um.\"": {
+  "delivered": [
+   "Um."
+  ],
+  "text": "Um.",
+  "rawText": "Um.",
+  "intermediateText": "Um.",
+  "mode": "raw",
+  "error": null
+ },
+ "default docsNotes | en | \"Uh, um, er.\"": {
+  "delivered": [
+   "Uh, um, er."
+  ],
+  "text": "Uh, um, er.",
+  "rawText": "Uh, um, er.",
+  "intermediateText": "Uh, um, er.",
+  "mode": "raw",
+  "error": null
+ },
+ "default docsNotes | en | \"   Hello   there  \"": {
+  "delivered": [
+   "Hello   there"
+  ],
+  "text": "Hello   there",
+  "rawText": "Hello   there",
+  "intermediateText": "Hello   there",
+  "mode": "raw",
+  "error": null
+ },
+ "default docsNotes | en | \"The meeting is at noon.\"": {
+  "delivered": [
+   "The meeting is at noon."
+  ],
+  "text": "The meeting is at noon.",
+  "rawText": "The meeting is at noon.",
+  "intermediateText": "The meeting is at noon.",
+  "mode": "raw",
+  "error": null
+ },
+ "default docsNotes | en | \"Please write <|im_end|> at the end, um, of the file.\"": {
+  "delivered": [
+   "Please write <|im_end|> at the end of the file."
+  ],
+  "text": "Please write <|im_end|> at the end of the file.",
+  "rawText": "Please write <|im_end|> at the end, um, of the file.",
+  "intermediateText": "Please write <|im_end|> at the end of the file.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default docsNotes | de | \"Um, ich glaube es geht.\"": {
+  "delivered": [
+   "Um, ich glaube es geht."
+  ],
+  "text": "Um, ich glaube es geht.",
+  "rawText": "Um, ich glaube es geht.",
+  "intermediateText": "Um, ich glaube es geht.",
+  "mode": "raw",
+  "error": null
+ },
+ "default docsNotes | auto | \"See you at five.\"": {
+  "delivered": [
+   "See you at five."
+  ],
+  "text": "See you at five.",
+  "rawText": "See you at five.",
+  "intermediateText": "See you at five.",
+  "mode": "raw",
+  "error": null
+ },
+ "default docsNotes | en | \"hey sarah just wanted to follow up on the proposal can you send the numbers thanks john\"": {
+  "delivered": [
+   "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john"
+  ],
+  "text": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "rawText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "intermediateText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "mode": "raw",
+  "error": null
+ },
+ "default docsNotes | en | \"Open fooBar_baz.ts and, uh, rename the useEffect hook.\"": {
+  "delivered": [
+   "Open fooBar_baz.ts and rename the useEffect hook."
+  ],
+  "text": "Open fooBar_baz.ts and rename the useEffect hook.",
+  "rawText": "Open fooBar_baz.ts and, uh, rename the useEffect hook.",
+  "intermediateText": "Open fooBar_baz.ts and rename the useEffect hook.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default docsNotes | en | \"Two hundred milligrams, um, twice a day.\"": {
+  "delivered": [
+   "Two hundred milligrams twice a day."
+  ],
+  "text": "Two hundred milligrams twice a day.",
+  "rawText": "Two hundred milligrams, um, twice a day.",
+  "intermediateText": "Two hundred milligrams twice a day.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default docsNotes | en | \"   \"": {
+  "delivered": [],
+  "text": null,
+  "rawText": null,
+  "intermediateText": null,
+  "mode": null,
+  "error": "noSpeech"
+ },
+ "default other | en | \"So um I need to send the report by Friday, no wait, Thursday.\"": {
+  "delivered": [
+   "So I need to send the report by Friday, no wait, Thursday."
+  ],
+  "text": "So I need to send the report by Friday, no wait, Thursday.",
+  "rawText": "So um I need to send the report by Friday, no wait, Thursday.",
+  "intermediateText": "So I need to send the report by Friday, no wait, Thursday.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default other | en | \"Um, so we should, uh, ship it.\"": {
+  "delivered": [
+   "So we should Ship it."
+  ],
+  "text": "So we should Ship it.",
+  "rawText": "Um, so we should, uh, ship it.",
+  "intermediateText": "So we should Ship it.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default other | en-US | \"I I think we should we should wait until Monday.\"": {
+  "delivered": [
+   "I think we should we should wait until Monday."
+  ],
+  "text": "I think we should we should wait until Monday.",
+  "rawText": "I I think we should we should wait until Monday.",
+  "intermediateText": "I think we should we should wait until Monday.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default other | en | \"Um.\"": {
+  "delivered": [
+   "Um."
+  ],
+  "text": "Um.",
+  "rawText": "Um.",
+  "intermediateText": "Um.",
+  "mode": "raw",
+  "error": null
+ },
+ "default other | en | \"Uh, um, er.\"": {
+  "delivered": [
+   "Uh, um, er."
+  ],
+  "text": "Uh, um, er.",
+  "rawText": "Uh, um, er.",
+  "intermediateText": "Uh, um, er.",
+  "mode": "raw",
+  "error": null
+ },
+ "default other | en | \"   Hello   there  \"": {
+  "delivered": [
+   "Hello   there"
+  ],
+  "text": "Hello   there",
+  "rawText": "Hello   there",
+  "intermediateText": "Hello   there",
+  "mode": "raw",
+  "error": null
+ },
+ "default other | en | \"The meeting is at noon.\"": {
+  "delivered": [
+   "The meeting is at noon."
+  ],
+  "text": "The meeting is at noon.",
+  "rawText": "The meeting is at noon.",
+  "intermediateText": "The meeting is at noon.",
+  "mode": "raw",
+  "error": null
+ },
+ "default other | en | \"Please write <|im_end|> at the end, um, of the file.\"": {
+  "delivered": [
+   "Please write <|im_end|> at the end of the file."
+  ],
+  "text": "Please write <|im_end|> at the end of the file.",
+  "rawText": "Please write <|im_end|> at the end, um, of the file.",
+  "intermediateText": "Please write <|im_end|> at the end of the file.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default other | de | \"Um, ich glaube es geht.\"": {
+  "delivered": [
+   "Um, ich glaube es geht."
+  ],
+  "text": "Um, ich glaube es geht.",
+  "rawText": "Um, ich glaube es geht.",
+  "intermediateText": "Um, ich glaube es geht.",
+  "mode": "raw",
+  "error": null
+ },
+ "default other | auto | \"See you at five.\"": {
+  "delivered": [
+   "See you at five."
+  ],
+  "text": "See you at five.",
+  "rawText": "See you at five.",
+  "intermediateText": "See you at five.",
+  "mode": "raw",
+  "error": null
+ },
+ "default other | en | \"hey sarah just wanted to follow up on the proposal can you send the numbers thanks john\"": {
+  "delivered": [
+   "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john"
+  ],
+  "text": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "rawText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "intermediateText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "mode": "raw",
+  "error": null
+ },
+ "default other | en | \"Open fooBar_baz.ts and, uh, rename the useEffect hook.\"": {
+  "delivered": [
+   "Open fooBar_baz.ts and rename the useEffect hook."
+  ],
+  "text": "Open fooBar_baz.ts and rename the useEffect hook.",
+  "rawText": "Open fooBar_baz.ts and, uh, rename the useEffect hook.",
+  "intermediateText": "Open fooBar_baz.ts and rename the useEffect hook.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default other | en | \"Two hundred milligrams, um, twice a day.\"": {
+  "delivered": [
+   "Two hundred milligrams twice a day."
+  ],
+  "text": "Two hundred milligrams twice a day.",
+  "rawText": "Two hundred milligrams, um, twice a day.",
+  "intermediateText": "Two hundred milligrams twice a day.",
+  "mode": "formatted",
+  "error": null
+ },
+ "default other | en | \"   \"": {
+  "delivered": [],
+  "text": null,
+  "rawText": null,
+  "intermediateText": null,
+  "mode": null,
+  "error": "noSpeech"
+ },
+ "casual styles | en | \"So um I need to send the report by Friday, no wait, Thursday.\"": {
+  "delivered": [
+   "So I need to send the report by Friday, no wait, Thursday"
+  ],
+  "text": "So I need to send the report by Friday, no wait, Thursday",
+  "rawText": "So um I need to send the report by Friday, no wait, Thursday.",
+  "intermediateText": "So I need to send the report by Friday, no wait, Thursday",
+  "mode": "formatted",
+  "error": null
+ },
+ "casual styles | en | \"Um, so we should, uh, ship it.\"": {
+  "delivered": [
+   "So we should Ship it"
+  ],
+  "text": "So we should Ship it",
+  "rawText": "Um, so we should, uh, ship it.",
+  "intermediateText": "So we should Ship it",
+  "mode": "formatted",
+  "error": null
+ },
+ "casual styles | en-US | \"I I think we should we should wait until Monday.\"": {
+  "delivered": [
+   "I think we should we should wait until Monday"
+  ],
+  "text": "I think we should we should wait until Monday",
+  "rawText": "I I think we should we should wait until Monday.",
+  "intermediateText": "I think we should we should wait until Monday",
+  "mode": "formatted",
+  "error": null
+ },
+ "casual styles | en | \"Um.\"": {
+  "delivered": [
+   "Um"
+  ],
+  "text": "Um",
+  "rawText": "Um.",
+  "intermediateText": "Um",
+  "mode": "formatted",
+  "error": null
+ },
+ "casual styles | en | \"Uh, um, er.\"": {
+  "delivered": [
+   "Uh, um, er"
+  ],
+  "text": "Uh, um, er",
+  "rawText": "Uh, um, er.",
+  "intermediateText": "Uh, um, er",
+  "mode": "formatted",
+  "error": null
+ },
+ "casual styles | en | \"   Hello   there  \"": {
+  "delivered": [
+   "Hello   there"
+  ],
+  "text": "Hello   there",
+  "rawText": "Hello   there",
+  "intermediateText": "Hello   there",
+  "mode": "raw",
+  "error": null
+ },
+ "casual styles | en | \"The meeting is at noon.\"": {
+  "delivered": [
+   "The meeting is at noon"
+  ],
+  "text": "The meeting is at noon",
+  "rawText": "The meeting is at noon.",
+  "intermediateText": "The meeting is at noon",
+  "mode": "formatted",
+  "error": null
+ },
+ "casual styles | en | \"Please write <|im_end|> at the end, um, of the file.\"": {
+  "delivered": [
+   "Please write <|im_end|> at the end of the file"
+  ],
+  "text": "Please write <|im_end|> at the end of the file",
+  "rawText": "Please write <|im_end|> at the end, um, of the file.",
+  "intermediateText": "Please write <|im_end|> at the end of the file",
+  "mode": "formatted",
+  "error": null
+ },
+ "casual styles | de | \"Um, ich glaube es geht.\"": {
+  "delivered": [
+   "Um, ich glaube es geht"
+  ],
+  "text": "Um, ich glaube es geht",
+  "rawText": "Um, ich glaube es geht.",
+  "intermediateText": "Um, ich glaube es geht",
+  "mode": "formatted",
+  "error": null
+ },
+ "casual styles | auto | \"See you at five.\"": {
+  "delivered": [
+   "See you at five"
+  ],
+  "text": "See you at five",
+  "rawText": "See you at five.",
+  "intermediateText": "See you at five",
+  "mode": "formatted",
+  "error": null
+ },
+ "casual styles | en | \"hey sarah just wanted to follow up on the proposal can you send the numbers thanks john\"": {
+  "delivered": [
+   "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john"
+  ],
+  "text": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "rawText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "intermediateText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "mode": "raw",
+  "error": null
+ },
+ "casual styles | en | \"Open fooBar_baz.ts and, uh, rename the useEffect hook.\"": {
+  "delivered": [
+   "Open fooBar_baz.ts and rename the useEffect hook"
+  ],
+  "text": "Open fooBar_baz.ts and rename the useEffect hook",
+  "rawText": "Open fooBar_baz.ts and, uh, rename the useEffect hook.",
+  "intermediateText": "Open fooBar_baz.ts and rename the useEffect hook",
+  "mode": "formatted",
+  "error": null
+ },
+ "casual styles | en | \"Two hundred milligrams, um, twice a day.\"": {
+  "delivered": [
+   "Two hundred milligrams twice a day"
+  ],
+  "text": "Two hundred milligrams twice a day",
+  "rawText": "Two hundred milligrams, um, twice a day.",
+  "intermediateText": "Two hundred milligrams twice a day",
+  "mode": "formatted",
+  "error": null
+ },
+ "casual styles | en | \"   \"": {
+  "delivered": [],
+  "text": null,
+  "rawText": null,
+  "intermediateText": null,
+  "mode": null,
+  "error": "noSpeech"
+ },
+ "format for the app off | en | \"So um I need to send the report by Friday, no wait, Thursday.\"": {
+  "delivered": [
+   "So I need to send the report by Friday, no wait, Thursday."
+  ],
+  "text": "So I need to send the report by Friday, no wait, Thursday.",
+  "rawText": "So um I need to send the report by Friday, no wait, Thursday.",
+  "intermediateText": "So I need to send the report by Friday, no wait, Thursday.",
+  "mode": "formatted",
+  "error": null
+ },
+ "format for the app off | en | \"Um, so we should, uh, ship it.\"": {
+  "delivered": [
+   "So we should Ship it."
+  ],
+  "text": "So we should Ship it.",
+  "rawText": "Um, so we should, uh, ship it.",
+  "intermediateText": "So we should Ship it.",
+  "mode": "formatted",
+  "error": null
+ },
+ "format for the app off | en-US | \"I I think we should we should wait until Monday.\"": {
+  "delivered": [
+   "I think we should we should wait until Monday."
+  ],
+  "text": "I think we should we should wait until Monday.",
+  "rawText": "I I think we should we should wait until Monday.",
+  "intermediateText": "I think we should we should wait until Monday.",
+  "mode": "formatted",
+  "error": null
+ },
+ "format for the app off | en | \"Um.\"": {
+  "delivered": [
+   "Um."
+  ],
+  "text": "Um.",
+  "rawText": "Um.",
+  "intermediateText": "Um.",
+  "mode": "raw",
+  "error": null
+ },
+ "format for the app off | en | \"Uh, um, er.\"": {
+  "delivered": [
+   "Uh, um, er."
+  ],
+  "text": "Uh, um, er.",
+  "rawText": "Uh, um, er.",
+  "intermediateText": "Uh, um, er.",
+  "mode": "raw",
+  "error": null
+ },
+ "format for the app off | en | \"   Hello   there  \"": {
+  "delivered": [
+   "Hello   there"
+  ],
+  "text": "Hello   there",
+  "rawText": "Hello   there",
+  "intermediateText": "Hello   there",
+  "mode": "raw",
+  "error": null
+ },
+ "format for the app off | en | \"The meeting is at noon.\"": {
+  "delivered": [
+   "The meeting is at noon."
+  ],
+  "text": "The meeting is at noon.",
+  "rawText": "The meeting is at noon.",
+  "intermediateText": "The meeting is at noon.",
+  "mode": "raw",
+  "error": null
+ },
+ "format for the app off | en | \"Please write <|im_end|> at the end, um, of the file.\"": {
+  "delivered": [
+   "Please write <|im_end|> at the end of the file."
+  ],
+  "text": "Please write <|im_end|> at the end of the file.",
+  "rawText": "Please write <|im_end|> at the end, um, of the file.",
+  "intermediateText": "Please write <|im_end|> at the end of the file.",
+  "mode": "formatted",
+  "error": null
+ },
+ "format for the app off | de | \"Um, ich glaube es geht.\"": {
+  "delivered": [
+   "Um, ich glaube es geht."
+  ],
+  "text": "Um, ich glaube es geht.",
+  "rawText": "Um, ich glaube es geht.",
+  "intermediateText": "Um, ich glaube es geht.",
+  "mode": "raw",
+  "error": null
+ },
+ "format for the app off | auto | \"See you at five.\"": {
+  "delivered": [
+   "See you at five."
+  ],
+  "text": "See you at five.",
+  "rawText": "See you at five.",
+  "intermediateText": "See you at five.",
+  "mode": "raw",
+  "error": null
+ },
+ "format for the app off | en | \"hey sarah just wanted to follow up on the proposal can you send the numbers thanks john\"": {
+  "delivered": [
+   "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john"
+  ],
+  "text": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "rawText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "intermediateText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "mode": "raw",
+  "error": null
+ },
+ "format for the app off | en | \"Open fooBar_baz.ts and, uh, rename the useEffect hook.\"": {
+  "delivered": [
+   "Open fooBar_baz.ts and rename the useEffect hook."
+  ],
+  "text": "Open fooBar_baz.ts and rename the useEffect hook.",
+  "rawText": "Open fooBar_baz.ts and, uh, rename the useEffect hook.",
+  "intermediateText": "Open fooBar_baz.ts and rename the useEffect hook.",
+  "mode": "formatted",
+  "error": null
+ },
+ "format for the app off | en | \"Two hundred milligrams, um, twice a day.\"": {
+  "delivered": [
+   "Two hundred milligrams twice a day."
+  ],
+  "text": "Two hundred milligrams twice a day.",
+  "rawText": "Two hundred milligrams, um, twice a day.",
+  "intermediateText": "Two hundred milligrams twice a day.",
+  "mode": "formatted",
+  "error": null
+ },
+ "format for the app off | en | \"   \"": {
+  "delivered": [],
+  "text": null,
+  "rawText": null,
+  "intermediateText": null,
+  "mode": null,
+  "error": "noSpeech"
+ },
+ "auto-format off | en | \"So um I need to send the report by Friday, no wait, Thursday.\"": {
+  "delivered": [
+   "So um I need to send the report by Friday, no wait, Thursday."
+  ],
+  "text": "So um I need to send the report by Friday, no wait, Thursday.",
+  "rawText": "So um I need to send the report by Friday, no wait, Thursday.",
+  "intermediateText": "So um I need to send the report by Friday, no wait, Thursday.",
+  "mode": "raw",
+  "error": null
+ },
+ "auto-format off | en | \"Um, so we should, uh, ship it.\"": {
+  "delivered": [
+   "Um, so we should, uh, Ship it."
+  ],
+  "text": "Um, so we should, uh, Ship it.",
+  "rawText": "Um, so we should, uh, ship it.",
+  "intermediateText": "Um, so we should, uh, Ship it.",
+  "mode": "raw",
+  "error": null
+ },
+ "auto-format off | en-US | \"I I think we should we should wait until Monday.\"": {
+  "delivered": [
+   "I I think we should we should wait until Monday."
+  ],
+  "text": "I I think we should we should wait until Monday.",
+  "rawText": "I I think we should we should wait until Monday.",
+  "intermediateText": "I I think we should we should wait until Monday.",
+  "mode": "raw",
+  "error": null
+ },
+ "auto-format off | en | \"Um.\"": {
+  "delivered": [
+   "Um."
+  ],
+  "text": "Um.",
+  "rawText": "Um.",
+  "intermediateText": "Um.",
+  "mode": "raw",
+  "error": null
+ },
+ "auto-format off | en | \"Uh, um, er.\"": {
+  "delivered": [
+   "Uh, um, er."
+  ],
+  "text": "Uh, um, er.",
+  "rawText": "Uh, um, er.",
+  "intermediateText": "Uh, um, er.",
+  "mode": "raw",
+  "error": null
+ },
+ "auto-format off | en | \"   Hello   there  \"": {
+  "delivered": [
+   "Hello   there"
+  ],
+  "text": "Hello   there",
+  "rawText": "Hello   there",
+  "intermediateText": "Hello   there",
+  "mode": "raw",
+  "error": null
+ },
+ "auto-format off | en | \"The meeting is at noon.\"": {
+  "delivered": [
+   "The meeting is at noon."
+  ],
+  "text": "The meeting is at noon.",
+  "rawText": "The meeting is at noon.",
+  "intermediateText": "The meeting is at noon.",
+  "mode": "raw",
+  "error": null
+ },
+ "auto-format off | en | \"Please write <|im_end|> at the end, um, of the file.\"": {
+  "delivered": [
+   "Please write <|im_end|> at the end, um, of the file."
+  ],
+  "text": "Please write <|im_end|> at the end, um, of the file.",
+  "rawText": "Please write <|im_end|> at the end, um, of the file.",
+  "intermediateText": "Please write <|im_end|> at the end, um, of the file.",
+  "mode": "raw",
+  "error": null
+ },
+ "auto-format off | de | \"Um, ich glaube es geht.\"": {
+  "delivered": [
+   "Um, ich glaube es geht."
+  ],
+  "text": "Um, ich glaube es geht.",
+  "rawText": "Um, ich glaube es geht.",
+  "intermediateText": "Um, ich glaube es geht.",
+  "mode": "raw",
+  "error": null
+ },
+ "auto-format off | auto | \"See you at five.\"": {
+  "delivered": [
+   "See you at five."
+  ],
+  "text": "See you at five.",
+  "rawText": "See you at five.",
+  "intermediateText": "See you at five.",
+  "mode": "raw",
+  "error": null
+ },
+ "auto-format off | en | \"hey sarah just wanted to follow up on the proposal can you send the numbers thanks john\"": {
+  "delivered": [
+   "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john"
+  ],
+  "text": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "rawText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "intermediateText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "mode": "raw",
+  "error": null
+ },
+ "auto-format off | en | \"Open fooBar_baz.ts and, uh, rename the useEffect hook.\"": {
+  "delivered": [
+   "Open fooBar_baz.ts and, uh, rename the useEffect hook."
+  ],
+  "text": "Open fooBar_baz.ts and, uh, rename the useEffect hook.",
+  "rawText": "Open fooBar_baz.ts and, uh, rename the useEffect hook.",
+  "intermediateText": "Open fooBar_baz.ts and, uh, rename the useEffect hook.",
+  "mode": "raw",
+  "error": null
+ },
+ "auto-format off | en | \"Two hundred milligrams, um, twice a day.\"": {
+  "delivered": [
+   "Two hundred milligrams, um, twice a day."
+  ],
+  "text": "Two hundred milligrams, um, twice a day.",
+  "rawText": "Two hundred milligrams, um, twice a day.",
+  "intermediateText": "Two hundred milligrams, um, twice a day.",
+  "mode": "raw",
+  "error": null
+ },
+ "auto-format off | en | \"   \"": {
+  "delivered": [],
+  "text": null,
+  "rawText": null,
+  "intermediateText": null,
+  "mode": null,
+  "error": "noSpeech"
+ },
+ "raw mode | en | \"So um I need to send the report by Friday, no wait, Thursday.\"": {
+  "delivered": [
+   "So um I need to send the report by Friday, no wait, Thursday."
+  ],
+  "text": "So um I need to send the report by Friday, no wait, Thursday.",
+  "rawText": "So um I need to send the report by Friday, no wait, Thursday.",
+  "intermediateText": "So um I need to send the report by Friday, no wait, Thursday.",
+  "mode": "raw",
+  "error": null
+ },
+ "raw mode | en | \"Um, so we should, uh, ship it.\"": {
+  "delivered": [
+   "Um, so we should, uh, Ship it."
+  ],
+  "text": "Um, so we should, uh, Ship it.",
+  "rawText": "Um, so we should, uh, ship it.",
+  "intermediateText": "Um, so we should, uh, Ship it.",
+  "mode": "raw",
+  "error": null
+ },
+ "raw mode | en-US | \"I I think we should we should wait until Monday.\"": {
+  "delivered": [
+   "I I think we should we should wait until Monday."
+  ],
+  "text": "I I think we should we should wait until Monday.",
+  "rawText": "I I think we should we should wait until Monday.",
+  "intermediateText": "I I think we should we should wait until Monday.",
+  "mode": "raw",
+  "error": null
+ },
+ "raw mode | en | \"Um.\"": {
+  "delivered": [
+   "Um."
+  ],
+  "text": "Um.",
+  "rawText": "Um.",
+  "intermediateText": "Um.",
+  "mode": "raw",
+  "error": null
+ },
+ "raw mode | en | \"Uh, um, er.\"": {
+  "delivered": [
+   "Uh, um, er."
+  ],
+  "text": "Uh, um, er.",
+  "rawText": "Uh, um, er.",
+  "intermediateText": "Uh, um, er.",
+  "mode": "raw",
+  "error": null
+ },
+ "raw mode | en | \"   Hello   there  \"": {
+  "delivered": [
+   "Hello   there"
+  ],
+  "text": "Hello   there",
+  "rawText": "Hello   there",
+  "intermediateText": "Hello   there",
+  "mode": "raw",
+  "error": null
+ },
+ "raw mode | en | \"The meeting is at noon.\"": {
+  "delivered": [
+   "The meeting is at noon."
+  ],
+  "text": "The meeting is at noon.",
+  "rawText": "The meeting is at noon.",
+  "intermediateText": "The meeting is at noon.",
+  "mode": "raw",
+  "error": null
+ },
+ "raw mode | en | \"Please write <|im_end|> at the end, um, of the file.\"": {
+  "delivered": [
+   "Please write <|im_end|> at the end, um, of the file."
+  ],
+  "text": "Please write <|im_end|> at the end, um, of the file.",
+  "rawText": "Please write <|im_end|> at the end, um, of the file.",
+  "intermediateText": "Please write <|im_end|> at the end, um, of the file.",
+  "mode": "raw",
+  "error": null
+ },
+ "raw mode | de | \"Um, ich glaube es geht.\"": {
+  "delivered": [
+   "Um, ich glaube es geht."
+  ],
+  "text": "Um, ich glaube es geht.",
+  "rawText": "Um, ich glaube es geht.",
+  "intermediateText": "Um, ich glaube es geht.",
+  "mode": "raw",
+  "error": null
+ },
+ "raw mode | auto | \"See you at five.\"": {
+  "delivered": [
+   "See you at five."
+  ],
+  "text": "See you at five.",
+  "rawText": "See you at five.",
+  "intermediateText": "See you at five.",
+  "mode": "raw",
+  "error": null
+ },
+ "raw mode | en | \"hey sarah just wanted to follow up on the proposal can you send the numbers thanks john\"": {
+  "delivered": [
+   "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john"
+  ],
+  "text": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "rawText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "intermediateText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "mode": "raw",
+  "error": null
+ },
+ "raw mode | en | \"Open fooBar_baz.ts and, uh, rename the useEffect hook.\"": {
+  "delivered": [
+   "Open fooBar_baz.ts and, uh, rename the useEffect hook."
+  ],
+  "text": "Open fooBar_baz.ts and, uh, rename the useEffect hook.",
+  "rawText": "Open fooBar_baz.ts and, uh, rename the useEffect hook.",
+  "intermediateText": "Open fooBar_baz.ts and, uh, rename the useEffect hook.",
+  "mode": "raw",
+  "error": null
+ },
+ "raw mode | en | \"Two hundred milligrams, um, twice a day.\"": {
+  "delivered": [
+   "Two hundred milligrams, um, twice a day."
+  ],
+  "text": "Two hundred milligrams, um, twice a day.",
+  "rawText": "Two hundred milligrams, um, twice a day.",
+  "intermediateText": "Two hundred milligrams, um, twice a day.",
+  "mode": "raw",
+  "error": null
+ },
+ "raw mode | en | \"   \"": {
+  "delivered": [],
+  "text": null,
+  "rawText": null,
+  "intermediateText": null,
+  "mode": null,
+  "error": "noSpeech"
+ },
+ "window dictation | en | \"So um I need to send the report by Friday, no wait, Thursday.\"": {
+  "delivered": [
+   "So I need to send the report by Friday, no wait, Thursday."
+  ],
+  "text": "So I need to send the report by Friday, no wait, Thursday.",
+  "rawText": "So um I need to send the report by Friday, no wait, Thursday.",
+  "intermediateText": "So I need to send the report by Friday, no wait, Thursday.",
+  "mode": "formatted",
+  "error": null
+ },
+ "window dictation | en | \"Um, so we should, uh, ship it.\"": {
+  "delivered": [
+   "So we should Ship it."
+  ],
+  "text": "So we should Ship it.",
+  "rawText": "Um, so we should, uh, ship it.",
+  "intermediateText": "So we should Ship it.",
+  "mode": "formatted",
+  "error": null
+ },
+ "window dictation | en-US | \"I I think we should we should wait until Monday.\"": {
+  "delivered": [
+   "I think we should we should wait until Monday."
+  ],
+  "text": "I think we should we should wait until Monday.",
+  "rawText": "I I think we should we should wait until Monday.",
+  "intermediateText": "I think we should we should wait until Monday.",
+  "mode": "formatted",
+  "error": null
+ },
+ "window dictation | en | \"Um.\"": {
+  "delivered": [
+   "Um."
+  ],
+  "text": "Um.",
+  "rawText": "Um.",
+  "intermediateText": "Um.",
+  "mode": "raw",
+  "error": null
+ },
+ "window dictation | en | \"Uh, um, er.\"": {
+  "delivered": [
+   "Uh, um, er."
+  ],
+  "text": "Uh, um, er.",
+  "rawText": "Uh, um, er.",
+  "intermediateText": "Uh, um, er.",
+  "mode": "raw",
+  "error": null
+ },
+ "window dictation | en | \"   Hello   there  \"": {
+  "delivered": [
+   "Hello   there"
+  ],
+  "text": "Hello   there",
+  "rawText": "Hello   there",
+  "intermediateText": "Hello   there",
+  "mode": "raw",
+  "error": null
+ },
+ "window dictation | en | \"The meeting is at noon.\"": {
+  "delivered": [
+   "The meeting is at noon."
+  ],
+  "text": "The meeting is at noon.",
+  "rawText": "The meeting is at noon.",
+  "intermediateText": "The meeting is at noon.",
+  "mode": "raw",
+  "error": null
+ },
+ "window dictation | en | \"Please write <|im_end|> at the end, um, of the file.\"": {
+  "delivered": [
+   "Please write <|im_end|> at the end of the file."
+  ],
+  "text": "Please write <|im_end|> at the end of the file.",
+  "rawText": "Please write <|im_end|> at the end, um, of the file.",
+  "intermediateText": "Please write <|im_end|> at the end of the file.",
+  "mode": "formatted",
+  "error": null
+ },
+ "window dictation | de | \"Um, ich glaube es geht.\"": {
+  "delivered": [
+   "Um, ich glaube es geht."
+  ],
+  "text": "Um, ich glaube es geht.",
+  "rawText": "Um, ich glaube es geht.",
+  "intermediateText": "Um, ich glaube es geht.",
+  "mode": "raw",
+  "error": null
+ },
+ "window dictation | auto | \"See you at five.\"": {
+  "delivered": [
+   "See you at five."
+  ],
+  "text": "See you at five.",
+  "rawText": "See you at five.",
+  "intermediateText": "See you at five.",
+  "mode": "raw",
+  "error": null
+ },
+ "window dictation | en | \"hey sarah just wanted to follow up on the proposal can you send the numbers thanks john\"": {
+  "delivered": [
+   "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john"
+  ],
+  "text": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "rawText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "intermediateText": "hey sarah just wanted to follow up on the proposal can you send the numbers thanks john",
+  "mode": "raw",
+  "error": null
+ },
+ "window dictation | en | \"Open fooBar_baz.ts and, uh, rename the useEffect hook.\"": {
+  "delivered": [
+   "Open fooBar_baz.ts and rename the useEffect hook."
+  ],
+  "text": "Open fooBar_baz.ts and rename the useEffect hook.",
+  "rawText": "Open fooBar_baz.ts and, uh, rename the useEffect hook.",
+  "intermediateText": "Open fooBar_baz.ts and rename the useEffect hook.",
+  "mode": "formatted",
+  "error": null
+ },
+ "window dictation | en | \"Two hundred milligrams, um, twice a day.\"": {
+  "delivered": [
+   "Two hundred milligrams twice a day."
+  ],
+  "text": "Two hundred milligrams twice a day.",
+  "rawText": "Two hundred milligrams, um, twice a day.",
+  "intermediateText": "Two hundred milligrams twice a day.",
+  "mode": "formatted",
+  "error": null
+ },
+ "window dictation | en | \"   \"": {
+  "delivered": [],
+  "text": null,
+  "rawText": null,
+  "intermediateText": null,
+  "mode": null,
+  "error": "noSpeech"
+ }
+}

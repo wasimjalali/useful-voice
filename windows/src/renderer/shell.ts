@@ -4,6 +4,7 @@ import { createBanner } from './components/banners.js';
 import { computeHealth, createStatusButton, type HealthInput } from './components/statusPopover.js';
 import { mountAnnouncer } from './components/announcer.js';
 import { createLandingMark } from './components/landingMark.js';
+import { isPasteBlocked } from '../core/hudModel.js';
 import type {
   DictationError,
   DictationStateEvent,
@@ -33,7 +34,7 @@ const PAGE_ICONS = {
 };
 
 export const PAGES: Array<{ id: Page; label: string; icon: string }> = [
-  { id: 'stream', label: 'Stream', icon: PAGE_ICONS.stream },
+  { id: 'stream', label: 'Dictations', icon: PAGE_ICONS.stream },
   { id: 'notes', label: 'Notes', icon: PAGE_ICONS.notes },
   { id: 'vocabulary', label: 'Vocabulary', icon: PAGE_ICONS.vocabulary },
   { id: 'insights', label: 'Insights', icon: PAGE_ICONS.insights },
@@ -121,6 +122,12 @@ let renderChromeImpl: () => void = () => {};
 export function renderChrome(): void {
   renderChromeImpl();
 }
+
+/**
+ * Set by the Settings page while it is on screen: patches its app list after History
+ * changed, without a repaint (a repaint would drop the focus the user is working with).
+ */
+export const settingsLive: { historyChanged: (() => void) | null } = { historyChanged: null };
 
 /**
  * The language picker currently on screen, if Settings is open.
@@ -295,7 +302,7 @@ export function mountMain(pages: Record<Page, PageModule>): void {
     el('div', { class: 'rail-foot' }, navItems.get('settings') as HTMLElement, status.element),
   );
 
-  const title = el('h1', { class: 'stage-title' }, 'Stream');
+  const title = el('h1', { class: 'stage-title' }, 'Dictations');
   const headerActions = el('div', { class: 'inline wrap' });
   const header = el('header', { class: 'stage-header' }, title, headerActions);
   const bannerHost = el('div', { class: 'banner-host' });
@@ -393,7 +400,7 @@ export function mountMain(pages: Record<Page, PageModule>): void {
   api.onOutcome((outcome) => {
     if (outcome.kind !== 'delivered') return;
     state.lastError = null;
-    state.pasteBlocked = outcome.result === 'copiedNotPasted';
+    state.pasteBlocked = isPasteBlocked(outcome);
     renderChrome();
   });
 
@@ -409,6 +416,13 @@ export function mountMain(pages: Record<Page, PageModule>): void {
     void loadIfActive('stream', () => api.getHistory().then((history) => {
       state.history = history;
     }));
+    // Settings lists the apps from History. It is patched in place, never repainted.
+    if (state.page === 'settings') {
+      void api.getHistory().then((history) => {
+        state.history = history;
+        settingsLive.historyChanged?.();
+      }).catch((error) => console.warn('background refresh failed', error));
+    }
   });
 
   // Tray and floating-picker changes (language, auto-format) land in Settings too.

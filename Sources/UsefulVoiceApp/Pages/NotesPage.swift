@@ -113,7 +113,7 @@ struct NotesPage: View {
             Text("No notes yet")
                 .font(.uv(.title, .semibold))
                 .foregroundStyle(Theme.ink)
-            Text("Notes keep what you want to reuse. Add the latest dictation to a note from the Stream, or start a blank one.")
+            Text("Notes keep what you want to reuse. Add the latest dictation to a note from Dictations, or start a blank one.")
                 .font(.uv(.body))
                 .foregroundStyle(Theme.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)

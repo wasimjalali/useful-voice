@@ -76,7 +76,7 @@ export function renderNotesPage(): HTMLElement {
         'div',
         { class: 'empty-state notes-empty' },
         el('h3', {}, 'No notes yet'),
-        el('p', {}, 'Notes keep what you want to reuse. Add the latest dictation to a note from the Stream, or start a blank one.'),
+        el('p', {}, 'Notes keep what you want to reuse. Add the latest dictation to a note from Dictations, or start a blank one.'),
         el(
           'div',
           { class: 'notes-empty-action' },

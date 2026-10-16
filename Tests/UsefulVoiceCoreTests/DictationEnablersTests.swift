@@ -125,6 +125,26 @@ import Combine
         #expect(feedback.issue?.message == "Copied. Press \u{2318}V to paste.")
     }
 
+    @Test func testPartlyTypedRaisesItsOwnNoticeNotPlainCopied() {
+        var feedback = DictationFeedback()
+        feedback.apply(state: .delivering)
+        feedback.apply(outcome: .delivered(words: 9, mode: .copiedPartlyTyped, appName: "Terminal"))
+        feedback.apply(state: .idle)
+        #expect(feedback.issue == .copiedPartlyTyped)
+        #expect(feedback.issue?.fix == nil)
+        #expect(feedback.issue?.message == "Partly typed. The full text is on your clipboard.")
+    }
+
+    @Test func testLineBreaksCopiedRaisesItsOwnNotice() {
+        var feedback = DictationFeedback()
+        feedback.apply(state: .delivering)
+        feedback.apply(outcome: .delivered(words: 4, mode: .copiedHasLineBreaks, appName: "Terminal"))
+        feedback.apply(state: .idle)
+        #expect(feedback.issue == .copiedHasLineBreaks)
+        #expect(feedback.issue?.fix == nil)
+        #expect(feedback.issue?.message == "Copied. It has line breaks, so it wasn't typed. Press \u{2318}V.")
+    }
+
     @Test func testSecureFieldCopyRaisesANoticeWithNoFix() {
         var feedback = DictationFeedback()
         feedback.apply(state: .delivering)

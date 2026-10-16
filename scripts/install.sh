@@ -45,12 +45,21 @@ ditto -x -k "$tmp/Useful-Voice-macOS.zip" "$tmp/unpacked" || die "the download i
 codesign --verify --strict "$tmp/unpacked/Useful Voice.app" || die "the app's code signature does not verify."
 
 # Quit every running copy first: two copies would fight over the hotkey.
-if pgrep -x UsefulVoice >/dev/null 2>&1; then
+running() { pgrep -x UsefulVoice >/dev/null 2>&1; }
+wait_quit() { i=0; while running && [ "$i" -lt 10 ]; do sleep 1; i=$((i + 1)); done; }
+if running; then
   say "Quitting the running Useful Voice…"
   osascript -e 'tell application id "ai.useful.voice" to quit' >/dev/null 2>&1 || true
-  i=0
-  while pgrep -x UsefulVoice >/dev/null 2>&1 && [ "$i" -lt 10 ]; do sleep 1; i=$((i + 1)); done
-  pgrep -x UsefulVoice >/dev/null 2>&1 && die "Useful Voice is still running. Quit it from the menu bar and run this again."
+  wait_quit
+  if running; then
+    # The Automation prompt behind osascript can be denied. Then ask the installed
+    # copy to stop directly: TERM, and only the process whose executable is the
+    # one under $APP (the path escaped, since pgrep -f takes a regular expression).
+    pattern="^$(printf '%s' "$APP/Contents/MacOS/UsefulVoice" | sed 's/[][\.*^$+?(){}|]/\\&/g')"
+    pkill -TERM -f "$pattern" >/dev/null 2>&1 || true
+    wait_quit
+  fi
+  running && die "Useful Voice is still running. Quit it from the menu bar and run this again."
 fi
 
 # Staged beside the old copy and checked there, so a copy cut short (a full

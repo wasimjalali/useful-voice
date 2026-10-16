@@ -96,6 +96,41 @@ struct FirstRunGateTests {
             forced: false, grantsNeedRecheck: defaults.bool(forKey: FirstRunGate.recheckGrantsKey)) == .skip)
     }
 
+    // MARK: Opening the window at launch
+
+    @Test func onlyAFinishedSetupWithTheRecheckIsRecheckOnly() {
+        #expect(FirstRunGate.isRecheckOnly(completed: true, grantsNeedRecheck: true, forced: false))
+        #expect(!FirstRunGate.isRecheckOnly(completed: false, grantsNeedRecheck: true, forced: false))
+        #expect(!FirstRunGate.isRecheckOnly(completed: true, grantsNeedRecheck: false, forced: false))
+        #expect(!FirstRunGate.isRecheckOnly(completed: true, grantsNeedRecheck: true, forced: true))
+    }
+
+    /// A migrated user who never re-grants must not get a window in front of their
+    /// work at every login. The flow stays up for the next time they open the window.
+    @Test func aLoginLaunchLeavesTheWindowClosedForTheRecheck() {
+        #expect(!FirstRunGate.opensWindowAtLaunch(flowActive: true, recheckOnly: true,
+                                                  userInitiated: false))
+    }
+
+    @Test func aLoginLaunchStillOpensTheWindowForASetupNeverFinished() {
+        #expect(FirstRunGate.opensWindowAtLaunch(flowActive: true, recheckOnly: false,
+                                                 userInitiated: false))
+    }
+
+    @Test func aLoginLaunchWithNoFlowStaysInTheMenuBar() {
+        #expect(!FirstRunGate.opensWindowAtLaunch(flowActive: false, recheckOnly: false,
+                                                  userInitiated: false))
+    }
+
+    @Test func aLaunchTheUserAskedForAlwaysOpensTheWindow() {
+        for active in [true, false] {
+            for recheck in [true, false] {
+                #expect(FirstRunGate.opensWindowAtLaunch(flowActive: active, recheckOnly: recheck,
+                                                         userInitiated: true))
+            }
+        }
+    }
+
     @Test func completingSetupWithoutARecheckOnlyMarksItDone() {
         let suite = "first-run-gate-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

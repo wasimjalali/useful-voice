@@ -176,8 +176,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // every login, so the first keystrokes after logging in landed in
         // Useful Voice instead of the app the user was typing into.
         // The exception is first run: setup has to be seen, so the window opens
-        // with the flow over it even on a login launch.
-        if firstRunActive || LaunchReason.current(from: notification) == .userInitiated {
+        // with the flow over it even on a login launch. Not for the grant recheck
+        // after the rename: that waits until the user opens the window.
+        if FirstRunGate.opensWindowAtLaunch(
+            flowActive: firstRunActive,
+            recheckOnly: firstRun?.recheckOnly == true,
+            userInitiated: LaunchReason.current(from: notification) == .userInitiated) {
             openMainWindow()
         }
     }

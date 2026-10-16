@@ -61,6 +61,9 @@ final class FirstRunModel: ObservableObject {
     // MARK: - Published state
 
     @Published private(set) var active: Bool
+    /// The flow is up at launch only for the grant recheck after the rename. A
+    /// login launch then leaves the window closed (`FirstRunGate.opensWindowAtLaunch`).
+    let recheckOnly: Bool
     @Published private(set) var page: Page = .welcome
     /// Bumped when the flow ends, so the window can land on Dictate.
     @Published private(set) var finishCount = 0
@@ -172,8 +175,13 @@ final class FirstRunModel: ObservableObject {
         // Key PRESENCE (attributes only, never prompts) or a usable local model.
         // Never the key cache, which may not have loaded yet, and a stored key
         // that cannot be read right now still counts as configured.
+        let completed = defaults.bool(forKey: FirstRunGate.completedKey)
+        // Setup finished under the previous identity: its grants are gone.
+        let grantsNeedRecheck = defaults.bool(forKey: FirstRunGate.recheckGrantsKey)
+        self.recheckOnly = FirstRunGate.isRecheckOnly(
+            completed: completed, grantsNeedRecheck: grantsNeedRecheck, forced: forced)
         let decision = FirstRunGate.decide(
-            completed: defaults.bool(forKey: FirstRunGate.completedKey),
+            completed: completed,
             engineConfigured: FirstRunGate.engineConfigured(
                 engine: settings.transcriptionEngine,
                 keyStored: DeepgramKeyStore.keyIsStored(),
@@ -182,8 +190,7 @@ final class FirstRunModel: ObservableObject {
             microphoneAuthorized: AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
             accessibilityTrusted: AXIsProcessTrusted(),
             forced: forced,
-            // Setup finished under the previous identity: its grants are gone.
-            grantsNeedRecheck: defaults.bool(forKey: FirstRunGate.recheckGrantsKey))
+            grantsNeedRecheck: grantsNeedRecheck)
         // An offscreen render saves nothing, and unless the flow is forced it
         // renders the page it was asked for: a differently signed build is never
         // Accessibility-trusted, so the gate would otherwise always show setup.

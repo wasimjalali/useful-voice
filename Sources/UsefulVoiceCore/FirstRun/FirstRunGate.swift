@@ -50,6 +50,23 @@ public enum FirstRunGate {
         defaults.removeObject(forKey: recheckGrantsKey)
     }
 
+    /// The flow is up only because the grants are checked again after the rename:
+    /// setup itself was finished under the previous identity.
+    public static func isRecheckOnly(completed: Bool, grantsNeedRecheck: Bool, forced: Bool) -> Bool {
+        !forced && completed && grantsNeedRecheck
+    }
+
+    /// Whether the main window opens at launch. A launch the user asked for always
+    /// opens it. A login-item or restored launch opens it only for a setup that was
+    /// never finished; a recheck after the rename waits for the next time the user
+    /// opens the window (the Windows gate's rule), so a missing grant never puts a
+    /// window in front of their work at login.
+    public static func opensWindowAtLaunch(flowActive: Bool, recheckOnly: Bool,
+                                           userInitiated: Bool) -> Bool {
+        if userInitiated { return true }
+        return flowActive && !recheckOnly
+    }
+
     /// Whether the app has a way to dictate without any further setup: a Deepgram
     /// key is stored (presence only, so a key that cannot be read right now still
     /// counts) or a local model file is usable. Never reads a cache, so a slow or

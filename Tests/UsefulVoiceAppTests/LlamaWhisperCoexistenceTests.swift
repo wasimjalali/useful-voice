@@ -162,18 +162,25 @@ struct LlamaWhisperCoexistenceTests {
             }
             print("MEASURE after \(label) unload \(memoryMB())")
         }
-        // The same prompt with a ggml thread pool attached (the llama.cpp CLI always has one).
-        for (pool, threads) in [(true, Int32(3)), (false, 3), (true, 2)] {
-            do {
-                let runtime = try LlamaRuntime(modelPath: s1, placement: .cpuOnly, threads: threads, threadpool: pool)
-                for _ in 0..<2 {
-                    let t = ContinuousClock.now
-                    let r = try runtime.complete(prompt: prompt(cardInput), deadline: .now.advanced(by: .seconds(120)))
-                    print("MEASURE pool \(pool) threads \(threads) run \(ms(t.duration(to: .now))) ms (prompt decode \(r.stats.promptDecodeSeconds * 1000) ms, native prompt \(r.stats.nativePromptMs) ms, native generate \(r.stats.nativeGenerateMs) ms, out \(r.stats.outputTokens))")
-                }
-            } catch {
-                print("MEASURE pool \(pool) failed: \(error)")
+        // Thread quality of service: ggml's workers inherit the QoS of the thread that makes the call.
+        do {
+            let runtime = try LlamaRuntime(modelPath: s1, placement: .cpuOnly)
+            func once(_ label: String) {
+                let t = ContinuousClock.now
+                let qos = qos_class_self().rawValue
+                guard let r = try? runtime.complete(prompt: prompt(cardInput), deadline: .now.advanced(by: .seconds(120))) else { return }
+                print("MEASURE qos \(label) (class \(qos)) run \(ms(t.duration(to: .now))) ms (native prompt \(r.stats.nativePromptMs) ms, native generate \(r.stats.nativeGenerateMs) ms, out \(r.stats.outputTokens))")
             }
+            once("test thread"); once("test thread")
+            for (name, qos) in [("userInteractive", QualityOfService.userInteractive), ("userInitiated", .userInitiated)] {
+                let done = DispatchSemaphore(value: 0)
+                let thread = Thread { once(name); once(name); done.signal() }
+                thread.qualityOfService = qos
+                thread.start()
+                done.wait()
+            }
+        } catch {
+            print("MEASURE qos failed: \(error)")
         }
     }
 }

@@ -43,6 +43,7 @@ import {
 } from './theme.js';
 import { RecorderBridge, validateCapture } from './recorderBridge.js';
 import { TrayController } from './tray.js';
+import { feedIsLoopback, Updater } from './updater.js';
 import { Announcer } from './announce.js';
 import {
   DictationService,
@@ -155,6 +156,7 @@ class UsefulVoiceApp {
   private settings!: SettingsStore;
   private data!: DataStore;
   private tray: TrayController | null = null;
+  private updater: Updater | null = null;
   private recorderWindow: BrowserWindow | null = null;
   private mainWindow: BrowserWindow | null = null;
   private hudWindow: BrowserWindow | null = null;
@@ -317,6 +319,9 @@ class UsefulVoiceApp {
   /** Whether Esc is registered as a global shortcut. It is, only while recording. */
   private escapeRegistered = false;
 
+  /** Set once `quit()` starts, so a second Quit or launch during it changes nothing. */
+  private quitting: Promise<void> | null = null;
+
   async start(): Promise<void> {
     // A second launch must hand off to the running instance rather than start a
     // second hotkey registration, which Windows would silently refuse.
@@ -325,6 +330,7 @@ class UsefulVoiceApp {
       return;
     }
     app.on('second-instance', (_event, commandLine) => {
+      if (this.quitting) return;
       // The command line belongs to the instance that just started, not to this one,
       // which is why the flag is read from it rather than from `process.argv`: a second
       // launch carrying `--autostart` is a launch nobody clicked, so it must not pull a
@@ -411,14 +417,25 @@ class UsefulVoiceApp {
       onToggleDictation: () => void this.toggleDictation('window'),
       onOpenWindow: (page) => this.openWindow(page),
       onQuit: () => void this.quit(),
-      onRetry: () => void this.service.retryLast(),
+      onRetry: () => void this.retryLast(),
       onCopyLast: () => this.copyLastTranscript(),
       onCancel: () => void this.cancelDictation(),
       onSetLanguage: (code) => this.setLanguage(code),
       onSetFormatting: (enabled) => this.setFormatting(enabled),
+      onRestartToUpdate: () => this.restartToUpdate(),
     });
     if (!E2E) this.tray.create();
     this.syncTray();
+    this.updater = new Updater({
+      log: (message) => this.diagnostics.log('update', message),
+      onReady: () => {
+        this.syncTray();
+        // CI's update test: install as soon as the download is verified, through the tray item's path.
+        // Only honoured when the baked-in feed is the test's loopback server, never in a release build.
+        if (process.env.UV_UPDATE_INSTALL_WHEN_READY === '1' && feedIsLoopback()) this.restartToUpdate();
+      },
+    });
+    this.updater.start(E2E);
 
     // IPC first: a hotkey problem must never stop the window from having handlers.
     this.registerIpc();
@@ -773,7 +790,7 @@ class UsefulVoiceApp {
         return;
       case 'retry':
         this.hudModel.dismiss();
-        await this.service.retryLast();
+        await this.retryLast();
         return;
       case 'openMicrophoneSettings':
         this.hudModel.dismiss();
@@ -956,14 +973,57 @@ class UsefulVoiceApp {
       languagePin: this.settings.all.languagePin,
       formattingEnabled: this.settings.all.formattingEnabled,
       insertingInto: state === 'recording' ? this.recordingTarget : undefined,
+      updateReady: this.updater?.ready ?? undefined,
     });
   }
 
-  async quit(): Promise<void> {
+  /** The tray's "Restart to update". Held while a dictation is running or waiting for retry. */
+  private restartToUpdate(): void {
+    const state = this.service.currentState;
+    if (this.service.canRetry || state === 'recording' || state === 'transcribing' || state === 'delivering') {
+      this.diagnostics.log('update', `restart held: dictation ${state}, retry pending ${this.service.canRetry}`);
+      return;
+    }
+    void this.quit({ restartToUpdate: true });
+  }
+
+  /**
+   * Asks the main window to save a note edit still inside its autosave delay, waiting at most
+   * a second. Windows are destroyed right after, which fires no `pagehide`. Never throws.
+   */
+  private async saveRendererDrafts(): Promise<void> {
+    const window = this.mainWindow;
+    if (!window || window.isDestroyed()) return;
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const outcome = await Promise.race([
+        window.webContents.executeJavaScript(
+          "typeof window.__uvFlushPending === 'function' ? window.__uvFlushPending() : true",
+        ) as Promise<unknown>,
+        new Promise<'timeout'>((resolve) => {
+          timer = setTimeout(() => resolve('timeout'), 1000);
+        }),
+      ]);
+      if (outcome === 'timeout') this.diagnostics.log('app', 'quit: note draft not saved (timed out after 1 s)');
+      else if (outcome === false) this.diagnostics.log('app', 'quit: note draft not saved (the save was refused)');
+    } catch (error) {
+      this.diagnostics.log('app', `could not save pending note edits: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  quit(options: { restartToUpdate?: boolean } = {}): Promise<void> {
+    this.quitting ??= this.runQuit(options);
+    return this.quitting;
+  }
+
+  private async runQuit(options: { restartToUpdate?: boolean }): Promise<void> {
     try {
       // Not awaited: it ends the model worker at once and must not wait behind a load.
       void this.cleanup.dispose();
       await this.service.cancel();
+      await this.saveRendererDrafts();
       // Always give the data a chance to reach disk before exiting: a debounced
       // save that never fires would lose the user's last dictionary edit.
       await this.data.flush();
@@ -972,6 +1032,39 @@ class UsefulVoiceApp {
     } finally {
       globalShortcut.unregisterAll();
       this.tray?.destroy();
+      // `app.exit` skips the quit events electron-updater listens for, so a downloaded
+      // update is handed to its installer here, on every quit.
+      const restart = options.restartToUpdate === true;
+      const updateReady = this.updater?.ready;
+      // The data is flushed, so nothing may start a dictation or an edit while the installer
+      // is checked below: close every window (the app has no window-all-closed quit).
+      if (updateReady) for (const window of BrowserWindow.getAllWindows()) window.destroy();
+      // Its own file, appended synchronously: diagnostics.log is rewritten by the next
+      // launch, which is seconds away on both paths, and nothing async survives `app.exit`.
+      // The first line goes in before the restart wait, which the installer can cut short.
+      const updateLog = (line: string): void => {
+        try {
+          appendFileSync(path.join(app.getPath('userData'), 'update.log'), `${new Date().toISOString()} ${line}\n`);
+        } catch {
+          // The log is a diagnostic aid only.
+        }
+      };
+      const describe = (started: boolean): string =>
+        `installer for ${updateReady} ${started ? 'started' : `did not start (${this.updater?.lastProblem ?? 'no reason recorded'})`}${restart ? ', restart requested' : ''}`;
+      let spawned: boolean | null = null;
+      const installing =
+        (await this.updater?.installOnExit(restart, (started) => {
+          spawned = started;
+          if (updateReady) updateLog(describe(started));
+        })) ?? false;
+      if (updateReady) {
+        // Refused before any spawn (the file is gone, the call threw), or a spawn failure
+        // that arrived during the wait.
+        if (spawned === null) updateLog(describe(false));
+        else if (spawned && !installing) updateLog(`installer for ${updateReady} failed after starting (${this.updater?.lastProblem ?? 'no reason recorded'})`);
+      }
+      // The person asked for a restart: come back even if the installer could not start.
+      if (restart && !installing) app.relaunch();
       app.exit(0);
     }
   }
@@ -1194,12 +1287,26 @@ class UsefulVoiceApp {
   }
 
   /**
+   * Retry the last failed recording. Like a new dictation, it must not start once the quit has
+   * begun: the flush and the window teardown would race it. The service call is the first thing
+   * that waits, so this one check at entry covers it.
+   */
+  private async retryLast(): Promise<void> {
+    if (this.quitting) return;
+    await this.service.retryLast();
+  }
+
+  /**
    * Start or stop a dictation from `source`.
    *
    * Only a hotkey start needs the foreground window: that is the app its text is
    * pasted into. A window start pastes nothing, so it records no target at all.
    */
   private async toggleDictation(requested: DictationSource): Promise<void> {
+    // Once the quit has begun nothing may start recording: the flush and the window teardown
+    // below would race it. Checked again after the awaits, where a press that was already
+    // waiting on the foreground window lands.
+    if (this.quitting) return;
     // While the setup flow is open the hotkey dictates into the flow's own field, never
     // into the app in front.
     // The settings this dictation uses, copied now: Settings changed while it runs apply to the next.
@@ -1260,6 +1367,7 @@ class UsefulVoiceApp {
         }
       }
     }
+    if (this.quitting) return;
     await this.service.toggle({ source, targetApp, targetHandle, target, context, press, ownField: ownEditable });
     void this.data.flush();
   }
@@ -1532,7 +1640,7 @@ class UsefulVoiceApp {
     // dictation. The renderer cannot ask for a paste: only the hotkey does that.
     ipcMain.handle('dictation:toggle', () => this.toggleDictation('window'));
     ipcMain.handle('dictation:cancel', () => this.cancelDictation());
-    ipcMain.handle('dictation:retry', () => this.service.retryLast());
+    ipcMain.handle('dictation:retry', () => this.retryLast());
     ipcMain.handle('dictation:copyLast', () => this.copyLastTranscript());
 
     // The HUD window ignores the mouse except over the capsule.
@@ -2043,7 +2151,7 @@ class UsefulVoiceApp {
         submenu: [
           { label: 'Start / stop', click: () => void this.toggleDictation('window') },
           { label: 'Cancel', click: () => void this.cancelDictation() },
-          { label: 'Retry last', click: () => void this.service.retryLast() },
+          { label: 'Retry last', click: () => void this.retryLast() },
           { label: 'Copy last transcript', click: () => this.copyLastTranscript() },
         ],
       },

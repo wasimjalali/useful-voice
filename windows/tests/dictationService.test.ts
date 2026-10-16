@@ -2159,3 +2159,159 @@ describe('review round 2: failure after the text was delivered', () => {
     expect(statuses.at(-1)?.error?.kind).toBe('providerFailed');
   });
 });
+
+/**
+ * App-aware formatting in the pipeline. Ways it could fail, each pinned below:
+ *  - the category comes from anywhere but the context captured at the press;
+ *  - a window dictation (or a press with no target) is formatted for anything but Other;
+ *  - raw mode, "Auto-format transcript" off, or "Format for the app" off still format;
+ *  - the formatter runs after the user's rules and snippets, so their rule loses;
+ *  - the formatter breaks, and the dictation goes with it;
+ *  - a late page or text-before-cursor read holds the dictation up for good;
+ *  - the text before the cursor reaches History, an outcome or a diagnostic line;
+ *  - the send key is requested for Email or Docs and notes, for a copy, or when it is off.
+ */
+describe('app-aware formatting', () => {
+  const capture = (category: 'email' | 'workChat' | 'personalChat' | 'coding' | 'docsNotes' | 'other', before: string | null = null, appID = 'slack.exe') => {
+    const context = { appID, category, textBeforeCursor: before };
+    return { initial: { appID, category, textBeforeCursor: null }, settled: Promise.resolve(context) };
+  };
+
+  async function dictate(ctx: ReturnType<typeof setup>, text: string, options: Parameters<DictationService['startRecording']>[0]) {
+    ctx.transcriber.transcript = { text, durationSeconds: 1, detectedLanguage: null };
+    await ctx.service.startRecording(options);
+    await ctx.service.stopAndProcess();
+  }
+
+  it('formats for the captured category, records it, and marks the dictation formatted', async () => {
+    const ctx = setup();
+    await dictate(ctx, 'Sounds good, see you at five.', { source: 'hotkey', context: capture('workChat') });
+    expect(ctx.sink.delivered).toEqual(['Sounds good, see you at five']);
+    expect(ctx.last()).toMatchObject({ category: 'workChat', appID: 'slack.exe', mode: 'formatted', rawText: 'Sounds good, see you at five.' });
+  });
+
+  it('an email gets its layout and the name from Settings', async () => {
+    const ctx = setup({ settings: { userName: 'Wasim' } });
+    await dictate(ctx, 'Hi Sam, thanks for the update. I will send the report tomorrow. Best regards.', {
+      source: 'hotkey',
+      context: capture('email', null, 'olk.exe'),
+    });
+    expect(ctx.sink.delivered).toEqual(['Hi Sam,\n\nThanks for the update. I will send the report tomorrow.\n\nBest regards,\nWasim']);
+  });
+
+  it('uses the style the user picked for the category', async () => {
+    const ctx = setup({ settings: { categoryStyles: { workChat: 'formal' } } });
+    await dictate(ctx, 'See you at five.', { source: 'hotkey', context: capture('workChat') });
+    expect(ctx.sink.delivered).toEqual(['See you at five.']);
+  });
+
+  it('a window dictation, and a press with no target, are Other', async () => {
+    const window = setup({ settings: { categoryStyles: { other: 'casual' } } });
+    await dictate(window, 'See you at five.', { source: 'window', context: capture('workChat') });
+    // The window source drops the context: Other, whatever was handed in.
+    expect(window.sink.delivered).toEqual(['See you at five']);
+    expect(window.last()).toMatchObject({ category: 'other' });
+    expect(window.last()?.appID).toBeUndefined();
+
+    const none = setup();
+    await dictate(none, 'See you at five.', { source: 'hotkey' });
+    expect(none.last()).toMatchObject({ category: 'other' });
+    expect(none.last()?.appID).toBeUndefined();
+  });
+
+  it('skips the formatter in raw mode, with Auto-format off, and with Format for the app off', async () => {
+    for (const [settings, rawMode] of [[{}, true], [{ formattingEnabled: false }, false], [{ appAwareFormatting: false }, false]] as const) {
+      const ctx = setup({ settings });
+      await dictate(ctx, 'See you at five.', { source: 'hotkey', rawMode, context: capture('workChat') });
+      expect(ctx.sink.delivered).toEqual(['See you at five.']);
+      expect(ctx.last()).toMatchObject({ mode: 'raw', category: 'workChat' });
+    }
+  });
+
+  it("the user's own rules and snippets run after it and win", async () => {
+    const ctx = setup({
+      memory: {
+        replacements: [{
+          id: 'r1', match: 'see you', replacement: 'Catch you', matchMode: 'wordBoundaryPhrase', language: 'auto',
+          isEnabled: true, usageCount: 0, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+        }],
+        snippets: [{
+          id: 's1', trigger: 'my sign off', expansion: 'Cheers, Wasim.', language: 'auto', isEnabled: true,
+          usageCount: 0, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+        }],
+      },
+    });
+    // Casual would drop the final full stop and, as a continuation, lowercase the start. The snippet's own text is left alone.
+    await dictate(ctx, 'See you soon. my sign off.', { source: 'hotkey', context: capture('workChat') });
+    expect(ctx.sink.delivered[0]).toContain('Catch you soon.');
+    expect(ctx.sink.delivered[0]).toContain('Cheers, Wasim.');
+  });
+
+  it('delivers the text as it was when the formatter throws', async () => {
+    const ctx = setup();
+    // The live settings object the service reads: a style lookup that blows up.
+    Object.defineProperty(ctx.settings, 'categoryStyles', { get: () => { throw new Error('boom'); } });
+    await dictate(ctx, 'See you at five.', { source: 'hotkey', context: capture('workChat') });
+    expect(ctx.sink.delivered).toEqual(['See you at five.']);
+    expect(ctx.last()).toMatchObject({ mode: 'raw' });
+  });
+
+  describe('a late read', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('falls back to the category from the app alone, and still delivers', async () => {
+      vi.useFakeTimers();
+      const ctx = setup({ deliveryTimeoutMs: 60_000 });
+      const late = {
+        initial: { appID: 'slack.exe', category: 'workChat' as const, textBeforeCursor: null },
+        settled: new Promise<never>(() => undefined),
+      };
+      ctx.transcriber.transcript = { text: 'See you at five.', durationSeconds: 1, detectedLanguage: null };
+      await ctx.service.startRecording({ source: 'hotkey', context: late });
+      const done = ctx.service.stopAndProcess();
+      await vi.advanceTimersByTimeAsync(2000);
+      await done;
+      expect(ctx.sink.delivered).toEqual(['See you at five']);
+      expect(ctx.last()).toMatchObject({ category: 'workChat' });
+    });
+  });
+
+  it('keeps the text before the cursor out of History, the outcome and the diagnostics', async () => {
+    const secret = 'The merger closes on Friday, ';
+    const ctx = setup();
+    await dictate(ctx, 'And then we tell the board.', { source: 'hotkey', context: capture('workChat', secret) });
+    // Used: the continuation lowercases the start.
+    expect(ctx.sink.delivered).toEqual(['and then we tell the board']);
+    const everything = JSON.stringify({ last: ctx.last(), records: ctx.records, outcomes: ctx.outcomes, diagnostics: ctx.diagnostics, statuses: ctx.statuses });
+    expect(everything).not.toContain('merger');
+    expect(everything).not.toContain('textBeforeCursor');
+  });
+
+  describe('the send key', () => {
+    const autoSendOf = (ctx: ReturnType<typeof setup>): unknown => (ctx.sink.requests.at(-1) as { autoSend?: string } | undefined)?.autoSend;
+
+    it('asks the sink for the key of the category, only for a hotkey paste', async () => {
+      const ctx = setup({ settings: { autoSend: { workChat: 'shiftReturn' } } });
+      await dictate(ctx, 'See you at five.', { source: 'hotkey', context: capture('workChat') });
+      expect(autoSendOf(ctx)).toBe('shiftReturn');
+    });
+
+    it('asks for nothing when the key is off, for another category, for a window dictation, or for Email and Docs and notes', async () => {
+      const settings = { autoSend: { workChat: 'return', email: 'return', docsNotes: 'return' } } as Partial<AppSettings>;
+      const cases: Array<[string, Parameters<DictationService['startRecording']>[0]]> = [
+        ['off', { source: 'hotkey', context: capture('personalChat') }],
+        ['window', { source: 'window', context: capture('workChat') }],
+        ['none', { source: 'hotkey' }],
+        ['email', { source: 'hotkey', context: capture('email') }],
+        ['docs', { source: 'hotkey', context: capture('docsNotes') }],
+      ];
+      for (const [name, options] of cases) {
+        const ctx = setup({ settings });
+        await dictate(ctx, 'See you at five.', options);
+        expect(autoSendOf(ctx), name).toBeUndefined();
+      }
+    });
+  });
+});

@@ -1,0 +1,23 @@
+{
+  // voice.usefulbuild.com: the Useful Voice landing and privacy pages. Static
+  // assets only, the same setup as bot.usefulbuild.com in the Useful Bot repo.
+  // The Worker keeps the name it had in useful-brain (workers/public-hosts/voice),
+  // so the first deploy from here replaces that one in place on the same domain.
+  // Deploy (after `npx wrangler whoami` shows the Karko AI account):
+  //   npx wrangler deploy --config site/wrangler.jsonc
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "useful-voice",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "voice.usefulbuild.com",
+      "custom_domain": true
+    }
+  ],
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "404-page"
+  }
+}

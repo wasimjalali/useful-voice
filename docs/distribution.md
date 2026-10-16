@@ -24,6 +24,45 @@ set to `true` (`Sources/UsefulVoiceCore/ReleaseLinks.swift` on macOS,
 `windows/src/core/releaseLinks.ts` on Windows). Flip it in the PR that creates
 `useful-voice-releases`.
 
+## The website
+
+voice.usefulbuild.com is the static site in `site/` (`site/public/`, deployed as the `useful-voice`
+Worker by `site/wrangler.jsonc`). It replaces `workers/public-hosts/voice` in useful-brain: the Worker
+keeps the same name, so the first deploy from here takes over the domain in place. Retire the
+useful-brain copy after that deploy, in a useful-brain PR that also drops the checks for it in
+`src/lib/cf/wrangler-config.test.ts`. Until then, a `wrangler deploy` from useful-brain's copy
+would put the old page back.
+
+It ships in its coming-soon state: `data-release="soon"` on `<html>` hides the install sections.
+The install commands and buttons link to these assets on
+`https://github.com/wasimjalali/useful-voice-releases/releases/latest/download/`, so every release
+must carry them under exactly these names:
+
+| Asset | Used by |
+|---|---|
+| `install.sh` | `curl -fsSL .../install.sh \| sh` (Mac) |
+| `Useful-Voice-macOS.dmg` | Download for Mac |
+| `install.ps1` | `irm .../install.ps1 \| iex` (Windows) |
+| `Useful-Voice-Windows-Setup.exe` | Download for Windows |
+
+The page and the privacy page say updates arrive in the app and that it checks GitHub for them.
+Don't flip the page until the release ships the in-app updaters (Sparkle on macOS, WAS-32; the
+Windows auto-updater, WAS-34), or change those lines in the same PR.
+
+On release day, after the first release with all four assets is public: remove
+`data-release="soon"` from `site/public/index.html`, add the DMG as `downloadUrl` in its JSON-LD (the
+comment above it has the line), run the checks, then deploy. The coming-soon checks skip themselves
+once the attribute is gone, and a check fails if the `downloadUrl` is missing. From the repo root:
+
+```sh
+(cd site && npm ci && npx playwright test)        # screenshots and the HTML report land in verify/site/
+npx wrangler whoami                               # must show the Karko AI account
+npx wrangler deploy --config site/wrangler.jsonc
+```
+
+Where Playwright's own Chromium isn't installed, point it at another build with
+`PLAYWRIGHT_CHROMIUM=/path/to/chrome`.
+
 ## Publishing the source
 
 After a release merges to `main`:

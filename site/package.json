@@ -1,0 +1,11 @@
+{
+  "name": "useful-voice-site",
+  "private": true,
+  "description": "voice.usefulbuild.com: static landing and privacy pages, deployed with Wrangler.",
+  "scripts": {
+    "check": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

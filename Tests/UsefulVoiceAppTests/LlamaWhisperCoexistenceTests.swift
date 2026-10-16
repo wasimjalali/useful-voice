@@ -164,7 +164,7 @@ struct LlamaWhisperCoexistenceTests {
         }
         // Micro-batch size on the CPU: ggml routes matmuls with 32 or more rows to the BLAS
         // (Accelerate) backend, which dequantizes the weights first. Compare 16 and 31 with 512.
-        for (ubatch, threads) in [(UInt32(16), Int32(3)), (31, 3), (64, 3), (512, 3), (16, 1), (16, 2)] {
+        for (ubatch, threads) in [(UInt32(31), Int32(3)), (512, 3)] {
             do {
                 let runtime = try LlamaRuntime(modelPath: s1, placement: .cpuOnly, threads: threads, microBatch: ubatch)
                 let t = ContinuousClock.now

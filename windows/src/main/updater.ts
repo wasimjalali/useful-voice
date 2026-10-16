@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { app } from 'electron';
 import electronUpdater from 'electron-updater';
@@ -53,6 +53,23 @@ export function updatesDisabledReason(input: {
   if (input.portable) return 'portable build';
   if (!input.installed) return 'not an installed copy';
   return null;
+}
+
+/**
+ * Whether an `app-update.yml` points the feed at this machine (http://127.0.0.1 or localhost).
+ * Only CI's update test builds such a feed; a release build reads from GitHub.
+ */
+export function isLoopbackFeed(yml: string): boolean {
+  return /^\s*url:\s*["']?http:\/\/(127\.0\.0\.1|localhost)[:/"']/im.test(yml);
+}
+
+/** Whether this install's baked-in update feed is a loopback one. False when it can't be read. */
+export function feedIsLoopback(): boolean {
+  try {
+    return isLoopbackFeed(readFileSync(path.join(process.resourcesPath, 'app-update.yml'), 'utf8'));
+  } catch {
+    return false;
+  }
 }
 
 export class Updater {

@@ -43,7 +43,7 @@ import {
 } from './theme.js';
 import { RecorderBridge, validateCapture } from './recorderBridge.js';
 import { TrayController } from './tray.js';
-import { Updater } from './updater.js';
+import { feedIsLoopback, Updater } from './updater.js';
 import { Announcer } from './announce.js';
 import {
   DictationService,
@@ -431,7 +431,8 @@ class UsefulVoiceApp {
       onReady: () => {
         this.syncTray();
         // CI's update test: install as soon as the download is verified, through the tray item's path.
-        if (process.env.UV_UPDATE_INSTALL_WHEN_READY === '1') this.restartToUpdate();
+        // Only honoured when the baked-in feed is the test's loopback server, never in a release build.
+        if (process.env.UV_UPDATE_INSTALL_WHEN_READY === '1' && feedIsLoopback()) this.restartToUpdate();
       },
     });
     this.updater.start(E2E);

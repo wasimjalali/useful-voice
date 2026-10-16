@@ -694,8 +694,8 @@
   "group": "format",
   "topic": "email",
   "app": "other",
-  "input": "Send it to sarah dot lee at company dot io please.",
-  "expected": "Send it to sarah.lee@company.io please.",
+  "input": "Send it to sarah dot lee at example dot org please.",
+  "expected": "Send it to sarah.lee@example.org please.",
   "accept": [],
   "split": "dev",
   "needs_edit": true
@@ -772,8 +772,8 @@
   "group": "format",
   "topic": "email",
   "app": "other",
-  "input": "Write to support at acme dot co dot uk.",
-  "expected": "Write to support@acme.co.uk.",
+  "input": "Write to support at help dot example dot com.",
+  "expected": "Write to support@help.example.com.",
   "accept": [],
   "split": "dev",
   "needs_edit": true
@@ -836,8 +836,8 @@
   "group": "format",
   "topic": "email",
   "app": "other",
-  "input": "My email is mike underscore jones at mail dot com.",
-  "expected": "My email is mike_jones@mail.com.",
+  "input": "My email is mike underscore jones at example dot com.",
+  "expected": "My email is mike_jones@example.com.",
   "accept": [],
   "split": "dev",
   "needs_edit": true
@@ -1096,9 +1096,7 @@
   "app": "coding",
   "input": "Why does the build fail with ERR_MODULE_NOT_FOUND, uh, after the upgrade?",
   "expected": "Why does the build fail with ERR_MODULE_NOT_FOUND after the upgrade?",
-  "accept": [
-   "Why does the build fail with ERR_MODULE_NOT_FOUND, after the upgrade?"
-  ],
+  "accept": [],
   "split": "test",
   "needs_edit": true
  },
@@ -1144,9 +1142,7 @@
   "app": "coding",
   "input": "Check package dot json, um, for the test script.",
   "expected": "Check package.json for the test script.",
-  "accept": [
-   "Check package.json, for the test script."
-  ],
+  "accept": [],
   "split": "test",
   "needs_edit": true
  },
@@ -1157,9 +1153,7 @@
   "app": "coding",
   "input": "Edit @src/server.ts, uh, to add a health route.",
   "expected": "Edit @src/server.ts to add a health route.",
-  "accept": [
-   "Edit @src/server.ts, to add a health route."
-  ],
+  "accept": [],
   "split": "test",
   "needs_edit": true
  },
@@ -2037,8 +2031,8 @@
   "group": "clean",
   "topic": "file",
   "app": "coding",
-  "input": "Open ~/projects/useful-voice/Makefile and C:\\Users\\wasim\\notes.txt.",
-  "expected": "Open ~/projects/useful-voice/Makefile and C:\\Users\\wasim\\notes.txt.",
+  "input": "Open ~/projects/useful-voice/Makefile and C:\\Users\\alex\\notes.txt.",
+  "expected": "Open ~/projects/useful-voice/Makefile and C:\\Users\\alex\\notes.txt.",
   "accept": [],
   "split": "test",
   "needs_edit": false

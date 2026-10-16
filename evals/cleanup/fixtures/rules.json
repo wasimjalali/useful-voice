@@ -623,5 +623,25 @@
     "name": "bracketing comma after a discourse word stays",
     "input": "Yes, so, okay, um, let's go.",
     "expected": "Yes, so, okay, let's go."
+  },
+  {
+    "name": "a quote lead on the repeat stops a stutter",
+    "input": "I said the \"the plan\" works.",
+    "expected": "I said the \"the plan\" works."
+  },
+  {
+    "name": "nbsp separates a stutter",
+    "input": "the the plan",
+    "expected": "the plan"
+  },
+  {
+    "name": "filler after an nbsp mid sentence goes",
+    "input": "so um we go",
+    "expected": "so we go"
+  },
+  {
+    "name": "a lone cr starts a sentence for a filler",
+    "input": "Done.\rUm, next step.",
+    "expected": "Done.\rNext step."
   }
 ]

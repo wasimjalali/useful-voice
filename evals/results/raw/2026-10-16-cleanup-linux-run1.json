@@ -368,7 +368,7 @@
    "k75": "Edit @src/server.ts to add a health route.",
    "k76": "Check package.json for the test script.",
    "k77": "Compare index.html with docs/old/index.html and list the differences.",
-   "k78": "Open ~/projects/useful-voice/Makefile and C:\\Users\\wasim\\notes.txt.",
+   "k78": "Open ~/projects/useful-voice/Makefile and C:\\Users\\alex\\notes.txt.",
    "k79": "The config lives in .github/workflows/ci.yml, not in the root.",
    "k80": "Update docs/setup.md and the CHANGELOG.md.",
    "k81": "Dr. Smith will see you at 9 a.m. on Monday; please bring your ID.",
@@ -3050,7 +3050,7 @@
       "predicted_per_second": 35.93109135300321
      },
      "id": "k78",
-     "model_input": "Open ~/projects/useful-voice/Makefile and C:\\Users\\wasim\\notes.txt."
+     "model_input": "Open ~/projects/useful-voice/Makefile and C:\\Users\\alex\\notes.txt."
     },
     {
      "output": "the config lives in .github/workflows/ci.yml, not in the root",
@@ -5872,7 +5872,7 @@
       "predicted_per_second": 13.043713209741046
      },
      "id": "k78",
-     "model_input": "Open ~/projects/useful-voice/Makefile and C:\\Users\\wasim\\notes.txt."
+     "model_input": "Open ~/projects/useful-voice/Makefile and C:\\Users\\alex\\notes.txt."
     },
     {
      "output": "The config lives in .github/workflows/ci.yml, not in the root.",
@@ -8694,7 +8694,7 @@
       "predicted_per_second": 34.15819685710431
      },
      "id": "k78",
-     "model_input": "Open ~/projects/useful-voice/Makefile and C:\\Users\\wasim\\notes.txt."
+     "model_input": "Open ~/projects/useful-voice/Makefile and C:\\Users\\alex\\notes.txt."
     },
     {
      "output": "the config lives in .github/workflows/ci.yml, not in the root",
@@ -11504,7 +11504,7 @@
      "model_input": "Compare index.html with docs/old/index.html and list the differences."
     },
     {
-     "output": "Open ~/projects/useful-voice/Makefile and C:\\Users\\wasim\\notes.txt.",
+     "output": "Open ~/projects/useful-voice/Makefile and C:\\Users\\alex\\notes.txt.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 993.8,
@@ -11516,7 +11516,7 @@
       "predicted_per_second": 25.72930322596454
      },
      "id": "k78",
-     "model_input": "Open ~/projects/useful-voice/Makefile and C:\\Users\\wasim\\notes.txt."
+     "model_input": "Open ~/projects/useful-voice/Makefile and C:\\Users\\alex\\notes.txt."
     },
     {
      "output": "The config lives in .github/workflows/ci.yml, not in the root.",
@@ -14326,7 +14326,7 @@
      "model_input": "Compare index.html with docs/old/index.html and list the differences."
     },
     {
-     "output": "Open ~/projects/useful-voice/Makefile and C:\\Users\\wasim\\notes.txt.",
+     "output": "Open ~/projects/useful-voice/Makefile and C:\\Users\\alex\\notes.txt.",
      "reasoning": false,
      "finish": "stop",
      "latency_ms": 951.3,
@@ -14338,7 +14338,7 @@
       "predicted_per_second": 28.22072368686285
      },
      "id": "k78",
-     "model_input": "Open ~/projects/useful-voice/Makefile and C:\\Users\\wasim\\notes.txt."
+     "model_input": "Open ~/projects/useful-voice/Makefile and C:\\Users\\alex\\notes.txt."
     },
     {
      "output": "The config lives in .github/workflows/ci.yml, not in the root.",
@@ -16655,7 +16655,7 @@
    "k75": "Edit @src/server.ts to add a health route.",
    "k76": "Check package.json for the test script.",
    "k77": "Compare index.html with docs/old/index.html and list the differences.",
-   "k78": "Open ~/projects/useful-voice/Makefile and C:\\Users\\wasim\\notes.txt.",
+   "k78": "Open ~/projects/useful-voice/Makefile and C:\\Users\\alex\\notes.txt.",
    "k79": "The config lives in .github/workflows/ci.yml, not in the root.",
    "k80": "Update docs/setup.md and the CHANGELOG.md.",
    "k81": "Dr. Smith will see you at 9 a.m. on Monday; please bring your ID.",
@@ -16845,7 +16845,7 @@
    "k75": "Edit @src/server.ts to add a health route.",
    "k76": "Check package.json for the test script.",
    "k77": "Compare index.html with docs/old/index.html and list the differences.",
-   "k78": "Open ~/projects/useful-voice/Makefile and C:\\Users\\wasim\\notes.txt.",
+   "k78": "Open ~/projects/useful-voice/Makefile and C:\\Users\\alex\\notes.txt.",
    "k79": "The config lives in .github/workflows/ci.yml, not in the root.",
    "k80": "Update docs/setup.md and the CHANGELOG.md.",
    "k81": "Dr. Smith will see you at 9 a.m. on Monday; please bring your ID.",
@@ -18175,7 +18175,7 @@
    "k75": "Edit @src/server.ts to add a health route.",
    "k76": "Check package.json for the test script.",
    "k77": "Compare index.html with docs/old/index.html and list the differences.",
-   "k78": "Open ~/projects/useful-voice/Makefile and C:\\Users\\wasim\\notes.txt.",
+   "k78": "Open ~/projects/useful-voice/Makefile and C:\\Users\\alex\\notes.txt.",
    "k79": "The config lives in .github/workflows/ci.yml, not in the root.",
    "k80": "Update docs/setup.md and the CHANGELOG.md.",
    "k81": "Dr. Smith will see you at 9 a.m. on Monday; please bring your ID.",
@@ -18365,7 +18365,7 @@
    "k75": "Edit @src/server.ts to add a health route.",
    "k76": "Check package.json for the test script.",
    "k77": "Compare index.html with docs/old/index.html and list the differences.",
-   "k78": "Open ~/projects/useful-voice/Makefile and C:\\Users\\wasim\\notes.txt.",
+   "k78": "Open ~/projects/useful-voice/Makefile and C:\\Users\\alex\\notes.txt.",
    "k79": "The config lives in .github/workflows/ci.yml, not in the root.",
    "k80": "Update docs/setup.md and the CHANGELOG.md.",
    "k81": "Dr. Smith will see you at 9 a.m. on Monday; please bring your ID.",
@@ -18555,7 +18555,7 @@
    "k75": "Edit @src/server.ts to add a health route.",
    "k76": "Check package.json for the test script.",
    "k77": "Compare index.html with docs/old/index.html and list the differences.",
-   "k78": "Open ~/projects/useful-voice/Makefile and C:\\Users\\wasim\\notes.txt.",
+   "k78": "Open ~/projects/useful-voice/Makefile and C:\\Users\\alex\\notes.txt.",
    "k79": "The config lives in .github/workflows/ci.yml, not in the root.",
    "k80": "Update docs/setup.md and the CHANGELOG.md.",
    "k81": "Dr. Smith will see you at 9 a.m. on Monday; please bring your ID.",
@@ -18745,7 +18745,7 @@
    "k75": "Edit @src/server.ts to add a health route.",
    "k76": "Check package.json for the test script.",
    "k77": "Compare index.html with docs/old/index.html and list the differences.",
-   "k78": "Open ~/projects/useful-voice/Makefile and C:\\Users\\wasim\\notes.txt.",
+   "k78": "Open ~/projects/useful-voice/Makefile and C:\\Users\\alex\\notes.txt.",
    "k79": "The config lives in .github/workflows/ci.yml, not in the root.",
    "k80": "Update docs/setup.md and the CHANGELOG.md.",
    "k81": "Dr. Smith will see you at 9 a.m. on Monday; please bring your ID.",

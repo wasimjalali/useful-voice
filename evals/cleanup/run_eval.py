@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """English cleanup eval: does a small local model beat the deterministic rules?
 
-Variants (all scored on cases.json against a do-nothing baseline):
+Variants (scored against a do-nothing baseline on one case file: cases.json, the in-sample set
+the rules and guard were developed against, or heldout.json, written before any run on it and
+never used for tuning):
   none                 the Deepgram text as it is
   rules                the shipped TypeScript cleanup rules (windows/src/core/formatting)
   rules+s1             rules, then S1-mini (Q4_K_M), control line mapped from app category
@@ -17,15 +19,23 @@ Scores are reported separately (a model that never edits wins restraint and scor
 edits, so no single number is used):
   restraint       clean cases returned byte for byte
   edit accuracy   cases that need an edit and came back as the expected (or accepted) text
-  content loss    cases where a content word of the expected text is missing
-  content add     cases where a content word appears that is in neither input nor expected
+  words lost      spoken words the reference keeps but the output dropped, counted as a
+                  multiset over every input token (function words and negations included),
+                  numbers normalised to digit strings, contractions expanded ("don't" -> do
+                  not). Reported as a total and as the share of cases that lost any, for clean
+                  and dirty cases. This is the decision metric.
+  words added     the same, for words in the output that neither the input nor the reference has
+  content loss v1 the first metric (distinct content words of the reference missing). Kept for
+                  comparison with the first runs only: it ignored function words, negations,
+                  duplicates and order, and counted every number as one item.
   guard reject    share of model outputs the guard threw away
 
 Needs: node + `npm ci` in windows/ (esbuild bundles the shipped TS core), a llama.cpp
 release (`--fetch` downloads and checks the pinned one) and the two GGUF files (`--fetch`).
 
   python3 evals/cleanup/run_eval.py --fetch --work /tmp/cleanup-work --out evals/results/raw/<file>.json
-  python3 evals/cleanup/run_eval.py --rescore evals/results/raw/<file>.json     # score again, no models
+  python3 evals/cleanup/run_eval.py --cases evals/cleanup/heldout.json ...      # the held-out set
+  python3 evals/cleanup/run_eval.py --rescore <old>.json --out <new>.json      # score again, no models
 """
 import argparse, hashlib, json, os, platform, re, shutil, signal, statistics, subprocess, sys, tarfile
 import threading, time, urllib.request
@@ -286,6 +296,170 @@ def content(text):
             and not any(c.isdigit() for c in t)}
 
 
+# ---- spoken-word multiset (the decision metric). Written apart from the guard on purpose: it counts
+# every token, so it does not share the guard's stop list or content-word blind spots.
+
+SPOKEN_TOKEN = re.compile(r"\d+(?:,\d{3}(?!\d))*(?:\.\d+)?|[^\W\d_]+(?:['\u2019][^\W\d_]+)*")
+NT_SPECIAL = {"can't": ["can", "not"], "won't": ["will", "not"], "shan't": ["shall", "not"], "ain't": ["is", "not"]}
+BARE_NEG = {"dont": "do", "doesnt": "does", "didnt": "did", "cant": "can", "wont": "will", "isnt": "is",
+            "arent": "are", "wasnt": "was", "werent": "were", "hasnt": "has", "havent": "have", "hadnt": "had",
+            "couldnt": "could", "wouldnt": "would", "shouldnt": "should", "mustnt": "must", "cannot": "can"}
+S_SPECIAL = {"it's": ["it", "is"], "that's": ["that", "is"], "there's": ["there", "is"], "here's": ["here", "is"],
+             "what's": ["what", "is"], "he's": ["he", "is"], "she's": ["she", "is"], "let's": ["let", "us"]}
+SUFFIXES = {"'m": "am", "'re": "are", "'ve": "have", "'ll": "will", "'d": "would"}
+P_UNITS = {w: i for i, w in enumerate("zero one two three four five six seven eight nine".split())}
+P_TEENS = {w: i + 10 for i, w in enumerate("ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen".split())}
+P_TENS = {w: (i + 2) * 10 for i, w in enumerate("twenty thirty forty fifty sixty seventy eighty ninety".split())}
+P_ORD_UNITS = {w: i + 1 for i, w in enumerate("first second third fourth fifth sixth seventh eighth ninth".split())}
+P_ORD_TEENS = {w: i + 10 for i, w in enumerate("tenth eleventh twelfth thirteenth fourteenth fifteenth sixteenth seventeenth eighteenth nineteenth".split())}
+P_ORD_TENS = {w: (i + 2) * 10 for i, w in enumerate("twentieth thirtieth fortieth fiftieth sixtieth seventieth eightieth ninetieth".split())}
+P_SCALES = {"thousand": 1000, "million": 10**6, "billion": 10**9}
+P_ORD_SCALES = {"thousandth": 1000, "millionth": 10**6, "billionth": 10**9}
+
+
+def expand(word):
+    """Contractions into their words, so "do not" and "don't" count the same."""
+    if word in NT_SPECIAL:
+        return NT_SPECIAL[word]
+    if word.endswith("n't") and len(word) > 3:
+        return [word[:-3], "not"]
+    if word in BARE_NEG:
+        return [BARE_NEG[word], "not"]
+    if word in S_SPECIAL:
+        return S_SPECIAL[word]
+    for suf, full in SUFFIXES.items():
+        if word.endswith(suf) and len(word) > len(suf):
+            return [word[: -len(suf)], full]
+    if word.endswith("'s") and len(word) > 2:
+        return [word[:-2], "s"]
+    return [word.replace("'", "")]
+
+
+def number_kind(w):
+    for table, kind, ordinal in ((P_UNITS, "unit", False), (P_TEENS, "teen", False), (P_TENS, "tens", False),
+                                 (P_SCALES, "scale", False), (P_ORD_UNITS, "unit", True), (P_ORD_TEENS, "teen", True),
+                                 (P_ORD_TENS, "tens", True), (P_ORD_SCALES, "scale", True)):
+        if w in table:
+            return kind, table[w], ordinal
+    if w in ("hundred", "hundredth"):
+        return "hundred", 100, w == "hundredth"
+    if w == "dozen":
+        return "dozen", 12, False
+    return None
+
+
+def words_to_numbers(toks):
+    out, i = [], 0
+    while i < len(toks):
+        kind, val = toks[i]
+        a_start = kind == "word" and val == "a" and i + 1 < len(toks) and toks[i + 1][1] in ("hundred", "thousand", "million", "billion", "dozen")
+        if kind != "word" or (not a_start and number_kind(val) is None):
+            out.append(toks[i]); i += 1; continue
+        total = current = 0
+        last, frac, j = None, "", i
+        while j < len(toks) and toks[j][0] == "word":
+            w = toks[j][1]
+            if j == i and a_start:
+                current, last, j = 1, "unit", j + 1; continue
+            if w == "and" and last in ("hundred", "scale") and j + 1 < len(toks) and (number_kind(toks[j + 1][1]) or ("",))[0] in ("unit", "teen", "tens"):
+                j += 1; continue
+            if w == "point" and last not in (None, "dozen"):
+                k, digits = j + 1, ""
+                while k < len(toks) and toks[k][0] == "word" and toks[k][1] in P_UNITS:
+                    digits += str(P_UNITS[toks[k][1]]); k += 1
+                if digits:
+                    frac, j = digits, k
+                break
+            n = number_kind(w)
+            if not n:
+                break
+            nk, nv, ordinal = n
+            ok = False
+            if nk == "unit":
+                ok = last in (None, "hundred", "scale") or (last == "tens" and current % 10 == 0)
+                current += nv if ok else 0
+            elif nk in ("teen", "tens"):
+                ok = last in (None, "hundred", "scale")
+                current += nv if ok else 0
+            elif nk == "hundred":
+                if last is None:
+                    ok, current = True, 100
+                elif last in ("unit", "teen", "tens") and 0 < current < 100:
+                    ok, current = True, current * 100
+            elif nk == "scale":
+                if last is None:
+                    ok, total = True, total + nv
+                elif last in ("unit", "teen", "tens", "hundred"):
+                    ok, total, current = True, total + current * nv, 0
+            elif nk == "dozen":
+                if last is None:
+                    ok, current = True, 12
+                elif last in ("unit", "teen", "tens"):
+                    ok, current = True, current * 12
+            if not ok:
+                break
+            last, j = nk, j + 1
+            if ordinal or nk == "dozen":
+                break
+        if j == i or (a_start and j == i + 1):
+            out.append(toks[i]); i += 1; continue
+        out.append(("num", str(total + current) + (f".{frac}" if frac else "")))
+        i = j
+    return out
+
+
+def spoken_counts(text):
+    """Multiset of spoken tokens: words (contractions expanded) and numbers as digit strings, with
+    neighbouring numbers joined ("five five five, zero one" and "555-01" are both "55501")."""
+    t = AMPM.sub(lambda m: " " + m.group(0)[0].lower() + "m ", text)
+    toks, prev_end = [], -1
+    for m in SPOKEN_TOKEN.finditer(t):
+        s = m.group(0)
+        if s[0].isdigit():
+            v = s.replace(",", "")
+            if set(v) == {"0"} and m.start() > 0 and t[m.start() - 1] == ":":
+                continue
+            toks.append(("num", v))
+        else:
+            w = s.lower().replace("\u2019", "'")
+            if toks and toks[-1][0] == "num" and prev_end == m.start() and w in ("st", "nd", "rd", "th"):
+                prev_end = m.end()
+                continue
+            toks.extend(("word", part) for part in expand(w))
+        prev_end = m.end()
+    merged = []
+    for kind, val in words_to_numbers(toks):
+        if kind == "num" and merged and merged[-1][0] == "num":
+            merged[-1] = ("num", merged[-1][1] + val)
+        else:
+            merged.append((kind, val))
+    counts = {}
+    for _, val in merged:
+        counts[val] = counts.get(val, 0) + 1
+    return counts
+
+
+def words_lost(case, final):
+    """Fewest spoken words, over the expected and accepted texts, that the reference keeps and the output lacks."""
+    said, got = spoken_counts(case["input"]), spoken_counts(final)
+    best = None
+    for ref in [case["expected"]] + case.get("accept", []):
+        r = spoken_counts(ref)
+        lost = sum(max(0, min(said.get(w, 0), n) - got.get(w, 0)) for w, n in r.items())
+        best = lost if best is None else min(best, lost)
+    return best
+
+
+def words_added(case, final):
+    said, got = spoken_counts(case["input"]), spoken_counts(final)
+    best = None
+    for ref in [case["expected"]] + case.get("accept", []):
+        r = spoken_counts(ref)
+        added = sum(max(0, n - max(said.get(w, 0), r.get(w, 0))) for w, n in got.items())
+        best = added if best is None else min(best, added)
+    return best
+
+
 def score_case(case, final):
     accepted = [case["expected"]] + case.get("accept", [])
     exact = final in accepted
@@ -293,8 +467,10 @@ def score_case(case, final):
     return {
         "exact": exact,
         "unchanged": final == case["input"],
-        "loss": bool(exp_c - out_c),
-        "add": bool(out_c - in_c - exp_c),
+        "loss_v1": bool(exp_c - out_c),
+        "add_v1": bool(out_c - in_c - exp_c),
+        "lost": words_lost(case, final),
+        "added": words_added(case, final),
     }
 
 
@@ -317,16 +493,24 @@ def summarise(cases, finals, rules_ok, guard_rejects=None):
             "edit_accuracy_rules_fixable": pct(sum(sc[c["id"]]["exact"] for c in rule_edit), len(rule_edit)),
             "edit_accuracy_model_needed": pct(sum(sc[c["id"]]["exact"] for c in model_edit), len(model_edit)),
             "n_rules_fixable": len(rule_edit), "n_model_needed": len(model_edit),
-            "content_loss": pct(sum(s["loss"] for s in sc.values()), len(subset)),
-            "content_add": pct(sum(s["add"] for s in sc.values()), len(subset)),
+            "words_lost": sum(s["lost"] for s in sc.values()),
+            "words_lost_clean": sum(sc[c["id"]]["lost"] for c in clean),
+            "words_lost_dirty": sum(sc[c["id"]]["lost"] for c in edit),
+            "lost_cases": pct(sum(s["lost"] > 0 for s in sc.values()), len(subset)),
+            "lost_cases_clean": pct(sum(sc[c["id"]]["lost"] > 0 for c in clean), len(clean)),
+            "lost_cases_dirty": pct(sum(sc[c["id"]]["lost"] > 0 for c in edit), len(edit)),
+            "words_added": sum(s["added"] for s in sc.values()),
+            "added_cases": pct(sum(s["added"] > 0 for s in sc.values()), len(subset)),
+            "lost_ids": {c["id"]: sc[c["id"]]["lost"] for c in subset if sc[c["id"]]["lost"]},
+            "added_ids": {c["id"]: sc[c["id"]]["added"] for c in subset if sc[c["id"]]["added"]},
+            "content_loss_v1": pct(sum(s["loss_v1"] for s in sc.values()), len(subset)),
+            "content_add_v1": pct(sum(s["add_v1"] for s in sc.values()), len(subset)),
             "clean_wrong": [c["id"] for c in clean if not sc[c["id"]]["unchanged"]],
-            "loss_ids": [c["id"] for c in subset if sc[c["id"]]["loss"]],
         }
         if guard_rejects is not None:
             out["guard_reject"] = pct(sum(guard_rejects[c["id"]] is not None for c in subset), len(subset))
         return out
-    res = {"all": block(cases), "dev": block([c for c in cases if c["split"] == "dev"]),
-           "test": block([c for c in cases if c["split"] == "test"])}
+    res = {"all": block(cases)}
     res["by_group"] = {}
     for g in sorted({c["group"] for c in cases}):
         sub = [c for c in cases if c["group"] == g]
@@ -354,7 +538,8 @@ def pick_subset(cases, n):
 
 
 def evaluate(args):
-    cases = json.loads((HERE / "cases.json").read_text(encoding="utf-8"))
+    cases_path = Path(args.cases)
+    cases = json.loads(cases_path.read_text(encoding="utf-8"))
     cases = pick_subset(cases, args.subset)
     work = Path(args.work)
     bin_dir, models_dir = fetch(work) if args.fetch else (Path(args.llama_dir), Path(args.models_dir))
@@ -412,6 +597,7 @@ def evaluate(args):
         "cpu_count": os.cpu_count(), "python": platform.python_version(),
         "llama_cpp": LLAMA["tag"], "ngl": args.ngl, "threads": args.threads, "ctx": args.ctx, "warmup": args.warmup,
         "subset": args.subset, "label": args.label,
+        "cases_file": cases_path.name, "cases_sha256": sha256(cases_path),
         "node": subprocess.run(["node", "--version"], capture_output=True, text=True).stdout.strip(),
     }
     return cases, raw, bundle
@@ -466,11 +652,11 @@ def rescore(cases, raw, bundle, limits=None):
 
 def print_report(res, order=None):
     names = [n for n in (order or HEADLINE) if n in res["summary"]] + [n for n in res["summary"] if n not in (order or HEADLINE)]
-    print(f"{'variant':24} {'restraint':>9} {'edit acc':>8} {'rules-fix':>9} {'model-need':>10} {'loss':>6} {'add':>6} {'guard rej':>9}")
+    print(f"{'variant':24} {'restraint':>9} {'edit acc':>8} {'rules-fix':>9} {'model-need':>10} {'lost':>5} {'lost%':>6} {'added':>6} {'guard rej':>9}")
     for n in names:
         a = res["summary"][n]["all"]
         print(f"{n:24} {a['restraint']!s:>9} {a['edit_accuracy']!s:>8} {a['edit_accuracy_rules_fixable']!s:>9} "
-              f"{a['edit_accuracy_model_needed']!s:>10} {a['content_loss']!s:>6} {a['content_add']!s:>6} {a.get('guard_reject', '')!s:>9}")
+              f"{a['edit_accuracy_model_needed']!s:>10} {a['words_lost']!s:>5} {a['lost_cases']!s:>6} {a['words_added']!s:>6} {a.get('guard_reject', '')!s:>9}")
     for n, l in res["latency"].items():
         print(f"latency {n:20} median {l['median_ms']} ms  p95 {l['p95_ms']} ms  (n={l['n']})")
     for k, l in res.get("latency_pooled", {}).items():
@@ -483,7 +669,9 @@ def main():
     ap.add_argument("--work", default="/tmp/cleanup-eval-work")
     ap.add_argument("--llama-dir", help="folder holding llama-server (without --fetch)")
     ap.add_argument("--models-dir", help="folder holding the two GGUF files (without --fetch)")
-    ap.add_argument("--out", help="raw + scored results JSON")
+    ap.add_argument("--out", help="raw + scored results JSON (a new file; never overwritten)")
+    ap.add_argument("--cases", default=str(HERE / "cases.json"),
+                    help="case file: cases.json (in-sample) or heldout.json (held out, never tuned on)")
     ap.add_argument("--variants", nargs="*", choices=list(MODEL_RUNS), help="model runs to execute (default all)")
     ap.add_argument("--subset", type=int, default=0, help="run an even sample of N cases (CI latency run)")
     ap.add_argument("--ngl", type=int, default=None, help="GPU layers (macOS: 0 = CPU, 99 = Metal)")
@@ -499,15 +687,21 @@ def main():
     if args.fetch_only:
         fetch(Path(args.work))
         return
+    if args.out and Path(args.out).exists():
+        sys.exit(f"{args.out} exists; results are never overwritten, pick a new file")
     if args.rescore:
+        if not args.out:
+            sys.exit("--rescore needs --out <new file>; the original results stay as they are")
         data = json.loads(Path(args.rescore).read_text())
-        cases = [c for c in json.loads((HERE / "cases.json").read_text(encoding="utf-8")) if c["id"] in set(data["raw"]["cases_ids"])]
+        cases_file = HERE / data["raw"].get("meta", {}).get("cases_file", "cases.json")
+        cases = [c for c in json.loads(cases_file.read_text(encoding="utf-8")) if c["id"] in set(data["raw"]["cases_ids"])]
         bundle = build_core(Path(args.work))
         res, finals = rescore(cases, data["raw"], bundle)
         print_report(res)
         data["result"] = res
         data["finals"] = finals
-        Path(args.rescore).write_text(json.dumps(data, indent=1, ensure_ascii=False))
+        data["rescored_from"] = Path(args.rescore).name
+        Path(args.out).write_text(json.dumps(data, indent=1, ensure_ascii=False))
         return
     cases, raw, bundle = evaluate(args)
     res, finals = rescore(cases, raw, bundle)

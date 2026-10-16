@@ -1,21 +1,20 @@
 name: Cleanup eval (macOS latency and memory)
 
 # Runs the local cleanup models (S1-mini and SpeakoFlow Mini, Q4_K_M) on a macos-15 runner
-# and records latency (median, p95) and peak RSS next to accuracy on a subset of
-# evals/cleanup/cases.json. Weights and the llama.cpp release are downloaded and checked
-# against the SHA-256 pinned in run_eval.py. Nothing here runs on ordinary PRs: only a
-# change under evals/cleanup/ or a manual dispatch starts it.
+# and records latency (median, p95) and peak RSS next to accuracy: a subset of the in-sample
+# evals/cleanup/cases.json and all of the held-out evals/cleanup/heldout.json. Weights and the
+# llama.cpp release are checked against the SHA-256 pinned in run_eval.py, and cached under a
+# key made of those same SHA-256s. Manual dispatch only: it costs macOS runner minutes.
 
 on:
   workflow_dispatch:
     inputs:
       subset:
-        description: Number of cases to run (0 = all)
+        description: In-sample cases to run (0 = all 188)
         default: '60'
-  pull_request:
-    paths:
-      - 'evals/cleanup/**'
-      - '.github/workflows/cleanup-eval.yml'
+
+permissions:
+  contents: read
 
 concurrency:
   group: cleanup-eval-${{ github.ref }}
@@ -27,6 +26,10 @@ jobs:
     timeout-minutes: 60
     env:
       SUBSET: ${{ github.event.inputs.subset || '60' }}
+      # Must match LLAMA and MODELS in evals/cleanup/run_eval.py.
+      LLAMA_SHA256: dbed55493d72bc1ba2babc8770d669c2289b5bc4ee9fb2a4dfc158d45b7d13fd
+      S1_SHA256: 3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634
+      SF_SHA256: 530e0a5d4e9314e3bae2c92aecf3ab39ca48e8cfecac41372058f9fcb742329d
     steps:
       - uses: actions/checkout@v4
 
@@ -45,6 +48,15 @@ jobs:
         working-directory: windows
         run: npm ci
 
+      # Keyed by the pinned SHA-256s. A cached file is still checked against its SHA-256 below.
+      - name: Cache llama.cpp and models
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/cleanup/models/*.gguf
+            ${{ runner.temp }}/cleanup/llama-b11669-bin-macos-arm64.tar.gz
+          key: cleanup-${{ env.LLAMA_SHA256 }}-${{ env.S1_SHA256 }}-${{ env.SF_SHA256 }}
+
       - name: Download llama.cpp and models (SHA-256 checked)
         run: python3 evals/cleanup/run_eval.py --fetch-only --work "$RUNNER_TEMP/cleanup"
 
@@ -60,6 +72,13 @@ jobs:
           --llama-dir "$RUNNER_TEMP/cleanup/llama/llama-b11669" --models-dir "$RUNNER_TEMP/cleanup/models"
           --subset "$SUBSET" --ngl 0 --variants rules+s1 rules+sf --label macos-15-cpu
           --out "$RUNNER_TEMP/out/macos-15-cpu.json" | tee "$RUNNER_TEMP/macos-15-cpu.txt"
+
+      - name: Run the held-out set on the CPU (-ngl 0)
+        run: >
+          python3 evals/cleanup/run_eval.py --work "$RUNNER_TEMP/cleanup"
+          --llama-dir "$RUNNER_TEMP/cleanup/llama/llama-b11669" --models-dir "$RUNNER_TEMP/cleanup/models"
+          --cases evals/cleanup/heldout.json --ngl 0 --variants rules+s1 rules+sf --label macos-15-cpu-heldout
+          --out "$RUNNER_TEMP/out/macos-15-cpu-heldout.json" | tee "$RUNNER_TEMP/macos-15-cpu-heldout.txt"
 
       # The runner may not expose a GPU to the virtual machine. If Metal cannot start, this
       # step fails and the artifact keeps the server log that says why.

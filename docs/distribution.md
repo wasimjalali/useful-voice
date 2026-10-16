@@ -92,8 +92,10 @@ the designated requirement is `identifier "ai.useful.voice" and certificate root
 designated requirement and that it is the same build as the zip (CDHash). Nothing is uploaded.
 
 Signing follows UV-004: the free self-signed "Useful Voice Release" certificate, no hardened runtime,
-no notarization. That is why `install.sh` clears the quarantine flag (after checking the SHA-256 and
-the signature) and the DMG window says Open Anyway. The Makefile's `bundle-release`, `notarize` and
+no notarization. That is why `install.sh` clears every extended attribute from the copy it installs
+(the quarantine flag included, after checking the SHA-256 and the signature) and the DMG window says
+Open Anyway. The dry run checks the installed app has no extended attributes, but a `curl` download
+carries no quarantine flag, so it doesn't prove the clear on a flagged file. The Makefile's `bundle-release`, `notarize` and
 `dmg` targets are the Developer ID path (Option A), not used.
 
 The `Release dry run` workflow builds a whole release on every PR that touches this pipeline, ad hoc
@@ -124,8 +126,13 @@ Store the exported private key in the password manager, then delete the file.
 
 ### Publishing (owner only)
 
+The default feed and install URLs read the assets of the release marked latest on
+`useful-voice-releases`. So every release marked latest must carry `appcast.xml`, `install.sh` and the
+macOS zip (and the DMG, plus the Windows files once a Windows build ships), or the one-liner and
+in-app updates break. A Windows-only release must not be marked latest unless it carries the macOS files too.
+
 1. Create the GitHub release `vX.Y.Z` on `useful-voice-releases` and attach the zip, the DMG,
-   `appcast.xml` and `install.sh` (the default feed and install URLs read the latest release's assets).
+   `appcast.xml` and `install.sh`.
 2. Paste the filled `release-notes.md` as its notes.
 3. Publish the source snapshot (above).
 

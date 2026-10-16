@@ -285,6 +285,44 @@ import Testing
         #expect(failures.isEmpty, "\(failures.prefix(10))")
     }
 
+    /// `absorb` re-derives only the stretch of text that changed. After any sequence of
+    /// edits its view of the text must equal a fresh build's, and every window of every
+    /// version it has seen must still be in its sets.
+    @Test func testIncrementallyUpdatedIndexEqualsAFreshOne() {
+        let pieces = ["ab", "ß", "ﬁ", "🙂", "K", "İ", " ", "x\u{301}", "Σ", "cafe", "e\u{301}", "", "Ǆ"]
+        for seed in 0..<UInt64(Self.caseCount) {
+            var rng = SplitMix64(seed: seed &+ 4_000_000)
+            func randomText(_ n: Int) -> [String] {
+                (0..<n).map { _ in pieces.randomElement(using: &rng)! }
+            }
+            var units = randomText(Int.random(in: 0...30, using: &rng))
+            var index = LanguageMemoryTextIndex(text: units.joined())
+            var seen = [LanguageMemoryTextIndex.skeleton(of: units.joined())]
+            for step in 0..<8 {
+                let from = Int.random(in: 0...units.count, using: &rng)
+                let to = min(units.count, from + Int.random(in: 0...4, using: &rng))
+                units.replaceSubrange(from..<to, with: randomText(Int.random(in: 0...3, using: &rng)))
+                let text = units.joined()
+                index.absorb(text)
+                let fresh = LanguageMemoryTextIndex.skeletonWithWordFlags(of: text.unicodeScalars)
+                #expect(index.currentSkeleton.skeleton == fresh.skeleton, "seed \(seed) step \(step)")
+                #expect(index.currentSkeleton.isASCIIWord == fresh.isASCIIWord, "seed \(seed) step \(step)")
+                seen.append(fresh.skeleton)
+                for skeleton in seen {
+                    for i in 0..<skeleton.count {
+                        for len in 1...3 where i + len <= skeleton.count {
+                            let probe = LanguageMemoryTextIndex.Signature(skeleton: Array(skeleton[i..<(i + len)]))
+                            if !index.windowsPresent(probe) {
+                                Issue.record("seed \(seed) step \(step): window lost")
+                                return
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Targeted cases
 
     private func agree(_ rules: [ReplacementRule], _ text: String, _ language: MemoryLanguage = .auto,

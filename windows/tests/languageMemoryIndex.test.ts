@@ -201,13 +201,15 @@ describe('indexed Language Memory against the old matcher', () => {
         expect([...now.starts]).toEqual([...fresh.starts]);
         everSeen.push(fresh.skeleton);
         // Every window of every version seen so far is still in the sets.
+        let lost = 0;
         for (const sk of everSeen) {
           for (let i = 0; i < sk.length; i += 1) {
             for (const len of [1, 2, 3]) {
-              if (i + len <= sk.length) expect(index.windowsPresent(sk.subarray(i, i + len))).toBe(true);
+              if (i + len <= sk.length && !index.windowsPresent(sk.subarray(i, i + len))) lost += 1;
             }
           }
         }
+        expect(lost, `seed ${seed} step ${step}: windows lost`).toBe(0);
       }
     }
   });

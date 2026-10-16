@@ -35,7 +35,7 @@ import Foundation
 struct LanguageMemoryTextIndex {
     /// The phrase side: the skeleton of the trimmed phrase.
     struct Signature {
-        fileprivate let skeleton: [UInt32]
+        let skeleton: [UInt32]
     }
 
     private var unigrams = Set<UInt32>()
@@ -46,6 +46,10 @@ struct LanguageMemoryTextIndex {
     /// does not depend on the Unicode tables of the ICU in use).
     private var current: [UInt32] = []
     private var currentIsASCIIWord: [Bool] = []
+    /// The text those were derived from, and for each of its scalars (plus one past the
+    /// end) where that scalar's skeleton starts in `current`.
+    private var scalars: [Unicode.Scalar] = []
+    private var starts: [Int] = [0]
 
     init(text: String) {
         absorb(text)
@@ -60,38 +64,89 @@ struct LanguageMemoryTextIndex {
         return Signature(skeleton: skeleton(of: trimmed))
     }
 
-    /// Makes `text` the current text and adds every window of its skeleton to the index.
+    /// Makes `text` the current text and adds the windows of its skeleton to the index.
+    ///
+    /// Rules rewrite a few words of a long text, so only the stretch that changed is
+    /// re-derived: the common prefix and suffix of the old and new text keep their skeleton,
+    /// and only windows that touch the changed stretch are added. Every other window of the
+    /// new text was already in the old one.
     mutating func absorb(_ text: String) {
-        (current, currentIsASCIIWord) = Self.skeletonWithWordFlags(of: text)
-        let s = current
-        for i in 0..<s.count {
-            unigrams.insert(s[i])
-            if i + 1 < s.count {
-                bigrams.insert(Self.pack(s[i], s[i + 1]))
-                if i + 2 < s.count {
-                    trigrams.insert(Self.pack(s[i], s[i + 1], s[i + 2]))
+        let new = Array(text.unicodeScalars)
+        if new == scalars { return }
+        let limit = min(scalars.count, new.count)
+        var prefix = 0
+        while prefix < limit && scalars[prefix] == new[prefix] { prefix += 1 }
+        var suffix = 0
+        while suffix < limit - prefix && scalars[scalars.count - 1 - suffix] == new[new.count - 1 - suffix] {
+            suffix += 1
+        }
+
+        let middle = Self.skeletonWithWordFlags(of: new[prefix..<(new.count - suffix)])
+        let keepHead = starts[prefix]
+        let keepTailFrom = starts[scalars.count - suffix]
+        let shift = keepHead + middle.skeleton.count - keepTailFrom
+
+        var skeleton = Array(current[0..<keepHead])
+        skeleton.append(contentsOf: middle.skeleton)
+        skeleton.append(contentsOf: current[keepTailFrom...])
+        var flags = Array(currentIsASCIIWord[0..<keepHead])
+        flags.append(contentsOf: middle.isASCIIWord)
+        flags.append(contentsOf: currentIsASCIIWord[keepTailFrom...])
+
+        var newStarts = Array(starts[0..<prefix])
+        newStarts.append(contentsOf: middle.starts.dropLast().map { $0 + keepHead })
+        for i in 0...suffix {
+            newStarts.append(starts[scalars.count - suffix + i] + shift)
+        }
+
+        scalars = new
+        current = skeleton
+        currentIsASCIIWord = flags
+        starts = newStarts
+
+        let n = skeleton.count
+        guard n > 0 else { return }
+        var i = max(0, keepHead - 2)
+        let last = min(n - 1, keepHead + middle.skeleton.count)
+        while i <= last {
+            unigrams.insert(skeleton[i])
+            if i + 1 < n {
+                bigrams.insert(Self.pack(skeleton[i], skeleton[i + 1]))
+                if i + 2 < n {
+                    trigrams.insert(Self.pack(skeleton[i], skeleton[i + 1], skeleton[i + 2]))
                 }
             }
+            i += 1
         }
     }
 
-    /// False only when the regex for this phrase certainly finds nothing in the current
-    /// text. (Stage one alone speaks for every text absorbed so far; see above.)
-    func mayContain(_ signature: Signature) -> Bool {
+    /// The skeleton of the current text, for the tests that compare it with a fresh build.
+    var currentSkeleton: (skeleton: [UInt32], isASCIIWord: [Bool]) {
+        (current, currentIsASCIIWord)
+    }
+
+    /// Stage one alone: every window of `signature` has been seen in some version of the text.
+    func windowsPresent(_ signature: Signature) -> Bool {
         let p = signature.skeleton
         switch p.count {
         case 0:
             return true
         case 1:
-            if !unigrams.contains(p[0]) { return false }
+            return unigrams.contains(p[0])
         case 2:
-            if !bigrams.contains(Self.pack(p[0], p[1])) { return false }
+            return bigrams.contains(Self.pack(p[0], p[1]))
         default:
             for i in 0...(p.count - 3) where !trigrams.contains(Self.pack(p[i], p[i + 1], p[i + 2])) {
                 return false
             }
+            return true
         }
-        return occursInCurrentText(p)
+    }
+
+    /// False only when the regex for this phrase certainly finds nothing in the current text.
+    func mayContain(_ signature: Signature) -> Bool {
+        guard !signature.skeleton.isEmpty else { return true }
+        return windowsPresent(signature) && occursInCurrentText(signature.skeleton)
     }
 
     private func occursInCurrentText(_ p: [UInt32]) -> Bool {
@@ -130,15 +185,20 @@ struct LanguageMemoryTextIndex {
     /// all three as the same letters. ASCII and scalars no case mapping touches take the
     /// fast path.
     static func skeleton(of text: String) -> [UInt32] {
-        skeletonWithWordFlags(of: text).skeleton
+        skeletonWithWordFlags(of: text.unicodeScalars).skeleton
     }
 
-    static func skeletonWithWordFlags(of text: String) -> (skeleton: [UInt32], isASCIIWord: [Bool]) {
+    /// `starts` has one entry per scalar plus one: where that scalar's skeleton begins.
+    static func skeletonWithWordFlags<S: Collection>(of text: S) -> (skeleton: [UInt32], isASCIIWord: [Bool], starts: [Int])
+    where S.Element == Unicode.Scalar {
         var out: [UInt32] = []
         var flags: [Bool] = []
-        out.reserveCapacity(text.utf8.count)
-        flags.reserveCapacity(text.utf8.count)
-        for scalar in text.unicodeScalars {
+        var starts: [Int] = []
+        out.reserveCapacity(text.count)
+        flags.reserveCapacity(text.count)
+        starts.reserveCapacity(text.count + 1)
+        for scalar in text {
+            starts.append(out.count)
             let v = scalar.value
             if v < 0x80 {
                 out.append(v >= 0x41 && v <= 0x5A ? v + 0x20 : v)
@@ -149,7 +209,8 @@ struct LanguageMemoryTextIndex {
                 flags.append(contentsOf: repeatElement(false, count: out.count - before))
             }
         }
-        return (out, flags)
+        starts.append(out.count)
+        return (out, flags, starts)
     }
 
     private static func appendSkeleton(of scalar: Unicode.Scalar, to out: inout [UInt32], depth: Int) {

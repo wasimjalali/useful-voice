@@ -110,7 +110,25 @@ if (values["allow-dirty"] && !adHoc) fail("--allow-dirty is for --ad-hoc test bu
 if (!values["allow-dirty"] && git("status", "--porcelain", "--untracked-files=no") !== "") {
   fail("the tree has uncommitted changes; commit them or pass --allow-dirty for a test build");
 }
-// Sparkle compares CFBundleVersion, so it must only ever grow: the commit count does.
+// Sparkle compares CFBundleVersion, so it must only ever grow: the commit count
+// does, but only along main. A branch that merged main into itself and was then
+// squash-merged counts more commits than main will, so a release is built from
+// a commit main already has, with the full history to count.
+if (!adHoc) {
+  if (git("rev-parse", "--is-shallow-repository") !== "false") {
+    fail("this is a shallow clone, so the commit count (the build number) would be wrong; run git fetch --unshallow");
+  }
+  try {
+    execFileSync("git", ["fetch", "--quiet", "origin", "main"], { cwd: ROOT, stdio: TO_STDERR });
+  } catch {
+    fail("could not fetch origin main to check the release commit is on it");
+  }
+  try {
+    execFileSync("git", ["merge-base", "--is-ancestor", "HEAD", "origin/main"], { cwd: ROOT, stdio: "ignore" });
+  } catch {
+    fail("HEAD is not on origin/main. Merge the PR first, check out main, pull, and build the release from there: the build number is the commit count, and a count taken on a branch can outrun main's, so Sparkle would never offer later releases");
+  }
+}
 const build = git("rev-list", "--count", "HEAD");
 const downloadBase = values["download-base"] ?? `${RELEASES}/download/v${version}`;
 

@@ -20,6 +20,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const failures: string[] = [];
 const renames: Array<[string, string]> = [];
+/** Blocks the next rename until `release()`, so a test queues later work behind it without relying on timing. */
+let held: { entered: () => void; gate: Promise<void> } | null = null;
+function holdNextRename(): { entered: Promise<void>; release: () => void } {
+  let release!: () => void;
+  let entered!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const reached = new Promise<void>((resolve) => (entered = resolve));
+  held = { entered, gate };
+  return { entered: reached, release };
+}
 /** Temp files written and not yet renamed or removed: more than one means two writes overlap. */
 const writes = { active: 0, most: 0 };
 vi.mock('node:fs', async (importOriginal) => {
@@ -31,6 +41,12 @@ vi.mock('node:fs', async (importOriginal) => {
   }) as typeof actual.promises.writeFile;
   const rename = async (from: string, to: string): Promise<void> => {
     renames.push([from, to]);
+    const hold = held;
+    held = null;
+    if (hold) {
+      hold.entered();
+      await hold.gate;
+    }
     const code = failures.shift();
     if (code) throw Object.assign(new Error(`${code}: held open, rename '${from}' -> '${to}'`), { code });
     await actual.promises.rename(from, to);
@@ -74,6 +90,7 @@ describe('a settings save while settings.json is held open', () => {
   beforeEach(() => {
     failures.length = 0;
     renames.length = 0;
+    held = null;
     writes.active = 0;
     writes.most = 0;
   });
@@ -99,10 +116,12 @@ describe('a settings save while settings.json is held open', () => {
     const statuses: boolean[] = [];
     store.onSaveStatus((status) => statuses.push(status.ok));
     failures.push('EPERM', 'EPERM');
+    const hold = holdNextRename();
     store.update({ typeOutApps: ['putty'] });
-    // The first write is now waiting between retries.
-    await vi.waitFor(() => expect(renames.length).toBeGreaterThan(0));
+    // The first write has reached its rename and is held there while the second change is made.
+    await hold.entered;
     store.update({ typeOutApps: [] });
+    hold.release();
     await vi.waitFor(() => expect(statuses).toHaveLength(2), { timeout: 3000 });
     expect(statuses).toEqual([true, true]);
     expect((await saved(dir)).typeOutApps).toEqual([]);
@@ -135,6 +154,7 @@ describe('data.json flushes while the file is held open', () => {
   beforeEach(() => {
     failures.length = 0;
     renames.length = 0;
+    held = null;
     writes.active = 0;
     writes.most = 0;
   });
@@ -151,12 +171,15 @@ describe('data.json flushes while the file is held open', () => {
     await store.load();
     store.upsertTerm(term('a', 'Alpha'));
     failures.push('EPERM', 'EPERM');
+    const hold = holdNextRename();
     const first = store.flush();
-    await vi.waitFor(() => expect(renames.length).toBeGreaterThan(0));
+    // The first flush has reached its rename and is held there while the others queue behind it.
+    await hold.entered;
     store.upsertTerm(term('b', 'Beta'));
     const queued = [store.flush(), store.flush()];
     store.upsertTerm(term('c', 'Gamma'));
     queued.push(store.flush());
+    hold.release();
     expect(await Promise.all([first, ...queued])).toEqual([true, true, true, true]);
     expect(writes.most).toBe(1);
     const onDisk = JSON.parse(await realFs.readFile(file, 'utf8')) as { payload: { terms: Array<{ phrase: string }> } };

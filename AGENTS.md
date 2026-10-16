@@ -22,6 +22,12 @@ Cross-platform dictation app. macOS: Swift (`Sources/UsefulVoiceCore`,
   jumps to a step with sample data. Under `--e2e` only, `main/e2eStub.ts` fakes Deepgram (a key starting `valid` works,
   `offline` fails like a dead network, anything else is a 401) and Chromium's fake microphone is on. E2E fixtures seed
   `firstRunCompleted: true` unless a spec asks otherwise (`e2e/first-run.spec.ts`).
+- Windows dictation E2E (`e2e/dictation.spec.ts`, `e2e/hud-a11y.spec.ts`, helpers in `e2e/harness.ts`): real recordings from the
+  fake microphone through the e2e stub. Under `--e2e` main exposes `globalThis.__uv` (`index.ts`) and `globalThis.__uvTray.menu()`
+  (`tray.ts`, the menu the tray would show, since no icon is created). Chromium's fake microphone beeps all the time, so a
+  silence-limit spec swaps the recorder window's `getUserMedia` for a scripted tone (`useScriptedMicrophone`). The shortest
+  limits the app allows are 15 s of silence and 30 s of recording, so those two specs take 20 s and 35 s. Never press the
+  hotkey to completion in a spec: it would paste into whatever is in front of the machine.
 
 ## Windows renderer layout
 

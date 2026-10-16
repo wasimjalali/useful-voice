@@ -23,7 +23,7 @@ say() { printf '%s\n' "$*"; }
 die() { printf 'Useful Voice install failed: %s\n' "$*" >&2; exit 1; }
 
 [ "$(uname -s)" = "Darwin" ] || die "this installer is for macOS. On Windows, download the installer from the releases page."
-[ "$(uname -m)" = "arm64" ] || die "Useful Voice needs a Mac with Apple silicon (M1 or later)."
+[ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ] || die "Useful Voice needs a Mac with Apple silicon (M1 or later)."
 major="$(sw_vers -productVersion | cut -d. -f1)"
 [ "$major" -ge 14 ] || die "Useful Voice needs macOS 14 or later (this Mac has $(sw_vers -productVersion))."
 [ -w "$DEST" ] || die "$DEST is not writable. Run with UV_INSTALL_DIR=\"\$HOME/Applications\" to install for this user only."

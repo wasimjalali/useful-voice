@@ -19,6 +19,8 @@ import {
   type OneShotRunner,
 } from './keystroke.js';
 import { PowerShellHost, PowerShellHostError, hostArguments } from './powershellHost.js';
+import { MEDIA_PRELUDE, parsePausedOutput, pausePlayingScript, resumeScript } from './mediaScripts.js';
+import type { MediaEffects } from '../core/media/mediaPausePolicy.js';
 // The delivery policy's view of a window: the same identity (process + handle) with
 // the title the UI needs on top, so window info can be handed straight to the policy.
 import {
@@ -443,4 +445,60 @@ async function runPowerShell(
     { timeout: timeoutMs, windowsHide: true, maxBuffer: 1024 * 1024, signal },
   );
   return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+}
+
+// ---- media ----------------------------------------------------------------
+
+/** Longest a media request may run in the warm host. Above the script's own 3 s wait per call. */
+const MEDIA_HOST_TIMEOUT_MS = 6000;
+/** The same through a cold one-shot process, the fallback. */
+const MEDIA_ONE_SHOT_TIMEOUT_MS = 12_000;
+
+let mediaHost: PowerShellHost | null = null;
+
+/**
+ * The media scripts get a PowerShell host of their own, not a place in the delivery host's
+ * queue. That host runs one request at a time and cannot be interrupted, so a media request
+ * (a few hundred ms warm, longer when an app is slow to answer) queued ahead of a paste
+ * would delay it by that much. A second host costs one idle process and removes the wait.
+ */
+function mediaScriptHost(log?: (message: string) => void): PowerShellHost {
+  mediaHost ??= new PowerShellHost({
+    spawn: () => spawn('powershell.exe', hostArguments(), { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }),
+    setupScript: MEDIA_PRELUDE,
+    startupTimeoutMs: HOST_STARTUP_TIMEOUT_MS,
+    log,
+  });
+  return mediaHost;
+}
+
+/**
+ * The Windows side of "Pause media while dictating". Off Windows it does nothing. `warm`
+ * starts the media host ahead of the first dictation; `dispose` stops it.
+ */
+export function createMediaEffects(
+  appUserModelId: string,
+  log: (message: string) => void,
+): MediaEffects & { warm(): void; dispose(): void } {
+  const available = process.platform === 'win32';
+  const timeouts = { hostMs: MEDIA_HOST_TIMEOUT_MS, oneShotMs: MEDIA_ONE_SHOT_TIMEOUT_MS };
+  const run = (body: string): Promise<string> =>
+    runHostedWith(mediaScriptHost(log), runOneShot, body, MEDIA_PRELUDE + body, timeouts);
+  return {
+    async pausePlaying() {
+      if (!available) return [];
+      return parsePausedOutput(await run(pausePlayingScript(appUserModelId)));
+    },
+    async resume(ids) {
+      if (!available || ids.length === 0) return;
+      await run(resumeScript(ids));
+    },
+    warm() {
+      if (available) void mediaScriptHost(log).start();
+    },
+    dispose() {
+      mediaHost?.dispose();
+      mediaHost = null;
+    },
+  };
 }

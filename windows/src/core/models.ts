@@ -259,6 +259,8 @@ export interface AppSettings {
   maxRecordingSeconds: number;
   recordingsToKeep: number;
   soundEffectsEnabled: boolean;
+  /** Pause whatever is playing (Spotify, a video in the browser) while recording, then play it again. */
+  pauseMediaWhileDictating: boolean;
   launchAtLogin: boolean;
   hotkey: HotkeyBinding;
   /**
@@ -307,6 +309,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   maxRecordingSeconds: 600,
   recordingsToKeep: 10,
   soundEffectsEnabled: true,
+  pauseMediaWhileDictating: true,
   launchAtLogin: false,
   hotkey: { accelerator: 'Control+Alt+Space', pushToTalk: false },
   languageSwitchHotkey: { accelerator: 'Control+Alt+L', pushToTalk: false },

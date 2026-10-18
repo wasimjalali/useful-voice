@@ -46,6 +46,8 @@ started at app ready, types compiled once); the delivery order lives in `src/cor
 clipboard rule in `src/core/delivery/clipboardRestore.ts` (a sent Ctrl+V counts as delivered and the dictation stays on
 the clipboard; the old clipboard is put back only when a cancel arrives before the keystroke and nothing newer was copied).
 
+- Windows pause media (`pauseMediaWhileDictating`, `core/media/mediaPausePolicy.ts`; scripts in `main/mediaScripts.ts`, run in their own PowerShell host so a paste never queues behind them): `e2e/pause-media.spec.ts` uses `__uv.setMedia({id:'Playing'|'Paused'})`, `__uv.mediaState()` and `__uv.mediaCalls()` over a scripted player (`main/e2eMedia.ts`); `tests/mediaControl.windows.test.ts` runs the real scripts on Windows only.
+
 ## Windows renderer layout
 
 `windows/src/renderer/`: `renderer.ts` (entry) wires `shell.ts` (rail, header, banners,

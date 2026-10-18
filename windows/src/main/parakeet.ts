@@ -95,6 +95,11 @@ export function defaultExtract(archive: string, destDir: string, signal: AbortSi
 }
 
 async function defaultSpawnWorker(): Promise<ParakeetWorkerHandle> {
+  // Outside Electron, importing the `electron` package can download its binary (blocking the
+  // event loop for seconds), so don't touch it.
+  if (!process.versions.electron) {
+    throw new Error('the engine only runs inside the Useful Voice app');
+  }
   const { utilityProcess } = await import('electron');
   const script = path.join(path.dirname(fileURLToPath(import.meta.url)), 'parakeetWorker.js');
   const child = utilityProcess.fork(script, [], { serviceName: 'Parakeet' });

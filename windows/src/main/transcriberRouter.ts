@@ -15,7 +15,7 @@ export interface RouterDeps {
   voiceModelId: () => string;
   /** A provider's key, or null. */
   key: (provider: KeyProvider) => string | null;
-  parakeet: { transcribe(wav: Uint8Array, version: ParakeetVersion, signal?: AbortSignal): Promise<Transcript> };
+  parakeet: { transcribe(wav: Uint8Array, version: ParakeetVersion, signal?: AbortSignal, language?: string): Promise<Transcript> };
   /** Injected for tests. */
   fetchImpl?: typeof fetch;
   /** Injected for tests, so retries never really sleep. */
@@ -72,7 +72,7 @@ export function createTranscriber(deps: RouterDeps): TranscriberPort {
       if (model.provider === 'nvidia' && version) {
         const problem = parakeetLanguageProblem(version, request.language);
         if (problem) throw new ProviderError('badRequest', problem, { provider: 'Parakeet' });
-        return deps.parakeet.transcribe(request.audio, version, signal);
+        return deps.parakeet.transcribe(request.audio, version, signal, request.language);
       }
       throw new ProviderError('notConfigured', `${model.name} can't run here.`);
     },

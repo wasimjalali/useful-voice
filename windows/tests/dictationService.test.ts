@@ -86,6 +86,7 @@ import {
   type TranscriberPort,
 } from '../src/main/dictationService.js';
 import { ProviderError, type Transcript } from '../src/core/transcription/deepgramProvider.js';
+import { FormatterError } from '../src/core/formatting/aiFormatter.js';
 import { DETECTION_CODES, resolveDetectedLanguage } from '../src/core/transcription/languages.js';
 import {
   DEFAULT_SETTINGS,
@@ -336,49 +337,156 @@ describe('happy path', () => {
   });
 });
 
-describe('formatter integration', () => {
-  it('runs the formatter and marks the mode', async () => {
-    const ctx = setup({ formatter: async (text) => `${text}.` });
+const AI_ON = { formatterId: 'gemini:gemini-3.8-flash' } as const;
+const THREE_WORDS: Transcript = { text: 'hello big world', durationSeconds: 1.5, detectedLanguage: null };
+
+function kubernetesTerm() {
+  return {
+    id: 't1', phrase: 'Kubernetes', aliases: [], pronunciations: ['kubernets'],
+    language: 'auto', priority: 'high' as const, notes: '', usageCount: 0,
+    createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+}
+
+describe('AI formatter integration', () => {
+  it('does not call the formatter while AI formatting is off', async () => {
+    const formatter = vi.fn(async (text: string) => `${text}.`);
+    const ctx = setup({ formatter });
+    ctx.transcriber.transcript = THREE_WORDS;
     await ctx.service.startRecording({ source: 'hotkey' });
     await ctx.service.stopAndProcess();
-    expect(ctx.sink.delivered).toEqual(['hello world.']);
+    expect(formatter).not.toHaveBeenCalled();
+    expect(ctx.sink.delivered).toEqual(['hello big world']);
+    expect(ctx.last()?.mode).toBe('raw');
+  });
+
+  it('runs the formatter, delivers its text and marks the mode', async () => {
+    const ctx = setup({ settings: AI_ON, formatter: async (text) => `${text}.` });
+    ctx.transcriber.transcript = THREE_WORDS;
+    await ctx.service.startRecording({ source: 'hotkey' });
+    await ctx.service.stopAndProcess();
+    expect(ctx.sink.delivered).toEqual(['hello big world.']);
     expect(ctx.last()?.mode).toBe('formatted');
+    // History keeps what the voice model heard.
+    expect(ctx.last()?.rawText).toBe('hello big world');
   });
 
-  it('falls back to raw text when the formatter throws, without losing the dictation', async () => {
+  it("runs BEFORE the dictionary, so the person's own spelling wins over the model's", async () => {
+    // The model hands back the misheard word; the dictionary still has the last word.
     const ctx = setup({
-      formatter: async () => {
-        throw new Error('formatter exploded');
-      },
+      settings: AI_ON,
+      formatter: async () => 'Deploy to kubernets today.',
+      memory: { terms: [kubernetesTerm()] },
     });
+    ctx.transcriber.transcript = { text: 'deploy to kubernets today', durationSeconds: 1, detectedLanguage: null };
     await ctx.service.startRecording({ source: 'hotkey' });
     await ctx.service.stopAndProcess();
-    expect(ctx.sink.delivered).toEqual(['hello world']);
-    expect(ctx.service.currentState).toBe('idle');
+    expect(ctx.sink.delivered).toEqual(['Deploy to Kubernetes today.']);
+    expect(ctx.last()?.intermediateText).toBe('Deploy to Kubernetes today.');
   });
 
-  it('falls back to raw text when the formatter returns nothing usable', async () => {
-    const ctx = setup({ formatter: async () => '   ' });
-    await ctx.service.startRecording({ source: 'hotkey' });
-    await ctx.service.stopAndProcess();
-    expect(ctx.sink.delivered).toEqual(['hello world']);
-  });
-
-  it('still applies the dictionary in raw mode, only skipping formatting', async () => {
+  it('hands the formatter the dictionary words and a signal', async () => {
+    let seen: { vocabulary: string[]; hasSignal: boolean } | null = null;
     const ctx = setup({
-      formatter: async (text) => `FORMATTED ${text}`,
-      memory: {
-        terms: [{
-          id: 't1', phrase: 'Kubernetes', aliases: [], pronunciations: ['kubernets'],
-          language: 'auto', priority: 'high', notes: '', usageCount: 0,
-          createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
-        }],
+      settings: AI_ON,
+      memory: { terms: [kubernetesTerm()] },
+      formatter: async (text, _language, context) => {
+        seen = { vocabulary: context.vocabulary, hasSignal: context.signal instanceof AbortSignal };
+        return text;
       },
     });
-    ctx.transcriber.transcript = { text: 'deploy kubernets', durationSeconds: 1, detectedLanguage: null };
+    ctx.transcriber.transcript = THREE_WORDS;
+    await ctx.service.startRecording({ source: 'hotkey' });
+    await ctx.service.stopAndProcess();
+    expect(seen).not.toBeNull();
+    expect(seen!.hasSignal).toBe(true);
+    expect(seen!.vocabulary).toContain('Kubernetes');
+    expect(seen!.vocabulary.length).toBeLessThanOrEqual(100);
+  });
+
+  it('is skipped for a transcript of two words or fewer', async () => {
+    const formatter = vi.fn(async (text: string) => `${text}!`);
+    const ctx = setup({ settings: AI_ON, formatter });
+    await ctx.service.startRecording({ source: 'hotkey' });
+    await ctx.service.stopAndProcess();
+    expect(formatter).not.toHaveBeenCalled();
+    expect(ctx.sink.delivered).toEqual(['hello world']);
+  });
+
+  it('is skipped in raw mode, which still applies the dictionary', async () => {
+    const formatter = vi.fn(async (text: string) => `FORMATTED ${text}`);
+    const ctx = setup({ settings: AI_ON, formatter, memory: { terms: [kubernetesTerm()] } });
+    ctx.transcriber.transcript = { text: 'deploy kubernets now', durationSeconds: 1, detectedLanguage: null };
     await ctx.service.startRecording({ source: 'hotkey', rawMode: true });
     await ctx.service.stopAndProcess();
-    expect(ctx.sink.delivered).toEqual(['deploy Kubernetes']);
+    expect(formatter).not.toHaveBeenCalled();
+    expect(ctx.sink.delivered).toEqual(['deploy Kubernetes now']);
+  });
+
+  it('delivers the unformatted text when the formatter throws, and logs only the reason', async () => {
+    const ctx = setup({
+      settings: AI_ON,
+      formatter: async () => {
+        throw new FormatterError('timedOut', 'no answer within 6 s');
+      },
+    });
+    ctx.transcriber.transcript = { text: 'my secret sentence here', durationSeconds: 1, detectedLanguage: null };
+    await ctx.service.startRecording({ source: 'hotkey' });
+    await ctx.service.stopAndProcess();
+    expect(ctx.sink.delivered).toEqual(['my secret sentence here']);
+    expect(ctx.last()?.mode).toBe('raw');
+    expect(ctx.service.currentState).toBe('idle');
+    const lines = ctx.diagnostics.filter((entry) => entry.category === 'formatter');
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.message).toContain('timedOut');
+    expect(lines[0]?.message).not.toContain('secret');
+  });
+
+  it('logs an unexpected formatter error without its message', async () => {
+    const ctx = setup({
+      settings: AI_ON,
+      formatter: async () => {
+        throw new Error('boom with sk-live-12345');
+      },
+    });
+    ctx.transcriber.transcript = THREE_WORDS;
+    await ctx.service.startRecording({ source: 'hotkey' });
+    await ctx.service.stopAndProcess();
+    expect(ctx.sink.delivered).toEqual(['hello big world']);
+    expect(JSON.stringify(ctx.diagnostics)).not.toContain('sk-live');
+  });
+
+  it('delivers the unformatted text when the formatter returns nothing usable', async () => {
+    const ctx = setup({ settings: AI_ON, formatter: async () => '   ' });
+    ctx.transcriber.transcript = THREE_WORDS;
+    await ctx.service.startRecording({ source: 'hotkey' });
+    await ctx.service.stopAndProcess();
+    expect(ctx.sink.delivered).toEqual(['hello big world']);
+    expect(ctx.last()?.mode).toBe('raw');
+  });
+
+  it('a cancel during formatting aborts the formatter call and delivers nothing', async () => {
+    let signal: AbortSignal | null = null;
+    let release: () => void = () => undefined;
+    const ctx = setup({
+      settings: AI_ON,
+      formatter: (text, _language, context) => {
+        signal = context.signal;
+        return new Promise<string>((resolve) => {
+          release = () => resolve(`${text}.`);
+        });
+      },
+    });
+    ctx.transcriber.transcript = THREE_WORDS;
+    await ctx.service.startRecording({ source: 'hotkey' });
+    const stopping = ctx.service.stopAndProcess();
+    await vi.waitFor(() => expect(signal).not.toBeNull());
+    await ctx.service.cancel();
+    expect(signal!.aborted).toBe(true);
+    release();
+    await stopping;
+    expect(ctx.sink.delivered).toEqual([]);
+    expect(ctx.service.currentState).toBe('idle');
   });
 });
 
@@ -411,6 +519,45 @@ describe('rejections before upload', () => {
     await ctx.service.stopAndProcess();
     expect(ctx.transcriber.requests).toHaveLength(0);
     expect(ctx.statuses.at(-1)?.message).toContain('Settings');
+  });
+
+  it('names the provider whose key is missing', async () => {
+    const ctx = setup({ apiKey: null });
+    // Same service, wired the way index.ts wires an ElevenLabs voice model.
+    const named = new DictationService({
+      recorder: ctx.recorder, transcriber: ctx.transcriber, sink: ctx.sink,
+      settings: () => ctx.settings, memory: () => ctx.memory,
+      apiKey: async () => null,
+      missingKeyMessage: () => 'Add your ElevenLabs key in Settings.',
+      onStatus: (status) => ctx.statuses.push(status),
+      deliveryTimeoutMs: 200,
+    });
+    await named.startRecording({ source: 'hotkey' });
+    await named.stopAndProcess();
+    expect(ctx.statuses.at(-1)?.message).toBe('Add your ElevenLabs key in Settings.');
+    expect(ctx.statuses.at(-1)?.error).toMatchObject({ kind: 'noProvider', fix: 'openEngineSettings' });
+  });
+
+  it('turns a provider that is not configured (a model not downloaded) into a Settings fix', async () => {
+    const ctx = setup();
+    ctx.transcriber.error = new ProviderError('notConfigured', 'Parakeet is not downloaded. Download it in Settings to use it.', { provider: 'Parakeet' });
+    await ctx.service.startRecording({ source: 'hotkey' });
+    await ctx.service.stopAndProcess();
+    expect(ctx.statuses.at(-1)?.error).toMatchObject({
+      kind: 'noProvider',
+      fix: 'openEngineSettings',
+      message: 'Parakeet is not downloaded. Download it in Settings to use it.',
+    });
+    // The audio is kept so Retry works once the model is ready.
+    expect(ctx.service.canRetry).toBe(true);
+  });
+
+  it('names the provider in a rejected-key error', async () => {
+    const ctx = setup();
+    ctx.transcriber.error = new ProviderError('unauthorized', 'rejected', { provider: 'ElevenLabs' });
+    await ctx.service.startRecording({ source: 'hotkey' });
+    await ctx.service.stopAndProcess();
+    expect(ctx.statuses.at(-1)?.message).toBe('ElevenLabs rejected your API key. Check it in Settings.');
   });
 
   it('discards an empty transcript and says so', async () => {
@@ -665,7 +812,8 @@ describe('raw-mode flag lifetime', () => {
    * return left it set and the NEXT dictation silently skipped formatting.
    */
   it('does not leak raw mode past a failed dictation', async () => {
-    const ctx = setup({ formatter: async (text) => `F:${text}` });
+    const ctx = setup({ settings: AI_ON, formatter: async (text) => `F:${text}` });
+    ctx.transcriber.transcript = THREE_WORDS;
 
     // First dictation in raw mode, which fails before formatting.
     ctx.transcriber.error = new ProviderError('transport', 'down');
@@ -677,12 +825,13 @@ describe('raw-mode flag lifetime', () => {
     ctx.transcriber.error = null;
     await ctx.service.startRecording({ source: 'hotkey' });
     await ctx.service.stopAndProcess();
-    expect(ctx.sink.delivered).toEqual(['F:hello world']);
+    expect(ctx.sink.delivered).toEqual(['F:hello big world']);
     expect(ctx.last()?.mode).toBe('formatted');
   });
 
   it('does not leak raw mode past a too-short failure', async () => {
-    const ctx = setup({ formatter: async (text) => `F:${text}` });
+    const ctx = setup({ settings: AI_ON, formatter: async (text) => `F:${text}` });
+    ctx.transcriber.transcript = THREE_WORDS;
     ctx.recorder.audio = capturedAudio({ wav: new Uint8Array(10) });
     await ctx.service.startRecording({ source: 'hotkey', rawMode: true });
     await ctx.service.stopAndProcess();
@@ -690,11 +839,12 @@ describe('raw-mode flag lifetime', () => {
     ctx.recorder.audio = capturedAudio();
     await ctx.service.startRecording({ source: 'hotkey' });
     await ctx.service.stopAndProcess();
-    expect(ctx.sink.delivered).toEqual(['F:hello world']);
+    expect(ctx.sink.delivered).toEqual(['F:hello big world']);
   });
 
   it('does not leak raw mode past a silent-clip failure', async () => {
-    const ctx = setup({ formatter: async (text) => `F:${text}` });
+    const ctx = setup({ settings: AI_ON, formatter: async (text) => `F:${text}` });
+    ctx.transcriber.transcript = THREE_WORDS;
     ctx.recorder.audio = capturedAudio({ hadSpeech: false });
     await ctx.service.startRecording({ source: 'hotkey', rawMode: true });
     await ctx.service.stopAndProcess();
@@ -702,7 +852,7 @@ describe('raw-mode flag lifetime', () => {
     ctx.recorder.audio = capturedAudio();
     await ctx.service.startRecording({ source: 'hotkey' });
     await ctx.service.stopAndProcess();
-    expect(ctx.sink.delivered).toEqual(['F:hello world']);
+    expect(ctx.sink.delivered).toEqual(['F:hello big world']);
   });
 });
 
@@ -894,12 +1044,13 @@ describe('detected language handling', () => {
   it('hands the resolved language to the formatter, not the raw code', async () => {
     let seen: string | undefined;
     const ctx = setup({
+      settings: AI_ON,
       formatter: async (text, language) => {
         seen = language;
         return text;
       },
     });
-    ctx.transcriber.transcript = { text: 'hallo', durationSeconds: 1, detectedLanguage: 'de-DE' };
+    ctx.transcriber.transcript = { text: 'hallo wie geht es', durationSeconds: 1, detectedLanguage: 'de-DE' };
     await ctx.service.startRecording({ source: 'hotkey' });
     await ctx.service.stopAndProcess();
     expect(seen).toBe('de');

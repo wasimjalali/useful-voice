@@ -121,7 +121,9 @@ const NAMESPACES = [
   'history',
   'hud',
   'memory',
+  'models',
   'notes',
+  'parakeet',
   'settings',
 ];
 

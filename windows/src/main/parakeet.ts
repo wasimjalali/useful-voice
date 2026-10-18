@@ -34,9 +34,15 @@ export class ParakeetModels {
    * Transcribe a 16 kHz mono 16-bit WAV. Throws ProviderError('notConfigured') when the model
    * isn't downloaded. Honors `signal`.
    */
-  async transcribe(_wav: Uint8Array, _version: ParakeetVersion, _signal?: AbortSignal): Promise<Transcript> {
+  async transcribe(_wav: Uint8Array, _version: ParakeetVersion, _signal?: AbortSignal, _language?: string): Promise<Transcript> {
     throw new ProviderError('notConfigured', 'Parakeet is not downloaded. Download it in Settings to use it.');
   }
+
+  /** Load the model ahead of the first dictation. Stub: the real implementation is merged separately. */
+  async preload(_version: ParakeetVersion): Promise<void> {}
+
+  /** Keep this version loaded (the selected voice model), or null to let go of it. */
+  setPinned(_version: ParakeetVersion | null): void {}
 
   /** Stop any worker process and downloads. Called at quit. */
   dispose(): void {}

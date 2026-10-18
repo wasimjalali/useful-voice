@@ -27,7 +27,7 @@ import { transcribe as transcribeRequest } from '../core/transcription/deepgramP
 import { FormatterError, formatWithModel } from '../core/formatting/aiFormatter.js';
 import { checkProviderKey } from '../core/models/providerKeyCheck.js';
 import { isKeyProvider, languageModelById, type KeyProvider } from '../core/models/catalog.js';
-import { PARAKEET_CHANNELS, PARAKEET_VERSIONS, type ParakeetVersion } from '../core/models/parakeet.js';
+import { PARAKEET_CHANNELS, PARAKEET_VERSIONS, parakeetVersionFromCatalogId, type ParakeetVersion } from '../core/models/parakeet.js';
 import { ParakeetModels } from './parakeet.js';
 import { createTranscriber, currentVoiceModel, missingKeyMessage, voiceCredential } from './transcriberRouter.js';
 import { SettingsStore } from './settingsStore.js';
@@ -291,6 +291,20 @@ class UsefulVoiceApp {
     return this.settings.all.voiceModelId;
   }
 
+  /**
+   * Keeps the selected Parakeet model loaded (and lets go of it when another model is chosen),
+   * so the first dictation after choosing or launching doesn't pay the load.
+   */
+  private syncParakeet(preload: boolean): void {
+    const version = parakeetVersionFromCatalogId(this.voiceModelId());
+    this.parakeet.setPinned(version);
+    if (version && preload) {
+      void Promise.resolve(this.parakeet.preload(version)).catch((error: unknown) =>
+        this.diagnostics.log('parakeet', `preload failed: ${error instanceof Error ? error.message : String(error)}`),
+      );
+    }
+  }
+
   /** Talks to the hidden recorder window: start acks, tokens, discard on cancel. */
   private recorder!: RecorderBridge;
 
@@ -394,6 +408,7 @@ class UsefulVoiceApp {
     this.announcer = new Announcer((text, urgency) => this.sendAnnouncement(text, urgency));
     this.hudModel = new HudModel((frame) => this.onHudFrame(frame));
     this.service = this.buildService();
+    this.syncParakeet(true);
     this.tray = new TrayController({
       // The tray is part of the app, not the app the user is dictating into, so a
       // dictation started here is saved and copied like one started in the window.
@@ -1188,7 +1203,11 @@ class UsefulVoiceApp {
       memory: () => this.data.memorySnapshot(),
       apiKey: async () => voiceCredential(currentVoiceModel(this.voiceModelId()), (provider) => this.providerKey(provider)),
       missingKeyMessage: () => missingKeyMessage(currentVoiceModel(this.voiceModelId())),
-      onStatus: (status) => this.handleStatus(status),
+      onStatus: (status) => {
+        // The hotkey press has started a recording: warm the local model while the person speaks.
+        if (status.state === 'recording') this.syncParakeet(true);
+        this.handleStatus(status);
+      },
       // Before the idle status, so a window can show its done line before it resets.
       onOutcome: (outcome) => {
         this.hudModel.outcome(outcome);
@@ -1575,6 +1594,7 @@ class UsefulVoiceApp {
         (language !== undefined && language.trim().length > 0 ? validateAccelerator(language, otherDictation) : null);
       if (refusal) throw new Error(refusal);
       const next = this.settings.update(patch);
+      if (patch.voiceModelId !== undefined) this.syncParakeet(true);
       applyAppearance(next.appearance);
       // nativeTheme emits 'updated' on a themeSource change; sync anyway so the
       // window never depends on that event alone.
@@ -2315,13 +2335,14 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     // The count is checked against the documented boundary rather than a vague lower
     // bound: `tests/ipcContract.test.ts` pins this same number to the README, so a
     // channel added or lost anywhere fails one of the two.
-    // 75: the first-run setup (`firstRunState`, `firstRunEndPractice`, `firstRunSetOpen`, `firstRunCheckKey`,
+    // 83: the models and their keys (`setProviderKey`, `clearProviderKey`, `testProviderKey`, `parakeetStates`,
+    // `parakeetDownload`, `parakeetCancel`, `parakeetRemove`, `onParakeetChanged`), the first-run setup (`firstRunState`, `firstRunEndPractice`, `firstRunSetOpen`, `firstRunCheckKey`,
     // `firstRunSaveKey`, `firstRunSetLanguage`, `firstRunSetHotkey`, `firstRunFinish`,
     // `onPracticeResult`), the theme (`getTheme`, `onThemeChanged`), `showDiagnosticsLog`, `onOutcome` +
     // `onTelemetry`, `getFlags`, and the floating windows (`onHudView`, `hudPointer`,
     // `hudAction`, `hudDrag`, `onAnnounce`, `pickerChoose`, `pickerClose`, `onSettingsChanged`), and `sendAudioStarted`.
     // Kept in step with the README by the comment below.
-    const EXPECTED_API_METHODS = 75;
+    const EXPECTED_API_METHODS = 83;
     record(
       'preload exposes API',
       preloadProbe.hasApi

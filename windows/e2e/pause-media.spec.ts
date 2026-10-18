@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { seedUserData } from './fixtures.js';
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { collect, hook, launch, out, remove, saveSettings, setKey, type Running } from './harness.js';
 
@@ -110,4 +111,36 @@ test('Settings has the toggle in General, on by default', async () => {
   await expect(toggle).toHaveAttribute('aria-checked', 'false');
   const saved = (await r.win.evaluate(() => (window as unknown as { usefulVoice: { getSettings(): Promise<{ pauseMediaWhileDictating: boolean }> } }).usefulVoice.getSettings())).pauseMediaWhileDictating;
   expect(saved).toBe(false);
+});
+
+/** Quits the app by `trigger`, waits for the process to end, and returns the e2e.log it left. */
+async function endApp(r: Running, trigger: () => Promise<unknown>): Promise<string[]> {
+  const exited = new Promise<void>((resolve) => r.app.process().once('exit', () => resolve()));
+  await trigger().catch(() => undefined);
+  await Promise.race([exited, new Promise((_, reject) => setTimeout(() => reject(new Error('the app did not exit')), 30 * SECOND))]);
+  const text = await fs.readFile(path.join(r.userData, 'e2e.log'), 'utf8');
+  // The app is gone: only its folder is left to remove.
+  run = null;
+  await remove(r.userData);
+  return text.split('\n').filter((line) => /media |quit: exiting/.test(line));
+}
+
+const entries = (lines: string[]): string[] => lines.map((line) => line.replace(/^\S+ /, ''));
+
+test('a logoff or shutdown (session-end) plays the media again before the app exits', async () => {
+  const r = await start('media-session-end');
+  await startButton(r.win).click();
+  await expect(stopButton(r.win)).toBeVisible({ timeout: 15 * SECOND });
+  await expect.poll(() => media(r)).toMatchObject({ Spotify: 'Paused', Edge: 'Paused' });
+  const lines = entries(await endApp(r, () => hook(r.app, 'sessionEnd')));
+  expect(lines).toEqual(['media list', 'media pause:Spotify,Edge', 'media resume:Spotify,Edge', 'quit: exiting']);
+});
+
+test('an app.quit() from anywhere plays the media again before the app exits', async () => {
+  const r = await start('media-app-quit');
+  await startButton(r.win).click();
+  await expect(stopButton(r.win)).toBeVisible({ timeout: 15 * SECOND });
+  await expect.poll(() => media(r)).toMatchObject({ Spotify: 'Paused', Edge: 'Paused' });
+  const lines = entries(await endApp(r, () => hook(r.app, 'appQuit')));
+  expect(lines).toEqual(['media list', 'media pause:Spotify,Edge', 'media resume:Spotify,Edge', 'quit: exiting']);
 });

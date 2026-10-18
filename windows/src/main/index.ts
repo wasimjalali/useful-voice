@@ -23,6 +23,7 @@ import { HUD_EXIT_MS, HudModel, languageLabel, type HudFrame } from '../core/hud
 import { normaliseLanguageCode } from '../core/transcription/languages.js';
 import { decideFirstRun, firstRunLaunch, shouldOpenAtLaunch, type FirstRunStep } from '../core/firstRun/gate.js';
 import { installProviderStubs, parakeetE2eDeps } from './e2eStub.js';
+import { QuitCoordinator } from './quitCoordinator.js';
 import { FakeMedia, type FakeStatus } from './e2eMedia.js';
 import { MediaPausePolicy, type MediaEffects } from '../core/media/mediaPausePolicy.js';
 import { setSecretSource } from '../core/redaction.js';
@@ -286,12 +287,24 @@ class UsefulVoiceApp {
       setMedia: (sessions: unknown) => this.fakeMedia?.set(sessions as Record<string, FakeStatus>),
       mediaState: () => this.fakeMedia?.snapshot(),
       mediaCalls: () => this.fakeMedia?.calls.slice(),
+      // The same handlers Windows and Electron drive on a logoff, and on an `app.quit()`.
+      sessionEnd: () => this.quitHandlers.onSessionEnd(),
+      appQuit: () => app.quit(),
       scrubMedia: (arg: unknown) => {
         const { id, byMs } = arg as { id: string; byMs: number };
         this.fakeMedia?.scrub(id, byMs);
       },
       mainWindows: () => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().includes('view=main')).length,
     };
+  }
+
+  /** E2E only: a line in <userData>/e2e.log, which outlives the app. */
+  private e2eAppend(line: string): void {
+    try {
+      appendFileSync(path.join(app.getPath('userData'), 'e2e.log'), `${new Date().toISOString()} ${line}\n`);
+    } catch {
+      // Diagnostics only.
+    }
   }
 
   private lastToggleSource: DictationSource | undefined;
@@ -348,6 +361,8 @@ class UsefulVoiceApp {
 
   /** Set once `quit()` starts, so a second Quit or launch during it changes nothing. */
   private quitting: Promise<void> | null = null;
+  /** The quit entry points (before-quit, will-quit, session-end). */
+  private quitHandlers!: QuitCoordinator;
 
   async start(): Promise<void> {
     // A second launch must hand off to the running instance rather than start a
@@ -376,22 +391,21 @@ class UsefulVoiceApp {
 
     app.setAppUserModelId(APP_USER_MODEL_ID);
 
-    // Any quit that did not start from our own Quit (a logoff or shutdown, `app.quit()`, the
-    // installer asking us to close) goes through the same orderly quit, so the media paused
-    // for a dictation plays again there too. `quit()` runs once, so this is idempotent with
-    // the tray's Quit, and `runQuit` ends in `app.exit`, which skips this event.
-    app.on('before-quit', (event) => {
-      if (this.quitting) return;
-      event.preventDefault();
-      void this.quit();
+    // Every way of ending the app reaches the one orderly quit, so the media paused for a
+    // dictation plays again on all of them. What Electron does on a Windows logoff or shutdown,
+    // and why `session-end` has to start a quit, is in `quitCoordinator.ts`.
+    const quits = new QuitCoordinator({
+      quit: () => this.quit(),
+      requestAppQuit: () => app.quit(),
+      shutdownMedia: (budgetMs) => this.media?.shutdown(budgetMs) ?? Promise.resolve(true),
     });
-    // Windows ends the session (logoff, shutdown) with little time to spare, and may not send
-    // before-quit first: play the media again at once, within a second. `shutdown` runs once.
+    app.on('before-quit', (event) => quits.onBeforeQuit(event));
+    app.on('will-quit', (event) => quits.onWillQuit(event));
     app.on('browser-window-created', (_event, window) => {
-      window.on('session-end', () => {
-        void this.media?.shutdown(1000);
-      });
+      window.on('session-end', () => quits.onSessionEnd());
     });
+    // The e2e suite drives the same handlers with fake events.
+    this.quitHandlers = quits;
 
     await app.whenReady();
 
@@ -1144,6 +1158,7 @@ class UsefulVoiceApp {
       }
       // The person asked for a restart: come back even if the installer could not start.
       if (restart && !installing) app.relaunch();
+      if (E2E) this.e2eAppend('quit: exiting');
       app.exit(0);
     }
   }
@@ -1261,7 +1276,8 @@ class UsefulVoiceApp {
           ),
     });
     if (E2E) {
-      this.fakeMedia = new FakeMedia();
+      // Every call is also appended to e2e.log, which a spec reads after the app has exited.
+      this.fakeMedia = new FakeMedia((line) => this.e2eAppend(`media ${line}`));
       this.mediaEffects = this.fakeMedia;
     } else {
       const effects = createMediaEffects(APP_USER_MODEL_ID, (message) => this.diagnostics.log('media', message));

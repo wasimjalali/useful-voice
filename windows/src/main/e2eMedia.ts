@@ -25,6 +25,14 @@ export class FakeMedia implements MediaEffects {
   private readonly sessions = new Map<string, FakeSession>();
   readonly calls: string[] = [];
 
+  /** `onCall` hears every call as it happens, e.g. to write it where a spec can read it after the app exits. */
+  constructor(private readonly onCall: (line: string) => void = () => undefined) {}
+
+  private record(line: string): void {
+    this.calls.push(line);
+    this.onCall(line);
+  }
+
   set(sessions: Record<string, FakeStatus>): void {
     this.sessions.clear();
     this.calls.length = 0;
@@ -38,15 +46,15 @@ export class FakeMedia implements MediaEffects {
   }
 
   async listPlaying(): Promise<MediaSession[]> {
-    this.calls.push('list');
+    this.record('list');
     return [...this.sessions]
       .filter(([, session]) => session.status === 'Playing')
       .map(([id, session]) => ({ id, position: session.position, updated: session.updated }));
   }
 
   async pause(ids: string[]): Promise<PauseResult> {
-    this.calls.push(`pause:${ids.join(',')}`);
-    const result: PauseResult = { confirmed: [], refused: [] };
+    this.record(`pause:${ids.join(',')}`);
+    const result: PauseResult = { confirmed: [], refused: [], skipped: [] };
     for (const id of ids) {
       const session = this.sessions.get(id);
       if (!session || session.status !== 'Playing') continue;
@@ -58,7 +66,7 @@ export class FakeMedia implements MediaEffects {
   }
 
   async resume(held: HeldSession[]): Promise<ResumeResult> {
-    this.calls.push(`resume:${held.map((session) => session.id).join(',')}`);
+    this.record(`resume:${held.map((session) => session.id).join(',')}`);
     const result: ResumeResult = { refused: [], touched: [], unconfirmed: [] };
     for (const entry of held) {
       const session = this.sessions.get(entry.id);

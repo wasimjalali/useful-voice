@@ -522,7 +522,7 @@ export function createMediaEffects(
       return parsePlayingOutput(await run(listPlayingScript(appUserModelId)));
     },
     async pause(ids) {
-      if (!available || ids.length === 0) return { confirmed: [], refused: [] };
+      if (!available || ids.length === 0) return { confirmed: [], refused: [], skipped: [] };
       const result = parsePauseOutput(await run(pauseScript(ids, { quitting })));
       if (result.confirmed.length === 0 || quitting) return result;
       // The reading taken at once may be from before the app published the pause. Read again

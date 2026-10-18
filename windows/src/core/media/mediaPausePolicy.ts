@@ -52,6 +52,11 @@ export interface PauseResult {
   confirmed: MediaSession[];
   /** Sessions Windows refused to pause. */
   refused: string[];
+  /**
+   * Sessions whose pause the script could not finish (a WinRT call outran its cap, or threw):
+   * they may or may not have paused, so they stay held, unconfirmed.
+   */
+  skipped: string[];
 }
 
 export interface ResumeResult {
@@ -183,11 +188,14 @@ export class MediaPausePolicy {
         this.held.delete(id);
         this.note(`Could not pause ${id}: Windows refused the request`);
       }
-      // Asked for but neither confirmed nor refused: no longer playing when the pause ran,
-      // so it is not ours to start again.
+      // A skipped session may have paused after all: kept held, unconfirmed, so the timeline
+      // check at resume decides.
+      for (const id of result.skipped) this.note(`Could not confirm the pause of ${id}: it will be checked when playing again`);
+      // Asked for but neither confirmed, refused nor skipped: no longer playing when the pause
+      // ran, so it is not ours to start again.
       for (const session of fresh) {
         const entry = this.held.get(session.id);
-        if (entry && !entry.confirmed) {
+        if (entry && !entry.confirmed && !result.skipped.includes(session.id)) {
           this.held.delete(session.id);
           this.note(`Left ${session.id} alone: its pause was not confirmed`);
         }

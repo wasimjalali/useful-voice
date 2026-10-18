@@ -72,25 +72,3 @@ describe('the plumbing for the setting', () => {
     expect(source('src/main/index.ts')).toContain('enabled: () => this.settings.all.pauseMediaWhileDictating');
   });
 });
-
-describe('quit wiring for the media', () => {
-  const main = source('src/main/index.ts');
-
-  it('routes an OS-initiated quit through the one orderly quit', () => {
-    expect(main).toMatch(/app\.on\('before-quit', \(event\) => \{\s*if \(this\.quitting\) return;\s*event\.preventDefault\(\);\s*void this\.quit\(\);/);
-  });
-
-  it('plays the media again on a session end (logoff or shutdown) within a second', () => {
-    expect(main).toMatch(/window\.on\('session-end', \(\) => \{\s*void this\.media\?\.shutdown\(1000\);/);
-  });
-
-  it('gives the quit a 2.5 s budget and logs a miss before the diagnostics are flushed', () => {
-    const quit = main.slice(main.indexOf('private async runQuit'));
-    const shutdown = quit.indexOf('this.media.shutdown(2500)');
-    const miss = quit.indexOf('may stay paused');
-    const flush = quit.indexOf('await this.diagnostics.flush()');
-    expect(shutdown).toBeGreaterThan(-1);
-    expect(miss).toBeGreaterThan(shutdown);
-    expect(flush).toBeGreaterThan(miss);
-  });
-});

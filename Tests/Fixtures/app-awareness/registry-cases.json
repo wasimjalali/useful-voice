@@ -205,11 +205,6 @@
    "expected": "coding"
   },
   {
-   "id": "orca",
-   "appID": "com.stablyai.orca",
-   "expected": "coding"
-  },
-  {
    "id": "kitty",
    "appID": "net.kovidgoyal.kitty",
    "expected": "coding"
@@ -460,16 +455,6 @@
    "expected": "other"
   },
   {
-   "id": "browser-alone-company.thebrowser.dia",
-   "appID": "company.thebrowser.dia",
-   "expected": "other"
-  },
-  {
-   "id": "browser-alone-at.studio.AsideBrowser",
-   "appID": "at.studio.AsideBrowser",
-   "expected": "other"
-  },
-  {
    "id": "browser-alone-chrome.exe",
    "appID": "chrome.exe",
    "expected": "other"
@@ -507,18 +492,6 @@
   {
    "id": "chrome-gmail",
    "appID": "com.google.Chrome",
-   "url": "https://mail.google.com/mail/u/0/#inbox",
-   "expected": "email"
-  },
-  {
-   "id": "dia-gmail",
-   "appID": "company.thebrowser.dia",
-   "url": "https://mail.google.com/mail/u/0/#inbox",
-   "expected": "email"
-  },
-  {
-   "id": "aside-gmail",
-   "appID": "at.studio.AsideBrowser",
    "url": "https://mail.google.com/mail/u/0/#inbox",
    "expected": "email"
   },

@@ -17,7 +17,7 @@ import Foundation
 ///   desktop apps share one bundle id, com.openai.codex (the Homebrew chatgpt and codex-app
 ///   casks both quit it), so it is Work chat: ChatGPT is never Coding.
 /// - Discord is Personal chat, even though servers are sometimes work.
-/// - Orca (com.stablyai.orca) runs Claude Code and Codex in terminal panes, so it is Coding.
+/// - The Dia browser is not listed: its bundle id could not be confirmed from a public source.
 public enum AppCategorySeeds {
     public static let emailApps: [String] = [
         "com.apple.mail", // Mail
@@ -71,7 +71,6 @@ public enum AppCategorySeeds {
         "com.googlecode.iterm2", // iTerm2
         "dev.warp.Warp-Stable", // Warp
         "com.mitchellh.ghostty", // Ghostty
-        "com.stablyai.orca", // Orca (terminal panes for coding agents)
         "net.kovidgoyal.kitty", // kitty
         "org.alacritty", // Alacritty
         "com.github.wez.wezterm", // WezTerm
@@ -157,8 +156,6 @@ public enum AppCategorySeeds {
         "com.kagi.kagimacOS", // Orion
         "com.operasoftware.Opera",
         "com.vivaldi.Vivaldi",
-        "company.thebrowser.dia", // Dia
-        "at.studio.AsideBrowser", // Aside
     ]
 
     /// Web browsers on Windows, by executable name.

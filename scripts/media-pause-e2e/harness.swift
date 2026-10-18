@@ -26,11 +26,11 @@ final class Player {
     let logURL: URL
     private(set) var pid: Int32 = 0
 
-    init(playerPath: String, logURL: URL, startPaused: Bool, background: Bool = false) throws {
+    init(playerPath: String, logURL: URL, startPaused: Bool, background: Bool = false, tail: Int = 0) throws {
         self.logURL = logURL
         process.executableURL = URL(fileURLWithPath: playerPath)
         process.arguments = ["--log", logURL.path] + (startPaused ? ["--paused"] : [])
-            + (background ? ["--background"] : [])
+            + (background ? ["--background"] : []) + (tail > 0 ? ["--tail", String(tail)] : [])
         process.standardInput = stdin
         try process.run()
         pid = process.processIdentifier
@@ -78,7 +78,10 @@ struct Harness {
     static var timeline: [String] = []
     static var latencies: [(String, Double)] = []
     static let origin = Date().timeIntervalSince1970
-    static let effects = SystemMediaEffects()
+    /// `UV_E2E_AUDIO_ONLY=1` leaves the Now Playing reader out, so the audio fallback is what runs.
+    static let audioOnly = ProcessInfo.processInfo.environment["UV_E2E_AUDIO_ONLY"] == "1"
+    static let effects = SystemMediaEffects(
+        helperDirectory: audioOnly || CommandLine.arguments.count < 5 ? nil : URL(fileURLWithPath: CommandLine.arguments[4]))
 
     static func note(_ text: String) {
         let line = String(format: "[+%7.3fs] %@", Date().timeIntervalSince1970 - origin, text)
@@ -115,7 +118,7 @@ struct Harness {
     static func main() {
         let arguments = CommandLine.arguments
         guard arguments.count >= 4 else {
-            print("usage: harness <player binary> <out dir> <only: all|name>")
+            print("usage: harness <player binary> <out dir> <only: all|name> [helper dir]")
             exit(2)
         }
         let playerPath = arguments[1]
@@ -148,6 +151,7 @@ struct Harness {
             ("G-background-stream", scenarioBackgroundStream),
             ("I-user-plays-then-pauses-again-mid-dictation", scenarioUserPlaysThenPausesAgain),
             ("J-play-reaches-a-different-app", scenarioPlayReachesAnotherApp),
+            ("N-chromium-style-audio-tail", scenarioAudioTail),
             ("K-alert-blip-300ms", { try scenarioAlertBlip(id: "K", milliseconds: 300) }),
             ("L-alert-blip-60ms", { try scenarioAlertBlip(id: "L", milliseconds: 60) }),
             ("M-alert-blip-200ms-known-gap", { try scenarioAlertBlip(id: "M", milliseconds: 200, informational: true) }),
@@ -449,6 +453,37 @@ struct Harness {
         note("diagnostics: " + diagnostics.entries().map { "[\($0.level.rawValue)] \($0.message)" }.joined(separator: " | "))
     }
 
+    /// A Chromium-style tab: the app reports paused at once, but its audio process keeps rendering
+    /// silence for 3 s (10 s in Chromium). Now Playing sees through that; the audio list alone cannot
+    /// (a process without a Chromium bundle id is not given the long window, so this one is skipped
+    /// in the audio-only run).
+    static func scenarioAudioTail() throws {
+        let s = "N-chromium-style-audio-tail"
+        guard !audioOnly else {
+            note("skipped in the audio-only run: the test player has no Chromium bundle id")
+            return
+        }
+        let player = try Player(playerPath: Self.playerPath, logURL: logURL(s), startPaused: false, tail: 3000)
+        defer { player.quit() }
+        let diagnostics = Diagnostics(directory: nil)
+        let policy = makePolicy(diagnostics: diagnostics)
+        let t0 = Date().timeIntervalSince1970
+        policy.recordingStarted()
+        Thread.sleep(forTimeInterval: 0.5)
+        record(s, "paused at once although the audio process is still outputting",
+               player.commands("pause").count == 1 && outputting().contains { $0.pid == player.pid },
+               player.commands("pause").first.map { ms($0.time - t0) } ?? "no pause")
+        let t1 = Date().timeIntervalSince1970
+        policy.recordingEnded()
+        Thread.sleep(forTimeInterval: 1.5)
+        policy.flush()
+        let play = player.commands("play").first
+        record(s, "resumed right after the end, while the tail was still running", play != nil && play!.time - t1 < 1.5,
+               play.map { ms($0.time - t1) } ?? "no play")
+        record(s, "one pause and one play", player.commands("pause").count == 1 && player.commands("play").count == 1)
+        note("diagnostics: " + diagnostics.entries().map { "[\($0.level.rawValue)] \($0.message)" }.joined(separator: " | "))
+    }
+
     /// Ten dictations in a row on one player: the numbers the report quotes.
     static func scenarioLatency() throws {
         let s = "H-latency-x10"
@@ -498,7 +533,8 @@ struct Harness {
 
     static func write(_ outDir: URL, skipped: [MediaPlayerID]) {
         var text = "# media-pause E2E, \(ISO8601DateFormatter().string(from: Date()))\n"
-        text += "macOS \(ProcessInfo.processInfo.operatingSystemVersionString)\n\n"
+        text += "macOS \(ProcessInfo.processInfo.operatingSystemVersionString)\n"
+        text += "detector: \(audioOnly ? "audio process list only (UV_E2E_AUDIO_ONLY=1)" : "Now Playing through perl, audio list as fallback")\n\n"
         if !skipped.isEmpty {
             text += "SKIPPED: \(skipped.map(\.description).joined(separator: ", ")) was outputting audio, so no command was sent.\n\n"
         }

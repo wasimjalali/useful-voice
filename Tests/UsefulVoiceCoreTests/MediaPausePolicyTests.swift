@@ -12,6 +12,10 @@ private final class FakeMedia: MediaEffects, @unchecked Sendable {
     private var calls: [String] = []
     private var target: MediaPlayerID?
     private var queries = 0
+    // Now Playing, as the perl reader would report it. Off by default: the audio fallback.
+    private var npApp: MediaPlayerID?
+    private var npPlaying = false
+    private(set) var launchedMusic = false
 
     /// A refusing system: the commands are accepted and do nothing.
     var commandsWork = true
@@ -28,8 +32,12 @@ private final class FakeMedia: MediaEffects, @unchecked Sendable {
     var transient: MediaPlayerID?
     /// A process that shows up in exactly the next look after Play.
     var transientOnPlay: MediaPlayerID?
+    /// The Now Playing reader works (primary mode). Off: it cannot be read and the audio list is used.
+    var nowPlayingAvailable = false
     /// Runs after each Pause command, outside the lock (Now Playing moving, say).
     var onPause: (() -> Void)?
+    /// Runs after each Play command, outside the lock.
+    var onPlay: (() -> Void)?
     /// Called inside `outputtingPlayers`, to hold the queue or script a change.
     var onOutputQuery: (() -> Void)?
     /// For the transient-alert test: how many queries see the players before they vanish.
@@ -41,6 +49,8 @@ private final class FakeMedia: MediaEffects, @unchecked Sendable {
             if !playing.contains(player) { playing.append(player) }
             alive.insert(player.pid)
             target = player
+            npApp = player
+            npPlaying = true
         }
     }
     /// A stream that keeps outputting whatever the commands do.
@@ -55,6 +65,16 @@ private final class FakeMedia: MediaEffects, @unchecked Sendable {
         lock.withLock {
             alive.insert(player.pid)
             target = player
+            npApp = player
+            npPlaying = false
+        }
+    }
+    /// Now Playing says this app plays (or not), whatever the audio list shows.
+    func setNowPlaying(_ player: MediaPlayerID?, playing isPlaying: Bool) {
+        lock.withLock {
+            npApp = player
+            npPlaying = isPlaying
+            if let player { alive.insert(player.pid); target = player }
         }
     }
     /// An alert: outputs for `duration` from now, then stops by itself. No command reaches it.
@@ -62,11 +82,27 @@ private final class FakeMedia: MediaEffects, @unchecked Sendable {
         startBackground(player)
         DispatchQueue.global().asyncAfter(deadline: .now() + duration) { [self] in stop(player) }
     }
-    func stop(_ player: MediaPlayerID) { lock.withLock { playing.removeAll { $0 == player } } }
+    func stop(_ player: MediaPlayerID) {
+        lock.withLock {
+            playing.removeAll { $0 == player }
+            if npApp == player { npPlaying = false }   // the user paused it
+        }
+    }
+    /// A browser's audio helper going quiet is not the user pausing: only the audio list changes.
+    private func silence(_ player: MediaPlayerID) { lock.withLock { playing.removeAll { $0 == player } } }
     func die(_ player: MediaPlayerID) {
         lock.withLock {
             playing.removeAll { $0 == player }
             alive.remove(player.pid)
+            if npApp == player { npApp = nil; npPlaying = false }
+        }
+    }
+
+    func nowPlaying() -> NowPlayingState? {
+        lock.withLock {
+            guard nowPlayingAvailable else { return nil }
+            guard let npApp else { return NowPlayingState(isPlaying: false, pid: 0, bundleID: nil) }
+            return NowPlayingState(isPlaying: npPlaying, pid: npApp.pid, bundleID: npApp.bundleID)
         }
     }
 
@@ -90,14 +126,16 @@ private final class FakeMedia: MediaEffects, @unchecked Sendable {
         let (delay, victim): (TimeInterval, MediaPlayerID?) = try lock.withLock {
             calls.append("pause")
             if let pauseError { throw pauseError }
+            if commandsWork, npApp != nil { npPlaying = false }   // Now Playing reports paused at once
             return (pauseDelay, commandsWork ? target : nil)
         }
         defer { onPause?() }
         guard let victim else { return }
         if delay > 0 {
-            DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [self] in stop(victim) }
+            // Audio keeps rendering for a while (Chromium's mixer: 10 s of silence).
+            DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [self] in silence(victim) }
         } else {
-            stop(victim)
+            silence(victim)
         }
     }
     func sendPlay() throws {
@@ -105,9 +143,13 @@ private final class FakeMedia: MediaEffects, @unchecked Sendable {
             calls.append("play")
             if let playError { throw playError }
             transient = transientOnPlay
-            guard commandsWork, let target, alive.contains(target.pid), !playing.contains(target) else { return nil }
+            if nowPlayingAvailable, npApp == nil { launchedMusic = true }   // Play with no Now Playing app launches Music
+            guard commandsWork, let target, alive.contains(target.pid) else { return nil }
+            if npApp == target { npPlaying = true }
+            guard !playing.contains(target) else { return nil }
             return playStartsAs ?? target
         }
+        defer { onPlay?() }
         guard let starter else { return }
         if playDelay > 0 {
             DispatchQueue.global().asyncAfter(deadline: .now() + playDelay) { [self] in
@@ -132,20 +174,25 @@ private struct Boom: Error {}
 /// scheduler adds its own delay on top.
 private let quitBudgetWithSlack = MediaPausePolicy.Timing().shutdownBudget + 0.5
 
-private let spotify = MediaPlayerID(pid: 100, bundleID: "com.spotify.client")
-private let chrome = MediaPlayerID(pid: 200, bundleID: "com.google.Chrome.helper")
+// Neutral bundle ids: the real Spotify and Chromium names get their own windows (see below).
+private let spotify = MediaPlayerID(pid: 100, bundleID: "com.example.musicplayer")
+private let chrome = MediaPlayerID(pid: 200, bundleID: "com.example.videoapp")
+private let browserHelper = MediaPlayerID(pid: 400, bundleID: "com.google.Chrome.helper")
+private let realSpotify = MediaPlayerID(pid: 500, bundleID: "com.spotify.client")
 private let zoom = MediaPlayerID(pid: 300, bundleID: "us.zoom.xos")
 
 private func makePolicy(
     _ media: FakeMedia,
     enabled: @escaping () -> Bool = { true },
     grace: TimeInterval = 0.05,
-    watch: TimeInterval = 0.02
+    watch: TimeInterval = 0.02,
+    browserWindow: TimeInterval? = nil
 ) -> (MediaPausePolicy, Diagnostics) {
     let diagnostics = Diagnostics(directory: nil)
     var timing = MediaPausePolicy.Timing()
     timing.resumeGrace = grace
     timing.watchInterval = watch
+    if let browserWindow { timing.browserStopWindow = browserWindow }
     return (MediaPausePolicy(effects: media, isEnabled: enabled, diagnostics: diagnostics, timing: timing), diagnostics)
 }
 
@@ -747,6 +794,248 @@ private func waitOutGrace(_ policy: MediaPausePolicy, _ seconds: TimeInterval = 
         #expect(media.callList == ["pause"])      // seen by pid, not lost behind the same bundle id
     }
 
+    // MARK: Now Playing (primary)
+
+    @Test func nowPlayingPausesThePlayingAppAndResumesItAtTheEnd() {
+        let media = FakeMedia()
+        media.nowPlayingAvailable = true
+        media.start(spotify)
+        let (policy, _) = makePolicy(media, watch: 100)
+        policy.recordingStarted(); policy.flush()
+        #expect(media.callList == ["pause"])
+        policy.recordingEnded()
+        settle(policy) { media.callList.contains("play") }
+        #expect(media.callList == ["pause", "play"])
+        #expect(media.isPlaying == [spotify])
+        #expect(!media.launchedMusic)
+    }
+
+    @Test func nowPlayingNotPlayingSendsNothingEvenWhenSomethingOutputsAudio() {
+        let media = FakeMedia()
+        media.nowPlayingAvailable = true
+        media.startBackground(zoom)          // a call: audible, but not Now Playing media
+        media.blip(chrome, for: 0.3)         // and an alert
+        let (policy, _) = makePolicy(media, watch: 100)
+        policy.recordingStarted(); policy.flush()
+        policy.recordingEnded(); waitOutGrace(policy)
+        #expect(media.callList.isEmpty)
+    }
+
+    @Test func aChromiumTabIsPausedAndResumedAlthoughItsAudioHelperRendersSilenceFor10Seconds() {
+        let media = FakeMedia()
+        media.nowPlayingAvailable = true
+        media.pauseDelay = 10                // the audio process stays "outputting" for 10 s after the pause
+        media.start(browserHelper)
+        let (policy, _) = makePolicy(media, watch: 100)
+        policy.recordingStarted(); policy.flush()
+        policy.recordingEnded()
+        settle(policy) { media.callList.contains("play") }
+        #expect(media.callList == ["pause", "play"])
+    }
+
+    @Test func nowPlayingTheUserPressedPlayMidDictationNothingResumes() {
+        let media = FakeMedia()
+        media.nowPlayingAvailable = true
+        media.start(spotify)
+        let (policy, _) = makePolicy(media, watch: 100)
+        policy.recordingStarted(); policy.flush()
+        media.start(spotify)                 // plays again
+        policy.runWatchTickForTesting()
+        media.stop(spotify)                  // and paused again before the end
+        policy.recordingEnded()
+        waitOutGrace(policy)
+        #expect(media.callList == ["pause"])
+    }
+
+    @Test func nowPlayingMovingToAnotherAppMidDictationNothingResumes() {
+        let media = FakeMedia()
+        media.nowPlayingAvailable = true
+        media.start(spotify)
+        let (policy, _) = makePolicy(media, watch: 100)
+        policy.recordingStarted(); policy.flush()
+        media.retarget(chrome)               // the user opened another player, paused
+        policy.runWatchTickForTesting()
+        media.setNowPlaying(spotify, playing: false)   // and it is Spotify again at the end
+        policy.recordingEnded()
+        waitOutGrace(policy)
+        #expect(media.callList == ["pause"])
+    }
+
+    @Test func nowPlayingThatVanishedIsNeverResumedBecausePlayWouldLaunchMusic() {
+        let media = FakeMedia()
+        media.nowPlayingAvailable = true
+        media.start(spotify)
+        let (policy, _) = makePolicy(media, watch: 100)
+        policy.recordingStarted(); policy.flush()
+        media.die(spotify)                   // the app quit: no Now Playing app left
+        policy.recordingEnded()
+        waitOutGrace(policy)
+        #expect(media.callList == ["pause"])
+        #expect(!media.launchedMusic)
+    }
+
+    @Test func nowPlayingThatIsAnotherPausedAppAtTheEndIsNotResumed() {
+        let media = FakeMedia()
+        media.nowPlayingAvailable = true
+        media.start(spotify)
+        let (policy, _) = makePolicy(media, watch: 100)
+        policy.recordingStarted(); policy.flush()
+        media.setNowPlaying(chrome, playing: false)   // changed after the last tick
+        policy.recordingEnded()
+        waitOutGrace(policy)
+        #expect(media.callList == ["pause"])
+    }
+
+    @Test func nowPlayingIfPlayReachesADifferentAppItIsPausedAgain() {
+        let media = FakeMedia()
+        media.nowPlayingAvailable = true
+        media.start(spotify)
+        let (policy, diagnostics) = makePolicy(media, watch: 100)
+        policy.recordingStarted(); policy.flush()
+        media.onPlay = { [unowned media] in media.setNowPlaying(chrome, playing: true) }   // Now Playing moved at the last moment
+        policy.recordingEnded()
+        settle(policy) { media.callList.count >= 3 }
+        #expect(media.callList == ["pause", "play", "pause"])
+        #expect(diagnostics.entries().contains { $0.message.contains("paused it again") })
+    }
+
+    @Test func nowPlayingThatIgnoresThePauseHoldsNothing() {
+        let media = FakeMedia()
+        media.nowPlayingAvailable = true
+        media.commandsWork = false
+        media.start(spotify)
+        let (policy, diagnostics) = makePolicy(media, watch: 100)
+        policy.recordingStarted(); policy.flush()
+        policy.recordingEnded(); waitOutGrace(policy)
+        #expect(media.callList == ["pause"])
+        #expect(diagnostics.entries().contains { $0.level == .warning && $0.message.contains("still reports playing") })
+    }
+
+    @Test func nowPlayingBackToBackKeepsItPausedAndResumesOnce() {
+        let media = FakeMedia()
+        media.nowPlayingAvailable = true
+        media.start(spotify)
+        let (policy, _) = makePolicy(media, grace: 0.25, watch: 100)
+        policy.recordingStarted(); policy.flush()
+        policy.recordingEnded()
+        policy.recordingStarted(); policy.flush()      // inside the grace: Now Playing is paused, nothing to pause
+        waitOutGrace(policy, 0.5)
+        #expect(media.callList == ["pause"])
+        policy.recordingEnded()
+        settle(policy) { media.callList.contains("play") }
+        #expect(media.callList == ["pause", "play"])
+    }
+
+    @Test func nowPlayingQuittingWhilePausedResumes() {
+        let media = FakeMedia()
+        media.nowPlayingAvailable = true
+        media.start(spotify)
+        let (policy, _) = makePolicy(media, grace: 5, watch: 100)
+        policy.recordingStarted(); policy.flush()
+        policy.shutdown()
+        #expect(media.callList == ["pause", "play"])
+    }
+
+    // MARK: Audio fallback with Chromium and slow players
+
+    @Test func aChromiumHelperThatKeepsOutputtingAfterThePauseIsResumedOnceItGoesQuiet() {
+        let media = FakeMedia()
+        media.realSleep = true
+        media.pauseDelay = 0.6                // its mixer renders silence for a while (10 s in life)
+        media.start(browserHelper)
+        let (policy, diagnostics) = makePolicy(media, grace: 0.05, watch: 100, browserWindow: 3)
+        policy.recordingStarted()
+        Thread.sleep(forTimeInterval: 0.4)    // the pause is out, the tail is still running
+        policy.runWatchTickForTesting()
+        policy.runWatchTickForTesting()       // its tail on two ticks is not the user
+        policy.recordingEnded()               // the dictation ends before the tail does
+        settle(policy) { media.callList.contains("play") }
+        #expect(media.callList == ["pause", "play"])
+        #expect(media.isPlaying == [browserHelper])
+        #expect(diagnostics.entries().contains { $0.message.contains("still rendering silence") })
+    }
+
+    @Test func aChromiumHelperThatNeverGoesQuietInTimeIsNotResumed() {
+        let media = FakeMedia()
+        media.realSleep = true
+        media.pauseDelay = 5                  // keeps rendering well past the window
+        media.start(browserHelper)
+        let (policy, _) = makePolicy(media, grace: 0.05, watch: 100, browserWindow: 0.6)
+        policy.recordingStarted()
+        Thread.sleep(forTimeInterval: 0.3)
+        policy.recordingEnded()
+        waitOutGrace(policy, 1.2)
+        #expect(media.callList == ["pause"])
+    }
+
+    @Test func aChromiumHelperPlayedAgainAfterItWentQuietIsTheUser() {
+        let media = FakeMedia()
+        media.realSleep = true
+        media.pauseDelay = 0.2
+        media.start(browserHelper)
+        let (policy, _) = makePolicy(media, grace: 0.05, watch: 100, browserWindow: 3)
+        policy.recordingStarted()
+        Thread.sleep(forTimeInterval: 0.5)
+        policy.runWatchTickForTesting()       // went quiet: held
+        media.start(browserHelper)            // the user pressed play
+        policy.runWatchTickForTesting()
+        policy.recordingEnded()
+        waitOutGrace(policy, 0.6)
+        #expect(media.callList == ["pause"])
+    }
+
+    @Test func aChromiumHelperDoesNotBlockTheEndForAnotherPlayerThatStoppedAtOnce() {
+        let media = FakeMedia()
+        media.realSleep = true
+        media.start(spotify)
+        media.startBackground(browserHelper)  // a tab with audio that no command reaches
+        let (policy, _) = makePolicy(media, grace: 0.05, watch: 100, browserWindow: 0.3)
+        policy.recordingStarted()
+        Thread.sleep(forTimeInterval: 0.5)
+        policy.recordingEnded()
+        settle(policy) { media.callList.contains("play") }
+        #expect(media.callList == ["pause", "play"])   // the browser helper became background after its window
+    }
+
+    @Test func aSlowSpotifyThatStopsAfter250msIsStillHeld() {
+        let media = FakeMedia()
+        media.realSleep = true
+        media.pauseDelay = 0.25               // a fade, longer than the ordinary 100 ms
+        media.start(realSpotify)
+        let (policy, _) = makePolicy(media, watch: 100)
+        policy.recordingStarted()
+        Thread.sleep(forTimeInterval: 0.7)
+        policy.recordingEnded()
+        settle(policy) { media.callList.contains("play") }
+        #expect(media.callList == ["pause", "play"])
+    }
+
+    @Test func aSlowPlayerBeyond300msIsNotHeld() {
+        let media = FakeMedia()
+        media.realSleep = true
+        media.pauseDelay = 0.6
+        media.start(realSpotify)
+        let (policy, _) = makePolicy(media, watch: 100)
+        policy.recordingStarted()
+        Thread.sleep(forTimeInterval: 1.0)
+        policy.recordingEnded()
+        waitOutGrace(policy, 0.5)
+        #expect(media.callList == ["pause"])
+    }
+
+    @Test func anOrdinaryPlayerStillHasOnly100ms() {
+        let media = FakeMedia()
+        media.realSleep = true
+        media.pauseDelay = 0.2
+        media.start(spotify)
+        let (policy, _) = makePolicy(media, watch: 100)
+        policy.recordingStarted()
+        Thread.sleep(forTimeInterval: 0.6)
+        policy.recordingEnded()
+        waitOutGrace(policy, 0.5)
+        #expect(media.callList == ["pause"])
+    }
+
     // MARK: What counts as media
 
     @Test func systemSoundsAndThisAppAreNotMedia() {
@@ -760,6 +1049,29 @@ private func waitOutGrace(_ policy: MediaPausePolicy, _ seconds: TimeInterval = 
         #expect(!MediaPlayerFilter.isMedia(pid: 1, bundleID: "systemsoundserverd", ownPID: 9))
         #expect(!MediaPlayerFilter.isMedia(pid: 1, bundleID: "com.apple.assistantd", ownPID: 9))
         #expect(!MediaPlayerFilter.isMedia(pid: 1, bundleID: "com.apple.audio.Core-Audio-Driver-Service.helper", ownPID: 9))
+    }
+
+    @Test func chromiumAndElectronHelpersAreRecognised() {
+        for id in ["com.google.Chrome.helper", "com.vivaldi.Vivaldi.helper", "com.microsoft.edgemac.helper",
+                   "com.brave.Browser.helper", "com.github.Electron.helper", "company.thebrowser.Browser.helper",
+                   "company.thebrowser.Browser", "com.example.App Helper (Renderer)", "com.example.App Helper (Plugin)"] {
+            #expect(MediaPlayerFilter.isBrowserHelper(bundleID: id), "\(id)")
+        }
+        for id in ["com.spotify.client", "com.apple.Music", "com.apple.WebKit.GPU", "us.zoom.xos"] {
+            #expect(!MediaPlayerFilter.isBrowserHelper(bundleID: id), "\(id)")
+        }
+        #expect(!MediaPlayerFilter.isBrowserHelper(bundleID: nil))
+        #expect(MediaPlayerFilter.isSlowToStop(bundleID: "com.apple.Music"))
+        #expect(MediaPlayerFilter.isSlowToStop(bundleID: "com.spotify.client"))
+        #expect(MediaPlayerFilter.isSlowToStop(bundleID: "com.apple.WebKit.GPU"))
+        #expect(!MediaPlayerFilter.isSlowToStop(bundleID: "com.example.player"))
+    }
+
+    @Test func theDefaultWindowsAre100Ms300MsAnd10Point5Seconds() {
+        let timing = MediaPausePolicy.Timing()
+        #expect(timing.stopWindow == 0.1)
+        #expect(timing.slowStopWindow == 0.3)
+        #expect(timing.browserStopWindow == 10.5)
     }
 }
 

@@ -5,18 +5,37 @@ import Foundation
 ///
 /// What works on macOS 26 and later, measured on this machine (see
 /// `scripts/media-pause-e2e/run.sh`):
-/// - MediaRemote's read functions (`...IsPlaying`, `...ApplicationPID`, `GetNowPlayingInfo`)
-///   answer "nothing playing" to a third-party process, so they are not used to decide.
+/// - MediaRemote's read functions answer "nothing playing" to a third-party process, but not to
+///   Apple's own `/usr/bin/perl`: `NowPlayingReader` reads Now Playing there. That is the
+///   primary detector (`nowPlaying()`).
 /// - Core Audio's process list (public API, macOS 14.2 and later) says which processes are
-///   outputting audio, which is the detection and the check that a command had an effect.
-/// - MediaRemote's *send* function still delivers Pause and Play to the Now Playing app.
+///   outputting audio. It is the fallback when the reader cannot run. Chromium keeps a process
+///   "outputting" for 10 s after a pause, so on its own it cannot tell a pause from a playing tab.
+/// - MediaRemote's *send* function delivers Pause and Play to the Now Playing app.
 /// - The Play/Pause media key is NOT used: it toggles, and can start a paused Now Playing app
 ///   while another process keeps an output stream open.
 public final class SystemMediaEffects: MediaEffects, @unchecked Sendable {
     private let ownPID = ProcessInfo.processInfo.processIdentifier
     private let mediaRemote = MediaRemoteLibrary()
+    private let reader: NowPlayingReader
 
-    public init() {}
+    /// - Parameter helperDirectory: `Contents/Resources/MediaRemote` in the app bundle, holding
+    ///   the perl script and library. Nil (a `swift run` build): audio fallback only.
+    public init(helperDirectory: URL? = nil, diagnostics: Diagnostics = .shared) {
+        reader = NowPlayingReader(directory: helperDirectory, diagnostics: diagnostics)
+    }
+
+    /// The helper folder inside the running app bundle.
+    public static var bundledHelperDirectory: URL? {
+        Bundle.main.resourceURL?.appendingPathComponent("MediaRemote", isDirectory: true)
+    }
+
+    /// Starts the Now Playing reader ahead of the first dictation.
+    public func warmUp() { reader.warmUp() }
+
+    // MARK: - Detection (Now Playing)
+
+    public func nowPlaying() -> NowPlayingState? { reader.read() }
 
     // MARK: - Detection (Core Audio)
 

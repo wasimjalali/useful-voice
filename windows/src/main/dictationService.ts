@@ -8,7 +8,7 @@ import type {
   LanguageMemorySnapshot,
   MemoryLanguage,
 } from '../core/models.js';
-import { DELIVERY_TIMED_OUT, DELIVERY_TIMEOUT_MS } from '../core/delivery/timing.js';
+import { DELIVERY_ABORT_GRACE_MS, DELIVERY_TIMED_OUT, DELIVERY_TIMEOUT_MS } from '../core/delivery/timing.js';
 import { applyMemory } from '../core/memory/memoryPostProcessor.js';
 import { selectKeyterms } from '../core/memory/biasBuilder.js';
 import { RecordingClock, SilenceWatchdog } from '../core/audio/silenceWatchdog.js';
@@ -92,6 +92,13 @@ export interface DeliveryResult {
   clipboardFallback: boolean;
   /** The sink stopped before pasting because the signal aborted. Nothing was sent. */
   cancelled?: boolean;
+  /**
+   * Nothing was sent because the clipboard no longer held the dictation (the person copied
+   * something else meanwhile). Neither pasted nor copied, and the newer copy is untouched.
+   */
+  clipboardChanged?: boolean;
+  /** Nothing was sent because the clipboard could not be read: another app has it open. */
+  clipboardUnreadable?: boolean;
 }
 
 export interface TextSinkPort {
@@ -149,6 +156,8 @@ export interface DictationServiceDeps {
   now?: () => number;
   /** Bounded wait for delivery, so a lost callback cannot wedge the app. */
   deliveryTimeoutMs?: number;
+  /** After the timeout aborts the sink, how long to wait for its own verdict before giving up on it. */
+  deliveryGraceMs?: number;
   /** How often the silence and max-length limits are checked. */
   tickMs?: number;
 }
@@ -804,6 +813,22 @@ export class DictationService {
       this.finish(session, finalText, 'copied');
       return;
     }
+    if (delivered.clipboardChanged) {
+      // Nothing was sent and the person's newer copy was left alone. The dictation is in
+      // the history, so say exactly that: not pasted, not copied.
+      this.fail(session, {
+        kind: 'deliveryFailed',
+        message: "Not pasted because the clipboard changed. It's saved in Useful Voice.",
+      });
+      return;
+    }
+    if (delivered.clipboardUnreadable) {
+      this.fail(session, {
+        kind: 'deliveryFailed',
+        message: "Not pasted because another app is using the clipboard. It's saved in Useful Voice.",
+      });
+      return;
+    }
     if (delivered.delivered) {
       this.finish(session, finalText, 'pasted', session.targetApp);
       return;
@@ -864,15 +889,15 @@ export class DictationService {
    */
   private async deliver(text: string, mode: 'paste' | 'copy', session: Session): Promise<DeliveryResult> {
     const timeoutMs = this.deps.deliveryTimeoutMs ?? DEFAULT_DELIVERY_TIMEOUT_MS;
-    // The sink gets its own signal, so the timeout can stop it as well as the user's
-    // cancel. Without that, a timeout that wins leaves the sink running, and it goes on
-    // to press Ctrl+V after the dictation was reported as only copied.
+    const graceMs = this.deps.deliveryGraceMs ?? DELIVERY_ABORT_GRACE_MS;
+    // The sink gets its own signal, so the timeout can stop it as well as the user's cancel.
     const delivery = new AbortController();
     const sessionSignal = this.abortController?.signal;
     const onSessionAbort = (): void => delivery.abort(sessionSignal?.reason);
     if (sessionSignal?.aborted) onSessionAbort();
     else sessionSignal?.addEventListener('abort', onSessionAbort, { once: true });
     let timer: NodeJS.Timeout | null = null;
+    let graceTimer: NodeJS.Timeout | null = null;
     try {
       const request: DeliveryRequest =
         mode === 'paste'
@@ -884,22 +909,25 @@ export class DictationService {
               signal: delivery.signal,
             }
           : { text, mode, signal: delivery.signal };
-      const result = await Promise.race([
-        this.deps.sink.deliver(request),
-        new Promise<DeliveryResult>((resolve) => {
-          timer = setTimeout(() => {
-            delivery.abort(DELIVERY_TIMED_OUT);
-            resolve({ delivered: false, clipboardFallback: true });
-          }, timeoutMs);
-          timer.unref?.();
-        }),
-      ]);
-      return result;
-    } catch {
-      // The sink itself failed. The text is on the clipboard, so nothing is lost.
-      return { delivered: false, clipboardFallback: true };
+      // The copy that is left when the sink cannot be heard from at all.
+      const lost: DeliveryResult = { delivered: false, clipboardFallback: true };
+      return await new Promise<DeliveryResult>((resolve) => {
+        // The timeout ABORTS the sink; it does not overrule it. A request still waiting is
+        // dropped by the abort and the sink says so. A request that was already written may
+        // have pasted, and only the sink knows: so its verdict is awaited, for a bounded
+        // grace, and a sink that says nothing in that time is treated as lost.
+        timer = setTimeout(() => {
+          delivery.abort(DELIVERY_TIMED_OUT);
+          graceTimer = setTimeout(() => resolve(lost), graceMs);
+          graceTimer.unref?.();
+        }, timeoutMs);
+        timer.unref?.();
+        // The sink itself failing is a copy too: the text is on the clipboard.
+        this.deps.sink.deliver(request).then(resolve, () => resolve(lost));
+      });
     } finally {
       if (timer) clearTimeout(timer);
+      if (graceTimer) clearTimeout(graceTimer);
       sessionSignal?.removeEventListener('abort', onSessionAbort);
     }
   }

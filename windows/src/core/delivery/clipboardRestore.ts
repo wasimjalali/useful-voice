@@ -74,6 +74,15 @@ export function mayRestoreAfterCancel(snapshot: ClipboardContents, clipboardHold
   return clipboardHoldsOurText && !snapshot.incomplete && hasRestorableContent(snapshot);
 }
 
+/**
+ * Whether the clipboard text is the text we wrote. Line endings are compared as LF on both
+ * sides: Windows may hand back CRLF for text that was written as LF, and that is not a
+ * change by the person.
+ */
+export function sameClipboardText(onClipboard: string, written: string): boolean {
+  return onClipboard.replace(/\r\n/g, '\n') === written.replace(/\r\n/g, '\n');
+}
+
 /** The clipboard formats a snapshot can put back faithfully: plain text, HTML and RTF. */
 export const RESTORABLE_FORMATS: readonly string[] = ['text/plain', 'text/html', 'text/rtf'];
 

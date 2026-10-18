@@ -643,11 +643,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.viewModel?.refreshLanguageMemory()
             },
             isSecureInputActive: { IsSecureEventInputEnabled() },
-            isOwnFieldFocused: {
-                // An editable text view (a note, a search box's field editor) is first
-                // responder in our key window.
-                (NSApp.keyWindow?.firstResponder as? NSText)?.isEditable ?? false
-            },
+            // An editable text view (a note) is first responder in the main window.
+            isOwnFieldFocused: { [weak self] in self?.mainWindow.hasEditableFieldFocused ?? false },
             frontmostApp: {
                 let app = NSWorkspace.shared.frontmostApplication
                 return FrontmostApp(id: app?.bundleIdentifier, name: app?.localizedName)

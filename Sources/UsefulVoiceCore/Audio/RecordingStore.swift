@@ -60,12 +60,15 @@ public struct RecordingStore {
         FileProtection.restrict(sidecar, isDirectory: false)
     }
 
-    public func prune(keep: Int) throws {
+    /// Keeps the newest `keep` recordings. `protecting` names a recording that must
+    /// survive whatever its age (the audio a Retry still points at); it is kept in
+    /// addition to the newest `keep`.
+    public func prune(keep: Int, protecting: URL? = nil) throws {
         let wavs = try FileManager.default
             .contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "wav" }
             .sorted { $0.lastPathComponent > $1.lastPathComponent } // newest first
-        for url in wavs.dropFirst(keep) {
+        for url in wavs.dropFirst(keep) where url.lastPathComponent != protecting?.lastPathComponent {
             try? FileManager.default.removeItem(at: url)
             let sidecar = url.deletingPathExtension().appendingPathExtension("txt")
             try? FileManager.default.removeItem(at: sidecar)

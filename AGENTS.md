@@ -43,8 +43,8 @@ A hotkey dictation pastes wherever the cursor is when the text is ready, on both
 window in front at delivery (a stop from the dock) copies instead, unless the dictation started there. On Windows the
 paste, the foreground read and the sound cues go through one long-lived PowerShell (`src/main/powershellHost.ts`,
 started at app ready, types compiled once); the delivery order lives in `src/core/delivery/pasteFlow.ts` and the
-clipboard rule in `src/core/delivery/clipboardRestore.ts` (a sent Ctrl+V counts as delivered; the old clipboard is put
-back only when it is provably safe).
+clipboard rule in `src/core/delivery/clipboardRestore.ts` (a sent Ctrl+V counts as delivered and the dictation stays on
+the clipboard; the old clipboard is put back only when a cancel arrives before the keystroke and nothing newer was copied).
 
 ## Windows renderer layout
 

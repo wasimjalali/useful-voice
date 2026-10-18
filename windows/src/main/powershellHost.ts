@@ -53,7 +53,7 @@ export class PowerShellHostError extends Error {
 
 /** The part of a child process the host uses. Node's `ChildProcess` satisfies it. */
 export interface HostChild {
-  stdin: { write(data: string): unknown } | null;
+  stdin: { write(data: string): unknown; on?(event: 'error', listener: (error: Error) => void): unknown } | null;
   stdout: { on(event: 'data', listener: (chunk: Buffer | string) => void): unknown } | null;
   stderr: { on(event: 'data', listener: (chunk: Buffer | string) => void): unknown } | null;
   on(event: 'exit', listener: (code: number | null) => void): unknown;
@@ -108,9 +108,18 @@ export interface PowerShellHostOptions {
 }
 
 export interface RunOptions {
+  /** The limit on the run itself: its clock starts when the request is written to the host. */
   timeoutMs?: number;
-  /** Checked when the request reaches the front of the queue, just before it is written. */
+  /**
+   * Checked when the request reaches the front of the queue, just before it is written.
+   * Aborting while it still waits rejects it at once.
+   */
   signal?: AbortSignal;
+  /**
+   * Asked right before the request is written, after any wait in the queue. False rejects
+   * it as `aborted` without writing: the world changed while it waited.
+   */
+  beforeWrite?: () => boolean;
 }
 
 interface Pending {
@@ -119,6 +128,11 @@ interface Pending {
   resolve: (output: string) => void;
   reject: (error: PowerShellHostError) => void;
   signal?: AbortSignal;
+  beforeWrite?: () => boolean;
+  /** Limit on the run, counted from the moment the request is written. */
+  timeoutMs: number;
+  /** Removes the abort listener a queued request holds. */
+  detach: (() => void) | null;
   timer: NodeJS.Timeout | null;
   written: boolean;
   lines: string[];
@@ -206,15 +220,28 @@ export class PowerShellHost {
         resolve,
         reject,
         signal: options.signal,
+        beforeWrite: options.beforeWrite,
+        timeoutMs,
+        detach: null,
         timer: null,
         written: false,
         lines: [],
         internal: false,
       };
-      // The limit covers waiting in the queue and for a restart, not just the run:
-      // the caller wants a bound on how long it waits at all.
-      pending.timer = setTimeout(() => this.onRequestTimeout(pending), timeoutMs);
-      pending.timer.unref?.();
+      // The limit counts the run, not the wait behind other requests: a queue behind a
+      // slow one must not time out requests that never got their turn. The caller's
+      // signal bounds the wait instead, rejecting a queued request the moment it aborts.
+      if (options.signal) {
+        const onAbort = (): void => {
+          const index = this.queue.indexOf(pending);
+          if (index < 0) return;
+          this.queue.splice(index, 1);
+          this.settle(pending);
+          reject(new PowerShellHostError('aborted', 'aborted before it was sent', false));
+        };
+        options.signal.addEventListener('abort', onAbort, { once: true });
+        pending.detach = () => options.signal?.removeEventListener('abort', onAbort);
+      }
       this.queue.push(pending);
       if (this.state === 'ready') {
         this.pump();
@@ -262,6 +289,8 @@ export class PowerShellHost {
     const generation = ++this.generation;
     child.stdout.on('data', (chunk) => this.onData(generation, chunk));
     child.stderr?.on('data', () => undefined);
+    // A write to a dead pipe (EPIPE) is reported here; unhandled it would throw in main.
+    child.stdin.on?.('error', (error) => this.onProcessGone(generation, `stdin error: ${error.message}`));
     child.on('error', (error) => this.onProcessGone(generation, `error: ${error.message}`));
     child.on('exit', (code) => this.onProcessGone(generation, `exit ${String(code)}`));
 
@@ -272,13 +301,13 @@ export class PowerShellHost {
           script: this.options.setupScript,
           resolve,
           reject,
+          timeoutMs: this.startupTimeoutMs,
+          detach: null,
           timer: null,
           written: false,
           lines: [],
           internal: true,
         };
-        setup.timer = setTimeout(() => this.onRequestTimeout(setup), this.startupTimeoutMs);
-        setup.timer.unref?.();
         this.write(setup);
       });
     } catch (error) {
@@ -304,7 +333,7 @@ export class PowerShellHost {
     if (this.state !== 'ready' || this.current) return;
     while (this.queue.length > 0) {
       const next = this.queue.shift() as Pending;
-      if (next.signal?.aborted) {
+      if (next.signal?.aborted || (next.beforeWrite && !next.beforeWrite())) {
         this.settle(next);
         next.reject(new PowerShellHostError('aborted', 'aborted before it was sent', false));
         continue;
@@ -317,6 +346,11 @@ export class PowerShellHost {
   private write(pending: Pending): void {
     this.current = pending;
     pending.written = true;
+    // The clock starts now: only the time the host spends on this request counts.
+    pending.detach?.();
+    pending.detach = null;
+    pending.timer = setTimeout(() => this.onRequestTimeout(pending), pending.timeoutMs);
+    pending.timer.unref?.();
     const line = `${Buffer.from(pending.script, 'utf8').toString('base64')}|${pending.id}\n`;
     try {
       (this.child?.stdin as { write(data: string): unknown }).write(line);
@@ -363,17 +397,7 @@ export class PowerShellHost {
 
   private onRequestTimeout(pending: Pending): void {
     pending.timer = null;
-    const index = this.queue.indexOf(pending);
-    if (index >= 0) {
-      // Never written: it simply gives up, and the host carries on.
-      this.queue.splice(index, 1);
-      pending.reject(new PowerShellHostError('timeout', 'timed out waiting for the PowerShell host', false));
-      return;
-    }
-    if (this.current !== pending) {
-      // The startup script, still before it was current, or already settled.
-      if (!pending.internal) return;
-    }
+    if (this.current !== pending) return;
     // Running: the script may still do its thing, so the process dies with it.
     this.options.log?.('a PowerShell host request timed out; restarting the host');
     this.current = null;
@@ -438,6 +462,8 @@ export class PowerShellHost {
   }
 
   private settle(pending: Pending): void {
+    pending.detach?.();
+    pending.detach = null;
     if (pending.timer) {
       clearTimeout(pending.timer);
       pending.timer = null;

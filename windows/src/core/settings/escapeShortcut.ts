@@ -1,12 +1,11 @@
 /**
  * Whether the global Esc shortcut should be registered in a dictation state.
  *
- * Cancel is documented to work while transcribing as well as while recording (a hung
- * upload must be abortable), so Esc is held through both. It is released for
- * `delivering`: by then the text is on its way to the app in front, and a global Esc
- * would swallow the key in that app. Registered for the whole session it would swallow
- * Esc everywhere, so idle and error release it too.
+ * Only while recording, matching the macOS build. Registered for the whole session it
+ * would swallow Esc in every other app; held through transcription it would let an Esc
+ * meant for the app in front discard a dictation that is already finished. A later
+ * cancel is the tray's or the window's.
  */
 export function escapeCancelsIn(state: 'idle' | 'recording' | 'transcribing' | 'delivering' | 'error'): boolean {
-  return state === 'recording' || state === 'transcribing';
+  return state === 'recording';
 }

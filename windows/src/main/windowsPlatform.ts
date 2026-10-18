@@ -5,6 +5,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { FOREGROUND_QUERY_TIMEOUT_MS, PASTE_KEYSTROKE_TIMEOUT_MS } from '../core/delivery/timing.js';
+import type { KeystrokeResult } from '../core/delivery/pasteFlow.js';
 import { PowerShellHost, PowerShellHostError, hostArguments } from './powershellHost.js';
 // The delivery policy's view of a window: the same identity (process + handle) with
 // the title the UI needs on top, so window info can be handed straight to the policy.
@@ -46,17 +47,20 @@ export interface ForegroundWindowInfo extends PasteTarget {
  * `powershellHost.ts`), so the keystroke goes out within a few milliseconds instead of
  * after a process start.
  *
- * `signal` is checked when the request reaches the front of the host's queue, right
- * before it is written: an aborted delivery never presses the key. Returns false when
- * the keystroke did not go out (or was aborted first).
+ * `signal` and `canSend` are checked when the request reaches the front of the host's
+ * queue, right before it is written, and again before a one-shot process is started; a
+ * one-shot process is also killed if the signal aborts while it starts. A refused or
+ * aborted keystroke is `blocked`: nothing was sent.
  */
-export async function pasteClipboard(signal?: AbortSignal): Promise<boolean> {
-  if (signal?.aborted) return false;
+export async function pasteClipboard(signal: AbortSignal | undefined, canSend: () => boolean): Promise<KeystrokeResult> {
+  if (signal?.aborted || !canSend()) return 'blocked';
   try {
-    await runHosted('$uvShell.SendKeys("^v")', PASTE_ONE_SHOT, PASTE_KEYSTROKE_TIMEOUT_MS, signal);
-    return true;
-  } catch {
-    return false;
+    await runHosted('$uvShell.SendKeys("^v")', PASTE_ONE_SHOT, PASTE_KEYSTROKE_TIMEOUT_MS, { signal, beforeWrite: canSend });
+    return 'sent';
+  } catch (error) {
+    if (signal?.aborted) return 'blocked';
+    if (error instanceof PowerShellHostError && error.kind === 'aborted') return 'blocked';
+    return 'failed';
   }
 }
 
@@ -162,13 +166,6 @@ Write-Output ([UvRestore]::SetForegroundWindow($h))
   } catch {
     return false;
   }
-}
-
-/**
- * Our own process name, so delivery can refuse to paste into ourselves.
- */
-export function ownProcessName(): string {
-  return path.basename(process.execPath).replace(/\.exe$/i, '').toLowerCase();
 }
 
 /**
@@ -392,18 +389,23 @@ async function runHosted(
   hostScript: string,
   oneShotScript: string,
   timeoutMs: number,
-  signal?: AbortSignal,
+  guard: { signal?: AbortSignal; beforeWrite?: () => boolean } = {},
 ): Promise<string> {
+  const { signal, beforeWrite } = guard;
   if (host && !host.isUnavailable) {
     try {
-      return await host.run(hostScript, { timeoutMs, signal });
+      return await host.run(hostScript, { timeoutMs, signal, beforeWrite });
     } catch (error) {
       if (!(error instanceof PowerShellHostError) || error.sent || error.kind === 'aborted') throw error;
       // Never sent (the host would not start, or was given up on): fall through.
     }
   }
-  if (signal?.aborted) throw new Error('aborted');
-  return (await runPowerShell(oneShotScript, timeoutMs)).stdout;
+  // The same checks as the host makes before it writes: a keystroke script never starts
+  // after an abort or once the caller's condition stopped holding.
+  if (signal?.aborted || (beforeWrite && !beforeWrite())) {
+    throw new PowerShellHostError('aborted', 'aborted before it was sent', false);
+  }
+  return (await runPowerShell(oneShotScript, timeoutMs, signal)).stdout;
 }
 
 let host: PowerShellHost | null = null;
@@ -435,11 +437,16 @@ export function stopPowerShellHost(): void {
   host = null;
 }
 
-async function runPowerShell(script: string, timeoutMs = 8000): Promise<{ stdout: string; stderr: string }> {
+async function runPowerShell(
+  script: string,
+  timeoutMs = 8000,
+  signal?: AbortSignal,
+): Promise<{ stdout: string; stderr: string }> {
   const result = await execFileAsync(
     'powershell.exe',
     ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
-    { timeout: timeoutMs, windowsHide: true, maxBuffer: 1024 * 1024 },
+    // `signal` kills the child when it aborts, so a script that has not run yet never does.
+    { timeout: timeoutMs, windowsHide: true, maxBuffer: 1024 * 1024, signal },
   );
   return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
 }

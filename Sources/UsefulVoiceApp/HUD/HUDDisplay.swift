@@ -15,7 +15,8 @@ enum HUDDisplay: Equatable {
     case delivering
     case done(HUDDone)
     /// The text is on the clipboard but could not be pasted. The fix is Accessibility
-    /// when the paste was blocked, none when the user simply moved to another app.
+    /// when the paste was blocked, none when Useful Voice's own window was in front
+    /// with nowhere to paste.
     case copiedNotPasted(fix: DictationFix?)
     case cancelled
     case error(HUDError)

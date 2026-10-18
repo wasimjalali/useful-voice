@@ -512,6 +512,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Model directory is created and hardened once up front so the
         // Settings page and a first download never race its creation.
         modelStore.prepare()
+        // The hidden S1-mini cleanup model was removed; clear what a Mac that used it left.
+        for name in modelStore.removeLegacyCleanupModel() {
+            Diagnostics.shared.info("models", "removed the leftover cleanup model file \(name)")
+        }
         let modelManager = LocalModelManager(settings: settings, store: modelStore)
         modelManager.onModelsChanged = { [weak self] change in
             self?.unloadLocalEngineIfStale(after: change)
@@ -639,6 +643,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.viewModel?.refreshLanguageMemory()
             },
             isSecureInputActive: { IsSecureEventInputEnabled() },
+            isOwnFieldFocused: {
+                // An editable text view (a note, a search box's field editor) is first
+                // responder in our key window.
+                (NSApp.keyWindow?.firstResponder as? NSText)?.isEditable ?? false
+            },
             frontmostApp: {
                 let app = NSWorkspace.shared.frontmostApplication
                 return FrontmostApp(id: app?.bundleIdentifier, name: app?.localizedName)

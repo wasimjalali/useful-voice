@@ -163,11 +163,12 @@ machine.
 
 **Delivery never loses your text.** After a dictation the text is either pasted
 into your app or left on the clipboard, never neither. Once the Ctrl+V keystroke
-has gone out the dictation counts as pasted. Your previous clipboard is put back
-only when the app in front is one whose paste can be attributed, focus stayed on it,
-nothing newer has been copied meanwhile, and the old clipboard was captured exactly
-(text, HTML or RTF; an image or a file list is not). Otherwise the transcript stays
-on the clipboard. Losing a dictation is worse than losing a clipboard.
+has gone out the dictation counts as pasted, and it stays on the clipboard: your
+previous clipboard is not put back, because nothing proves the app has taken the
+text yet and an app that is slow to respond would paste the old clipboard instead.
+If you cancel before the keystroke, your previous clipboard comes back only when
+nothing newer was copied meanwhile and it was captured exactly (text, HTML or RTF;
+an image or a file list is not). Losing a dictation is worse than losing a clipboard.
 
 **A silent recording is rejected.** A silent clip can make a speech model echo its
 own prompt bias (your dictionary) back as a fake transcript. Clips whose peak
@@ -220,7 +221,6 @@ shows the path so you can remove it yourself.
   remove the difference.
 - **Paste confirmation is indirect.** Ctrl+V never clears the clipboard, so the app
   cannot see whether the target took the text: it reports "pasted" when the keystroke
-  went out. Reading the target's text needs a UI-automation dependency, which was
-  avoided so the app ships no native module. Your previous clipboard is restored only
-  when the target is a verifiable app and focus stayed on it; otherwise the
-  dictation stays on the clipboard so a second Ctrl+V works.
+  went out, and leaves the dictation on the clipboard so a second Ctrl+V works.
+  Reading the target's text needs a UI-automation dependency, which was avoided so the
+  app ships no native module.

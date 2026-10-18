@@ -22,6 +22,14 @@ private final class FakeMedia: MediaEffects, @unchecked Sendable {
     var playError: Error?
     /// When Play starts the target, another process of the same app is the one that outputs.
     var playStartsAs: MediaPlayerID?
+    /// Play takes this long to show in the output (a slow player).
+    var playDelay: TimeInterval = 0
+    /// A process that shows up in exactly the next look, then is gone (a ding).
+    var transient: MediaPlayerID?
+    /// A process that shows up in exactly the next look after Play.
+    var transientOnPlay: MediaPlayerID?
+    /// Runs after each Pause command, outside the lock (Now Playing moving, say).
+    var onPause: (() -> Void)?
     /// Called inside `outputtingPlayers`, to hold the queue or script a change.
     var onOutputQuery: (() -> Void)?
     /// For the transient-alert test: how many queries see the players before they vanish.
@@ -49,6 +57,11 @@ private final class FakeMedia: MediaEffects, @unchecked Sendable {
             target = player
         }
     }
+    /// An alert: outputs for `duration` from now, then stops by itself. No command reaches it.
+    func blip(_ player: MediaPlayerID, for duration: TimeInterval) {
+        startBackground(player)
+        DispatchQueue.global().asyncAfter(deadline: .now() + duration) { [self] in stop(player) }
+    }
     func stop(_ player: MediaPlayerID) { lock.withLock { playing.removeAll { $0 == player } } }
     func die(_ player: MediaPlayerID) {
         lock.withLock {
@@ -63,7 +76,12 @@ private final class FakeMedia: MediaEffects, @unchecked Sendable {
             if let outputError { throw outputError }
             queries += 1
             if let vanishAfterQueries, queries > vanishAfterQueries { playing.removeAll() }
-            return playing
+            var result = playing
+            if let transient {
+                if !result.contains(transient) { result.append(transient) }
+                self.transient = nil
+            }
+            return result
         }
     }
     func isAlive(_ player: MediaPlayerID) -> Bool { lock.withLock { alive.contains(player.pid) } }
@@ -74,6 +92,7 @@ private final class FakeMedia: MediaEffects, @unchecked Sendable {
             if let pauseError { throw pauseError }
             return (pauseDelay, commandsWork ? target : nil)
         }
+        defer { onPause?() }
         guard let victim else { return }
         if delay > 0 {
             DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [self] in stop(victim) }
@@ -82,12 +101,20 @@ private final class FakeMedia: MediaEffects, @unchecked Sendable {
         }
     }
     func sendPlay() throws {
-        try lock.withLock {
+        let starter: MediaPlayerID? = try lock.withLock {
             calls.append("play")
             if let playError { throw playError }
-            if commandsWork, let target, alive.contains(target.pid), !playing.contains(target) {
-                playing.append(playStartsAs ?? target)
+            transient = transientOnPlay
+            guard commandsWork, let target, alive.contains(target.pid), !playing.contains(target) else { return nil }
+            return playStartsAs ?? target
+        }
+        guard let starter else { return }
+        if playDelay > 0 {
+            DispatchQueue.global().asyncAfter(deadline: .now() + playDelay) { [self] in
+                lock.withLock { if !playing.contains(starter) { playing.append(starter) } }
             }
+        } else {
+            lock.withLock { if !playing.contains(starter) { playing.append(starter) } }
         }
     }
     func sleep(_ seconds: TimeInterval) {
@@ -99,6 +126,11 @@ private final class FakeMedia: MediaEffects, @unchecked Sendable {
 }
 
 private struct Boom: Error {}
+
+/// The code's quit budget plus half a second. Asserting the exact budget fails on a loaded CI
+/// Mac (1.528 s was measured against 1.5): the semaphore wait returns at the budget, and the
+/// scheduler adds its own delay on top.
+private let quitBudgetWithSlack = MediaPausePolicy.Timing().shutdownBudget + 0.5
 
 private let spotify = MediaPlayerID(pid: 100, bundleID: "com.spotify.client")
 private let chrome = MediaPlayerID(pid: 200, bundleID: "com.google.Chrome.helper")
@@ -130,7 +162,7 @@ private func waitOutGrace(_ policy: MediaPausePolicy, _ seconds: TimeInterval = 
     policy.flush()
 }
 
-@Suite struct MediaPausePolicyTests {
+@Suite(.serialized) struct MediaPausePolicyTests {
     // MARK: The setting
 
     @Test func settingOffNeverTouchesMedia() {
@@ -200,7 +232,7 @@ private func waitOutGrace(_ policy: MediaPausePolicy, _ seconds: TimeInterval = 
         let (policy, _) = makePolicy(media)
         let began = Date()
         policy.recordingStarted()
-        #expect(Date().timeIntervalSince(began) < 0.1)   // the detection is parked on the gate
+        #expect(Date().timeIntervalSince(began) < 1)     // the detection is parked on the gate for up to 5 s; a loaded CI Mac can be slow, so no tight bound
         for _ in 0..<8 { gate.signal() }
         policy.flush()
         media.onOutputQuery = nil
@@ -434,14 +466,14 @@ private func waitOutGrace(_ policy: MediaPausePolicy, _ seconds: TimeInterval = 
     @Test func quittingWhileAPauseIsStillTakingEffectCatchesItAndResumes() {
         let media = FakeMedia()
         media.realSleep = true
-        media.pauseDelay = 0.15   // the player stops 150 ms after the command
+        media.pauseDelay = 0.05   // the player stops 50 ms after the command
         media.start(spotify)
         let (policy, _) = makePolicy(media, grace: 5)
         policy.recordingStarted()
-        Thread.sleep(forTimeInterval: 0.12)   // the pause is out and waiting for its effect
+        Thread.sleep(forTimeInterval: 0.18)   // the press look is over, the pause is out and waiting for its effect
         let began = Date()
         policy.shutdown()
-        #expect(Date().timeIntervalSince(began) < 1.5)
+        #expect(Date().timeIntervalSince(began) < quitBudgetWithSlack)
         #expect(media.callList == ["pause", "play"])
         #expect(media.isPlaying == [spotify])
     }
@@ -456,7 +488,7 @@ private func waitOutGrace(_ policy: MediaPausePolicy, _ seconds: TimeInterval = 
         Thread.sleep(forTimeInterval: 0.1)
         let began = Date()
         policy.shutdown()
-        #expect(Date().timeIntervalSince(began) < 1.5)
+        #expect(Date().timeIntervalSince(began) < quitBudgetWithSlack)
     }
 
     // MARK: Failures are logged, never thrown
@@ -535,6 +567,184 @@ private func waitOutGrace(_ policy: MediaPausePolicy, _ seconds: TimeInterval = 
         #expect(diagnostics.entries().count == 1)
         #expect(diagnostics.entries().first?.category == "media")
         #expect(diagnostics.entries().first?.level == .warning)
+    }
+
+    // MARK: Alert sounds at the press
+
+    @Test func anAlertThatOutlivesTheSecondLookButNotTheStopWindowIsNeverHeldOrResumed() {
+        let media = FakeMedia()
+        media.realSleep = true
+        media.retarget(spotify)                 // a paused Now Playing app that a stray Play would start
+        media.blip(chrome, for: 0.35)           // seen at the press and 150 ms later, gone ~200 ms after the command
+        let (policy, diagnostics) = makePolicy(media)
+        policy.recordingStarted()
+        Thread.sleep(forTimeInterval: 0.6)
+        policy.recordingEnded()
+        waitOutGrace(policy, 0.8)
+        #expect(media.callList == ["pause"])    // the (harmless) pause, and never a play
+        #expect(media.isPlaying.isEmpty)
+        #expect(diagnostics.entries().contains { $0.level == .warning && $0.message.contains("not remembered") })
+    }
+
+    @Test func anAlertThatEndsBeforeTheSecondLookSendsNothingAtAll() {
+        let media = FakeMedia()
+        media.realSleep = true
+        media.retarget(spotify)
+        media.blip(chrome, for: 0.05)           // gone long before the look 150 ms after the press
+        let (policy, _) = makePolicy(media)
+        policy.recordingStarted()
+        Thread.sleep(forTimeInterval: 0.3)
+        policy.recordingEnded()
+        waitOutGrace(policy, 0.8)
+        #expect(media.callList == [])
+    }
+
+    @Test func aPlayerThatStopsAfterTheStopWindowIsNotRemembered() {
+        let media = FakeMedia()
+        media.realSleep = true
+        media.pauseDelay = 0.25                 // a slow player, or one process serving several tabs
+        media.start(spotify)
+        let (policy, diagnostics) = makePolicy(media)
+        policy.recordingStarted()
+        Thread.sleep(forTimeInterval: 0.7)
+        policy.recordingEnded()
+        waitOutGrace(policy, 0.8)
+        #expect(media.callList == ["pause"])    // paused, never resumed: it was not observed stopping
+        #expect(diagnostics.entries().contains { $0.message.contains("not remembered") })
+    }
+
+    @Test func whenNothingStopsInTimeAProcessThatStartedMeanwhileIsPausedToo() {
+        let media = FakeMedia()
+        media.startBackground(zoom)             // outputs, and no command reaches it
+        media.onPause = { [unowned media] in media.startBackground(chrome) }   // Now Playing moved to a browser tab
+        let (policy, _) = makePolicy(media)
+        policy.recordingStarted(); policy.flush()
+        #expect(media.callList == ["pause", "pause"])
+    }
+
+    // MARK: Dings during the dictation
+
+    @Test func oneTickOfAStrangerIsADingAndTheMediaStillResumes() {
+        let media = FakeMedia()
+        media.start(spotify)
+        let (policy, _) = makePolicy(media, watch: 100)
+        policy.recordingStarted(); policy.flush()
+        media.startBackground(chrome)
+        policy.runWatchTickForTesting()     // the ding is on this tick...
+        media.stop(chrome)
+        policy.runWatchTickForTesting()     // ...and gone on the next
+        policy.recordingEnded()
+        settle(policy) { media.callList.contains("play") }
+        #expect(media.callList == ["pause", "play"])
+    }
+
+    @Test func aStrangerOnTwoConsecutiveTicksIsTheUserAndNothingResumes() {
+        let media = FakeMedia()
+        media.start(spotify)
+        let (policy, _) = makePolicy(media, watch: 100)
+        policy.recordingStarted(); policy.flush()
+        media.startBackground(chrome)
+        policy.runWatchTickForTesting()
+        policy.runWatchTickForTesting()
+        media.stop(chrome)                  // gone again at the end: the end gate would not see it
+        policy.recordingEnded()
+        waitOutGrace(policy)
+        #expect(media.callList == ["pause"])
+    }
+
+    @Test func twoDifferentDingsOnConsecutiveTicksAreNotOneStranger() {
+        let media = FakeMedia()
+        media.start(spotify)
+        let (policy, _) = makePolicy(media, watch: 100)
+        policy.recordingStarted(); policy.flush()
+        media.startBackground(chrome)
+        policy.runWatchTickForTesting()
+        media.stop(chrome)
+        media.startBackground(zoom)
+        policy.runWatchTickForTesting()
+        media.stop(zoom)
+        policy.recordingEnded()
+        settle(policy) { media.callList.contains("play") }
+        #expect(media.callList == ["pause", "play"])
+    }
+
+    @Test func aHeldProcessOutputtingOnOneTickIsTheUserPressingPlay() {
+        let media = FakeMedia()
+        media.start(spotify)
+        let (policy, _) = makePolicy(media, watch: 100)
+        policy.recordingStarted(); policy.flush()
+        media.start(spotify)
+        policy.runWatchTickForTesting()
+        media.stop(spotify)                 // paused again before the end
+        policy.recordingEnded()
+        waitOutGrace(policy)
+        #expect(media.callList == ["pause"])
+    }
+
+    @Test func aDingAtTheEndGateIsNotTheUser() {
+        let media = FakeMedia()
+        media.start(spotify)
+        let (policy, _) = makePolicy(media, watch: 100)
+        policy.recordingStarted(); policy.flush()
+        media.transient = chrome            // there in the first look at the end, gone in the second
+        policy.recordingEnded()
+        settle(policy) { media.callList.contains("play") }
+        #expect(media.callList == ["pause", "play"])
+    }
+
+    @Test func aDingAfterPlayWhileThePlayerIsStillStartingIsNotPausedAndTheResumeCompletes() {
+        let media = FakeMedia()
+        media.realSleep = true
+        media.playDelay = 0.08              // a slow player
+        media.transientOnPlay = chrome      // a ding in the first look after Play
+        media.start(spotify)
+        let (policy, _) = makePolicy(media, watch: 100)
+        policy.recordingStarted()
+        Thread.sleep(forTimeInterval: 0.4)
+        policy.recordingEnded()
+        settle(policy) { media.isPlaying == [spotify] }
+        waitOutGrace(policy, 0.2)
+        #expect(media.callList == ["pause", "play"])   // no second pause for a ding
+        #expect(media.isPlaying == [spotify])
+    }
+
+    // MARK: Back to back
+
+    @Test func aDictationDuringAHoldStillPausesAStrangerThatIsPlayingAndResumesBoth() {
+        let media = FakeMedia()
+        media.start(spotify)
+        let (policy, _) = makePolicy(media, grace: 0.25, watch: 100)
+        policy.recordingStarted(); policy.flush()
+        policy.recordingEnded()
+        media.start(chrome)                 // the user started a video in the gap
+        policy.recordingStarted(); policy.flush()
+        #expect(media.callList == ["pause", "pause"])
+        #expect(media.isPlaying.isEmpty)
+        waitOutGrace(policy, 0.4)
+        #expect(media.callList == ["pause", "pause"])  // no resume in between
+        policy.recordingEnded()
+        settle(policy) { media.callList.contains("play") }
+        #expect(media.callList == ["pause", "pause", "play"])
+        #expect(media.isPlaying == [chrome])           // Play goes to the Now Playing app, which is the video
+    }
+
+    // MARK: Matching by pid
+
+    @Test func aHeldBrowserHelperIsNotHiddenBehindASameBundleBackgroundHelper() {
+        let media = FakeMedia()
+        let backgroundHelper = MediaPlayerID(pid: 201, bundleID: chrome.bundleID)
+        media.startBackground(backgroundHelper)   // another helper of the same app keeps going
+        media.start(chrome)                       // the one Pause reaches
+        let (policy, _) = makePolicy(media, watch: 100)
+        policy.recordingStarted(); policy.flush()
+        #expect(media.callList == ["pause"])
+        #expect(media.isPlaying == [backgroundHelper])
+        media.start(chrome)                       // the user presses play on the held helper
+        policy.runWatchTickForTesting()
+        media.stop(chrome)
+        policy.recordingEnded()
+        waitOutGrace(policy)
+        #expect(media.callList == ["pause"])      // seen by pid, not lost behind the same bundle id
     }
 
     // MARK: What counts as media

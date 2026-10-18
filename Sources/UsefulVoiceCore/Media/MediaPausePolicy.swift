@@ -15,8 +15,9 @@ public struct MediaPlayerID: Hashable, Sendable, CustomStringConvertible {
         return "\(bundleID) (\(pid))"
     }
 
-    /// The same process, or another process of the same app (a browser restarts its audio
-    /// helper under a new pid).
+    /// The same process, or another process of the same app. Used only to recognise the paused
+    /// player coming back after Play (a browser relaunches its audio helper under a new pid);
+    /// everything else is matched by pid.
     func isSameApp(as other: MediaPlayerID) -> Bool {
         if pid == other.pid { return true }
         guard let bundleID, !bundleID.isEmpty else { return false }
@@ -95,34 +96,43 @@ public enum MediaPlayerFilter {
 /// The rules, in order of how easily they break:
 /// 1. Only MediaRemote Pause and Play are used. Both go to the Now Playing app; Pause is
 ///    safe on a paused player, and what they did is always checked in the audio output.
-/// 2. Pause: the players are those outputting in two looks 40 ms apart (P0). After the
-///    command, `held` is the part of P0 that stopped and `background` the part that kept
-///    going (a call app, say). A background stream never blocks the resume.
-/// 3. Resume only when `held` is non-empty and still alive, nothing in `held` is outputting
-///    (so the user did not press play), nothing new is outputting beyond `background`
-///    (so the user did not start something else), and during the dictation none of that
-///    happened and was undone (checked every 500 ms).
-/// 4. After Play, if a different app started instead, it is paused again.
-/// 5. A new recording within the grace after an end keeps the media paused, with no
-///    resume in between and no second pause.
-/// 6. The setting is read at every start; turning it off mid-dictation does not strand a
+/// 2. Short sounds are not media. A process counts only if it outputs in two looks 150 ms
+///    apart (P0), and it is held only if it stops within `stopWindow` of the Pause command
+///    (a live player stops in about 50 ms; an alert ends whenever it ends). What stops later
+///    is not held, so it is never resumed. A pause that cannot be observed, such as one
+///    process serving several tabs or a slow player, is not remembered: never risk playing
+///    something unknown.
+/// 3. `held` is the part of P0 that stopped, `background` the part that kept going (a call
+///    app, say). Both are matched by pid. A background stream never blocks the resume.
+/// 4. A stranger is a process that is neither held nor background. Strangers count only when
+///    seen twice: on two watch ticks, or in two looks 40 ms apart at the end and after Play.
+/// 5. Resume only when `held` is alive, no held process is outputting (the user did not
+///    press play), no persistent stranger is outputting (the user did not start something
+///    else) and the watch did not see either during the dictation.
+/// 6. After Play, a persistent stranger with no held process outputting means Play reached
+///    another app: it is paused again. The player just resumed is never paused.
+/// 7. A new recording within the grace after an end keeps the media paused, with no resume
+///    in between. It still pauses strangers that are playing and adds them to the hold.
+/// 8. The setting is read at every start; turning it off mid-dictation does not strand a
 ///    paused player.
 public final class MediaPausePolicy: @unchecked Sendable {
     public struct Timing: Sendable {
-        /// Between the two looks at what is playing, so a short alert sound is not
-        /// mistaken for media.
-        public var confirmDelay: TimeInterval = 0.04
+        /// Between the two looks at the press: a process must be outputting in both.
+        public var pressConfirmDelay: TimeInterval = 0.15
+        /// Between the two looks that make a stranger count, at the end and after Play.
+        public var strangerGap: TimeInterval = 0.04
+        /// How long after the Pause command a process may take to stop and still be held.
+        /// Measured on a live player: 40 to 55 ms from the command. A 300 ms alert at the
+        /// press ends about 140 ms after the command, so it is not held.
+        public var stopWindow: TimeInterval = 0.1
         /// How long an end waits before resuming. A new recording inside this window keeps
         /// the media paused (same as Windows).
         public var resumeGrace: TimeInterval = 0.4
-        /// How long to wait for a command to show in the audio output.
+        /// How long to wait for Play to show in the audio output.
         public var settleTimeout: TimeInterval = 0.6
-        public var pollInterval: TimeInterval = 0.02
+        public var pollInterval: TimeInterval = 0.01
         /// How often to look for the user touching a paused player during a dictation.
         public var watchInterval: TimeInterval = 0.5
-        /// How long a pause that is still waiting for its effect keeps waiting once the
-        /// app is quitting.
-        public var quitSettleTimeout: TimeInterval = 0.3
         /// The longest a quit waits for the resume.
         public var shutdownBudget: TimeInterval = 1.5
 
@@ -130,10 +140,22 @@ public final class MediaPausePolicy: @unchecked Sendable {
     }
 
     private struct Hold {
-        var held: Set<MediaPlayerID>
-        var background: Set<MediaPlayerID>
+        var held: Set<MediaPlayerID> = []
+        var background: Set<MediaPlayerID> = []
         /// The user played the paused player, or started something else, during the dictation.
         var touched = false
+        /// Strangers seen on the previous watch tick (pids).
+        var strangersLastTick: Set<Int32> = []
+
+        func isKnown(_ player: MediaPlayerID) -> Bool {
+            held.contains { $0.pid == player.pid } || background.contains { $0.pid == player.pid }
+        }
+        func strangers(in playing: [MediaPlayerID]) -> Set<MediaPlayerID> {
+            Set(playing.filter { !isKnown($0) })
+        }
+        func holdsHeldProcess(in playing: [MediaPlayerID]) -> Bool {
+            playing.contains { player in held.contains { $0.pid == player.pid } }
+        }
     }
 
     private let effects: MediaEffects
@@ -186,12 +208,12 @@ public final class MediaPausePolicy: @unchecked Sendable {
         }
         guard let mine else { return }
         queue.asyncAfter(deadline: .now() + timing.resumeGrace) { [self] in
-            resume(afterEpoch: mine, shuttingDown: false)
+            resume(afterEpoch: mine)
         }
     }
 
-    /// The app is quitting: resume now, waiting at most `shutdownBudget`. A pause still
-    /// waiting for its effect is cut short rather than waited out.
+    /// The app is quitting: resume now, waiting at most `shutdownBudget`. A pause still in
+    /// flight finishes first; it is bounded by the press look and the stop window.
     public func shutdown() {
         lock.withLock {
             recording = false
@@ -199,7 +221,7 @@ public final class MediaPausePolicy: @unchecked Sendable {
         }
         let finished = DispatchSemaphore(value: 0)
         queue.async { [self] in
-            resume(afterEpoch: nil, shuttingDown: true)
+            resume(afterEpoch: nil)
             finished.signal()
         }
         _ = finished.wait(timeout: .now() + timing.shutdownBudget)
@@ -210,52 +232,68 @@ public final class MediaPausePolicy: @unchecked Sendable {
         queue.sync {}
     }
 
+    /// One watch tick, on demand. For tests, which set `watchInterval` far out.
+    func runWatchTickForTesting() {
+        queue.sync { watchTick() }
+    }
+
     // MARK: - Pause
 
     private func pauseIfPlaying(epoch mine: Int) {
         guard !unsupported, isEnabled() else { return }
-        // Already holding it: a back-to-back dictation. Keep it paused, pause nothing twice.
-        guard hold == nil else { return }
         guard isLive(mine) else { return }
+        let known = hold ?? Hold()
         do {
-            let first = Set(try effects.outputtingPlayers())
+            // Already holding something (a back-to-back dictation): only what is new counts.
+            let first = known.strangers(in: try effects.outputtingPlayers())
             guard !first.isEmpty else { return }
-            effects.sleep(timing.confirmDelay)
-            let p0 = first.intersection(Set(try effects.outputtingPlayers()))
+            effects.sleep(timing.pressConfirmDelay)
+            let p0 = first.intersection(known.strangers(in: try effects.outputtingPlayers()))
             guard !p0.isEmpty, isLive(mine) else { return }
 
             try effects.sendPause()
             let stopped = try waitForStop(of: p0)
             guard !stopped.isEmpty else {
-                diagnostics.warning("media", "Could not pause \(describe(p0)): it kept playing after the pause command")
+                // Nothing stopped in time. One last look: something outside P0 that started
+                // meanwhile (Now Playing moved) is paused too.
+                let late = known.strangers(in: try effects.outputtingPlayers())
+                    .filter { player in !p0.contains { $0.pid == player.pid } }
+                if !late.isEmpty { try effects.sendPause() }
+                diagnostics.warning("media", "Could not pause \(describe(p0)): nothing stopped within \(Int(timing.stopWindow * 1000)) ms of the pause command, so it is not remembered")
                 return
             }
-            hold = Hold(held: stopped, background: p0.subtracting(stopped))
+            var updated = known
+            updated.held.formUnion(stopped)
+            updated.background.formUnion(p0.subtracting(stopped))
+            updated.touched = false
+            hold = updated
             startWatching()
             var message = "Paused \(describe(stopped)) for the dictation"
-            if !hold!.background.isEmpty { message += "; \(describe(hold!.background)) keeps playing and is left alone" }
+            if !p0.subtracting(stopped).isEmpty {
+                message += "; \(describe(p0.subtracting(stopped))) keeps playing and is left alone"
+            }
             diagnostics.info("media", message)
         } catch {
             handle(error, context: "Pausing media failed")
         }
     }
 
-    /// The part of `players` that stopped, as soon as any did, or empty after the timeout.
-    /// A quit shortens the wait to `quitSettleTimeout`: the command is already out, and the
-    /// player usually stops within 100 ms, so it can still be found and resumed.
+    /// The part of `players` that stopped within the stop window, as soon as any did.
     private func waitForStop(of players: Set<MediaPlayerID>) throws -> Set<MediaPlayerID> {
         var waited: TimeInterval = 0
+        // The window is measured on the clock as well as in poll steps, so slow looks cannot
+        // stretch it: a late stop is not a stop caused by the command.
+        let began = Date()
         while true {
             let stopped = players.subtracting(Set(try effects.outputtingPlayers()))
             if !stopped.isEmpty { return stopped }
-            let limit = lock.withLock({ shuttingDown }) ? min(timing.settleTimeout, timing.quitSettleTimeout) : timing.settleTimeout
-            if waited >= limit { return [] }
+            if waited >= timing.stopWindow || Date().timeIntervalSince(began) >= timing.stopWindow { return [] }
             effects.sleep(timing.pollInterval)
             waited += timing.pollInterval
         }
     }
 
-    // MARK: - Watching a dictation for the user touching the player
+    // MARK: - Watching a dictation for the user touching things
 
     private func startWatching() {
         guard watcher == nil else { return }
@@ -271,28 +309,25 @@ public final class MediaPausePolicy: @unchecked Sendable {
         watcher = nil
     }
 
+    /// Touched means: a held process outputs (the user pressed play), or a stranger outputs
+    /// on two consecutive ticks (the user started something). One tick of a stranger is a
+    /// ding and is forgotten.
     private func watchTick() {
         guard var current = hold else { return stopWatching() }
         guard !current.touched else { return }
         // A failed look is not "touched"; the gate at the end looks again.
         guard let playing = try? effects.outputtingPlayers() else { return }
-        if Self.userActivity(in: playing, hold: current) {
+        let strangers = Set(current.strangers(in: playing).map(\.pid))
+        if current.holdsHeldProcess(in: playing) || !strangers.isDisjoint(with: current.strangersLastTick) {
             current.touched = true
-            hold = current
         }
-    }
-
-    /// Something other than the background streams is outputting: the paused player (the
-    /// user pressed play) or a new one.
-    private static func userActivity(in playing: [MediaPlayerID], hold: Hold) -> Bool {
-        playing.contains { player in
-            !hold.background.contains { $0.isSameApp(as: player) }
-        }
+        current.strangersLastTick = strangers
+        hold = current
     }
 
     // MARK: - Resume
 
-    private func resume(afterEpoch ended: Int?, shuttingDown quitting: Bool) {
+    private func resume(afterEpoch ended: Int?) {
         if let ended {
             // A newer recording started while this resume was waiting: stay paused.
             let stillTheEnd = lock.withLock { !recording && epoch == ended }
@@ -312,32 +347,65 @@ public final class MediaPausePolicy: @unchecked Sendable {
                 return
             }
             let playingNow = try effects.outputtingPlayers()
-            guard !Self.userActivity(in: playingNow, hold: current) else {
-                diagnostics.info("media", "Not resuming: \(describe(Set(playingNow))) is playing")
+            guard !current.holdsHeldProcess(in: playingNow) else {
+                diagnostics.info("media", "Not resuming: \(describe(current.held)) was played again")
                 return
             }
+            // A stranger counts only when still there 40 ms later: a ding is not the user.
+            let first = current.strangers(in: playingNow)
+            if !first.isEmpty {
+                effects.sleep(timing.strangerGap)
+                let second = current.strangers(in: try effects.outputtingPlayers())
+                let persistent = first.filter { player in second.contains { $0.pid == player.pid } }
+                guard persistent.isEmpty else {
+                    diagnostics.info("media", "Not resuming: \(describe(persistent)) is playing")
+                    return
+                }
+            }
             try effects.sendPlay()
-            try confirmResume(alive: alive, background: current.background)
+            try confirmResume(alive: alive, current: current)
         } catch {
             handle(error, context: "Resuming media failed")
         }
     }
 
-    /// After Play: done when the paused player outputs; if a different app started
-    /// instead, pause it again.
-    private func confirmResume(alive: Set<MediaPlayerID>, background: Set<MediaPlayerID>) throws {
+    /// After Play: done when the paused player outputs (the same app counts: a browser may
+    /// bring its audio helper back under a new pid). A persistent stranger with no held
+    /// process outputting means Play reached another app: pause it again. The player just
+    /// resumed is never paused.
+    private func confirmResume(alive: Set<MediaPlayerID>, current: Hold) throws {
+        func isResumed(_ playing: [MediaPlayerID]) -> Bool {
+            playing.contains { player in alive.contains { $0.isSameApp(as: player) } }
+        }
+        func strangers(_ playing: [MediaPlayerID]) -> Set<MediaPlayerID> {
+            Set(playing.filter { player in
+                !current.background.contains { $0.pid == player.pid }
+                    && !alive.contains { $0.isSameApp(as: player) }
+            })
+        }
         var waited: TimeInterval = 0
         while true {
             let playing = try effects.outputtingPlayers()
-            if playing.contains(where: { player in alive.contains { $0.isSameApp(as: player) } }) {
+            if isResumed(playing) {
                 diagnostics.info("media", "Resumed \(describe(alive))")
                 return
             }
-            let strangers = playing.filter { player in !background.contains { $0.isSameApp(as: player) } }
-            if !strangers.isEmpty {
-                try effects.sendPause()
-                diagnostics.warning("media", "Play reached \(describe(Set(strangers))) instead of \(describe(alive)); paused it again")
-                return
+            let first = strangers(playing)
+            if !first.isEmpty {
+                effects.sleep(timing.strangerGap)
+                waited += timing.strangerGap
+                let again = try effects.outputtingPlayers()
+                if isResumed(again) {
+                    diagnostics.info("media", "Resumed \(describe(alive))")
+                    return
+                }
+                let second = strangers(again)
+                let persistent = first.filter { player in second.contains { $0.pid == player.pid } }
+                if !persistent.isEmpty {
+                    try effects.sendPause()
+                    diagnostics.warning("media", "Play reached \(describe(persistent)) instead of \(describe(alive)); paused it again")
+                    return
+                }
             }
             if waited >= timing.settleTimeout {
                 diagnostics.warning("media", "Could not resume \(describe(alive))")
@@ -351,7 +419,7 @@ public final class MediaPausePolicy: @unchecked Sendable {
     // MARK: - Helpers
 
     private func isLive(_ mine: Int) -> Bool {
-        lock.withLock { recording && epoch == mine }
+        lock.withLock { recording && epoch == mine && !shuttingDown }
     }
 
     /// A macOS without the process list turns the feature off for good, with one log line.

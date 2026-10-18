@@ -29,6 +29,14 @@ Cross-platform dictation app. macOS: Swift (`Sources/UsefulVoiceCore`,
   limits the app allows are 15 s of silence and 30 s of recording, so those two specs take 20 s and 35 s. Never press the
   hotkey to completion in a spec: it would paste into whatever is in front of the machine.
 
+- Windows models (`src/core/models/catalog.ts`, checked against `Tests/Fixtures/models/catalog.json` by `tests/modelCatalog.test.ts`):
+  voice model and AI formatting ids live in settings (`voiceModelId`, `formatterId`); providers are `core/transcription/*Provider.ts`
+  (Deepgram, ElevenLabs, Gemini audio) and Parakeet via `main/parakeet.ts`, picked by `main/transcriberRouter.ts` (never falls back to
+  another provider). The AI formatter is `core/formatting/aiFormatter.ts` (guard in `formatterGuard.ts`), run by `dictationService`
+  before the dictionary rules. Keys of all four providers are encrypted in `settingsStore.ts`. `e2e/models.spec.ts`; under `--e2e`
+  `main/e2eStub.ts` fakes all four hosts (a key starting `valid` works, `offline` fails, anything else is refused) and the
+  formatter stubs answer `<text> (formatted by Gemini|Anthropic)`.
+
 ## Windows renderer layout
 
 `windows/src/renderer/`: `renderer.ts` (entry) wires `shell.ts` (rail, header, banners,

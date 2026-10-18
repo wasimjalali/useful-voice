@@ -28,7 +28,7 @@ export interface ModelsHost {
 }
 
 /** About how big the local models are, shown before there is a real size to read. */
-const PARAKEET_APPROX = 'About 480 MB';
+const PARAKEET_APPROX = '480 MB';
 
 const MONOGRAMS: Record<CatalogModel['provider'], string> = {
   deepgram: 'D',
@@ -98,7 +98,7 @@ export function modelsGroup(host: ModelsHost): HTMLElement {
     const cell = el('div', { class: 'm-side' });
     const provider = keyProviderOf(model);
     if (provider) {
-      cell.append(el('span', { class: 'm-where' }, 'Cloud'));
+      cell.append(el('span', { class: 'm-where m-where-cloud' }, 'Cloud'));
       if (!keys()[provider]) {
         cell.append(
           el('button', { class: 'btn btn-secondary btn-sm', type: 'button', onclick: () => keyRows.get(provider)?.edit() } as never, 'Add key'),
@@ -330,7 +330,6 @@ function keyRow(provider: KeyProvider, host: ModelsHost): HTMLElement {
       );
       queueMicrotask(() => input.focus());
     } else {
-      label.append(el('span', { class: 's-hint' }, 'Stored encrypted with your Windows account.'));
       control.append(
         ...(status ? [pill() as HTMLElement] : []),
         el('button', { class: 'btn btn-secondary', type: 'button', 'aria-label': `Test ${name} connection`, onclick: () => void testKey() } as never, 'Test connection'),

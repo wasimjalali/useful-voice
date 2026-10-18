@@ -18,10 +18,10 @@
 /* The grid every row and the header share. */
 .m-columns,
 .m-row {
-  --m-cols: 16px 28px minmax(0, 1fr) 84px 84px minmax(150px, max-content);
+  --m-cols: 16px 28px minmax(0, 1fr) 72px 72px 160px;
   display: grid;
   grid-template-columns: var(--m-cols);
-  column-gap: 12px;
+  column-gap: 10px;
   align-items: center;
 }
 
@@ -87,7 +87,7 @@
 .is-selected .m-tile { background: var(--ink); border-color: var(--ink); color: var(--surface); }
 
 .m-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.m-name-text { font-size: var(--fs-body); font-weight: 550; color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
+.m-name-text { font-size: var(--fs-body); font-weight: 550; color: var(--ink); min-width: 0; overflow-wrap: break-word; }
 .m-badge {
   flex: none;
   padding: 1px 6px;
@@ -134,29 +134,31 @@
 /* The Setup row sits under the keys with the same gap as between groups' rows. */
 .s-setup { margin-top: 12px; }
 
-/* Narrow: the right column moves to the end of the first line, the meters drop under the name. */
+/* Narrow: each row stacks. The name, then the two meters under it, then what the model needs. */
 @container (max-width: 560px) {
   .m-columns { display: none; }
-  .m-list .m-row { --m-cols: minmax(0, 1fr) auto; padding: 8px 14px; min-height: 0; row-gap: 2px; }
+  .m-list .m-row { display: flex; flex-wrap: wrap; align-items: center; padding: 6px 14px 8px; min-height: 0; }
   .m-pick {
-    grid-column: 1;
+    flex: 1 1 100%;
     grid-template-columns: 16px 28px minmax(0, 1fr);
     grid-template-rows: auto auto;
-    min-height: 44px;
+    column-gap: 12px;
     row-gap: 4px;
+    min-height: 44px;
   }
   .m-pick > .m-dot,
   .m-pick > .m-tile { grid-row: 1; }
   .m-pick > .m-name { grid-column: 3; grid-row: 1; }
   .m-pick > .m-meters {
     display: flex;
+    flex-wrap: wrap;
     grid-column: 3;
     grid-row: 2;
-    gap: 14px;
+    gap: 2px 14px;
     align-items: center;
   }
-  .m-meter::before { content: attr(data-label); margin-right: 6px; font-size: var(--fs-label); color: var(--ink-muted); }
   .m-meter { align-items: center; }
-  .m-side { grid-column: 2; grid-row: 1; flex-wrap: wrap; justify-content: flex-end; padding: 0; }
-  .m-progress { width: 48px; }
+  .m-meter::before { content: attr(data-label); display: inline-block; min-width: 54px; margin-right: 4px; font-size: var(--fs-label); color: var(--ink-muted); }
+  .m-side { flex: 1 1 100%; justify-content: flex-start; flex-wrap: wrap; padding: 2px 0 2px 68px; }
+  .m-progress { width: 64px; }
 }

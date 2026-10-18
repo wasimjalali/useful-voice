@@ -135,6 +135,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // updater runs. Not in a render or forced first-run preview, which save nothing.
         if migrationAllowed { AppUpdater.shared.start() }
         if !isSnapshot { setUpStatusItem() }
+        // Only a normal launch switches other apps' accessibility on: never a render or a
+        // forced first-run preview, which must not change anything outside the app.
+        if migrationAllowed { FocusTracker.shared.startBrowserAccessibility() }
         setUpFirstRun()
         // `UV_SNAPSHOT=<png path>@<width>x<height>` renders the page named by
         // `UV_START_SECTION` to a PNG and quits, with no window and no focus change.

@@ -59,19 +59,12 @@ public enum TypeOutChunker {
 }
 
 /// Browsers whose page address delivery may read with Accessibility at the hotkey
-/// press. Anything else never has a URL read.
+/// press: every browser the category registry knows, so a browser the registry lists
+/// never formats as Other just because its address was not read. Anything else never
+/// has a URL read.
 public enum KnownBrowsers {
-    public static let bundleIDs: Set<String> = [
-        "com.apple.Safari",
-        "com.google.Chrome",
-        "company.thebrowser.Browser",   // Arc
-        "com.microsoft.edgemac",
-        "com.brave.Browser",
-        "org.mozilla.firefox",
-    ]
-
     public static func isBrowser(bundleID: String?) -> Bool {
         guard let bundleID else { return false }
-        return bundleIDs.contains(bundleID)
+        return AppCategoryRegistry.isBrowser(bundleID)
     }
 }

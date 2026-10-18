@@ -18,7 +18,7 @@ import type { AppCategory } from './appCategory.js';
  *   desktop apps share one bundle id, com.openai.codex (the Homebrew chatgpt and codex-app
  *   casks both quit it), so it is Work chat: ChatGPT is never Coding.
  * - Discord is Personal chat, even though servers are sometimes work.
- * - The Dia browser is not listed: its bundle id could not be confirmed from a public source.
+ * - Orca (com.stablyai.orca) runs Claude Code and Codex in terminal panes, so it is Coding.
  */
 
 export const EMAIL_APPS: readonly string[] = [
@@ -73,6 +73,7 @@ export const CODING_APPS: readonly string[] = [
   'com.googlecode.iterm2', // iTerm2
   'dev.warp.Warp-Stable', // Warp
   'com.mitchellh.ghostty', // Ghostty
+  'com.stablyai.orca', // Orca (terminal panes for coding agents)
   'net.kovidgoyal.kitty', // kitty
   'org.alacritty', // Alacritty
   'com.github.wez.wezterm', // WezTerm
@@ -158,6 +159,8 @@ export const BROWSER_BUNDLE_IDS: readonly string[] = [
   'com.kagi.kagimacOS', // Orion
   'com.operasoftware.Opera',
   'com.vivaldi.Vivaldi',
+  'company.thebrowser.dia', // Dia
+  'at.studio.AsideBrowser', // Aside
 ];
 
 /** Web browsers on Windows, by executable name. */

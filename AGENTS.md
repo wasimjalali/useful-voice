@@ -51,6 +51,9 @@ settings are one JSON UserDefaults key, `appFormatting` (`AppFormattingSettings`
 the read at 150 ms), kept in memory only. On both platforms a dictation into Useful Voice's own window carries no appID,
 category, cursor read or category formatting and never presses a send key; a hotkey press with Useful Voice in front
 pastes only into a focused editable field of ours, otherwise it's copied.
+On macOS every browser in the registry (`AppCategorySeeds.browserBundleIDs`) has its page address read (`KnownBrowsers`).
+Chromium browsers expose it only after `AXManualAccessibility` is set on them, so `FocusTracker.startBrowserAccessibility`
+sets it once per browser process when it comes to the front (Dia measured: readable 80 to 95 ms later).
 
 ## `ELECTRON_RUN_AS_NODE` gotcha
 

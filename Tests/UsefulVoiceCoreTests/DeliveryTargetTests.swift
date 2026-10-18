@@ -311,10 +311,14 @@ import Testing
 
     @Test func testKnownBrowsersAreRecognised() {
         for id in ["com.apple.Safari", "com.google.Chrome", "company.thebrowser.Browser",
-                   "com.microsoft.edgemac", "com.brave.Browser", "org.mozilla.firefox"] {
+                   "com.microsoft.edgemac", "com.brave.Browser", "org.mozilla.firefox",
+                   // Every registry browser has its address read, not just the first six.
+                   "com.vivaldi.Vivaldi", "company.thebrowser.dia", "at.studio.AsideBrowser",
+                   "COMPANY.THEBROWSER.DIA"] {
             #expect(KnownBrowsers.isBrowser(bundleID: id))
         }
         #expect(!KnownBrowsers.isBrowser(bundleID: "com.tinyspeck.slackmacgap"))
+        #expect(!KnownBrowsers.isBrowser(bundleID: "com.stablyai.orca"))
         #expect(!KnownBrowsers.isBrowser(bundleID: nil))
     }
 }

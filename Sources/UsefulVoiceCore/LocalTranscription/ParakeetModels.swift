@@ -58,6 +58,15 @@ public enum ParakeetModelState: Equatable, Sendable {
 /// "the folders exist" can't tell a finished download from one that was quit halfway.
 enum ParakeetStorage {
     static let markerName = ".uv-complete"
+    static let trashPrefix = ".parakeet-trash-"
+
+    /// Removes folders a delete renamed but did not finish removing (the app quit first).
+    static func sweepTrash(in root: URL) {
+        let entries = (try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []
+        for name in entries where name.hasPrefix(trashPrefix) {
+            try? FileManager.default.removeItem(at: root.appendingPathComponent(name))
+        }
+    }
 
     static func versionDirectory(_ version: ParakeetVersion, in root: URL) -> URL {
         root.appendingPathComponent("parakeet-\(version.rawValue)", isDirectory: true)
@@ -84,13 +93,49 @@ enum ParakeetStorage {
         return models.sorted() + [ModelNames.ASR.vocabularyFile]
     }
 
+    /// Ready means: the completion marker is there, FluidAudio finds every file it needs, and every
+    /// file the finished download recorded still has its recorded byte size, so a truncated or
+    /// damaged file never reads as ready.
     static func isReady(_ version: ParakeetVersion, in root: URL) -> Bool {
         let dir = versionDirectory(version, in: root)
-        guard FileManager.default.fileExists(atPath: dir.appendingPathComponent(markerName).path) else {
-            return false
+        guard let data = try? Data(contentsOf: dir.appendingPathComponent(markerName)),
+              let marker = try? JSONDecoder().decode(Marker.self, from: data),
+              marker.version == version.rawValue, !marker.files.isEmpty else { return false }
+        let modelsDir = modelsDirectory(version, in: root)
+        for (path, size) in marker.files {
+            let attributes = try? FileManager.default.attributesOfItem(
+                atPath: modelsDir.appendingPathComponent(path).path)
+            guard (attributes?[.size] as? NSNumber)?.int64Value == size else { return false }
         }
-        return AsrModels.modelsExist(
-            at: modelsDirectory(version, in: root), version: asrVersion(version))
+        return AsrModels.modelsExist(at: modelsDir, version: asrVersion(version))
+    }
+
+    struct Marker: Codable {
+        let version: String
+        /// Path under the models folder to byte size, for every regular file.
+        let files: [String: Int64]
+    }
+
+    static func regularFileSizes(in directory: URL) -> [String: Int64] {
+        guard let walker = FileManager.default.enumerator(
+            at: directory, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey]) else { return [:] }
+        let prefix = directory.standardizedFileURL.path + "/"
+        var sizes: [String: Int64] = [:]
+        for case let url as URL in walker {
+            let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+            guard values?.isRegularFile == true else { continue }
+            let path = url.standardizedFileURL.path
+            guard path.hasPrefix(prefix) else { continue }
+            let name = String(path.dropFirst(prefix.count))
+            if name.hasSuffix(".partial") { continue }
+            sizes[name] = Int64(values?.fileSize ?? 0)
+        }
+        return sizes
+    }
+
+    /// The state a version is in on disk. Walks directories, so call it off the main actor.
+    static func diskState(_ version: ParakeetVersion, in root: URL) -> ParakeetModelState {
+        isReady(version, in: root) ? .ready(sizeBytes: sizeBytes(version, in: root)) : .notDownloaded
     }
 
     static func sizeBytes(_ version: ParakeetVersion, in root: URL) -> Int64? {
@@ -107,7 +152,10 @@ enum ParakeetStorage {
 
     static func markComplete(_ version: ParakeetVersion, in root: URL) throws {
         let dir = versionDirectory(version, in: root)
-        try Data(version.rawValue.utf8).write(
+        let marker = Marker(
+            version: version.rawValue,
+            files: regularFileSizes(in: modelsDirectory(version, in: root)))
+        try JSONEncoder().encode(marker).write(
             to: dir.appendingPathComponent(markerName), options: .atomic)
         FileProtection.restrictRecursively(dir)
     }
@@ -180,6 +228,7 @@ actor ParakeetEngine {
     private var idleTask: Task<Void, Never>?
     private var useCount = 0
     private var pinned = false
+    private var pinGeneration = 0
 
     init(version: ParakeetVersion, modelsDirectory: URL, idleSeconds: Double,
          loader: @escaping ParakeetSessionLoader = fluidAudioSessionLoader) {
@@ -191,7 +240,11 @@ actor ParakeetEngine {
 
     var isLoaded: Bool { session != nil }
 
-    func setPinned(_ value: Bool) {
+    var isPinned: Bool { pinned }
+
+    func setPinned(_ value: Bool, generation: Int) {
+        guard generation >= pinGeneration else { return }
+        pinGeneration = generation
         pinned = value
         if value { idleTask?.cancel(); idleTask = nil } else { scheduleIdleUnload() }
     }
@@ -345,12 +398,17 @@ public final class ParakeetModelManager: ObservableObject {
     /// sets it. A pinned version stays loaded: it is never unloaded for being idle.
     public var pinned: ParakeetVersion? {
         didSet {
+            // Each change gets a number; an engine ignores a number older than one it has applied,
+            // so the tasks below can run in any order and the latest value still wins.
+            pinGeneration += 1
+            let generation = pinGeneration
             for (version, engine) in engines {
                 let isPinned = version == pinned
-                Task { await engine.setPinned(isPinned) }
+                Task { await engine.setPinned(isPinned, generation: generation) }
             }
         }
     }
+    private var pinGeneration = 0
 
     private let root: URL
     private let downloader: ParakeetDownloader
@@ -376,6 +434,7 @@ public final class ParakeetModelManager: ObservableObject {
         self.diagnostics = diagnostics
         states = [:]
         for version in ParakeetVersion.allCases { states[version] = diskState(of: version) }
+        Task.detached(priority: .utility) { ParakeetStorage.sweepTrash(in: directory) }
     }
 
     public func state(of version: ParakeetVersion) -> ParakeetModelState {
@@ -383,9 +442,7 @@ public final class ParakeetModelManager: ObservableObject {
     }
 
     private func diskState(of version: ParakeetVersion) -> ParakeetModelState {
-        ParakeetStorage.isReady(version, in: root)
-            ? .ready(sizeBytes: ParakeetStorage.sizeBytes(version, in: root))
-            : .notDownloaded
+        ParakeetStorage.diskState(version, in: root)
     }
 
     public func download(_ version: ParakeetVersion) {
@@ -397,16 +454,18 @@ public final class ParakeetModelManager: ObservableObject {
         let token = UUID()
         let root = self.root
         let downloader = self.downloader
-        let task = Task { [weak self] in
+        // Detached so the file work (marker, permissions, directory walk) stays off the main actor.
+        let task = Task.detached(priority: .utility) { [weak self] in
             do {
                 try await downloader(version, root) { fraction in
                     Task { @MainActor in self?.reportProgress(fraction, version: version, token: token) }
                 }
                 try Task.checkCancellation()
                 try ParakeetStorage.markComplete(version, in: root)
-                self?.finish(version, token: token, error: nil)
+                let state = ParakeetStorage.diskState(version, in: root)
+                await self?.finish(version, token: token, result: .success(state))
             } catch {
-                self?.finish(version, token: token, error: error)
+                await self?.finish(version, token: token, result: .failure(error))
             }
         }
         tasks[version] = (token, task)
@@ -420,12 +479,12 @@ public final class ParakeetModelManager: ObservableObject {
         states[version] = .downloading(progress: clamped)
     }
 
-    private func finish(_ version: ParakeetVersion, token: UUID, error: Error?) {
+    private func finish(_ version: ParakeetVersion, token: UUID, result: Result<ParakeetModelState, Error>) {
         // A cancel or delete already moved on; a stale task must not overwrite it.
         guard tasks[version]?.token == token else { return }
         tasks[version] = nil
-        guard let error else {
-            states[version] = diskState(of: version)
+        guard case .failure(let error) = result else {
+            if case .success(let state) = result { states[version] = state }
             if case .notDownloaded = states[version] {
                 states[version] = .failed("The download finished but the model files are incomplete. Try again.")
             } else {
@@ -469,10 +528,15 @@ public final class ParakeetModelManager: ObservableObject {
         if let engine = engines.removeValue(forKey: version) {
             Task { await engine.unload() }
         }
+        // Rename is instant, so the folder is gone from the app's point of view at once; the slow
+        // recursive removal of the renamed folder runs in the background.
         let dir = ParakeetStorage.versionDirectory(version, in: root)
         do {
             if FileManager.default.fileExists(atPath: dir.path) {
-                try FileManager.default.removeItem(at: dir)
+                let trash = root.appendingPathComponent(
+                    "\(ParakeetStorage.trashPrefix)\(UUID().uuidString)", isDirectory: true)
+                try FileManager.default.moveItem(at: dir, to: trash)
+                Task.detached(priority: .utility) { try? FileManager.default.removeItem(at: trash) }
             }
         } catch {
             states[version] = diskState(of: version)
@@ -495,7 +559,10 @@ public final class ParakeetModelManager: ObservableObject {
             idleSeconds: idleSeconds,
             loader: loader)
         engines[version] = engine
-        if version == pinned { Task { await engine.setPinned(true) } }
+        if version == pinned {
+            let generation = pinGeneration
+            Task { await engine.setPinned(true, generation: generation) }
+        }
         return engine
     }
 
@@ -514,6 +581,12 @@ public final class ParakeetModelManager: ObservableObject {
                 diagnostics.failure("parakeet", error, context: "preloading \(version.displayName)")
             }
         }
+    }
+
+    /// Whether `version`'s engine is pinned right now.
+    func isPinned(_ version: ParakeetVersion) async -> Bool {
+        guard let engine = engines[version] else { return false }
+        return await engine.isPinned
     }
 
     /// Whether `version`'s models are in memory right now.

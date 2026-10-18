@@ -89,7 +89,7 @@ public final class MediaPausePolicy: @unchecked Sendable {
     }
 
     private let effects: MediaEffects
-    private let isEnabled: @Sendable () -> Bool
+    private let isEnabled: () -> Bool
     private let diagnostics: Diagnostics
     private let timing: Timing
     private let queue = DispatchQueue(label: "ai.useful.voice.media-pause", qos: .userInitiated)
@@ -103,7 +103,7 @@ public final class MediaPausePolicy: @unchecked Sendable {
     private var held: Set<MediaPlayerID> = []
 
     public init(effects: MediaEffects,
-                isEnabled: @escaping @Sendable () -> Bool,
+                isEnabled: @escaping () -> Bool,
                 diagnostics: Diagnostics = .shared,
                 timing: Timing = Timing()) {
         self.effects = effects

@@ -75,10 +75,6 @@ public final class SystemMediaEffects: MediaEffects, @unchecked Sendable {
     public func sendPause() throws { try mediaRemote.send(.pause) }
     public func sendPlay() throws { try mediaRemote.send(.play) }
 
-    public func sleep(_ seconds: TimeInterval) {
-        Thread.sleep(forTimeInterval: seconds)
-    }
-
     // MARK: - Core Audio helpers
 
     private static func address(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {

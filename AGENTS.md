@@ -21,6 +21,9 @@ Cross-platform dictation app. macOS: Swift (`Sources/UsefulVoiceCore`,
   Core Audio's process list is only the fallback when the helper cannot run; there a pause macOS can't observe (a player
   that stops later than 100 ms, 300 ms for Music/Spotify/WebKit, 10.5 s for Chromium/Electron helpers) isn't remembered, so
   it isn't resumed: deliberate, never risk playing something unknown.
+  `MediaPausePolicy` takes every wait, window, tick and delay from a `MediaClock`; its tests run on a virtual clock, so they don't
+  depend on machine speed (one real-clock smoke test keeps generous margins). `NowPlayingReader` never raises SIGPIPE, backs off after
+  repeated failures and checks the helper library's signature against the app's before starting perl.
 - Packaging smoke: `cd windows && npx electron-builder --win --dir`
 - Windows E2E: `cd windows && env -u ELECTRON_RUN_AS_NODE npm run e2e` (Playwright drives the
   built app with `--e2e --uv-data-dir=<scratch>`: hidden windows, fixture data, no tray or

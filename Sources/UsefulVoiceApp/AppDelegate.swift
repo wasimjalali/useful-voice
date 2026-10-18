@@ -142,7 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mediaPause = MediaPausePolicy(
             effects: mediaEffects,
             isEnabled: { [settings] in settings.pauseMediaWhileDictating })
-        // Not in a render or a forced first run, which never dictate.
+        // Not in an offscreen render (UV_SNAPSHOT), which never dictates.
         if !isSnapshot, settings.pauseMediaWhileDictating { mediaEffects.warmUp() }
         setUpController()
         // Before the status item, whose menu shows the update item only when the

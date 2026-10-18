@@ -6,13 +6,18 @@
 // calls uv_nowplaying_get() for each "get" line on stdin. The technique is the one the
 // open-source ungive/mediaremote-adapter (BSD-3-Clause) uses; this file is our own code.
 //
-// Output, one JSON line per call:
+// Output, one JSON line per call (the script prints "seq=<n> " before it):
 //   {"playing":1,"pid":123,"bundleIdentifier":"com.spotify.client"}
 //   pid 0 and an empty bundle id mean no Now Playing app.
 //   {"error":"timeout"} when MediaRemote did not answer within 400 ms.
+//
+// No ARC here: every dispatch object is released by hand. The three MediaRemote callbacks may
+// arrive after a call gave up; each one holds its own reference to the group, and writes its
+// value only if the call it belongs to is still the current one, under a lock.
 #include <CoreFoundation/CoreFoundation.h>
 #include <dispatch/dispatch.h>
 #include <dlfcn.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -24,11 +29,18 @@ typedef void (*GetInt)(dispatch_queue_t, IntCallback);
 typedef void (*GetObject)(dispatch_queue_t, ObjectCallback);
 typedef CFStringRef (*ClientString)(CFTypeRef);
 
-// A late answer from an earlier call must not overwrite the current call's values.
-static volatile unsigned long generation = 0;
-static volatile int playing = -1;
-static volatile int pid = -1;
+// Shared with the callbacks, which run on the MediaRemote queue: only touched under `lock`.
+static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+static unsigned long generation = 0;
+static int playing = -1;
+static int pid = -1;
+static int bundleDone = 0;
 static char bundle[256];
+
+static void fail(const char *reason) {
+    printf("{\"error\":\"%s\"}\n", reason);
+    fflush(stdout);
+}
 
 void uv_nowplaying_get(void *interpreter, void *cv) {
     static void *framework = NULL;
@@ -37,64 +49,82 @@ void uv_nowplaying_get(void *interpreter, void *cv) {
         framework = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_NOW);
         queue = dispatch_queue_create("ai.useful.voice.nowplaying", DISPATCH_QUEUE_SERIAL);
     }
-    if (!framework) {
-        printf("{\"error\":\"mediaremote\"}\n");
-        fflush(stdout);
-        return;
-    }
+    if (!framework) { fail("mediaremote"); return; }
     GetBool getIsPlaying = (GetBool)dlsym(framework, "MRMediaRemoteGetNowPlayingApplicationIsPlaying");
     GetInt getPID = (GetInt)dlsym(framework, "MRMediaRemoteGetNowPlayingApplicationPID");
     GetObject getClient = (GetObject)dlsym(framework, "MRMediaRemoteGetNowPlayingClient");
     ClientString bundleOf = (ClientString)dlsym(framework, "MRNowPlayingClientGetBundleIdentifier");
-    if (!getIsPlaying || !getPID || !getClient || !bundleOf) {
-        printf("{\"error\":\"mediaremote\"}\n");
-        fflush(stdout);
-        return;
-    }
+    if (!getIsPlaying || !getPID || !getClient || !bundleOf) { fail("mediaremote"); return; }
 
+    pthread_mutex_lock(&lock);
     unsigned long mine = ++generation;
     playing = -1;
     pid = -1;
+    bundleDone = 0;
     bundle[0] = 0;
-    __block int bundleDone = 0;
+    pthread_mutex_unlock(&lock);
+
     dispatch_group_t group = dispatch_group_create();
 
+    // Each callback owns one reference to the group, released when it has left it.
+    dispatch_retain(group);
     dispatch_group_enter(group);
     getIsPlaying(queue, ^(Boolean isPlaying) {
+        pthread_mutex_lock(&lock);
         if (generation == mine) playing = isPlaying ? 1 : 0;
+        pthread_mutex_unlock(&lock);
         dispatch_group_leave(group);
+        dispatch_release(group);
     });
+    dispatch_retain(group);
     dispatch_group_enter(group);
     getPID(queue, ^(int value) {
+        pthread_mutex_lock(&lock);
         if (generation == mine) pid = value;
+        pthread_mutex_unlock(&lock);
         dispatch_group_leave(group);
+        dispatch_release(group);
     });
+    dispatch_retain(group);
     dispatch_group_enter(group);
     getClient(queue, ^(CFTypeRef client) {
+        char text[256];
+        text[0] = 0;
+        if (client) {
+            CFStringRef identifier = bundleOf(client);
+            if (identifier) CFStringGetCString(identifier, text, sizeof text, kCFStringEncodingUTF8);
+        }
+        pthread_mutex_lock(&lock);
         if (generation == mine) {
-            if (client) {
-                CFStringRef identifier = bundleOf(client);
-                if (identifier) CFStringGetCString(identifier, bundle, sizeof bundle, kCFStringEncodingUTF8);
-            }
+            memcpy(bundle, text, sizeof bundle);
             bundleDone = 1;
         }
+        pthread_mutex_unlock(&lock);
         dispatch_group_leave(group);
+        dispatch_release(group);
     });
 
     long timedOut = dispatch_group_wait(group, dispatch_time(DISPATCH_TIME_NOW, 400 * NSEC_PER_MSEC));
-    if (timedOut || playing < 0 || pid < 0 || !bundleDone) {
-        generation++;   // ignore anything that still arrives
-        printf("{\"error\":\"timeout\"}\n");
-        fflush(stdout);
-        return;
-    }
-    // The bundle id is JSON-escaped by dropping the two characters that would need it.
+    dispatch_release(group);   // this call's own reference
+
+    // Take the values, and retire this call's generation so a late callback cannot write.
+    pthread_mutex_lock(&lock);
+    int gotPlaying = playing, gotPID = pid, gotBundleDone = bundleDone;
+    char text[256];
+    memcpy(text, bundle, sizeof text);
+    generation++;
+    pthread_mutex_unlock(&lock);
+
+    if (timedOut || gotPlaying < 0 || gotPID < 0 || !gotBundleDone) { fail("timeout"); return; }
+
+    // The bundle id is JSON-escaped by dropping the characters that would need it.
     char safe[256];
     size_t length = 0;
-    for (size_t index = 0; bundle[index] && length < sizeof safe - 1; index++) {
-        if (bundle[index] != '"' && bundle[index] != '\\' && (unsigned char)bundle[index] >= 0x20) safe[length++] = bundle[index];
+    text[sizeof text - 1] = 0;
+    for (size_t index = 0; text[index] && length < sizeof safe - 1; index++) {
+        if (text[index] != '"' && text[index] != '\\' && (unsigned char)text[index] >= 0x20) safe[length++] = text[index];
     }
     safe[length] = 0;
-    printf("{\"playing\":%d,\"pid\":%d,\"bundleIdentifier\":\"%s\"}\n", playing, pid, safe);
+    printf("{\"playing\":%d,\"pid\":%d,\"bundleIdentifier\":\"%s\"}\n", gotPlaying, gotPID, safe);
     fflush(stdout);
 }

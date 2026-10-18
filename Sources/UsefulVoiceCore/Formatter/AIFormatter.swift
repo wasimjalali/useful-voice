@@ -3,14 +3,16 @@ import Foundation
 /// Checks a model's formatted text before it replaces the transcript. Pure.
 public enum FormatterGuard {
     static let preambles = ["here is", "here's", "sure", "certainly", "i've", "i have", "of course"]
+    static let leadingFillers = ["um", "uh", "er", "erm"]
 
     /// The text to use, or nil when the output can't be trusted (the transcript is
     /// delivered unformatted instead).
     ///
     /// Trims, strips one wrapping code fence and one wrapping `<dictation>` tag,
     /// then rejects: empty output, output over twice the input plus 40 characters,
-    /// output under 0.4x an input of 20 or more characters, and an assistant
-    /// preamble the dictation itself didn't start with.
+    /// output under 0.4x an input of 20 or more characters, an output of five or
+    /// more words where under 60% of the words come from the input, leaked prompt
+    /// tags, and an assistant preamble the dictation itself didn't start with.
     public static func accept(input: String, output: String) -> String? {
         var text = output.trimmingCharacters(in: .whitespacesAndNewlines)
         text = stripFence(text)
@@ -22,12 +24,50 @@ public enum FormatterGuard {
         if inputLength >= 20, Double(text.count) < Double(inputLength) * 0.4 { return nil }
 
         let lowered = text.lowercased()
-        let inputLowered = input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        for preamble in preambles where lowered.hasPrefix(preamble) {
+        if lowered.contains("<vocabulary>") || lowered.contains("</dictation>") { return nil }
+
+        let outputWords = words(in: text)
+        if outputWords.count >= 5 {
+            let inputWords = Set(words(in: input))
+            let shared = outputWords.filter { inputWords.contains($0) }.count
+            if Double(shared) < Double(outputWords.count) * 0.6 { return nil }
+        }
+
+        let spoken = withoutLeadingFillers(normalizeApostrophes(input.lowercased()))
+        let reply = normalizeApostrophes(lowered)
+        for preamble in preambles where reply.hasPrefix(preamble) {
             // A dictation that really starts that way ("Sure, send it") is not a preamble.
-            if !inputLowered.hasPrefix(preamble) { return nil }
+            if !spoken.hasPrefix(preamble) { return nil }
         }
         return text
+    }
+
+    /// Lowercase words with punctuation stripped.
+    static func words(in text: String) -> [String] {
+        text.lowercased()
+            .components(separatedBy: .whitespacesAndNewlines)
+            .map { $0.trimmingCharacters(in: .punctuationCharacters.union(.symbols)) }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func normalizeApostrophes(_ text: String) -> String {
+        text.replacingOccurrences(of: "\u{2019}", with: "'").replacingOccurrences(of: "\u{2018}", with: "'")
+    }
+
+    /// "um, sure ..." -> "sure ...": the filler the formatter would drop anyway.
+    private static func withoutLeadingFillers(_ text: String) -> String {
+        var rest = Substring(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        var changed = true
+        while changed {
+            changed = false
+            for filler in leadingFillers where rest.hasPrefix(filler) {
+                let after = rest.dropFirst(filler.count)
+                guard after.first.map({ !$0.isLetter && !$0.isNumber }) ?? true else { continue }
+                rest = after.drop(while: { $0 == "," || $0 == "." || $0.isWhitespace })
+                changed = true
+            }
+        }
+        return String(rest)
     }
 
     private static func stripFence(_ text: String) -> String {
@@ -72,8 +112,9 @@ public enum FormatterRequest {
         model.apiModel == "claude-sonnet-5-5" ? 10 : 6
     }
 
+    /// Twice the dictation plus room, within 512...8192. Counts the dictation only.
     public static func maxTokens(forInput text: String) -> Int {
-        min(4096, max(256, text.utf16.count))
+        min(8192, max(512, text.utf16.count * 2 + 256))
     }
 
     /// 3.8 Flash rejects `minimal`, so its lowest level is `low`.
@@ -118,8 +159,16 @@ public enum FormatterRequest {
         return request
     }
 
-    /// Joined non-thought parts of the first candidate.
-    static func parseGemini(_ data: Data) -> String? {
+    /// What a reply held: usable text, or the reason it can't be used.
+    enum Reply: Equatable {
+        case text(String)
+        case failure(String)
+    }
+
+    /// Joined non-thought parts of the first candidate. A reply that stopped for any
+    /// reason but STOP (cut short, blocked) is a failure: a truncated answer must
+    /// never replace the dictation.
+    static func parseGemini(_ data: Data) -> Reply {
         struct Response: Decodable {
             struct Candidate: Decodable {
                 struct Content: Decodable {
@@ -127,25 +176,48 @@ public enum FormatterRequest {
                     let parts: [Part]?
                 }
                 let content: Content?
+                let finishReason: String?
             }
+            struct Feedback: Decodable { let blockReason: String? }
             let candidates: [Candidate]?
+            let promptFeedback: Feedback?
         }
-        guard let decoded = try? JSONDecoder().decode(Response.self, from: data),
-              let parts = decoded.candidates?.first?.content?.parts else { return nil }
-        let text = parts.filter { $0.thought != true }.compactMap(\.text).joined()
-        return text.isEmpty ? nil : text
+        guard let decoded = try? JSONDecoder().decode(Response.self, from: data) else {
+            return .failure("unreadable response")
+        }
+        if decoded.promptFeedback?.blockReason != nil { return .failure("blocked") }
+        guard let candidate = decoded.candidates?.first else { return .failure("empty response") }
+        if candidate.finishReason != "STOP" {
+            switch candidate.finishReason {
+            case "MAX_TOKENS": return .failure("truncated")
+            case "SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "RECITATION", "IMAGE_SAFETY":
+                return .failure("blocked")
+            default: return .failure("stopped early")
+            }
+        }
+        let text = (candidate.content?.parts ?? []).filter { $0.thought != true }.compactMap(\.text).joined()
+        return text.isEmpty ? .failure("empty response") : .text(text)
     }
 
-    /// Joined `text` blocks; never assumes `content[0]` is text.
-    static func parseAnthropic(_ data: Data) -> String? {
+    /// Joined `text` blocks; never assumes `content[0]` is text. Anything but
+    /// `end_turn` (a `max_tokens` cut, a refusal) is a failure.
+    static func parseAnthropic(_ data: Data) -> Reply {
         struct Response: Decodable {
             struct Block: Decodable { let type: String; let text: String? }
             let content: [Block]?
+            let stop_reason: String?
         }
         guard let decoded = try? JSONDecoder().decode(Response.self, from: data),
-              let blocks = decoded.content else { return nil }
+              let blocks = decoded.content else { return .failure("unreadable response") }
+        if decoded.stop_reason != "end_turn" {
+            switch decoded.stop_reason {
+            case "max_tokens": return .failure("truncated")
+            case "refusal": return .failure("blocked")
+            default: return .failure("stopped early")
+            }
+        }
         let text = blocks.filter { $0.type == "text" }.compactMap(\.text).joined()
-        return text.isEmpty ? nil : text
+        return text.isEmpty ? .failure("empty response") : .text(text)
     }
 }
 
@@ -182,11 +254,28 @@ public struct AIFormatter: Sendable {
         self.diagnostics = diagnostics
     }
 
-    /// Transcripts of this many words or fewer are left alone.
+    /// Dictations under this many words are left alone.
     public static let minimumWords = 3
+    /// Scripts written without spaces between words count characters instead.
+    public static let minimumUnspacedCharacters = 6
 
     public static func shouldFormat(_ text: String) -> Bool {
-        text.split(whereSeparator: { $0.isWhitespace }).count >= minimumWords
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.unicodeScalars.contains(where: Self.isUnspacedScript) {
+            return trimmed.count >= minimumUnspacedCharacters
+        }
+        return trimmed.split(whereSeparator: { $0.isWhitespace }).count >= minimumWords
+    }
+
+    /// CJK, kana, Hangul, Thai, Lao, Khmer and Myanmar.
+    static func isUnspacedScript(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x1100...0x11FF, 0x3040...0x30FF, 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xAC00...0xD7AF,
+             0x0E00...0x0EFF, 0x1000...0x109F, 0x1780...0x17FF, 0x20000...0x2FA1F:
+            return true
+        default:
+            return false
+        }
     }
 
     /// Formats `text`. Cancelling the calling task cancels the request.
@@ -196,14 +285,19 @@ public struct AIFormatter: Sendable {
         guard let key = apiKey()?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty else {
             return log(.skipped("no \(model.providerName) key"))
         }
+        let timedOut = DeadlineFlag()
         do {
-            let output = try await withDeadline(seconds: FormatterRequest.deadline(for: model)) {
+            let output = try await withDeadline(seconds: FormatterRequest.deadline(for: model),
+                                                timedOut: timedOut) {
                 try await self.run(text: trimmed, vocabulary: vocabulary, key: key)
             }
             guard let accepted = FormatterGuard.accept(input: trimmed, output: output) else {
                 return log(.failed("output rejected by the guard"))
             }
             return .formatted(accepted)
+        } catch where timedOut.isSet {
+            // The deadline fired: logged, unlike a cancel the person asked for.
+            return log(.failed("timeout"))
         } catch is CancellationError {
             return .failed("cancelled")
         } catch let error as FormatterError {
@@ -212,7 +306,7 @@ public struct AIFormatter: Sendable {
             return log(.failed("HTTP \(failure.status)"))
         } catch let urlError as URLError {
             return log(.failed(urlError.code == .cancelled ? "cancelled"
-                               : urlError.code == .timedOut ? "timed out" : "network error \(urlError.code.rawValue)"))
+                               : urlError.code == .timedOut ? "timeout" : "network error \(urlError.code.rawValue)"))
         } catch {
             return log(.failed("unexpected error"))
         }
@@ -222,7 +316,8 @@ public struct AIFormatter: Sendable {
         switch outcome {
         case .skipped(let reason), .failed(let reason):
             if reason != "short transcript", reason != "cancelled" {
-                diagnostics.warning("formatter", "\(model.apiModel): \(reason); delivered the unformatted text")
+                // Provider, model and a fixed reason only: a response body can echo the dictation.
+                diagnostics.warning("formatter", "\(model.provider) \(model.apiModel): \(reason); delivered the unformatted text")
             }
         case .formatted: break
         }
@@ -236,26 +331,30 @@ public struct AIFormatter: Sendable {
         case "gemini":
             let request = try FormatterRequest.gemini(model: model, apiKey: key, text: text, vocabulary: vocabulary)
             let data = try await send(request)
-            guard let output = FormatterRequest.parseGemini(data) else { throw FormatterError(reason: "empty response") }
-            return output
+            return try Self.unwrap(FormatterRequest.parseGemini(data))
         case "anthropic":
             var request = try FormatterRequest.anthropic(model: model, apiKey: key, text: text, vocabulary: vocabulary)
             do {
                 let data = try await send(request)
-                guard let output = FormatterRequest.parseAnthropic(data) else { throw FormatterError(reason: "empty response") }
-                return output
+                return try Self.unwrap(FormatterRequest.parseAnthropic(data))
             } catch let error as HTTPFailure where error.status == 400 && error.body.lowercased().contains("thinking") {
                 // The model rejected the thinking field: once more without it.
                 request = try FormatterRequest.anthropic(model: model, apiKey: key, text: text,
                                                          vocabulary: vocabulary, includeThinkingField: false)
                 let data = try await send(request)
-                guard let output = FormatterRequest.parseAnthropic(data) else { throw FormatterError(reason: "empty response") }
-                return output
+                return try Self.unwrap(FormatterRequest.parseAnthropic(data))
             } catch let error as HTTPFailure {
                 throw FormatterError(reason: "HTTP \(error.status)")
             }
         default:
             throw FormatterError(reason: "unknown provider")
+        }
+    }
+
+    private static func unwrap(_ reply: FormatterRequest.Reply) throws -> String {
+        switch reply {
+        case .text(let text): return text
+        case .failure(let reason): throw FormatterError(reason: reason)
         }
     }
 
@@ -271,11 +370,13 @@ public struct AIFormatter: Sendable {
     }
 
     /// A wall-clock deadline that also passes the caller's cancellation down.
-    private func withDeadline<T: Sendable>(seconds: TimeInterval,
+    private func withDeadline<T: Sendable>(seconds: TimeInterval, timedOut: DeadlineFlag,
                                            _ work: @escaping @Sendable () async throws -> T) async throws -> T {
         let task = Task<T, Error> { try await work() }
         let timer = Task<Void, Never> {
             try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            timedOut.set()
             task.cancel()
         }
         defer { timer.cancel() }
@@ -285,4 +386,12 @@ public struct AIFormatter: Sendable {
             task.cancel()
         }
     }
+}
+
+/// Set when the deadline (not the person) ended the request.
+final class DeadlineFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+    var isSet: Bool { lock.lock(); defer { lock.unlock() }; return value }
+    func set() { lock.lock(); value = true; lock.unlock() }
 }

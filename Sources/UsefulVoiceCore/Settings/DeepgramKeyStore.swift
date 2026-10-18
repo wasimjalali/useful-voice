@@ -45,6 +45,17 @@ public final class ProviderKeyStore: @unchecked Sendable {
         }
     }
 
+    /// Whether a provider's key is stored, from the Keychain's attributes (never prompts,
+    /// never the cache).
+    public static func keyIsStored(for provider: KeyProvider) -> Bool {
+        provider == .deepgram ? keyIsStored() : Keychain.exists(account: provider.account)
+    }
+
+    /// Every key currently cached, for redacting error text by value.
+    public static func currentKeys() -> [String] {
+        KeyProvider.allCases.compactMap { store(for: $0).current }
+    }
+
     public let provider: KeyProvider
     private let backend: DeepgramKeyBackend
     /// Owns every keychain operation on this item and every cache write.

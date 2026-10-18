@@ -65,6 +65,16 @@ final class UsefulVoiceViewModel: ObservableObject {
     let models: LocalModelManager
     /// Parakeet downloads and providers. One instance, shared with Settings.
     let parakeet: ParakeetModelManager
+    /// The Models settings state. It lives as long as the app, not the Settings page,
+    /// so a local model picked before it was downloaded still becomes the voice model
+    /// when the download finishes after the person left Settings.
+    lazy var modelsModel: ModelsViewModel = {
+        let model = ModelsViewModel(settings: settings, whisper: models, parakeet: parakeet)
+        model.onChanged = { [weak self] in self?.refreshConfig() }
+        model.languagePin = { [weak self] in self?.languagePin ?? .auto }
+        return model
+    }()
+
     private let onToggle: (DictationSource) -> Void
     private var feedback = DictationFeedback()
 

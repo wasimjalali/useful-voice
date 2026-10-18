@@ -4,8 +4,9 @@ import { dropdown } from '../components/dropdown.js';
 import { previewFeatures } from '../components/flags.js';
 import { runSetupAgain } from '../components/firstRun.js';
 import { languagePicker } from '../components/languagePicker.js';
+import { keysGroup, modelsGroup, type ModelsHost } from '../components/models.js';
 import { releaseLinks } from '../../core/releaseLinks.js';
-import { state, refresh, renderChrome, activeLanguagePicker } from '../shell.js';
+import { state, refresh, activeLanguagePicker } from '../shell.js';
 import type { SettingsDTO } from '../../preload/types.js';
 
 // ---- Settings ---------------------------------------------------------
@@ -17,7 +18,8 @@ import type { SettingsDTO } from '../../preload/types.js';
 
 const GROUPS: Array<[string, string]> = [
   ['general', 'General'],
-  ['engine', 'Engine'],
+  ['models', 'Models'],
+  ['keys', 'API keys'],
   ['formatting', 'Formatting'],
   ['hotkeys', 'Hotkeys'],
   ['appearance', 'Appearance'],
@@ -131,25 +133,6 @@ function hotkeyRefusal(value: string, other: string): string | null {
   return null;
 }
 
-/**
- * Reload the settings after a key change that already succeeded. If the reload fails,
- * the page still shows the outcome the change had (`hasApiKey`) and says so; it does
- * not claim the change itself failed.
- */
-async function reloadSettings(hasApiKey: boolean): Promise<boolean> {
-  try {
-    state.settings = await api.getSettings();
-    return true;
-  } catch (error) {
-    if (state.settings) state.settings = { ...state.settings, hasApiKey };
-    toast(
-      `${hasApiKey ? 'Key saved' : 'Key removed'}, but the settings could not be reloaded. ${messageOf(error, '')}`.trim(),
-      'bad',
-    );
-    return false;
-  }
-}
-
 /** Save one patch. Failures surface as a toast; the caller decides how to roll back. */
 async function save(patch: Partial<SettingsDTO>): Promise<boolean> {
   try {
@@ -190,7 +173,8 @@ export function renderSettingsPage(anchor?: string): HTMLElement {
   };
 
   addGroup('general', generalGroup(settings));
-  addGroup('engine', engineGroup());
+  addGroup('models', modelsGroup(modelsHost));
+  addGroup('keys', keysGroup(modelsHost), setupGroup());
   addGroup('formatting', formattingGroup(settings));
   addGroup('hotkeys', hotkeysGroup());
   addGroup('appearance', appearanceGroup(settings));
@@ -246,10 +230,11 @@ export function renderSettingsPage(anchor?: string): HTMLElement {
     };
     scroller.addEventListener('scroll', update, { passive: true });
     detachSpy = () => scroller.removeEventListener('scroll', update);
-    const target = anchor ? sections.get(anchor) : undefined;
+    // `engine` is the old name of the Models group: tray links and saved deep links still use it.
+    const target = anchor ? sections.get(anchor === 'engine' ? 'models' : anchor) : undefined;
     if (anchor && target) {
       lockUntil = Date.now() + 300;
-      setActive(anchor);
+      setActive(anchor === 'engine' ? 'models' : anchor);
       scrollToGroup(page, target, false);
     } else {
       update();
@@ -348,169 +333,20 @@ function goalRow(settings: SettingsDTO): HTMLElement {
   return wrapper;
 }
 
-function engineGroup(): HTMLElement {
-  return surface(
-    row('Engine', el('span', {}, 'Deepgram Nova-3')),
-    keyRow(),
-    // The local engine does not exist on Windows yet. Preview builds show where it
-    // will go, as a status and nothing to press.
-    previewFeatures()
-      ? row('Whisper (local)', el('span', { class: 'status-pill' }, 'Coming later'))
-      : null,
-    row(
-      'Setup',
-      el('button', { class: 'btn btn-secondary', type: 'button', onclick: () => void runSetupAgain() } as never, 'Run setup again'),
+/** What the Models and API keys groups need from this page. */
+const modelsHost: ModelsHost = { save, toast, messageOf };
+
+function setupGroup(): HTMLElement {
+  return el(
+    'div',
+    { class: 's-setup' },
+    surface(
+      row(
+        'Setup',
+        el('button', { class: 'btn btn-secondary', type: 'button', onclick: () => void runSetupAgain() } as never, 'Run setup again'),
+      ),
     ),
   );
-}
-
-/**
- * The Deepgram key row. It owns its own states and repaints only itself:
- *  - no key: two verbs, "Add key" and "Get a key" (a-61)
- *  - key saved: Test connection, Change key, Remove key
- *  - editing: a field, Save key (the only primary), and a status line. A rejected
- *    key puts the field in the danger edge and shows the server's message (a-60).
- */
-function keyRow(): HTMLElement {
-  const container = el('div', { class: 's-key' });
-  let editing = false;
-  let status: { kind: 'ok' | 'bad' | 'busy'; text: string } | null = null;
-
-  const pill = (): HTMLElement | null =>
-    status
-      ? el(
-          'span',
-          { class: `status-pill ${status.kind === 'ok' ? 'ok' : status.kind === 'bad' ? 'bad' : ''}`, role: 'status' } as never,
-          el('span', { class: 'status-dot' }),
-          status.text,
-        )
-      : null;
-
-  const getKey = el(
-    'button',
-    {
-      class: 'btn btn-ghost',
-      type: 'button',
-      onclick: () => void api.openExternal('https://console.deepgram.com/'),
-    } as never,
-    'Get a key',
-  );
-
-  const draw = (): void => {
-    const hasKey = state.settings?.hasApiKey ?? false;
-    const label = el('div', { class: 's-label' }, el('span', {}, 'Deepgram key'));
-    const control = el('div', { class: 's-control s-key-control' });
-
-    if (!hasKey && !editing) {
-      control.append(
-        el('span', { class: 'muted' }, 'No key added'),
-        el('button', { class: 'btn btn-primary', type: 'button', onclick: () => { editing = true; draw(); } } as never, 'Add key'),
-        el('button', { class: 'btn btn-secondary', type: 'button', onclick: () => void api.openExternal('https://console.deepgram.com/') } as never, 'Get a key'),
-      );
-    } else if (editing) {
-      label.append(el('span', { class: 's-hint' }, 'Stored encrypted with your Windows account.'));
-      const input = el('input', {
-        class: `field-input ${status?.kind === 'bad' ? 'err' : ''}`,
-        type: 'password',
-        placeholder: hasKey ? 'Paste a new key' : 'Paste your key',
-        'aria-label': 'Deepgram API key',
-        autocomplete: 'off',
-      } as never);
-      const submit = (): void => void saveKey(input.value);
-      input.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') submit();
-      });
-      control.append(
-        input,
-        el(
-          'div',
-          { class: 's-buttons' },
-          el('button', { class: 'btn btn-primary', type: 'button', onclick: submit } as never, 'Save key'),
-          hasKey
-            ? el('button', { class: 'btn btn-secondary', type: 'button', onclick: () => { editing = false; status = null; draw(); } } as never, 'Cancel')
-            : null,
-          getKey,
-        ),
-        ...(status ? [pill() as HTMLElement] : []),
-      );
-      queueMicrotask(() => input.focus());
-    } else {
-      label.append(el('span', { class: 's-hint' }, 'Stored encrypted with your Windows account.'));
-      control.append(
-        ...(status ? [pill() as HTMLElement] : []),
-        el('button', { class: 'btn btn-secondary', type: 'button', onclick: () => void testKey() } as never, 'Test connection'),
-        el('button', { class: 'btn btn-secondary', type: 'button', onclick: () => { editing = true; status = null; draw(); } } as never, 'Change key'),
-        el('button', { class: 'btn btn-ghost', type: 'button', onclick: () => void removeKey() } as never, 'Remove key'),
-      );
-    }
-    container.replaceChildren(label, control);
-  };
-
-  const saveKey = async (raw: string): Promise<void> => {
-    const value = raw.trim();
-    if (value.length === 0) {
-      status = { kind: 'bad', text: 'Paste a key first.' };
-      draw();
-      return;
-    }
-    try {
-      const result = await api.setApiKey(value);
-      if (!result.ok) {
-        status = { kind: 'bad', text: result.error ?? 'The key could not be saved.' };
-        draw();
-        return;
-      }
-    } catch (error) {
-      status = { kind: 'bad', text: messageOf(error, 'The key could not be saved.') };
-      draw();
-      return;
-    }
-    // The key is saved. Reloading the settings is a separate step and reports on its own.
-    const reloaded = await reloadSettings(true);
-    editing = false;
-    status = null;
-    draw();
-    // The key banner and the status button in the shell read hasApiKey.
-    renderChrome();
-    if (reloaded) toast('Saved');
-  };
-
-  const testKey = async (): Promise<void> => {
-    status = { kind: 'busy', text: 'Checking…' };
-    draw();
-    try {
-      const result = await api.testApiKey();
-      if (result.ok) {
-        status = { kind: 'ok', text: result.message };
-      } else {
-        // A rejected key is replaced, not retried: open the field with the danger edge.
-        status = { kind: 'bad', text: result.message };
-        editing = true;
-      }
-    } catch (error) {
-      status = { kind: 'bad', text: messageOf(error, 'The key could not be checked.') };
-    }
-    draw();
-  };
-
-  const removeKey = async (): Promise<void> => {
-    try {
-      await api.clearApiKey();
-    } catch (error) {
-      toast(messageOf(error, 'The key could not be removed.'), 'bad');
-      return;
-    }
-    const reloaded = await reloadSettings(false);
-    editing = false;
-    status = null;
-    draw();
-    renderChrome();
-    if (reloaded) toast('Key removed');
-  };
-
-  draw();
-  container.className = 's-row s-row-key';
-  return container;
 }
 
 function formattingGroup(settings: SettingsDTO): HTMLElement {

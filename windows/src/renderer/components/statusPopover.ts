@@ -11,7 +11,12 @@ import type { DictationError } from '../../preload/types.js';
  */
 
 export interface HealthInput {
+  /** The chosen voice model has what it needs: its key, or nothing for a local model. */
   hasApiKey: boolean;
+  /** The chosen voice model's provider (the name in "No Gemini key"). Deepgram when absent. */
+  provider?: string;
+  /** The chosen voice model's name for the status row. Deepgram Nova-3 when absent. */
+  engineName?: string;
   /** The last dictation error, until the next dictation starts or succeeds. */
   lastError: DictationError | null;
   /** The OS microphone permission, when the renderer can read it. */
@@ -58,9 +63,9 @@ export function computeHealth(input: HealthInput, goToEngine: () => void): Healt
   if (!input.hasApiKey) {
     engine = { label: 'Engine', tone: 'warn', text: 'No key', fix: { label: 'Add key', run: goToEngine } };
   } else if (kind === 'keyRejected') {
-    engine = { label: 'Engine', tone: 'bad', text: 'Key rejected', fix: { label: 'Open Engine settings', run: goToEngine } };
+    engine = { label: 'Engine', tone: 'bad', text: 'Key rejected', fix: { label: 'Open Models settings', run: goToEngine } };
   } else if (kind === 'outOfCredits') {
-    engine = { label: 'Engine', tone: 'bad', text: 'Out of credits', fix: { label: 'Open Engine settings', run: goToEngine } };
+    engine = { label: 'Engine', tone: 'bad', text: 'Out of credits', fix: { label: 'Open Models settings', run: goToEngine } };
   } else if (kind === 'timedOut' || kind === 'providerFailed') {
     engine = {
       label: 'Engine',
@@ -74,7 +79,7 @@ export function computeHealth(input: HealthInput, goToEngine: () => void): Healt
   } else if (kind === 'offline') {
     engine = { label: 'Engine', tone: 'warn', text: 'Offline', fix: { label: 'Retry last recording', run: () => void api.retryLast() } };
   } else {
-    engine = { label: 'Engine', tone: 'ok', text: 'Deepgram Nova-3' };
+    engine = { label: 'Engine', tone: 'ok', text: input.engineName ?? 'Deepgram Nova-3' };
   }
   const microphone: HealthRow = micOff(input)
     ? { label: 'Microphone', tone: 'warn', text: 'Off', fix: { label: 'Open settings', run: () => void api.openExternal(MIC_SETTINGS_URL) } }

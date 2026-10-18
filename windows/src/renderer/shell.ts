@@ -1,4 +1,6 @@
 import { api } from './api.js';
+import { KEY_PROVIDER_INFO, keyProviderOf } from '../core/models/catalog.js';
+import { voiceStatus } from '../core/models/selection.js';
 import { el, icon, ICONS } from './components/dom.js';
 import { createBanner } from './components/banners.js';
 import { computeHealth, createStatusButton, type HealthInput } from './components/statusPopover.js';
@@ -260,9 +262,17 @@ export function mountMain(pages: Record<Page, PageModule>): void {
   const root = document.getElementById('root');
   if (!root) return;
 
-  const goToEngine = (): void => navigate('settings', 'engine');
+  const goToEngine = (): void => navigate('settings', 'models');
+  const voice = () => (state.settings ? voiceStatus(state.settings.voiceModelId, state.settings.keys) : null);
+  const voiceProviderName = (): string | undefined => {
+    const model = voice()?.model;
+    const provider = model ? keyProviderOf(model) : null;
+    return provider ? KEY_PROVIDER_INFO[provider].name : undefined;
+  };
   const health = (): HealthInput => ({
-    hasApiKey: state.settings?.hasApiKey ?? true,
+    hasApiKey: voice() ? voice()?.missingKeyOf === null : true,
+    provider: voice()?.missingKeyOf ?? voiceProviderName(),
+    engineName: voice() ? `${voice()?.model.provider === 'deepgram' ? 'Deepgram ' : ''}${voice()?.model.name}` : undefined,
     lastError: state.lastError,
     micDenied: state.micDenied,
     pasteBlocked: state.pasteBlocked,

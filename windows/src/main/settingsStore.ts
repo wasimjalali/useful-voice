@@ -3,6 +3,7 @@ import path from 'node:path';
 import { DEFAULT_SETTINGS, type AppSettings } from '../core/models.js';
 import { normaliseSettings } from '../core/settings/settingsBounds.js';
 import { readJson, writeJsonAtomic } from '../core/settings/jsonStore.js';
+import { KEY_PROVIDER_INFO, type KeyProvider } from '../core/models/catalog.js';
 
 /**
  * Where the API key is stored.
@@ -27,6 +28,26 @@ interface SettingsFile {
   apiKeyPlaintextWarning?: boolean;
   /** Set once the first-run setup has been finished or skipped, or was never needed. */
   firstRunCompleted?: boolean;
+  /** The other providers' keys, encrypted the same way as the Deepgram key. */
+  providerKeys?: Partial<Record<ExtraKeyProvider, StoredKey>>;
+}
+
+/** The providers whose keys live in `providerKeys` (Deepgram's stays in `apiKeyEncrypted`). */
+export type ExtraKeyProvider = Exclude<KeyProvider, 'deepgram'>;
+const EXTRA_KEY_PROVIDERS: readonly ExtraKeyProvider[] = ['elevenlabs', 'gemini', 'anthropic'];
+
+interface StoredKey {
+  /** Base64 of the DPAPI-encrypted key (or of the text when `plaintext`). */
+  data: string;
+  plaintext?: boolean;
+}
+
+/** One extra key in memory: the key when it could be read, the blob when it could not. */
+interface ExtraKey {
+  key: string | null;
+  /** The stored blob as read, kept when it could not be decrypted so a save writes it back untouched. */
+  undecrypted: StoredKey | null;
+  onDisk: boolean;
 }
 
 const CURRENT_SETTINGS_VERSION = 1;
@@ -47,6 +68,7 @@ export class SettingsStore {
   /** The stored key blob as read, kept when it could not be decrypted so a save writes it back untouched. */
   private undecryptedBlob: string | null = null;
   private frozen = false;
+  private readonly extraKeys = new Map<ExtraKeyProvider, ExtraKey>();
   private readonly statusListeners = new Set<(status: SaveStatus) => void>();
 
   private readonly filePath: string;
@@ -88,7 +110,24 @@ export class SettingsStore {
         }
       }
     }
+    if (result.value && typeof result.value === 'object') {
+      this.loadExtraKeys(result.value.providerKeys);
+    }
     this.loaded = true;
+  }
+
+  private loadExtraKeys(stored: SettingsFile['providerKeys']): void {
+    for (const provider of EXTRA_KEY_PROVIDERS) {
+      const entry = stored?.[provider];
+      if (!entry || typeof entry.data !== 'string' || entry.data.length === 0) continue;
+      const key = this.decrypt(entry.data, entry.plaintext === true);
+      this.extraKeys.set(provider, { key, undecrypted: key === null ? entry : null, onDisk: true });
+      if (key === null) {
+        this.lastSaveError = new Error(
+          `The stored ${KEY_PROVIDER_INFO[provider].name} key could not be decrypted on this account. Re-enter it in Settings.`,
+        );
+      }
+    }
   }
 
   get isLoaded(): boolean {
@@ -113,7 +152,7 @@ export class SettingsStore {
    * fails to decrypt still counts as configured for the first-run gate.
    */
   get hasStoredKey(): boolean {
-    return this.keyOnDisk || this.hasApiKey;
+    return this.keyOnDisk || this.hasApiKey || [...this.extraKeys.values()].some((entry) => entry.onDisk);
   }
 
   markFirstRunCompleted(): void {
@@ -146,6 +185,47 @@ export class SettingsStore {
    */
   revealApiKey(): string | null {
     return this.apiKey;
+  }
+
+  /** Whether a provider has a key you can use now. */
+  hasKeyFor(provider: KeyProvider): boolean {
+    if (provider === 'deepgram') return this.hasApiKey;
+    const entry = this.extraKeys.get(provider);
+    return entry?.key != null && entry.key.length > 0;
+  }
+
+  /** Presence of every provider's key, for the renderer. */
+  keyPresence(): Record<KeyProvider, boolean> {
+    return {
+      deepgram: this.hasApiKey,
+      elevenlabs: this.hasKeyFor('elevenlabs'),
+      gemini: this.hasKeyFor('gemini'),
+      anthropic: this.hasKeyFor('anthropic'),
+    };
+  }
+
+  /** A provider's key, for main-process use only (see `revealApiKey`). */
+  revealKey(provider: KeyProvider): string | null {
+    if (provider === 'deepgram') return this.apiKey;
+    return this.extraKeys.get(provider)?.key ?? null;
+  }
+
+  setKey(provider: KeyProvider, key: string): { ok: boolean; error?: string } {
+    if (provider === 'deepgram') return this.setApiKey(key);
+    const trimmed = key.trim();
+    if (trimmed.length === 0) return { ok: false, error: 'The API key is empty.' };
+    this.extraKeys.set(provider, { key: trimmed, undecrypted: null, onDisk: true });
+    void this.save();
+    return { ok: true };
+  }
+
+  clearKey(provider: KeyProvider): void {
+    if (provider === 'deepgram') {
+      this.clearApiKey();
+      return;
+    }
+    this.extraKeys.delete(provider);
+    void this.save();
   }
 
   onSaveStatus(listener: (status: SaveStatus) => void): () => void {
@@ -248,6 +328,17 @@ export class SettingsStore {
       // Could not be read on this account: keep it as it was, for the account that can.
       payload.apiKeyEncrypted = this.undecryptedBlob;
     }
+
+    const providerKeys: Partial<Record<ExtraKeyProvider, StoredKey>> = {};
+    for (const [provider, entry] of this.extraKeys) {
+      if (entry.key !== null && entry.key.length > 0) {
+        const encrypted = this.encrypt(entry.key);
+        providerKeys[provider] = { data: encrypted.data, ...(encrypted.plaintextFallback ? { plaintext: true } : {}) };
+      } else if (entry.undecrypted) {
+        providerKeys[provider] = entry.undecrypted;
+      }
+    }
+    if (Object.keys(providerKeys).length > 0) payload.providerKeys = providerKeys;
 
     try {
       await writeJsonAtomic(this.filePath, payload);

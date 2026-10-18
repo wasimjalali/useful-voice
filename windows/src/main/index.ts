@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, nativeTheme, shell, screen, Menu } from 'electron';
+import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, nativeTheme, shell, screen, Menu, webContents } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promises as fs, appendFileSync, readFileSync, writeFileSync } from 'node:fs';
@@ -9,6 +9,7 @@ import { DataStore } from '../core/settings/dataStore.js';
 import { removeStaleTempFiles, writeJsonAtomic } from '../core/settings/jsonStore.js';
 import { planLoginItem, wasAutoStarted } from '../core/settings/autostart.js';
 import { deliverText } from '../core/delivery/pasteFlow.js';
+import { EDITABLE_FOCUS_SCRIPT } from '../core/delivery/editableFocus.js';
 import { createHotkeyRepeatGuard } from '../core/settings/hotkeyRepeat.js';
 import { escapeCancelsIn } from '../core/settings/escapeShortcut.js';
 import {
@@ -134,6 +135,10 @@ const PICKER_HEIGHT = 448;
 const PICKER_MARGIN = 24;
 /** The picker floats 10 px above where the capsule sits. */
 const PICKER_GAP = 10;
+/** Delivery waits at most this long for a closing picker to hand the foreground back before it checks who is in front. */
+const PICKER_DELIVERY_WAIT_MS = 1500;
+/** Looking for a focused text field in our own window: slower than this means no. */
+const OWN_FIELD_CHECK_MS = 200;
 /** Cap on handing focus back: a cold PowerShell with Add-Type is slow, and the picker is invisible meanwhile. */
 const PICKER_RESTORE_TIMEOUT_MS = 3000;
 
@@ -169,6 +174,8 @@ class UsefulVoiceApp {
     last: { display: Electron.Display; origin: { x: number; y: number } } | null;
   } | null = null;
   private pickerClosing = false;
+  /** The closing picker's foreground restore, while it runs, so delivery can wait for it. */
+  private pickerRestore: Promise<void> | null = null;
   /** The window that was in front when the picker opened, to hand focus back to on close. */
   private pickerReturnTo: number | null = null;
   private pickerOpening = false;
@@ -803,6 +810,7 @@ class UsefulVoiceApp {
     if (this.pickerOpening) return;
     this.pickerOpening = true;
     const stateAtPress = this.service.currentState;
+    const sequenceAtPress = this.service.sequence;
     void (async () => {
       // Before the picker exists on screen: afterwards the foreground window would be the
       // picker. Read now, not at the start of the dictation: the person may have moved to
@@ -830,6 +838,10 @@ class UsefulVoiceApp {
       // The picker's own Esc must reach it, so the global Esc (cancel) steps aside while it is open.
       const reveal = (): void => {
         if (window.isDestroyed()) return;
+        // The page may finish loading long after the press. By then the recording can be
+        // over, and a picker shown over transcribing or delivering would take the
+        // foreground the paste needs.
+        if (this.service.currentState !== stateAtPress || this.service.sequence !== sequenceAtPress) return;
         window.show();
         window.focus();
         window.webContents.focus();
@@ -908,7 +920,7 @@ class UsefulVoiceApp {
     // Still the foreground window until the restore lands, but invisible: it takes no keys,
     // and the global Esc (cancel) is registered again at once.
     this.syncEscapeShortcut(escapeCancelsIn(this.service.currentState));
-    void restoreForegroundWindow(target, {
+    const restoring: Promise<void> = restoreForegroundWindow(target, {
       onlyIfForeground: window.getNativeWindowHandle().readUInt32LE(0),
       timeoutMs: PICKER_RESTORE_TIMEOUT_MS,
     })
@@ -921,7 +933,9 @@ class UsefulVoiceApp {
           window.setIgnoreMouseEvents(false);
         }
         finish();
+        if (this.pickerRestore === restoring) this.pickerRestore = null;
       });
+    this.pickerRestore = restoring;
   }
 
   /** Switch the spoken language. It applies to a recording in progress: it is read at stop. */
@@ -1358,17 +1372,42 @@ class UsefulVoiceApp {
    * The ordering rules (never paste after an abort, when to restore) live in
    * `deliverText`, so they are testable without Electron; this only supplies the ports.
    */
-  private deliver(request: DeliveryRequest): Promise<DeliveryResult> {
+  private async deliver(request: DeliveryRequest): Promise<DeliveryResult> {
+    // A closing language picker is still the foreground window until its restore lands, and
+    // would look like one of our windows in front. Wait (bounded) for it to hand the
+    // foreground back before anyone checks who is in front.
+    const restoring = this.pickerRestore;
+    if (restoring) await waitAtMost(restoring, PICKER_DELIVERY_WAIT_MS);
     return deliverText(request, {
       writeText: (text) => clipboard.writeText(text),
       snapshot: snapshotClipboard,
       restore: restoreClipboard,
       holdsText: clipboardHoldsText,
-      pasteKeystroke: (signal, canSend) => pasteClipboard(signal, canSend),
+      pasteKeystroke: (keystroke) => pasteClipboard(keystroke),
       // Synchronous: one of our windows has focus. The HUD is not focusable, so it never counts.
       ownWindowInFront: () => BrowserWindow.getFocusedWindow() !== null,
+      ownFieldAcceptsPaste: () => this.ownFieldAcceptsPaste(),
       log: (category, message) => this.diagnostics.log(category, message),
     });
+  }
+
+  /**
+   * Whether a text field of ours has focus: a dictation that started in our window is
+   * pasted there only then, like on macOS. The language picker never counts (its search
+   * box would swallow the text), nor does a button, the page, or a password box. Bounded;
+   * any failure or silence means no.
+   */
+  private async ownFieldAcceptsPaste(): Promise<boolean> {
+    const window = BrowserWindow.getFocusedWindow();
+    if (!window || window.isDestroyed() || window === this.pickerWindow) return false;
+    const contents = webContents.getFocusedWebContents() ?? window.webContents;
+    if (!contents || contents.isDestroyed()) return false;
+    try {
+      const answer = await waitAtMost(contents.executeJavaScript(EDITABLE_FOCUS_SCRIPT, false) as Promise<unknown>, OWN_FIELD_CHECK_MS);
+      return answer === true;
+    } catch {
+      return false;
+    }
   }
 
   /** The newest dictation still in the history, so a deleted one is never copied back. */
@@ -2025,6 +2064,26 @@ class UsefulVoiceApp {
     ];
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));
   }
+}
+
+/**
+ * Wait for `promise` for at most `ms`. Resolves to its value, or to undefined when the time
+ * is up; the promise itself is left running.
+ */
+function waitAtMost<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(undefined), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 function csvCell(value: string): string {

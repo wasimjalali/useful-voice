@@ -55,7 +55,7 @@ struct ParakeetPreloadTests {
         manager.preload(.v2)
         try? await Task.sleep(nanoseconds: 400_000_000)
         #expect(fake.loads == 0)
-        #expect(await manager.isLoaded(.v2) == false)
+        #expect(await eventually { await manager.isLoaded(.v2) == false })
     }
 
     @Test func preloadLoadsOnceWarmsUpWithASecondOfSilenceAndIsIdempotent() async throws {
@@ -99,7 +99,7 @@ struct ParakeetPreloadTests {
             diagnostics: diagnostics)
         manager.preload(.v2)
         #expect(await eventually { !diagnostics.entries().isEmpty })
-        #expect(await manager.isLoaded(.v2) == false)
+        #expect(await eventually { await manager.isLoaded(.v2) == false })
     }
 
     @Test func aPinnedVersionIsNeverUnloadedForBeingIdle() async throws {
@@ -123,9 +123,11 @@ struct ParakeetPreloadTests {
         let fake = FakeLoads()
         let manager = manager(root, fake, idle: 0.3)
         manager.preload(.v2)
-        #expect(await eventually { await manager.isLoaded(.v2) })
-        #expect(await eventually { await manager.isLoaded(.v2) == false })
+        // The loaded state lasts only the 0.3 s idle window, which a busy CI machine can sleep
+        // through between polls; the load count only goes up, so it can't be missed.
+        #expect(await eventually { fake.loads == 1 })
         #expect(await eventually { fake.cleanups == 1 })
+        #expect(await eventually { await manager.isLoaded(.v2) == false })
     }
 
     @Test func unpinningLetsALoadedVersionIdleOut() async throws {

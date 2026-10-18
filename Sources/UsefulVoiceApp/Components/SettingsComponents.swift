@@ -463,4 +463,7 @@ enum SettingsFormat {
     }
 
     static func number(_ n: Int) -> String { InsightsFormat.grouped(n) }
+
+    /// A download size: GB from 1 GB up, MB below.
+    static func size(_ bytes: Int64) -> String { bytes >= 1_000_000_000 ? gb(bytes) : mb(bytes) }
 }

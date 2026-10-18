@@ -268,9 +268,9 @@ struct RootView: View {
         case .fix(let fix):
             viewModel.perform(fix)
         case .downloadModel:
-            // Starts the download, then shows its progress in the Engine group.
-            viewModel.models.download(viewModel.models.activeModel)
-            viewModel.navigate(to: SidebarSection.settings.rawValue, anchor: "engine")
+            // Starts the download, then shows its progress in the Models group.
+            viewModel.downloadSelectedVoiceModel()
+            viewModel.navigate(to: SidebarSection.settings.rawValue, anchor: "models")
         }
     }
 

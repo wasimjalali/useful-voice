@@ -6,8 +6,9 @@ import UniformTypeIdentifiers
 import UsefulVoiceCore
 
 /// Settings as one scrolling page with a left index. Every control saves the moment it
-/// changes and says so with a quiet "Saved" toast; the Deepgram key keeps its own Save key
-/// and Test connection. `anchor` scrolls to a group (see `groups`) and is then cleared.
+/// changes and says so with a quiet "Saved" toast; each API key keeps its own Save, Remove
+/// and Test. `anchor` scrolls to a group (see `groups`) and is then cleared; the old
+/// `engine` anchor opens Models.
 struct SettingsPage: View {
     let settings: AppSettings
     @ObservedObject var viewModel: UsefulVoiceViewModel
@@ -18,13 +19,7 @@ struct SettingsPage: View {
     @Binding var anchor: String?
     @EnvironmentObject private var toasts: AppToastCenter
 
-    @State private var engine: TranscriptionEngineChoice = .deepgram
-    @State private var deepgramKey = ""
-    @State private var hasDeepgramKey = false
-    @State private var changingDeepgramKey = false
-    /// A key save or removal is running: the key controls stay disabled so a second
-    /// click can't start another one.
-    @State private var savingKey = false
+    @StateObject private var modelsVM: ModelsViewModel
     @State private var formattingEnabled = true
     @State private var spokenPunctuationEnabled = false
     @State private var silenceTimeout = 60.0
@@ -32,8 +27,6 @@ struct SettingsPage: View {
     @State private var soundEffectsEnabled = true
     @State private var appearance: AppearanceChoice = .system
     @State private var dailyGoal = AppSettings.defaultDailyWordGoal
-    @State private var isTesting = false
-    @State private var testResult: ProviderHealthResult?
     /// Login item, permissions and the dictation count, read once and refreshed on appear and
     /// when the app comes forward, never on every body evaluation.
     @StateObject private var system: SettingsSystemState
@@ -50,15 +43,16 @@ struct SettingsPage: View {
         _anchor = anchor
         // A requested group is the first scroll position, so even a page that is rendered
         // before it appears (an offscreen snapshot) opens there.
-        let requested = anchor.wrappedValue ?? SettingsSnapshot.anchor
+        let requested = (anchor.wrappedValue ?? SettingsSnapshot.anchor).map(Self.canonical)
         if let requested, Self.groups.contains(where: { $0.id == requested }) {
             _topGroup = State(initialValue: requested)
         }
         _models = ObservedObject(wrappedValue: viewModel.models)
         // Read up front as well as in `load()`: a page that is rendered before it appears
         // (an offscreen snapshot) never gets its onAppear.
-        _engine = State(initialValue: settings.transcriptionEngine)
-        _hasDeepgramKey = State(initialValue: DeepgramKeyStore.shared.isConfigured())
+        let modelsVM = ModelsViewModel(settings: settings, whisper: viewModel.models,
+                                       parakeet: viewModel.parakeet)
+        _modelsVM = StateObject(wrappedValue: modelsVM)
         _formattingEnabled = State(initialValue: settings.formattingEnabled)
         _spokenPunctuationEnabled = State(initialValue: settings.spokenPunctuationEnabled)
         _silenceTimeout = State(initialValue: settings.silenceTimeout)
@@ -69,14 +63,11 @@ struct SettingsPage: View {
         _system = StateObject(wrappedValue: SettingsSystemState(history: viewModel.historyStore))
         switch SettingsSnapshot.state {
         case "noKey":
-            _hasDeepgramKey = State(initialValue: false)
+            modelsVM.applyPreview(.noKeys)
+        case "modelsSample", "modelsCompact":
+            modelsVM.applyPreview(.sample)
         case "invalidKey":
-            _hasDeepgramKey = State(initialValue: true)
-            _changingDeepgramKey = State(initialValue: true)
-            _deepgramKey = State(initialValue: "dg_invalid_key_for_snapshot")
-            _testResult = State(initialValue: ProviderHealthResult(
-                providerName: "Deepgram", ok: false, latencyMilliseconds: nil,
-                message: "Deepgram rejected this key.", redactedEndpoint: "", failure: .rejected))
+            modelsVM.applyPreview(.rejectedKey)
         case "confirmDelete":
             _confirmation = State(initialValue: .allDictations(count: viewModel.historyStore.all().count))
         default:
@@ -85,18 +76,18 @@ struct SettingsPage: View {
     }
 
     static let groups: [(id: String, title: String)] = [
-        ("general", "General"), ("engine", "Engine"), ("formatting", "Formatting"),
+        ("general", "General"), ("models", "Models"), ("keys", "API keys"), ("formatting", "Formatting"),
         ("hotkeys", "Hotkeys"), ("appearance", "Appearance"), ("data", "Data"),
         ("importExport", "Import and export"), ("diagnostics", "Diagnostics"), ("about", "About"),
     ]
 
+    /// Older deep links name the Models group "engine".
+    static func canonical(_ anchor: String) -> String { anchor == "engine" ? "models" : anchor }
+
     private enum Confirmation: Equatable {
-        case model(WhisperModel)
+        case model(ModelEntry)
         case allDictations(count: Int)
     }
-
-    /// The Deepgram listen endpoint, shown (redacted) in the connection test.
-    private let deepgramEndpoint = "https://api.deepgram.com/v1/listen"
 
     /// Where the app keeps its data.
     private var supportFolder: URL { DataFolder.current() }
@@ -126,6 +117,7 @@ struct SettingsPage: View {
         // The setup flow can change the engine and the key: re-read only those, so edits
         // elsewhere on the page survive. (AppSettings is not observable, so the end of the
         // flow is the signal.)
+        .onAppear(perform: wireModels)
         .onChange(of: firstRun.active) { _, active in
             if !active { syncFromFirstRun() }
         }
@@ -133,10 +125,6 @@ struct SettingsPage: View {
         // launch, can land while the flow is still marked active.
         .onChange(of: firstRun.keyConnected) { _, _ in syncFromFirstRun() }
         .onChange(of: firstRun.engineRestoreCount) { _, _ in syncFromFirstRun() }
-        // A key typed and abandoned must not sit in memory behind a closed editor.
-        .onChange(of: changingDeepgramKey) { _, open in
-            if !open { deepgramKey = "" }
-        }
         // Permissions change in System Settings, so look again when the app comes forward.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             system.refresh()
@@ -148,7 +136,8 @@ struct SettingsPage: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
                     generalGroup
-                    engineGroup
+                    modelsGroup
+                    apiKeysGroup
                     formattingGroup
                     hotkeysGroup
                     appearanceGroup
@@ -166,8 +155,8 @@ struct SettingsPage: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollPosition(id: $topGroup, anchor: .top)
-            .onChange(of: anchor) { _, requested in
-                guard let requested else { return }
+            .onChange(of: anchor) { _, raw in
+                guard let requested = raw.map(Self.canonical) else { return }
                 if Self.groups.contains(where: { $0.id == requested }) {
                     withAnimation(BrandMotion.resolved(BrandMotion.rise)) { topGroup = requested }
                 }
@@ -177,7 +166,7 @@ struct SettingsPage: View {
             // again once the page is laid out (the first value can land before there is
             // anything to scroll), then clear the request.
             .task {
-                guard let requested = anchor ?? SettingsSnapshot.anchor,
+                guard let requested = (anchor ?? SettingsSnapshot.anchor).map(Self.canonical),
                       Self.groups.contains(where: { $0.id == requested }) else { return }
                 try? await Task.sleep(for: .milliseconds(80))
                 topGroup = requested
@@ -227,249 +216,36 @@ struct SettingsPage: View {
         }
     }
 
-    // MARK: - Engine
+    // MARK: - Models
 
-    private var engineGroup: some View {
-        SettingsGroup(id: "engine", title: "Engine") {
-            SettingsRow(title: "Engine") {
-                BrandedSegmentedControl(selection: engineBinding, options: [
-                    (label: "Deepgram Nova-3", value: TranscriptionEngineChoice.deepgram),
-                    (label: "Whisper (local)", value: TranscriptionEngineChoice.whisperLocal),
-                ])
-                .frame(width: 280)
-            }
-            deepgramKeyRows
-            ForEach(models.models) { model in
-                modelRows(model)
-            }
-            if engine == .whisperLocal {
-                SettingsRow(title: "Test engine", detail: testStatusText(for: .whisperLocal),
-                            detailTone: testStatusTone) {
-                    Button(isTesting ? "Testing" : "Test connection") { testConnection() }
-                        .buttonStyle(.brandSecondary).disabled(isTesting)
-                }
-            }
+    private var modelsGroup: some View {
+        SettingsGroup(id: "models", title: "Models") {
+            ModelsLists(models: modelsVM) { entry in confirmation = .model(entry) }
         } footer: {
             VStack(alignment: .leading, spacing: 8) {
-                if let deleteError = models.deleteError {
+                if let deleteError = viewModel.models.deleteError {
                     Text(deleteError).font(.uv(.meta)).foregroundStyle(Theme.danger).padding(.horizontal, 4)
                 }
-                if engine == .whisperLocal, models.availability(of: models.activeModel) != .usable {
-                    SettingsFootnote(text: "\(models.activeModel.displayName) is not downloaded yet. "
-                                     + "Dictation with Whisper (local) will ask you to download it first.")
-                }
-                if engine == .whisperLocal {
-                    SettingsFootnote(text: "\(models.diskSummary).")
-                }
             }
         }
     }
 
-    // MARK: Deepgram key
-
-    @ViewBuilder
-    private var deepgramKeyRows: some View {
-        let rejected = testResult?.ok == false && testResult?.failure == .rejected
-        if changingDeepgramKey {
-            SettingsRow(title: "Deepgram key", detail: hasDeepgramKey ? "Stored in Keychain" : nil) {
-                SecureField("Paste your API key", text: $deepgramKey)
-                    .premiumInputChrome(error: rejected)
-                    .frame(width: 230)
-                    .disabled(savingKey)
-                    .onSubmit(saveKey)
-                Button("Save key") { saveKey() }
-                    .buttonStyle(.brandPrimary).disabled(savingKey)
-                if hasDeepgramKey {
-                    Button("Remove") { removeKey() }
-                        .buttonStyle(.brandDanger).disabled(savingKey)
-                }
-                Button("Cancel") { changingDeepgramKey = false }
-                    .buttonStyle(.brandSecondary).disabled(savingKey)
-            }
-            keyStatusRow
-        } else if hasDeepgramKey {
-            SettingsRow(title: "Deepgram key", detail: "Stored in Keychain") {
-                keyBadge
-                Button(isTesting ? "Testing" : "Test connection") { testConnection() }
-                    .buttonStyle(.brandSecondary).disabled(isTesting)
-                Button("Change key") { changingDeepgramKey = true }
-                    .buttonStyle(.brandSecondary).disabled(savingKey)
-            }
-            keyStatusRow
-        } else {
-            SettingsRow(title: "Deepgram key") {
-                Text("No key added").font(.uv(.meta)).foregroundStyle(Theme.inkMuted)
-                Button("Add key") { changingDeepgramKey = true }
-                    .buttonStyle(.brandPrimary)
-                Button("Get free credit") { openSignup() }
-                    .buttonStyle(.brandSecondary)
-            }
-            keyStatusRow
-        }
-    }
-
-    /// The result of the last connection test, as a badge on the key row.
-    @ViewBuilder
-    private var keyBadge: some View {
-        if let result = testResult, engine == .deepgram || result.providerName == "Deepgram" {
-            if result.ok {
-                PremiumStatusBadge(kind: .ok, icon: "circle.fill",
-                                   text: "Connected, \(result.latencyMilliseconds ?? 0) ms")
-            } else if result.failure == .rejected {
-                PremiumStatusBadge(kind: .bad, icon: "circle.fill", text: "Deepgram rejected this key")
-            } else {
-                PremiumStatusBadge(kind: .bad, icon: "circle.fill", text: "Could not connect")
-            }
-        } else {
-            PremiumStatusBadge(kind: .ok, icon: "circle.fill", text: "Key saved")
-        }
-    }
-
-    /// What a failed test said, and a stored key that could not be read. A key that cannot
-    /// be read is not the same as no key: re-entering it would overwrite one that is
-    /// probably still fine.
-    @ViewBuilder
-    private var keyStatusRow: some View {
-        if changingDeepgramKey, testResult?.ok == false, testResult?.failure == .rejected {
-            SettingsBlock(padding: EdgeInsets(top: 8, leading: 16, bottom: 10, trailing: 16)) {
-                HStack {
-                    Spacer(minLength: 0)
-                    PremiumStatusBadge(kind: .bad, icon: "circle.fill", text: "Deepgram rejected this key")
-                }
-            }
-        }
-        if let result = testResult, !result.ok, result.failure != .rejected, result.providerName == "Deepgram" {
-            SettingsBlock(padding: EdgeInsets(top: 8, leading: 16, bottom: 10, trailing: 16)) {
-                Text(result.message).font(.uv(.meta)).foregroundStyle(Theme.danger)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        if let problem = DeepgramKeyStore.shared.lookupProblem {
-            SettingsBlock(padding: EdgeInsets(top: 8, leading: 16, bottom: 10, trailing: 16)) {
-                Text("Your saved Deepgram key could not be read: \(problem). Unlock your login keychain and reopen Settings, or enter the key again to replace it.")
-                    .font(.uv(.meta)).foregroundStyle(Theme.danger)
-                    .fixedSize(horizontal: false, vertical: true)
+    private var apiKeysGroup: some View {
+        SettingsGroup(id: "keys", title: "API keys") {
+            ForEach(KeyProvider.allCases, id: \.self) { provider in
+                ApiKeyRow(provider: provider, models: modelsVM)
             }
         }
     }
 
-    private func testStatusText(for engine: TranscriptionEngineChoice) -> String? {
-        guard let result = testResult, result.providerName != "Deepgram" else { return nil }
-        return result.ok ? "Connected in \(result.latencyMilliseconds ?? 0) ms." : result.message
-    }
-
-    private var testStatusTone: Color {
-        testResult.map { $0.ok ? Theme.success : Theme.danger } ?? Theme.inkMuted
-    }
-
-    // MARK: Models
-
-    private func modelName(_ model: WhisperModel) -> String {
-        model.id.replacingOccurrences(of: "whisper-", with: "")
-    }
-
-    @ViewBuilder
-    private func modelRows(_ model: WhisperModel) -> some View {
-        let state = models.state(for: model)
-        let availability = models.availability(of: model)
-        let inUse = engine == .whisperLocal && models.isActive(model)
-        switch state {
-        case .downloading(let received, let total):
-            SettingsBlock {
-                modelHeader(model) {
-                    Button { models.pause(model) } label: {
-                        Label("Pause", systemImage: "pause").labelStyle(.titleAndIcon)
-                    }
-                    .buttonStyle(.brandSecondary)
-                }
-                InsightsMeter(fraction: Double(received) / Double(max(total, 1)), height: 4)
-                HStack {
-                    Text("\(SettingsFormat.mb(received)) of \(SettingsFormat.gb(total))")
-                    Spacer()
-                    Text(InsightsFormat.percent(Double(received) / Double(max(total, 1))))
-                }
-                .font(.uv(.meta)).monospacedDigit().foregroundStyle(Theme.inkMuted)
-            }
-        case .validating:
-            SettingsBlock {
-                modelHeader(model) { ProgressView().controlSize(.small) }
-                Text("Verifying checksum").font(.uv(.meta)).foregroundStyle(Theme.inkMuted)
-            }
-        case .paused:
-            SettingsBlock {
-                modelHeader(model) {
-                    Button(models.canResume(model) ? "Resume" : "Download") { models.download(model) }
-                        .buttonStyle(.brandPrimary)
-                }
-            }
-        case .failed(let message, _):
-            SettingsBlock {
-                modelHeader(model) {
-                    PremiumStatusBadge(kind: .bad, icon: "circle.fill", text: "Download failed")
-                    Button("Try again") { models.download(model) }
-                        .buttonStyle(.brandSecondary)
-                }
-                Text(message).font(.uv(.meta)).foregroundStyle(Theme.danger)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        case .idle:
-            switch availability {
-            case .usable:
-                SettingsBlock(padding: EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)) {
-                    modelHeader(model) {
-                        if inUse {
-                            PremiumStatusBadge(kind: .ok, icon: "circle.fill", text: "In use")
-                        } else {
-                            Button("Use") { useModel(model) }
-                                .buttonStyle(.brandSecondary)
-                        }
-                        Button("Delete") { confirmation = .model(model) }
-                            .buttonStyle(.brandDanger)
-                    }
-                    .frame(minHeight: 32)
-                }
-            case .missing:
-                SettingsBlock(padding: EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)) {
-                    modelHeader(model) {
-                        Button { models.download(model) } label: {
-                            Label(models.canResume(model) ? "Resume" : "Download", systemImage: "arrow.down.to.line")
-                        }
-                        .buttonStyle(.brandPrimary)
-                    }
-                    .frame(minHeight: 32)
-                }
-            case .invalid(let reason):
-                SettingsBlock {
-                    modelHeader(model) {
-                        PremiumStatusBadge(kind: .bad, icon: "circle.fill", text: "Check failed")
-                        Button("Download again") { models.download(model) }
-                            .buttonStyle(.brandSecondary)
-                        Button("Delete") { confirmation = .model(model) }
-                            .buttonStyle(.brandDanger)
-                    }
-                    Text("The file didn't pass its check (\(reason)). Download it again.")
-                        .font(.uv(.meta)).foregroundStyle(Theme.inkMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
+    private func wireModels() {
+        modelsVM.onChanged = { viewModel.refreshConfig() }
+        modelsVM.onSaved = { saved() }
+        modelsVM.onKeyError = { message in toasts.show(message, kind: .danger) }
+        modelsVM.languagePin = { viewModel.languagePin }
+        modelsVM.onShowKeys = {
+            withAnimation(BrandMotion.resolved(BrandMotion.rise)) { topGroup = "keys" }
         }
-    }
-
-    private func modelHeader<Trailing: View>(_ model: WhisperModel,
-                                             @ViewBuilder trailing: () -> Trailing) -> some View {
-        HStack(spacing: 8) {
-            Text(modelName(model)).font(.uv(.ui, .semibold)).foregroundStyle(Theme.ink)
-            Text(SettingsFormat.gb(model.expectedBytes)).font(.uv(.meta)).foregroundStyle(Theme.inkMuted)
-            Spacer(minLength: 12)
-            trailing()
-        }
-        .accessibilityElement(children: .contain)
-    }
-
-    /// A model that is on this Mac becomes the engine.
-    private func useModel(_ model: WhisperModel) {
-        models.activate(model)
-        engineBinding.wrappedValue = .whisperLocal
     }
 
     // MARK: - Formatting
@@ -484,7 +260,7 @@ struct SettingsPage: View {
                 Toggle("", isOn: spokenPunctuationBinding).labelsHidden().accessibilityLabel("Speak punctuation")
             }
         } footer: {
-            if engine == .deepgram {
+            if settings.voiceModel.provider == "deepgram" {
                 // Disclosed because it is charged and was previously invisible: the app sends
                 // `keyterm` for every dictionary term, on every request, and Deepgram bills
                 // Keyterm Prompting separately. https://deepgram.com/pricing
@@ -493,9 +269,8 @@ struct SettingsPage: View {
                                  + "minute while your dictionary is in use. Smart formatting and language "
                                  + "detection are included.")
             } else {
-                SettingsFootnote(text: "Whisper (local) formats its own punctuation and capitalization, so "
-                                 + "these two apply to Deepgram. Your dictionary still biases recognition "
-                                 + "and fixes mistakes afterwards.")
+                SettingsFootnote(text: "Your voice model formats its own punctuation and capitalization, so "
+                                 + "these two apply to Deepgram. Your dictionary still fixes mistakes afterwards.")
             }
         }
     }
@@ -761,13 +536,12 @@ struct SettingsPage: View {
         switch confirmation {
         case .model(let model):
             SettingsConfirmDialog(
-                title: "Delete \(modelName(model))?",
+                title: "Delete \(model.name)?",
                 message: "The weights file is removed from this Mac. You can download it again later.",
                 confirmTitle: "Delete",
                 onCancel: { confirmation = nil },
                 onConfirm: {
-                    models.delete(model)
-                    viewModel.refreshConfig()
+                    modelsVM.delete(model)
                     confirmation = nil
                 })
         case .allDictations(let count):
@@ -846,24 +620,6 @@ struct SettingsPage: View {
 
     // MARK: - Bindings that save
 
-    private var engineBinding: Binding<TranscriptionEngineChoice> {
-        Binding(
-            get: { engine },
-            set: { newValue in
-                // Deepgram without a key opens the key field instead of switching to an
-                // engine that cannot run.
-                if newValue == .deepgram, !hasDeepgramKey {
-                    changingDeepgramKey = true
-                    return
-                }
-                engine = newValue
-                settings.transcriptionEngine = newValue
-                models.engineChanged(to: newValue)
-                viewModel.refreshConfig()
-                saved()
-            })
-    }
-
     private var languageBinding: Binding<LanguagePin> {
         Binding(
             get: { viewModel.languagePin },
@@ -927,16 +683,13 @@ struct SettingsPage: View {
     // MARK: - Load and sync
 
     private func syncFromFirstRun() {
-        hasDeepgramKey = DeepgramKeyStore.shared.isConfigured()
-        engine = settings.transcriptionEngine
+        modelsVM.reload()
     }
 
     private func load() {
-        // Existence-only check: never returns or decrypts the key, so it cannot block this
-        // main-thread SwiftUI update on an authorization prompt.
-        hasDeepgramKey = DeepgramKeyStore.shared.isConfigured()
-        engine = settings.transcriptionEngine
-        models.refreshAvailability()
+        // Existence-only checks: they never return or decrypt a key, so they cannot block this
+        // main-thread SwiftUI update on an authorization prompt. A sample render keeps its sample.
+        if SettingsSnapshot.state == nil { modelsVM.reload() }
         formattingEnabled = settings.formattingEnabled
         spokenPunctuationEnabled = settings.spokenPunctuationEnabled
         silenceTimeout = settings.silenceTimeout
@@ -947,147 +700,6 @@ struct SettingsPage: View {
         system.refresh()
     }
 
-    // MARK: - Deepgram key actions
-
-    private func openSignup() {
-        guard let url = URL(string: "https://console.deepgram.com/signup?jump=keys") else { return }
-        NSWorkspace.shared.open(url)
-    }
-
-    private func saveKey() {
-        guard !savingKey else { return }
-        let trimmedKey = deepgramKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedKey.isEmpty else { return }
-        // The store writes the keychain and refreshes the cache the dictation pipeline reads
-        // in one ordered step, so the new key works without a relaunch and a stale write can
-        // never overwrite a newer one.
-        savingKey = true
-        Task { @MainActor in
-            defer { savingKey = false }
-            do {
-                try await DeepgramKeyStore.shared.save(trimmedKey)
-                hasDeepgramKey = true
-                // Only the text that was saved is cleared: anything else in the field is a
-                // newer edit.
-                if deepgramKey.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedKey {
-                    deepgramKey = ""
-                    changingDeepgramKey = false
-                }
-                viewModel.refreshConfig()
-                saved()
-                // Say right away whether Deepgram accepts it.
-                if engine == .deepgram { testConnection() }
-            } catch {
-                toasts.show("Could not save the Keychain value", kind: .danger)
-            }
-        }
-    }
-
-    private func removeKey() {
-        guard !savingKey else { return }
-        savingKey = true
-        Task { @MainActor in
-            defer { savingKey = false }
-            do {
-                try await DeepgramKeyStore.shared.remove()
-                hasDeepgramKey = false
-                changingDeepgramKey = false
-                testResult = nil
-                viewModel.refreshConfig()
-                saved()
-            } catch {
-                toasts.show("Couldn't remove the key from your Keychain. Try again.", kind: .danger)
-            }
-        }
-    }
-
-    private func testConnection() {
-        testResult = nil
-        isTesting = true
-        if engine == .whisperLocal {
-            testLocalEngine()
-            return
-        }
-        Task {
-            let typed = deepgramKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            // Read the stored key off the main actor: the keychain call can block on
-            // securityd or on a user authorization prompt.
-            //
-            // `lookup` rather than `get`, because a stored key that cannot be read is not the
-            // same as no key: reporting "Enter your Deepgram API key" when the truth is a
-            // locked keychain sends the user to re-enter a credential that is already there
-            // and fine. Through the store, so the read is ordered with key saves and removals,
-            // but as a peek: a test must never change the key dictation uses. A typed key is
-            // tested as is, with no keychain read at all.
-            let lookup: Keychain.Lookup = typed.isEmpty
-                ? await Task.detached(priority: .userInitiated) {
-                    DeepgramKeyStore.shared.peek()
-                }.value
-                : .absent
-            let key = typed.isEmpty ? (lookup.value ?? "") : typed
-            guard !key.isEmpty else {
-                let message: String
-                switch lookup {
-                case .unavailable(let reason) where typed.isEmpty:
-                    message = "Your saved key could not be read (\(reason)). Unlock your login keychain and try again, or enter the key to replace it."
-                default:
-                    message = "Enter your Deepgram API key."
-                }
-                await MainActor.run {
-                    testResult = ProviderHealthCheck.result(
-                        providerName: "Deepgram",
-                        endpoint: deepgramEndpoint,
-                        ok: false,
-                        startedAt: Date(),
-                        finishedAt: Date(),
-                        message: message)
-                    isTesting = false
-                }
-                return
-            }
-            let provider = DeepgramProvider(config: .init(
-                apiKey: key,
-                smartFormat: formattingEnabled,
-                spokenPunctuation: spokenPunctuationEnabled))
-            let result = await ProviderHealthCheck.check(
-                provider: provider,
-                endpoint: deepgramEndpoint,
-                hint: TranscriptionHint(languagePin: viewModel.languagePin, dictionaryWords: []))
-            await MainActor.run {
-                testResult = result
-                isTesting = false
-            }
-        }
-    }
-
-    /// Probes the local engine with the same health-check path as Deepgram: a tiny generated
-    /// clip through the real provider. First run also loads the model, so it doubles as a
-    /// "does the engine actually work" test.
-    private func testLocalEngine() {
-        Task {
-            guard let provider = viewModel.makeTranscriptionProvider?() else {
-                await MainActor.run {
-                    testResult = ProviderHealthCheck.result(
-                        providerName: "Whisper (local)",
-                        endpoint: "on-device",
-                        ok: false,
-                        startedAt: Date(),
-                        finishedAt: Date(),
-                        message: "No local provider could be built.")
-                    isTesting = false
-                }
-                return
-            }
-            let result = await ProviderHealthCheck.check(
-                provider: provider,
-                endpoint: "on-device",
-                hint: TranscriptionHint(languagePin: viewModel.languagePin, dictionaryWords: []))
-            await MainActor.run {
-                testResult = result
-                isTesting = false
-            }
-        }
-    }
 }
 
 /// What a permission row says.

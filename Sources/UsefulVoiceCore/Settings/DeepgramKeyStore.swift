@@ -1,6 +1,8 @@
 import Foundation
 
-/// Thread-safe, non-blocking access to the Deepgram API key.
+/// Thread-safe, non-blocking access to one provider's API key (Deepgram,
+/// ElevenLabs, Gemini or Anthropic). Each lives under its own Keychain account;
+/// `DeepgramKeyStore` is the old name for this type and still works.
 ///
 /// Why this exists rather than calling `Keychain` directly:
 ///
@@ -22,14 +24,31 @@ import Foundation
 /// in the same step as the keychain operation it reflects. So the cache always
 /// matches what the last completed operation left in the keychain: a read can't
 /// interleave with a write, and a slow save can't land over a later removal.
-public final class DeepgramKeyStore: @unchecked Sendable {
-    public static let shared = DeepgramKeyStore()
+public final class ProviderKeyStore: @unchecked Sendable {
+    /// The Deepgram key, as before.
+    public static let shared = ProviderKeyStore()
+    public static let deepgram = shared
+    public static let elevenLabs = ProviderKeyStore(provider: .elevenLabs)
+    public static let gemini = ProviderKeyStore(provider: .gemini)
+    public static let anthropic = ProviderKeyStore(provider: .anthropic)
 
-    public static let account = "deepgram-key"
+    /// The Deepgram Keychain account. Kept under this name for the migration code.
+    public static let account = KeyProvider.deepgram.account
 
+    /// The store for a provider.
+    public static func store(for provider: KeyProvider) -> ProviderKeyStore {
+        switch provider {
+        case .deepgram: return deepgram
+        case .elevenLabs: return elevenLabs
+        case .gemini: return gemini
+        case .anthropic: return anthropic
+        }
+    }
+
+    public let provider: KeyProvider
     private let backend: DeepgramKeyBackend
     /// Owns every keychain operation on this item and every cache write.
-    private let queue = DispatchQueue(label: "ai.useful.voice.deepgram-key", qos: .userInitiated)
+    private let queue: DispatchQueue
 
     /// Guards the three fields below for readers on other threads. Written only
     /// from `queue`.
@@ -39,13 +58,15 @@ public final class DeepgramKeyStore: @unchecked Sendable {
     /// Set when a completed read failed for a reason other than "nothing stored".
     private var problem: String?
 
-    public convenience init() {
-        self.init(backend: KeychainKeyBackend(account: Self.account))
+    public convenience init(provider: KeyProvider = .deepgram) {
+        self.init(backend: KeychainKeyBackend(account: provider.account), provider: provider)
     }
 
     /// Injects the storage, so tests never touch the user's keychain.
-    init(backend: DeepgramKeyBackend) {
+    init(backend: DeepgramKeyBackend, provider: KeyProvider = .deepgram) {
         self.backend = backend
+        self.provider = provider
+        self.queue = DispatchQueue(label: "ai.useful.voice.\(provider.account)", qos: .userInitiated)
     }
 
     /// Runs the one-time move of the key from the previous app identity's Keychain
@@ -213,7 +234,7 @@ public final class DeepgramKeyStore: @unchecked Sendable {
         case .unavailable(let reason):
             // Worth a log line: silent refusal to read a stored key is exactly
             // the failure that produced unhelpful support conversations.
-            Diagnostics.shared.error("keychain", "could not read the Deepgram key: \(reason)")
+            Diagnostics.shared.error("keychain", "could not read the \(provider.displayName) key: \(reason)")
             publish(nil, problem: reason)
         }
         return lookup
@@ -264,7 +285,58 @@ struct KeychainKeyBackend: DeepgramKeyBackend {
     func lookup() -> Keychain.Lookup { Keychain.lookup(account: account) }
     func write(_ value: String) throws { try Keychain.set(value, account: account) }
     func delete() throws { try Keychain.delete(account: account) }
-    func exists() -> Bool { DeepgramKeyStore.keyIsStored() }
-    func deleteLegacyBestEffort() { IdentityMigration.live().removeLegacyKey(force: true) }
-    func forgetLegacyKey() { IdentityMigration.live().forgetLegacyKey() }
+    /// Only the Deepgram key ever lived under the previous app identity.
+    private var isDeepgram: Bool { account == KeyProvider.deepgram.account }
+    func exists() -> Bool {
+        isDeepgram ? ProviderKeyStore.keyIsStored() : Keychain.exists(account: account)
+    }
+    func deleteLegacyBestEffort() { if isDeepgram { IdentityMigration.live().removeLegacyKey(force: true) } }
+    func forgetLegacyKey() { if isDeepgram { IdentityMigration.live().forgetLegacyKey() } }
 }
+
+/// The providers that take an API key.
+public enum KeyProvider: String, CaseIterable, Sendable {
+    case deepgram, elevenLabs, gemini, anthropic
+
+    /// Keychain account under the app's service.
+    public var account: String {
+        switch self {
+        case .deepgram: return "deepgram-key"
+        case .elevenLabs: return "elevenlabs-key"
+        case .gemini: return "gemini-key"
+        case .anthropic: return "anthropic-key"
+        }
+    }
+
+    public var displayName: String {
+        switch self {
+        case .deepgram: return "Deepgram"
+        case .elevenLabs: return "ElevenLabs"
+        case .gemini: return "Gemini"
+        case .anthropic: return "Anthropic"
+        }
+    }
+
+    /// Where the person makes a key.
+    public var getKeyURL: URL {
+        switch self {
+        case .deepgram: return URL(string: "https://console.deepgram.com")!
+        case .elevenLabs: return URL(string: "https://elevenlabs.io/app/settings/api-keys")!
+        case .gemini: return URL(string: "https://aistudio.google.com/apikey")!
+        case .anthropic: return URL(string: "https://console.anthropic.com/settings/keys")!
+        }
+    }
+
+    /// The key a catalog provider id needs.
+    public init?(catalogProvider: String) {
+        switch catalogProvider {
+        case "deepgram": self = .deepgram
+        case "elevenlabs": self = .elevenLabs
+        case "gemini": self = .gemini
+        case "anthropic": self = .anthropic
+        default: return nil
+        }
+    }
+}
+
+public typealias DeepgramKeyStore = ProviderKeyStore

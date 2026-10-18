@@ -1,4 +1,11 @@
-import { touchedSince, type HeldSession, type MediaEffects, type MediaSession } from '../core/media/mediaPausePolicy.js';
+import {
+  resumeVerdict,
+  type HeldSession,
+  type MediaEffects,
+  type MediaSession,
+  type PauseResult,
+  type ResumeResult,
+} from '../core/media/mediaPausePolicy.js';
 
 /**
  * A scripted media player for the Playwright suite, installed only under `--e2e`: nothing
@@ -37,24 +44,31 @@ export class FakeMedia implements MediaEffects {
       .map(([id, session]) => ({ id, position: session.position, updated: session.updated }));
   }
 
-  async pause(ids: string[]): Promise<MediaSession[]> {
+  async pause(ids: string[]): Promise<PauseResult> {
     this.calls.push(`pause:${ids.join(',')}`);
-    const paused: MediaSession[] = [];
+    const result: PauseResult = { confirmed: [], refused: [] };
     for (const id of ids) {
       const session = this.sessions.get(id);
       if (!session || session.status !== 'Playing') continue;
       session.status = 'Paused';
-      paused.push({ id, position: session.position, updated: session.updated });
+      session.updated = Date.now();
+      result.confirmed.push({ id, position: session.position, updated: session.updated });
     }
-    return paused;
+    return result;
   }
 
-  async resume(held: HeldSession[]): Promise<void> {
+  async resume(held: HeldSession[]): Promise<ResumeResult> {
     this.calls.push(`resume:${held.map((session) => session.id).join(',')}`);
-    for (const { id, settled } of held) {
-      const session = this.sessions.get(id);
-      if (session && session.status === 'Paused' && !touchedSince(settled, session)) session.status = 'Playing';
+    const result: ResumeResult = { refused: [], touched: [], unconfirmed: [] };
+    for (const entry of held) {
+      const session = this.sessions.get(entry.id);
+      if (!session || session.status !== 'Paused') continue;
+      const verdict = resumeVerdict(entry, session);
+      if (verdict === 'touched') result.touched.push(entry.id);
+      else if (verdict === 'unconfirmed') result.unconfirmed.push(entry.id);
+      else session.status = 'Playing';
     }
+    return result;
   }
 
   snapshot(): Record<string, FakeStatus> {

@@ -4,10 +4,15 @@ import {
   MEDIA_PRELUDE,
   encodeSessionIds,
   listPlayingScript,
-  parsePausedOutput,
+  parsePauseOutput,
   parsePlayingOutput,
+  parseResumeOutput,
+  parseTimelineOutput,
+  PAUSE_WAIT_MS,
+  PAUSE_WAIT_QUITTING_MS,
   pauseScript,
   resumeScript,
+  timelineScript,
 } from '../src/main/mediaScripts.js';
 
 const b64 = (text: string): string => Buffer.from(text, 'utf8').toString('base64');
@@ -37,10 +42,22 @@ describe('parsePlayingOutput', () => {
   });
 });
 
-describe('parsePausedOutput', () => {
-  it('reads the post-pause timeline and ignores UVPLAYING lines', () => {
-    const out = [`UVPLAYING:${b64('x')}:1:1`, `UVPAUSED:${b64('Spotify.exe')}:5000:77`].join('\n');
-    expect(parsePausedOutput(out)).toEqual([{ id: 'Spotify.exe', position: 5000, updated: 77 }]);
+describe('parsePauseOutput', () => {
+  it('reads confirmed sessions with their timeline and the ones Windows refused', () => {
+    const out = [`UVPLAYING:${b64('x')}:1:1`, `UVPAUSED:${b64('Spotify.exe')}:5000:77`, `UVREFUSED:${b64('Chrome')}`, 'UVSKIP:session'].join('\n');
+    expect(parsePauseOutput(out)).toEqual({ confirmed: [{ id: 'Spotify.exe', position: 5000, updated: 77 }], refused: ['Chrome'] });
+  });
+
+  it('reports nothing for an empty answer, which the caller must not mistake for success', () => {
+    expect(parsePauseOutput('')).toEqual({ confirmed: [], refused: [] });
+  });
+});
+
+describe('parseTimelineOutput and parseResumeOutput', () => {
+  it('read their own tags only', () => {
+    expect(parseTimelineOutput(`UVTIMELINE:${b64('a')}:10:20\nUVPAUSED:${b64('b')}:1:1`)).toEqual([{ id: 'a', position: 10, updated: 20 }]);
+    const out = [`UVREFUSED:${b64('a')}`, `UVTOUCHED:${b64('b')}`, `UVUNCONFIRMED:${b64('c')}`, 'UVRESUMED:2', 'UVTOUCHED:!!'].join('\n');
+    expect(parseResumeOutput(out)).toEqual({ refused: ['a'], touched: ['b'], unconfirmed: ['c'] });
   });
 });
 
@@ -68,7 +85,7 @@ describe('the scripts', () => {
   const hostile = `evil'$(calc)"\`n`;
 
   it('put no raw id into the pause or resume script, only base64', () => {
-    for (const script of [pauseScript([hostile, 'Spotify.exe']), resumeScript([{ id: hostile }, { id: 'Spotify.exe' }])]) {
+    for (const script of [pauseScript([hostile, 'Spotify.exe']), resumeScript([{ id: hostile, confirmed: true, requestedAt: 1 }, { id: 'Spotify.exe', confirmed: true, requestedAt: 1 }])]) {
       expect(script).not.toContain(hostile);
       expect(script).not.toContain('calc');
       expect(script).toContain(b64('Spotify.exe'));
@@ -76,11 +93,16 @@ describe('the scripts', () => {
   });
 
   it('carry the timeline into the resume script as plain numbers only', () => {
-    const script = resumeScript([{ id: 'a', settled: { position: 1234.6, updated: 99 } }, { id: 'b' }]);
-    expect(script).toContain(`${b64('a')}:1235:99`);
-    expect(script).toContain(`${b64('b')}:n:n`);
-    expect(() => resumeScript([{ id: 'a', settled: { position: Number.NaN, updated: 1 } }])).toThrow();
-    expect(() => resumeScript([{ id: 'a', settled: { position: 1e30, updated: 1 } }])).toThrow();
+    const script = resumeScript([
+      { id: 'a', confirmed: true, requestedAt: 1700, settled: { position: 1234.6, updated: 99 } },
+      { id: 'b', confirmed: false, requestedAt: 1800 },
+    ]);
+    expect(script).toContain(`${b64('a')}:1:1235:99:1700`);
+    expect(script).toContain(`${b64('b')}:0:n:n:1800`);
+    const base = { id: 'a', confirmed: true, requestedAt: 1 };
+    expect(() => resumeScript([{ ...base, settled: { position: Number.NaN, updated: 1 } }])).toThrow();
+    expect(() => resumeScript([{ ...base, settled: { position: 1e30, updated: 1 } }])).toThrow();
+    expect(() => resumeScript([{ ...base, requestedAt: Number.NaN }])).toThrow();
   });
 
   it('list only what is Playing, and change nothing', () => {
@@ -94,12 +116,28 @@ describe('the scripts', () => {
     const script = pauseScript(['a']);
     expect(script).toContain("'Playing'");
     expect(script).toContain('TryPauseAsync');
-    expect(script.indexOf('Start-Sleep')).toBeGreaterThan(script.indexOf('TryPauseAsync'));
-    expect(script.indexOf('UVPAUSED')).toBeGreaterThan(script.indexOf('Start-Sleep'));
+    expect(script).toContain('UVPAUSED');
+    // Windows saying no is reported, not swallowed.
+    expect(script).toContain('UVREFUSED');
+    // The settle wait lives in the app now, where quitting can cut it short.
+    expect(script).not.toContain('Start-Sleep');
   });
 
-  it('resume only what is Paused and untouched, with the same tolerance as the policy', () => {
-    const script = resumeScript([{ id: 'a' }]);
+  it('cap each WinRT call in a pause at 1.5 s, and at 1 s once quitting', () => {
+    expect(pauseScript(['a'])).toContain(`$uvWaitMs = ${PAUSE_WAIT_MS}`);
+    expect(pauseScript(['a'], { quitting: true })).toContain(`$uvWaitMs = ${PAUSE_WAIT_QUITTING_MS}`);
+    expect(PAUSE_WAIT_QUITTING_MS).toBeLessThan(PAUSE_WAIT_MS);
+    // Every script sets its own cap: a host keeps variables between requests.
+    for (const script of [listPlayingScript(), timelineScript(['a']), resumeScript([{ id: 'a', confirmed: true, requestedAt: 1 }])]) {
+      expect(script).toContain('$uvWaitMs = 3000');
+    }
+  });
+
+  it('resume only what is Paused, untouched and confirmed, with the same tolerance as the policy', () => {
+    const script = resumeScript([{ id: 'a', confirmed: true, requestedAt: 1 }]);
+    expect(script).toContain('UVUNCONFIRMED');
+    expect(script).toContain('UVTOUCHED');
+    expect(script).toContain('UVREFUSED');
     expect(script).toContain("'Paused'");
     expect(script).toContain('TryPlayAsync');
     expect(script).toContain(`-gt ${TOUCH_TOLERANCE_MS}`);
@@ -117,7 +155,7 @@ describe('the scripts', () => {
   });
 
   it('have no backtick, which would collide with the template literals they are built from', () => {
-    for (const script of [MEDIA_PRELUDE, listPlayingScript(), pauseScript(['a']), resumeScript([{ id: 'a' }])]) {
+    for (const script of [MEDIA_PRELUDE, listPlayingScript(), pauseScript(['a']), resumeScript([{ id: 'a', confirmed: true, requestedAt: 1 }]), timelineScript(['a'])]) {
       expect(script.includes('`')).toBe(false);
     }
   });

@@ -376,6 +376,23 @@ class UsefulVoiceApp {
 
     app.setAppUserModelId(APP_USER_MODEL_ID);
 
+    // Any quit that did not start from our own Quit (a logoff or shutdown, `app.quit()`, the
+    // installer asking us to close) goes through the same orderly quit, so the media paused
+    // for a dictation plays again there too. `quit()` runs once, so this is idempotent with
+    // the tray's Quit, and `runQuit` ends in `app.exit`, which skips this event.
+    app.on('before-quit', (event) => {
+      if (this.quitting) return;
+      event.preventDefault();
+      void this.quit();
+    });
+    // Windows ends the session (logoff, shutdown) with little time to spare, and may not send
+    // before-quit first: play the media again at once, within a second. `shutdown` runs once.
+    app.on('browser-window-created', (_event, window) => {
+      window.on('session-end', () => {
+        void this.media?.shutdown(1000);
+      });
+    });
+
     await app.whenReady();
 
     this.diagnostics = new Diagnostics(app.getPath('userData'));

@@ -37,17 +37,18 @@ function setup() {
     },
     async pause(ids) {
       calls.push('pause');
-      const done = [];
+      const confirmed = [];
       for (const id of ids) {
         if (status[id] !== 'Playing') continue;
         status[id] = 'Paused';
-        done.push({ id, position: 0, updated: 0 });
+        confirmed.push({ id, position: 0, updated: 0 });
       }
-      return done;
+      return { confirmed, refused: [] };
     },
     async resume(held) {
       calls.push('resume');
       for (const { id } of held) if (status[id] === 'Paused') status[id] = 'Playing';
+      return { refused: [], touched: [], unconfirmed: [] };
     },
   };
   const logs: string[] = [];

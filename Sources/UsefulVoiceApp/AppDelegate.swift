@@ -36,6 +36,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let modelStore = LocalModelStore()
     private let localEngine = WhisperCppEngine()
     private var modelManager: LocalModelManager?
+    /// Parakeet downloads and providers; the same instance Settings shows.
+    private let parakeet = ParakeetModelManager()
     private var recordingTimer: Timer?
     /// The live recorder, for the countdown to auto-stop shown in the dock.
     private var audioRecorder: AudioRecorder?
@@ -343,6 +345,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DeepgramKeyStore.shared.migrateLegacyKey(with: IdentityMigration.live())
             }
             DeepgramKeyStore.shared.load()
+            for provider in [KeyProvider.elevenLabs, .gemini, .anthropic] {
+                ProviderKeyStore.store(for: provider).load()
+            }
             DispatchQueue.main.async { [weak self] in
                 self?.viewModel?.refreshConfig()
                 // The key state is recorded separately, once it is actually known.
@@ -525,6 +530,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             languageMemory: languageMemory,
             scratchpad: scratchpad,
             models: modelManager,
+            parakeet: parakeet,
             onToggle: { [weak self] source in self?.toggleDictation(source: source) })
         self.viewModel = viewModel
 
@@ -584,17 +590,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.viewModel?.refreshLanguageMemory()
                 self.viewModel?.refreshRecent()
             },
-            format: { [languageMemory] raw, ctx in
+            format: { [weak self, languageMemory] raw, ctx in
                 // Deepgram's smart_format handles punctuation and casing during
-                // transcription. Here we only apply the deterministic local
-                // Language Memory corrections (dictionary, replacements, snippets).
+                // transcription. The optional AI formatting model runs first, so the
+                // person's own rules (dictionary, replacements, snippets) get the last
+                // word. Any failure there delivers the transcript as it was.
+                var text = raw
+                if let formatter = self?.aiFormatter() {
+                    let outcome = await formatter.format(raw, vocabulary: ctx.dictionaryWords)
+                    if let formatted = outcome.text { text = formatted }
+                }
                 let memory = languageMemory.snapshot()
                 let memoryLanguage = MemoryLanguage(languagePin: ctx.language)
                 let prepared = LanguageMemoryPostProcessor.applyDeterministic(
-                    to: raw,
+                    to: text,
                     snapshot: memory,
                     language: memoryLanguage)
-                return LanguageMemoryPostProcessor.rawResult(from: prepared)
+                let result = LanguageMemoryPostProcessor.rawResult(from: prepared)
+                guard text != raw else { return result }
+                return FormattingResult(
+                    text: result.text, newTerms: [], mode: .formatted,
+                    replacementRuleIDs: result.replacementRuleIDs,
+                    memoryHitIDs: result.memoryHitIDs, snippetIDs: result.snippetIDs)
             },
             rawTransform: { [languageMemory] raw, ctx in
                 LanguageMemoryPostProcessor.rawResult(
@@ -842,32 +859,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Local is never silently swapped for Deepgram - choosing it means no
     /// audio leaves the machine.
     private func buildProviders(showPartials: Bool = false) -> [TranscriptionProvider] {
-        let model = modelManager?.activeModel ?? WhisperModelCatalog.default
-        let plan = ProviderSelector.resolve(
-            engine: settings.transcriptionEngine,
-            deepgramKeyAvailable: !(DeepgramKeyStore.shared.current ?? "").isEmpty,
-            localModel: model,
-            localModelAvailability: modelStore.availability(of: model))
+        let plan = VoiceModelSelector.resolve(
+            voiceModelID: settings.voiceModelID,
+            keyAvailable: { !(ProviderKeyStore.store(for: $0).current ?? "").isEmpty },
+            whisperAvailability: { modelStore.availability(of: $0) })
         switch plan {
-        case .deepgram:
-            guard let key = DeepgramKeyStore.shared.current, !key.isEmpty else {
-                return []
-            }
+        case .deepgram(let apiModel):
+            guard let key = ProviderKeyStore.deepgram.current, !key.isEmpty else { return [] }
             return [DeepgramProvider(config: .init(
                 apiKey: key,
+                model: apiModel,
                 smartFormat: settings.formattingEnabled,
                 spokenPunctuation: settings.spokenPunctuationEnabled))]
-        case .local(let model):
+        case .elevenLabs(let apiModel):
+            guard let key = ProviderKeyStore.elevenLabs.current, !key.isEmpty else { return [] }
+            return [ElevenLabsProvider(config: .init(apiKey: key, model: apiModel))]
+        case .gemini(let apiModel):
+            guard let key = ProviderKeyStore.gemini.current, !key.isEmpty else { return [] }
+            return [GeminiTranscriptionProvider(config: .init(apiKey: key, model: apiModel))]
+        case .whisper(let model):
             return [localProvider(for: model, showPartials: showPartials)]
-        case .needsDeepgramKey:
-            // Same outcome the Deepgram path always had: the chain is empty and
-            // the controller reports "No transcription provider configured".
-            return []
-        case .needsModelDownload, .modelInvalid:
-            let message = ProviderSelector.unavailableMessage(for: plan)
-                ?? "Local transcription is not set up. Open Settings."
-            return [UnavailableProvider(name: "Whisper (local)", message: message)]
+        case .parakeet(let version):
+            return [ParakeetLanguageGuard(version: version, inner: parakeet.provider(for: version))]
+        case .needsKey, .needsWhisperDownload, .whisperInvalid:
+            let message = VoiceModelSelector.unavailableMessage(for: plan)
+                ?? "The voice model is not set up. Open Settings."
+            return [UnavailableProvider(name: settings.voiceModel.name, message: message)]
         }
+    }
+
+    /// The AI formatting step for the model chosen in Settings, nil when it is Off.
+    /// Reads only the in-memory key cache, never the Keychain.
+    private func aiFormatter() -> AIFormatter? {
+        guard let model = settings.formatterModel, let provider = model.keyProvider else { return nil }
+        let store = ProviderKeyStore.store(for: provider)
+        return AIFormatter(model: model, apiKey: { store.current })
     }
 
     /// A local provider for `model`. Cheap to build (the engine and its loaded
@@ -1032,7 +1058,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if lastDictationState == .recording { chimes.playStop() }
             stopRecordingTimer()
             setIcon(tint: .systemOrange)
-            hud.show(.transcribing(partial: nil, local: settings.transcriptionEngine == .whisperLocal))
+            hud.show(.transcribing(partial: nil, local: settings.voiceModel.isLocal))
         case .delivering:
             hud.show(.delivering)
         case .error(let error):

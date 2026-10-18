@@ -69,7 +69,7 @@ public enum FormatterRequest {
     }
 
     public static func deadline(for model: ModelEntry) -> TimeInterval {
-        model.apiModel == "claude-sonnet-4-6" ? 10 : 6
+        model.apiModel == "claude-sonnet-5-5" ? 10 : 6
     }
 
     public static func maxTokens(forInput text: String) -> Int {
@@ -77,9 +77,7 @@ public enum FormatterRequest {
     }
 
     /// 3.8 Flash rejects `minimal`, so its lowest level is `low`.
-    static func geminiThinkingLevel(_ apiModel: String) -> String {
-        apiModel == "gemini-3.8-flash" ? "low" : "minimal"
-    }
+    static func geminiThinkingLevel(_ apiModel: String) -> String { "low" }
 
     static func gemini(model: ModelEntry, apiKey: String, text: String, vocabulary: [String]) throws -> URLRequest {
         let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model.apiModel):generateContent")!
@@ -105,12 +103,11 @@ public enum FormatterRequest {
             "system": FormatterPrompt.system,
             "messages": [["role": "user", "content": userMessage(text: text, vocabulary: vocabulary)]],
         ]
-        switch model.apiModel {
-        case "claude-haiku-5-5":
-            // Thinking is on by default on 5.x and costs seconds; sampling params are refused.
-            if includeThinkingField { body["thinking"] = ["type": "disabled"] }
-        default:
-            body["temperature"] = 0
+        // Thinking is on by default on 5.x and costs seconds, and sampling params are
+        // refused, so none are sent. Haiku accepts "disabled"; Sonnet 5.5 rejects it,
+        // and "between_tools" (no tools are sent) skips the up-front thinking.
+        if includeThinkingField {
+            body["thinking"] = ["type": model.apiModel == "claude-sonnet-5-5" ? "between_tools" : "disabled"]
         }
         var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
         request.httpMethod = "POST"

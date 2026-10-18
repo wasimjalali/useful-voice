@@ -161,7 +161,7 @@ struct StreamDock: View {
     @State private var formatTick = 0
 
     private var sample: DockSnapshot.Sample? { DockSnapshot.current }
-    private var engineIsLocal: Bool { sample?.local ?? (settings.transcriptionEngine == .whisperLocal) }
+    private var engineIsLocal: Bool { sample?.local ?? settings.voiceModel.isLocal }
 
     private var phase: DockPhase {
         if let sample { return sample.phase }

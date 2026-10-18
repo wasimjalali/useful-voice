@@ -63,10 +63,6 @@ public enum ModelCatalog {
                    apiModel: "scribe_v2", kind: .cloud, badge: nil, speed: 3, accuracy: 5),
         ModelEntry(id: "gemini-audio:gemini-3.8-flash", name: "Gemini 3.8 Flash", provider: "gemini",
                    apiModel: "gemini-3.8-flash", kind: .cloud, badge: "NEW", speed: 3, accuracy: 5),
-        ModelEntry(id: "gemini-audio:gemini-3.6-flash", name: "Gemini 3.6 Flash", provider: "gemini",
-                   apiModel: "gemini-3.6-flash", kind: .cloud, badge: nil, speed: 3, accuracy: 4),
-        ModelEntry(id: "gemini-audio:gemini-3.5-flash-lite", name: "Gemini 3.5 Flash-Lite", provider: "gemini",
-                   apiModel: "gemini-3.5-flash-lite", kind: .cloud, badge: nil, speed: 4, accuracy: 4),
         ModelEntry(id: "parakeet:v2", name: "Parakeet", provider: "nvidia",
                    apiModel: "parakeet-tdt-0.6b-v2", kind: .local, badge: "EN", speed: 5, accuracy: 4),
         ModelEntry(id: "parakeet:v3", name: "Parakeet Multilingual", provider: "nvidia",
@@ -80,16 +76,10 @@ public enum ModelCatalog {
     public static let language: [ModelEntry] = [
         ModelEntry(id: "gemini:gemini-3.8-flash", name: "Gemini 3.8 Flash", provider: "gemini",
                    apiModel: "gemini-3.8-flash", kind: .cloud, badge: "NEW", speed: 4, accuracy: 5),
-        ModelEntry(id: "gemini:gemini-3.6-flash", name: "Gemini 3.6 Flash", provider: "gemini",
-                   apiModel: "gemini-3.6-flash", kind: .cloud, badge: nil, speed: 4, accuracy: 4),
-        ModelEntry(id: "gemini:gemini-3.5-flash-lite", name: "Gemini 3.5 Flash-Lite", provider: "gemini",
-                   apiModel: "gemini-3.5-flash-lite", kind: .cloud, badge: nil, speed: 5, accuracy: 3),
         ModelEntry(id: "anthropic:claude-haiku-5-5", name: "Claude Haiku 5.5", provider: "anthropic",
                    apiModel: "claude-haiku-5-5", kind: .cloud, badge: "NEW", speed: 4, accuracy: 5),
-        ModelEntry(id: "anthropic:claude-haiku-4-5", name: "Claude Haiku 4.5", provider: "anthropic",
-                   apiModel: "claude-haiku-4-5", kind: .cloud, badge: nil, speed: 4, accuracy: 4),
-        ModelEntry(id: "anthropic:claude-sonnet-4-6", name: "Claude Sonnet 4.6", provider: "anthropic",
-                   apiModel: "claude-sonnet-4-6", kind: .cloud, badge: nil, speed: 3, accuracy: 5),
+        ModelEntry(id: "anthropic:claude-sonnet-5-5", name: "Claude Sonnet 5.5", provider: "anthropic",
+                   apiModel: "claude-sonnet-5-5", kind: .cloud, badge: "NEW", speed: 3, accuracy: 5),
     ]
 
     public static let defaultVoiceID = "deepgram:nova-3"

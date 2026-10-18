@@ -24,6 +24,8 @@ final class UsefulVoiceViewModel: ObservableObject {
     /// What Home says when the provider is not ready, matched to the engine.
     @Published var providerSetupHint: String = "Add your Deepgram key in Settings"
     @Published var providerName: String = "Deepgram"
+    /// The key a cloud voice model is missing ("Deepgram", "ElevenLabs", "Gemini"), for the banners.
+    @Published var keyProviderName: String = "Deepgram"
     @Published var languagePin: LanguagePin = .en
     /// Whether the global hotkey tap is actually running (Accessibility granted).
     @Published var hotkeyActive: Bool = false
@@ -61,6 +63,8 @@ final class UsefulVoiceViewModel: ObservableObject {
     /// Local model downloads/state for the Settings page. Owns the store and
     /// downloader; the view reads it as an ordinary ObservedObject.
     let models: LocalModelManager
+    /// Parakeet downloads and providers. One instance, shared with Settings.
+    let parakeet: ParakeetModelManager
     private let onToggle: (DictationSource) -> Void
     private var feedback = DictationFeedback()
 
@@ -72,6 +76,7 @@ final class UsefulVoiceViewModel: ObservableObject {
          languageMemory: LanguageMemoryStore,
          scratchpad: ScratchpadStore,
          models: LocalModelManager? = nil,
+         parakeet: ParakeetModelManager? = nil,
          onToggle: @escaping (DictationSource) -> Void) {
         self.settings = settings
         self.history = history
@@ -79,6 +84,7 @@ final class UsefulVoiceViewModel: ObservableObject {
         self.languageMemory = LanguageMemoryViewModel(store: languageMemory)
         self.scratchpad = ScratchpadViewModel(store: scratchpad)
         self.models = models ?? LocalModelManager(settings: settings)
+        self.parakeet = parakeet ?? ParakeetModelManager()
         self.onToggle = onToggle
         refreshConfig()
         refreshRecent()
@@ -154,7 +160,7 @@ final class UsefulVoiceViewModel: ObservableObject {
         case .openEngineSettings:
             // From the HUD or the menu the window may be closed: open it first.
             onOpenWindow?()
-            navigate(to: "settings", anchor: "engine")
+            navigate(to: "settings", anchor: "models")
         case .retry: retry()
         }
     }
@@ -180,25 +186,36 @@ final class UsefulVoiceViewModel: ObservableObject {
         // after every settings/language change) and can block on a keychain
         // authorization prompt, freezing the app and, with it, the HUD and the
         // event tap. DeepgramKeyStore is primed off-main at launch.
-        let engine = settings.transcriptionEngine
-        providerName = engine.displayName
+        let voice = settings.voiceModel
+        providerName = voice.isLocal || voice.name.hasPrefix(voice.providerName)
+            ? voice.name : "\(voice.providerName) \(voice.name)"
         let model = models.activeModel
-        let plan = ProviderSelector.resolve(
-            engine: engine,
-            deepgramKeyAvailable: DeepgramKeyStore.shared.current != nil
-                || DeepgramKeyStore.shared.isConfigured(),
-            localModel: model,
-            localModelAvailability: models.availability(of: model))
+        let plan = VoiceModelSelector.resolve(
+            voiceModelID: voice.id,
+            keyAvailable: { provider in
+                let store = ProviderKeyStore.store(for: provider)
+                return store.current != nil || store.isConfigured()
+            },
+            whisperAvailability: { models.availability(of: $0) })
+        _ = model
         switch plan {
-        case .deepgram, .local:
+        case .deepgram, .elevenLabs, .gemini, .whisper:
             providerConfigured = true
-        case .needsDeepgramKey:
+        case .parakeet(let version):
+            if case .ready = parakeet.state(of: version) {
+                providerConfigured = true
+            } else {
+                providerConfigured = false
+                providerSetupHint = "Download \(voice.name) in Settings"
+            }
+        case .needsKey(let provider):
             providerConfigured = false
-            providerSetupHint = "Add your Deepgram key in Settings"
-        case .needsModelDownload:
+            keyProviderName = provider.displayName
+            providerSetupHint = VoiceModelSelector.keyMessage(for: provider).replacingOccurrences(of: ".", with: "")
+        case .needsWhisperDownload:
             providerConfigured = false
             providerSetupHint = "Download a model in Settings"
-        case .modelInvalid:
+        case .whisperInvalid:
             providerConfigured = false
             providerSetupHint = "Download your model again in Settings"
         }
@@ -206,6 +223,16 @@ final class UsefulVoiceViewModel: ObservableObject {
         hotkeyKeycode = settings.hotkeyKeycode
         languageSwitchKeycode = settings.languageSwitchKeycode
         onRecordingSettingsChange?(settings.silenceTimeout, settings.recordingsToKeep)
+    }
+
+    /// Starts the download the selected voice model is waiting for.
+    func downloadSelectedVoiceModel() {
+        let id = settings.voiceModelID
+        if let whisper = ModelCatalog.whisperModel(forVoiceID: id) {
+            models.download(whisper)
+        } else if let version = ParakeetVersion(catalogID: id) {
+            parakeet.download(version)
+        }
     }
 
     /// Commits any debounced editor work before the process exits.

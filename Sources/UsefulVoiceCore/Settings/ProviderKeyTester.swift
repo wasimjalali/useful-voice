@@ -21,7 +21,7 @@ public enum ProviderKeyTester {
             return nil
         case .gemini:
             // Header, never the URL: a key in a URL ends up in logs.
-            let model = ModelCatalog.language.first { $0.provider == "gemini" }?.apiModel ?? "gemini-3.6-flash"
+            let model = ModelCatalog.language.first { $0.provider == "gemini" }?.apiModel ?? "gemini-3.8-flash"
             var request = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model)")!)
             request.setValue(key, forHTTPHeaderField: "x-goog-api-key")
             return request

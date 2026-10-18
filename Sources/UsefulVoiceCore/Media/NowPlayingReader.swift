@@ -16,7 +16,11 @@ import Foundation
 ///   not running; a dead helper is a failed read, and the next read starts a new one.
 /// - Every request carries a number and every answer echoes it, so a late answer to a request
 ///   that timed out is never taken for the next one.
-/// - After three failures in a row the reader backs off (30 s, then 2 min, then 2 min again)
+/// - A start (perl launching and loading the library, normally some 20 ms) never blocks the caller
+///   longer than `startTimeout`, 1 s, and a failed start backs off at once (a helper that cannot
+///   start will not start on the next try either). While the warm-up is starting it, a read does not
+///   wait for it: it answers nil.
+/// - After three failed reads in a row the reader backs off (30 s, then 2 min, then 2 min again)
 ///   and returns nil without starting anything; the policy uses the audio process list meanwhile.
 /// - Missing files, a missing perl, or a library whose signature is not the app's turn it off
 ///   for the session. The library's signature is checked before every start.
@@ -65,7 +69,7 @@ final class NowPlayingReader: @unchecked Sendable {
          verify: @escaping (URL) -> String? = HelperSignature.problem(with:),
          backoff: [TimeInterval] = [30, 120],
          readTimeout: TimeInterval = 0.5,
-         startTimeout: TimeInterval = 3,
+         startTimeout: TimeInterval = 1,
          failuresBeforeBackoff: Int = 3,
          clock: @escaping () -> Date = Date.init) {
         self.directory = directory
@@ -98,7 +102,8 @@ final class NowPlayingReader: @unchecked Sendable {
 
     /// Asks the helper for the current state. Nil when it cannot answer.
     func read(timeout: TimeInterval? = nil) -> NowPlayingState? {
-        requests.lock()
+        // The warm-up may be starting the helper right now: not ready yet is a nil, not a wait.
+        guard requests.try() else { return nil }
         defer { requests.unlock() }
         guard canTry else { return nil }
         guard startIfNeeded() else { return nil }
@@ -192,7 +197,7 @@ final class NowPlayingReader: @unchecked Sendable {
         do {
             try task.run()
         } catch {
-            _ = fail("perl would not start (\(error.localizedDescription))")
+            _ = failStart("perl would not start (\(error.localizedDescription))")
             return false
         }
         condition.lock()
@@ -217,7 +222,7 @@ final class NowPlayingReader: @unchecked Sendable {
         if !isReady {
             let exited = !task.isRunning
             stopHelper()
-            _ = fail(exited ? "the helper exited before it was ready" : "the helper did not become ready")
+            _ = failStart(exited ? "the helper exited before it was ready" : "the helper did not become ready")
         }
         return isReady
     }
@@ -315,6 +320,13 @@ final class NowPlayingReader: @unchecked Sendable {
             diagnostics.warning("media", "Reading Now Playing failed: \(reason). Using the audio process list for now")
         }
         return nil
+    }
+
+    /// Caller holds `requests`. A start that failed backs off at once: the first failure waits
+    /// the first step (30 s), the next the second (2 min).
+    private func failStart(_ reason: String) -> NowPlayingState? {
+        failures = max(failures, failuresBeforeBackoff - 1)
+        return fail(reason)
     }
 
     /// Caller holds `requests`. For failures a retry cannot fix.

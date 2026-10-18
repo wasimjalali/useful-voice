@@ -544,11 +544,10 @@ public final class MediaPausePolicy: @unchecked Sendable {
                 return
             }
             guard let state = effects.nowPlaying() else {
-                // The pause was sent, so it is not dropped: the audio list decides instead.
-                diagnostics.info("media", "Now Playing cannot be read at the end; resuming \(current.app.bundleID ?? "the player") by the audio process list")
-                var fallback = Hold()
-                fallback.held = [MediaPlayerID(pid: current.app.pid, bundleID: current.app.bundleID)]
-                resumeAudio(fallback)
+                // Not resumed by the audio list: a browser's audio pid is not the app Play reaches,
+                // the no-Now-Playing guard would be skipped, and the watch saw nothing. It stays paused.
+                logOnce("left-paused", "Left \(current.app.bundleID ?? "the player") paused: couldn't confirm it's safe to play",
+                        level: .warning)
                 return
             }
             guard state.hasApp, state.isSameApp(as: current.app), !state.isPlaying else {

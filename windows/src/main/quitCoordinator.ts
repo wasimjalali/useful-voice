@@ -41,8 +41,28 @@ export interface QuitCoordinatorDeps {
 /** Windows gives a session end very little time: the media gets about a second. */
 export const SESSION_END_MEDIA_BUDGET_MS = 1000;
 
+/**
+ * What the last step of an orderly quit does about a downloaded update. A logoff or shutdown
+ * must not start the installer (nor relaunch): the person is leaving, and an installer
+ * spawned into a closing session is killed halfway or surprises them at the next login. The
+ * update then installs on a normal quit, or the next time they choose Restart to update.
+ */
+export function installerPlan(input: { restartToUpdate: boolean; sessionEnded: boolean }): {
+  install: boolean;
+  relaunch: boolean;
+} {
+  if (input.sessionEnded) return { install: false, relaunch: false };
+  // Whether an update is waiting is the updater's to say: it is asked on every other quit.
+  return { install: true, relaunch: input.restartToUpdate };
+}
+
 export class QuitCoordinator {
   private sessionEnding = false;
+
+  /** Windows is ending the session: the quit that follows is a logoff or shutdown. */
+  get sessionEnded(): boolean {
+    return this.sessionEnding;
+  }
 
   constructor(private readonly deps: QuitCoordinatorDeps) {}
 

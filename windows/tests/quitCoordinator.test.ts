@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MediaPausePolicy, type MediaEffects } from '../src/core/media/mediaPausePolicy.js';
-import { QuitCoordinator, type QuitEvent } from '../src/main/quitCoordinator.js';
+import { QuitCoordinator, installerPlan, type QuitEvent } from '../src/main/quitCoordinator.js';
 
 /**
  * Drives the quit handlers with fake Electron events and the real media policy, and asserts
@@ -26,10 +26,10 @@ function setup() {
       await new Promise((resolve) => setTimeout(resolve, 20));
       player.spotify = 'Playing';
       order.push('media resumed');
-      return { refused: [], touched: [], unconfirmed: [] };
+      return { refused: [], touched: [], unconfirmed: [], skipped: [] };
     },
   };
-  const media = new MediaPausePolicy({ effects, enabled: () => true, log: () => undefined, graceMs: 0 });
+  const media = new MediaPausePolicy({ effects, enabled: () => true, log: () => undefined, graceMs: 400 });
 
   let quits = 0;
   let appQuits = 0;
@@ -37,6 +37,9 @@ function setup() {
   const orderlyQuit = (): Promise<void> => {
     quits += 1;
     quitting ??= (async () => {
+      // `runQuit` cancels the dictation first, which ends the recording after a session-end
+      // has already started the shutdown: the real 400 ms grace must not eat its budget.
+      media.recordingEnded();
       await media.shutdown(2500);
       order.push('exit (app.exit)');
     })();
@@ -92,14 +95,39 @@ function setup() {
   };
 }
 
+describe('the update installer at the end of a quit', () => {
+  it('starts on a normal quit, and on a restart to update, which also relaunches', () => {
+    expect(installerPlan({ restartToUpdate: false, sessionEnded: false })).toEqual({ install: true, relaunch: false });
+    expect(installerPlan({ restartToUpdate: true, sessionEnded: false })).toEqual({ install: true, relaunch: true });
+  });
+
+  it('never starts, and never relaunches, when Windows is ending the session', () => {
+    expect(installerPlan({ restartToUpdate: false, sessionEnded: true })).toEqual({ install: false, relaunch: false });
+    expect(installerPlan({ restartToUpdate: true, sessionEnded: true })).toEqual({ install: false, relaunch: false });
+  });
+
+  it('is told by the coordinator: only a session-end marks the quit as one', () => {
+    const quiet = { quit: async () => undefined, requestAppQuit: () => undefined, shutdownMedia: async () => true };
+    const coordinator = new QuitCoordinator(quiet);
+    expect(coordinator.sessionEnded).toBe(false);
+    coordinator.onBeforeQuit({ preventDefault: () => undefined });
+    expect(coordinator.sessionEnded).toBe(false);
+    coordinator.onSessionEnd();
+    expect(coordinator.sessionEnded).toBe(true);
+  });
+});
+
 describe('a logoff or shutdown (session-end)', () => {
   it('plays the media again before the process exits, and the exit is the orderly quit, not Electron', async () => {
     const ctx = setup();
     await ctx.dictating();
+    const started = Date.now();
     ctx.coordinator.onSessionEnd();
     await ctx.settle();
     expect(ctx.player.spotify).toBe('Playing');
     expect(ctx.order).toEqual(['media resumed', 'exit (app.exit)']);
+    // The resume took its own 20 ms, not the 400 ms grace.
+    expect(Date.now() - started).toBeLessThan(300);
   });
 
   it('lets Electron start its own quit (so Windows sees the app quitting) and holds the exit until the media is back', () => {

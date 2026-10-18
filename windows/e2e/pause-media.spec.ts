@@ -132,7 +132,17 @@ test('a logoff or shutdown (session-end) plays the media again before the app ex
   await startButton(r.win).click();
   await expect(stopButton(r.win)).toBeVisible({ timeout: 15 * SECOND });
   await expect.poll(() => media(r)).toMatchObject({ Spotify: 'Paused', Edge: 'Paused' });
-  const lines = entries(await endApp(r, () => hook(r.app, 'sessionEnd')));
+  // Windows' own signal, on a real window: the listener added to every new window is what
+  // reaches the coordinator, so that wiring is part of what this proves.
+  const lines = entries(
+    await endApp(r, () =>
+      r.app.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        if (!window) throw new Error('no window to end the session on');
+        (window as unknown as { emit(event: string, ...args: unknown[]): boolean }).emit('session-end', { reasons: ['logoff'] });
+      }),
+    ),
+  );
   expect(lines).toEqual(['media list', 'media pause:Spotify,Edge', 'media resume:Spotify,Edge', 'quit: exiting']);
 });
 

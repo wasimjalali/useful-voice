@@ -540,7 +540,7 @@ export function createMediaEffects(
       }
     },
     async resume(sessions) {
-      if (!available || sessions.length === 0) return { refused: [], touched: [], unconfirmed: [] };
+      if (!available || sessions.length === 0) return { refused: [], touched: [], unconfirmed: [], skipped: [] };
       return parseResumeOutput(await run(resumeScript(sessions)));
     },
     beginQuit() {

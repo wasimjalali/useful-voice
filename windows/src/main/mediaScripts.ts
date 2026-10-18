@@ -202,6 +202,7 @@ foreach ($token in '${encoded}'.Split(',')) {
 }
 $uvResumed = 0
 foreach ($s in @(Get-UvMediaSessions)) {
+  $id = ''
   try {
     $id = [string]$s.SourceAppUserModelId
     if (-not $uvWanted.ContainsKey($id)) { continue }
@@ -217,7 +218,10 @@ foreach ($s in @(Get-UvMediaSessions)) {
       if ($since -lt 0 -or $since -gt ${TOUCH_TOLERANCE_MS}) { Write-Output ('UVUNCONFIRMED:' + (Get-UvB64 $id)); continue }
     }
     if (Invoke-UvAwait ($s.TryPlayAsync()) ([bool])) { $uvResumed++ } else { Write-Output ('UVREFUSED:' + (Get-UvB64 $id)) }
-  } catch { Write-Output 'UVSKIP:-' }
+  } catch {
+    # The await outran its cap or threw: it may still be paused. Name it, so quit can say so.
+    if ($id) { Write-Output ('UVSKIP:' + (Get-UvB64 $id)) } else { Write-Output 'UVSKIP:-' }
+  }
 }
 Write-Output ('UVRESUMED:' + $uvResumed)
 `;
@@ -283,5 +287,6 @@ export function parseResumeOutput(stdout: string): ResumeResult {
     refused: parseIds(stdout, 'UVREFUSED'),
     touched: parseIds(stdout, 'UVTOUCHED'),
     unconfirmed: parseIds(stdout, 'UVUNCONFIRMED'),
+    skipped: parseIds(stdout, 'UVSKIP'),
   };
 }

@@ -32,6 +32,8 @@ function fakeMedia(initial: Record<string, Status>) {
     failResume: false,
     refusePause: false,
     refuseResume: false,
+    /** The resume script cannot finish with this id (its await outran the cap). */
+    skipResume: '',
     /** The pause answer leaves this id out, as if the session had been paused by the person first. */
     omitFromAnswer: '',
     /** The pause lands but the script reports this id as skipped (its await outran the cap). */
@@ -80,12 +82,13 @@ function fakeMedia(initial: Record<string, Status>) {
       await waitForGate();
       if (state.failResume) throw new Error('resume failed');
       // What the real script does: play only what is Paused and passes the verdict.
-      const result: ResumeResult = { refused: [], touched: [], unconfirmed: [] };
+      const result: ResumeResult = { refused: [], touched: [], unconfirmed: [], skipped: [] };
       for (const h of held) {
         const s = sessions[h.id];
         if (!s || s.status !== 'Paused') continue;
         const verdict = resumeVerdict(h, s);
-        if (verdict === 'touched') result.touched.push(h.id);
+        if (h.id === state.skipResume) result.skipped.push(h.id);
+        else if (verdict === 'touched') result.touched.push(h.id);
         else if (verdict === 'unconfirmed') result.unconfirmed.push(h.id);
         else if (state.refuseResume) result.refused.push(h.id);
         else s.status = 'Playing';
@@ -111,6 +114,9 @@ function fakeMedia(initial: Record<string, Status>) {
     },
     fail: (what: 'failList' | 'failPause' | 'pauseLandsButThrows' | 'failResume' | 'refusePause' | 'refuseResume') => {
       state[what] = true;
+    },
+    skipResume: (id: string) => {
+      state.skipResume = id;
     },
     omitFromAnswer: (id: string) => {
       state.omitFromAnswer = id;
@@ -550,6 +556,75 @@ describe('resumeVerdict', () => {
     expect(resumeVerdict(held, { position: 0, updated: 5_000_000 + TOUCH_TOLERANCE_MS })).toBe('play');
     expect(resumeVerdict(held, { position: 0, updated: 4_999_999 })).toBe('unconfirmed');
     expect(resumeVerdict(held, { position: 0, updated: 5_000_000 + TOUCH_TOLERANCE_MS + 1 })).toBe('unconfirmed');
+  });
+});
+
+describe('a resume that could not finish with a session', () => {
+  it('logs it, and on quit keeps it held so shutdown reports false', async () => {
+    const { media, logs, policy } = setup({ spotify: 'Playing', edge: 'Playing' });
+    policy.recordingStarted();
+    await policy.settled();
+    media.skipResume('edge');
+    expect(await policy.shutdown()).toBe(false);
+    expect(media.status()).toEqual({ spotify: 'Playing', edge: 'Paused' });
+    expect(logs).toEqual(['Could not resume edge: the request did not finish']);
+  });
+
+  it('in normal use is logged and dropped, like any failed resume', async () => {
+    const { media, logs, policy } = setup({ spotify: 'Playing' });
+    policy.recordingStarted();
+    await policy.settled();
+    media.skipResume('spotify');
+    policy.recordingEnded();
+    await policy.settled();
+    expect(logs).toEqual(['Could not resume spotify: the request did not finish']);
+  });
+});
+
+describe('quit with the real grace', () => {
+  /** The real 400 ms grace, not a shortened one: the quit budget is what is under test. */
+  function realGrace(initial: Record<string, Status>) {
+    const media = fakeMedia(initial);
+    const logs: string[] = [];
+    const policy = new MediaPausePolicy({ effects: media.effects, enabled: () => true, log: (m) => logs.push(m), graceMs: 400, now: () => media.clock.now });
+    return { media, logs, policy };
+  }
+
+  it('is not slowed by the recording ending after the shutdown began (the quit cancels the dictation)', async () => {
+    const { media, policy } = realGrace({ spotify: 'Playing' });
+    policy.recordingStarted();
+    await policy.settled();
+    const started = Date.now();
+    const quitting = policy.shutdown(1000);
+    // What the orderly quit does next: it cancels the dictation, which ends the recording.
+    policy.recordingEnded();
+    expect(await quitting).toBe(true);
+    expect(Date.now() - started).toBeLessThan(300);
+    expect(media.status().spotify).toBe('Playing');
+    expect(resumes(media.calls)).toEqual(['resume:spotify']);
+  });
+
+  it('settled() does not wait on a grace once the quit began', async () => {
+    const { policy } = realGrace({ spotify: 'Playing' });
+    policy.recordingStarted();
+    await policy.settled();
+    policy.recordingEnded();
+    const started = Date.now();
+    const quitting = policy.shutdown(1000);
+    await policy.settled();
+    expect(Date.now() - started).toBeLessThan(300);
+    await quitting;
+  });
+
+  it('still waits the grace for an ordinary end', async () => {
+    const { media, policy } = realGrace({ spotify: 'Playing' });
+    policy.recordingStarted();
+    await policy.settled();
+    policy.recordingEnded();
+    await tick(100);
+    expect(media.status().spotify).toBe('Paused');
+    await policy.settled();
+    expect(media.status().spotify).toBe('Playing');
   });
 });
 

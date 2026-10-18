@@ -66,6 +66,8 @@ export interface ResumeResult {
   touched: string[];
   /** Left paused: our pause of them was never confirmed. */
   unconfirmed: string[];
+  /** The script could not finish with them (a call outran its cap or threw): they may still be paused. */
+  skipped: string[];
 }
 
 /**
@@ -124,6 +126,8 @@ export class MediaPausePolicy {
   private readonly held = new Map<string, HeldSession>();
   private recording = false;
   private closed = false;
+  /** Quit has begun: no new grace, no new pause. The quit's own resume is the only one left. */
+  private shuttingDown = false;
   /** Effects run through this chain, so they never overlap and keep their order. */
   private chain: Promise<void> = Promise.resolve();
   /** The wait before a resume, while one is pending. */
@@ -139,7 +143,7 @@ export class MediaPausePolicy {
 
   /** A recording is starting (or has just been asked to). */
   recordingStarted(): void {
-    if (this.closed) return;
+    if (this.closed || this.shuttingDown) return;
     this.recording = true;
     // A dictation inside the grace keeps what is paused, paused.
     this.cancelGrace();
@@ -206,7 +210,9 @@ export class MediaPausePolicy {
   /** The recording is over, for any reason. Safe to call more than once. */
   recordingEnded(): void {
     this.recording = false;
-    if (this.closed) return;
+    // Once quit has begun the shutdown owns the resume. A grace here would only eat its budget
+    // (the quit's own service cancel ends the recording after the shutdown has started).
+    if (this.closed || this.shuttingDown) return;
     // Even with nothing held yet: a pause still in flight may be about to hold something,
     // and the resume runs behind it.
     this.enqueueResumeAfterGrace();
@@ -223,6 +229,7 @@ export class MediaPausePolicy {
   }
 
   private async runShutdown(budgetMs: number): Promise<boolean> {
+    this.shuttingDown = true;
     this.recording = false;
     this.cancelGrace();
     try {
@@ -293,7 +300,12 @@ export class MediaPausePolicy {
       for (const id of result.refused) this.note(`Could not resume ${id}: Windows refused the request`);
       for (const id of result.touched) this.note(`Left ${id} paused: it was moved after the pause`);
       for (const id of result.unconfirmed) this.note(`Left ${id} paused: its pause was never confirmed`);
-      for (const session of sessions) this.held.delete(session.id);
+      for (const id of result.skipped) this.note(`Could not resume ${id}: the request did not finish`);
+      // A skipped session may still be paused: on quit it stays held, so the caller is told.
+      for (const session of sessions) {
+        if (keepOnFailure && result.skipped.includes(session.id)) continue;
+        this.held.delete(session.id);
+      }
     } catch (error) {
       this.fail('could not resume', error);
       if (!keepOnFailure) for (const session of sessions) this.held.delete(session.id);

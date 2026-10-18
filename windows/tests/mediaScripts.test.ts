@@ -65,8 +65,12 @@ describe('parseResumeOutput', () => {
     expect(() => parseResumeOutput('UVERR:something broke')).toThrow('did not finish');
   });
 
+  it('names a session the resume could not finish with', () => {
+    expect(parseResumeOutput(`UVSKIP:${b64('Edge')}\nUVSKIP:-\nUVRESUMED:0`)).toEqual({ refused: [], touched: [], unconfirmed: [], skipped: ['Edge'] });
+  });
+
   it('accepts it with Windows line endings and the sessions it left alone', () => {
-    expect(parseResumeOutput(`UVTOUCHED:${b64('a')}\r\nUVRESUMED:0\r\n`)).toEqual({ refused: [], touched: ['a'], unconfirmed: [] });
+    expect(parseResumeOutput(`UVTOUCHED:${b64('a')}\r\nUVRESUMED:0\r\n`)).toEqual({ refused: [], touched: ['a'], unconfirmed: [], skipped: [] });
   });
 });
 
@@ -74,7 +78,7 @@ describe('parseTimelineOutput and parseResumeOutput', () => {
   it('read their own tags only', () => {
     expect(parseTimelineOutput(`UVTIMELINE:${b64('a')}:10:20\nUVPAUSED:${b64('b')}:1:1`)).toEqual([{ id: 'a', position: 10, updated: 20 }]);
     const out = [`UVREFUSED:${b64('a')}`, `UVTOUCHED:${b64('b')}`, `UVUNCONFIRMED:${b64('c')}`, 'UVRESUMED:2', 'UVTOUCHED:!!'].join('\n');
-    expect(parseResumeOutput(out)).toEqual({ refused: ['a'], touched: ['b'], unconfirmed: ['c'] });
+    expect(parseResumeOutput(out)).toEqual({ refused: ['a'], touched: ['b'], unconfirmed: ['c'], skipped: [] });
   });
 });
 
@@ -138,6 +142,12 @@ describe('the scripts', () => {
     expect(script).toContain('UVREFUSED');
     // The settle wait lives in the app now, where quitting can cut it short.
     expect(script).not.toContain('Start-Sleep');
+  });
+
+  it('name the session in the resume script when its play could not finish', () => {
+    const script = resumeScript([{ id: 'a', confirmed: true, requestedAt: 1 }]);
+    expect(script).toContain("Write-Output ('UVSKIP:' + (Get-UvB64 $id))");
+    expect(script).toContain("$id = ''");
   });
 
   it('cap each WinRT call in a pause at 1.5 s, and at 1 s once quitting', () => {

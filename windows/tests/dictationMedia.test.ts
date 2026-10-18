@@ -48,7 +48,7 @@ function setup() {
     async resume(held) {
       calls.push('resume');
       for (const { id } of held) if (status[id] === 'Paused') status[id] = 'Playing';
-      return { refused: [], touched: [], unconfirmed: [] };
+      return { refused: [], touched: [], unconfirmed: [], skipped: [] };
     },
   };
   const logs: string[] = [];

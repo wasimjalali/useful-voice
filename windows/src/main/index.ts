@@ -23,7 +23,7 @@ import { HUD_EXIT_MS, HudModel, languageLabel, type HudFrame } from '../core/hud
 import { normaliseLanguageCode } from '../core/transcription/languages.js';
 import { decideFirstRun, firstRunLaunch, shouldOpenAtLaunch, type FirstRunStep } from '../core/firstRun/gate.js';
 import { installProviderStubs, parakeetE2eDeps } from './e2eStub.js';
-import { QuitCoordinator } from './quitCoordinator.js';
+import { QuitCoordinator, installerPlan } from './quitCoordinator.js';
 import { FakeMedia, type FakeStatus } from './e2eMedia.js';
 import { MediaPausePolicy, type MediaEffects } from '../core/media/mediaPausePolicy.js';
 import { setSecretSource } from '../core/redaction.js';
@@ -287,8 +287,7 @@ class UsefulVoiceApp {
       setMedia: (sessions: unknown) => this.fakeMedia?.set(sessions as Record<string, FakeStatus>),
       mediaState: () => this.fakeMedia?.snapshot(),
       mediaCalls: () => this.fakeMedia?.calls.slice(),
-      // The same handlers Windows and Electron drive on a logoff, and on an `app.quit()`.
-      sessionEnd: () => this.quitHandlers.onSessionEnd(),
+      // `app.quit()` from anywhere. (A logoff is driven by emitting `session-end` on a real window.)
       appQuit: () => app.quit(),
       scrubMedia: (arg: unknown) => {
         const { id, byMs } = arg as { id: string; byMs: number };
@@ -404,7 +403,6 @@ class UsefulVoiceApp {
     app.on('browser-window-created', (_event, window) => {
       window.on('session-end', () => quits.onSessionEnd());
     });
-    // The e2e suite drives the same handlers with fake events.
     this.quitHandlers = quits;
 
     await app.whenReady();
@@ -1127,11 +1125,13 @@ class UsefulVoiceApp {
       this.tray?.destroy();
       // `app.exit` skips the quit events electron-updater listens for, so a downloaded
       // update is handed to its installer here, on every quit.
-      const restart = options.restartToUpdate === true;
+      const sessionEnded = this.quitHandlers?.sessionEnded === true;
+      const plan = installerPlan({ restartToUpdate: options.restartToUpdate === true, sessionEnded });
+      const restart = plan.relaunch;
       const updateReady = this.updater?.ready;
       // The data is flushed, so nothing may start a dictation or an edit while the installer
       // is checked below: close every window (the app has no window-all-closed quit).
-      if (updateReady) for (const window of BrowserWindow.getAllWindows()) window.destroy();
+      if (updateReady && plan.install) for (const window of BrowserWindow.getAllWindows()) window.destroy();
       // Its own file, appended synchronously: diagnostics.log is rewritten by the next
       // launch, which is seconds away on both paths, and nothing async survives `app.exit`.
       // The first line goes in before the restart wait, which the installer can cut short.
@@ -1145,19 +1145,22 @@ class UsefulVoiceApp {
       const describe = (started: boolean): string =>
         `installer for ${updateReady} ${started ? 'started' : `did not start (${this.updater?.lastProblem ?? 'no reason recorded'})`}${restart ? ', restart requested' : ''}`;
       let spawned: boolean | null = null;
-      const installing =
-        (await this.updater?.installOnExit(restart, (started) => {
-          spawned = started;
-          if (updateReady) updateLog(describe(started));
-        })) ?? false;
-      if (updateReady) {
+      // A logoff or shutdown never starts the installer: the update waits for a normal quit.
+      if (!plan.install && updateReady) updateLog(`installer for ${updateReady} not started: the session is ending`);
+      const installing = plan.install
+        ? ((await this.updater?.installOnExit(restart, (started) => {
+            spawned = started;
+            if (updateReady) updateLog(describe(started));
+          })) ?? false)
+        : false;
+      if (updateReady && plan.install) {
         // Refused before any spawn (the file is gone, the call threw), or a spawn failure
         // that arrived during the wait.
         if (spawned === null) updateLog(describe(false));
         else if (spawned && !installing) updateLog(`installer for ${updateReady} failed after starting (${this.updater?.lastProblem ?? 'no reason recorded'})`);
       }
       // The person asked for a restart: come back even if the installer could not start.
-      if (restart && !installing) app.relaunch();
+      if (plan.relaunch && !installing) app.relaunch();
       if (E2E) this.e2eAppend('quit: exiting');
       app.exit(0);
     }

@@ -46,11 +46,15 @@ struct DockIssue: Equatable {
             case .tooShort:
                 (lead, rest, icon, tone) = ("Recording was too short.", "Hold on a little longer.", "exclamationmark.triangle", .warning)
             case .noProvider:
-                (lead, rest, icon, tone) = ("No engine is set up.", "Add a key or download a model.", "exclamationmark.triangle", .warning)
+                if let specific = error.specific {
+                    (lead, rest, icon, tone) = (specific, "", "exclamationmark.triangle", .warning)
+                } else {
+                    (lead, rest, icon, tone) = ("No engine is set up.", "Add a key or download a model.", "exclamationmark.triangle", .warning)
+                }
             case .keyRejected:
-                (lead, rest, icon, tone) = ("Deepgram rejected your key.", saved, "key", .warning)
+                (lead, rest, icon, tone) = ("\(error.providerLabel) rejected your key.", saved, "key", .warning)
             case .outOfCredits:
-                (lead, rest, icon, tone) = ("Deepgram is out of credit.", saved, "exclamationmark.triangle", .warning)
+                (lead, rest, icon, tone) = ("\(error.providerLabel) is out of credit.", saved, "exclamationmark.triangle", .warning)
             case .offline:
                 (lead, rest, icon, tone) = ("No connection.", saved, "wifi.slash", .danger)
             case .timedOut:
@@ -58,7 +62,7 @@ struct DockIssue: Equatable {
             case .providerFailed:
                 (lead, rest, icon, tone) = ("Transcription failed.", saved, "exclamationmark.triangle", .danger)
             case .engineFailed:
-                (lead, rest, icon, tone) = ("Whisper (local) failed.", saved, "exclamationmark.triangle", .danger)
+                (lead, rest, icon, tone) = ("\(error.provider ?? "Whisper (local)") failed.", saved, "exclamationmark.triangle", .danger)
             }
         }
     }
@@ -163,7 +167,7 @@ struct StreamDock: View {
     @State private var formatTick = 0
 
     private var sample: DockSnapshot.Sample? { DockSnapshot.current }
-    private var engineIsLocal: Bool { sample?.local ?? (settings.transcriptionEngine == .whisperLocal) }
+    private var engineIsLocal: Bool { sample?.local ?? settings.voiceModel.isLocal }
 
     private var phase: DockPhase {
         if let sample { return sample.phase }
@@ -391,19 +395,14 @@ struct StreamDock: View {
 
     private var engineChip: some View {
         let local = engineIsLocal
-        return Button { viewModel.navigate(to: "settings", anchor: "engine") } label: {
+        let name = viewModel.providerName
+        return Button { viewModel.navigate(to: "settings", anchor: "models") } label: {
             HStack(spacing: 6) {
                 Image(systemName: local ? "internaldrive" : "cloud")
                     .font(.uv(.ui))
-                Text(local ? "Whisper (local)" : "Deepgram Nova-3")
+                Text(name)
                     .font(.uv(.meta, .medium))
                     .lineLimit(1)
-                if local {
-                    Text(Self.modelName(viewModel.models.activeModel))
-                        .font(.uv(.meta))
-                        .foregroundStyle(Theme.inkMuted)
-                        .lineLimit(1)
-                }
             }
             .foregroundStyle(Theme.ink)
             .padding(.horizontal, 12)
@@ -413,13 +412,9 @@ struct StreamDock: View {
         }
         .buttonStyle(.plain)
         .clickableCursor()
-        .accessibilityLabel("Engine")
-        .accessibilityValue(local ? "Whisper (local)" : "Deepgram Nova-3")
-        .help("Engine settings")
-    }
-
-    private static func modelName(_ model: WhisperModel) -> String {
-        model.id.hasPrefix("whisper-") ? String(model.id.dropFirst("whisper-".count)) : model.id
+        .accessibilityLabel("Voice model")
+        .accessibilityValue(name)
+        .help("Model settings")
     }
 
     private var formatToggle: some View {

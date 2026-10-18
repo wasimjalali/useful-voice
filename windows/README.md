@@ -1,7 +1,10 @@
 # Useful Voice for Windows
 
-Voice-to-text dictation for Windows, powered by Deepgram Nova-3. Press a hotkey,
-speak, and the text appears wherever you are typing.
+Voice-to-text dictation for Windows. Press a hotkey, speak, and the text appears
+wherever you are typing. You pick the voice model (Deepgram Nova-3 by default,
+Nova-3 Medical, ElevenLabs Scribe v2, Gemini 3.8 Flash, or Parakeet on this PC) and,
+if you like, an AI formatting model (Gemini 3.8 Flash, Claude Haiku 5.5 or Claude
+Sonnet 5.5) that cleans up the transcript.
 
 This is the Windows port of the macOS app in the repository root. Both share the
 same design system, the same dictionary/language-memory model, and the same
@@ -22,7 +25,7 @@ is split by what is actually provable on each platform.
 | All platform-free logic | `npm test`: **616 tests, 25 files**, run on macOS |
 | Type safety | `npm run typecheck`: clean |
 | Build | `npm run build`: main, preload and renderer all emitted |
-| Preload↔renderer contract | `npm run self-test`: API exposed, 75 methods, no Node leak |
+| Preload↔renderer contract | `npm run self-test`: API exposed, 85 methods, no Node leak |
 | Renderer loads under CSP | `npm run self-test`: shell paints, 5 nav items |
 | Audio-capable recorder window | `npm run self-test`: `getUserMedia` and `AudioContext` present |
 | Keyterm ceiling | `npm run self-test`: 400 terms compressed to 400 tokens, 384 dropped |
@@ -59,9 +62,12 @@ npm run verify      # typecheck + tests + build + self-test
 npm start           # launch the app
 ```
 
-Then open **Settings** and paste a Deepgram API key from
-<https://console.deepgram.com/>. The key is required before dictation will work;
-the app says so plainly rather than failing silently.
+Then open **Settings > API keys** and paste the key for the model you chose: Deepgram
+(<https://console.deepgram.com/>, the default), ElevenLabs
+(<https://elevenlabs.io/app/settings/api-keys>), Gemini (<https://aistudio.google.com/apikey>)
+or Anthropic (<https://console.anthropic.com/settings/keys>). A cloud model can't be picked
+until its key is saved, and a dictation with a missing key says which key to add rather than
+failing silently. Parakeet needs no key: pick it in **Settings > Models** and it downloads.
 
 ## Building installers
 
@@ -145,9 +151,9 @@ that it did.
 
 ### Where the security boundary is
 
-The renderer can call 75 named IPC channels and nothing else. It cannot read the
-filesystem, and it can never read the API key. It can only ask whether one is
-configured. The key is encrypted with DPAPI via Electron's `safeStorage`, so it is
+The renderer can call 85 named IPC channels and nothing else. It cannot read the
+filesystem, and it can never read an API key. It can only ask whether one is
+configured. Each key (Deepgram, ElevenLabs, Gemini, Anthropic) is encrypted with DPAPI via Electron's `safeStorage`, so it is
 unreadable from another Windows account or from a copy of the file on another
 machine.
 
@@ -200,14 +206,14 @@ Everything lives in `%APPDATA%\Useful Voice`:
 
 | File | Contents |
 | --- | --- |
-| `settings.json` | preferences; the API key inside is DPAPI-encrypted |
+| `settings.json` | preferences, and the API keys, each DPAPI-encrypted |
 | `data.json` | dictionary, corrections, shortcuts, history, notes |
 | `diagnostics.log` | recent problems: never transcript text, never the key |
 
-Audio is held in memory only while transcribing and is never written to disk. Each
-recording's audio is uploaded to Deepgram for transcription, along with your
-dictionary's correct spellings as keyterms. Nothing else leaves your PC, and there
-is no analytics or tracking. Uninstalling keeps this folder on purpose; Settings
+Audio is held in memory only while transcribing and is never written to disk. With a cloud
+voice model, each recording's audio is uploaded to that provider (Deepgram, ElevenLabs or
+Gemini) along with your dictionary's correct spellings. With AI formatting on, the transcript text and up to 100 of your dictionary words are sent to Google (Gemini) or Anthropic (Claude), whichever you chose. With a local model (Parakeet), audio stays on your PC unless AI formatting is on, and then only the transcript text leaves it. Nothing else leaves your PC, and there is no analytics or
+tracking. Uninstalling keeps this folder on purpose; Settings
 shows the path so you can remove it yourself.
 
 ## Known gaps

@@ -1,4 +1,5 @@
 import { api } from '../api.js';
+import { voiceModelById } from '../../core/models/catalog.js';
 import { el, icon } from './dom.js';
 import { createLandingMark } from './landingMark.js';
 import { languagePicker } from './languagePicker.js';
@@ -45,6 +46,8 @@ const GLYPHS = {
 
 interface Flow {
   page: Page;
+  /** The Deepgram model the engine step shows and Continue applies. */
+  engineId: string;
   forced: boolean;
   /** Opened from Settings "Run setup again": it can be closed without finishing. */
   fromSettings: boolean;
@@ -100,6 +103,7 @@ function open(state: FirstRunStateDTO, fromSettings: boolean): void {
   const jump = step ? jumpFor(step) : null;
   flow = {
     page: jump?.page ?? 'welcome',
+    engineId: state.engineId,
     forced: state.forced,
     fromSettings,
     frozen: step !== null,
@@ -217,7 +221,7 @@ function leave(): void {
   void close(!flow.fromSettings);
 }
 
-async function close(completed: boolean): Promise<void> {
+async function close(completed: boolean, destination?: 'models'): Promise<void> {
   if (!flow) return;
   const wasFromSettings = flow.fromSettings;
   teardown?.();
@@ -237,7 +241,8 @@ async function close(completed: boolean): Promise<void> {
   } catch (error) {
     console.warn('could not refresh after setup', error);
   }
-  if (!wasFromSettings) navigate('stream');
+  if (destination) navigate('settings', destination);
+  else if (!wasFromSettings) navigate('stream');
   render();
 }
 
@@ -329,10 +334,29 @@ const KEY_MESSAGES = {
   saveFailed: "Couldn't save the key. Try again.",
 };
 
+/** Continue on an engine step: the model the page showed is applied before the next step. */
+async function continueFromEngine(anchor: HTMLElement): Promise<void> {
+  const f = flow as Flow;
+  anchor.parentElement?.querySelector('.fr-apply-alert')?.remove();
+  try {
+    // The id the card showed, so what is applied is what the person saw.
+    await api.firstRunApplyEngine(f.engineId);
+  } catch (error) {
+    const message = (error instanceof Error ? error.message : '').replace(/^Error invoking remote method '[^']*': (Error: )?/, '');
+    const alert = alertBox(message || "Couldn't apply the voice model. Try again.");
+    alert.classList.add('fr-apply-alert');
+    anchor.after(alert);
+    announce(message);
+    return;
+  }
+  go('microphone');
+}
+
 function enginePage(): { node: HTMLElement; focus: () => void; announce: string; cleanup?: () => void } {
   const f = flow as Flow;
   const head = header(1, 'Choose how it listens');
-  const cardHost = el('div', { class: 'fr-card', role: 'group', 'aria-label': 'Deepgram Nova-3' } as never);
+  const engineName = `Deepgram ${voiceModelById(f.engineId)?.name ?? 'Nova-3'}`;
+  const cardHost = el('div', { class: 'fr-card', role: 'group', 'aria-label': engineName } as never);
   let focusTarget: HTMLElement | null = null;
 
   const drawCard = (): void => {
@@ -341,14 +365,14 @@ function enginePage(): { node: HTMLElement; focus: () => void; announce: string;
       el(
         'div',
         { class: 'fr-card-head' },
-        el('span', { class: 'fr-card-name' }, 'Deepgram Nova-3'),
+        el('span', { class: 'fr-card-name' }, engineName),
         el('span', { class: 'fr-card-tag' }, 'Selected'),
       ),
       el('p', { class: 'fr-card-sub' }, 'In the cloud. Fastest and most accurate.'),
       el('div', { class: 'fr-card-rule' }),
     ];
     if (connected) {
-      const next = el('button', { class: 'fr-card-btn', type: 'button', onclick: () => go('microphone') } as never, 'Continue');
+      const next = el('button', { class: 'fr-card-btn', type: 'button', onclick: () => void continueFromEngine(next) } as never, 'Continue');
       next.dataset.primary = '';
       const change = el(
         'button',
@@ -524,15 +548,21 @@ function enginePage(): { node: HTMLElement; focus: () => void; announce: string;
     'div',
     { class: 'fr-local' },
     ...[
-      ['Whisper Turbo', 'Works offline'],
-      ['Whisper Large', 'Most accurate offline'],
+      ['Parakeet', 'English, works offline'],
+      ['Parakeet Multilingual', '25 languages, works offline'],
     ].map(([name, detail]) => {
+      // Choosing one ends the setup and opens Settings > Models, where it downloads.
       const row = el(
         'button',
-        { class: 'fr-local-row', type: 'button', disabled: true, 'aria-label': `${name}. ${detail}. Coming to Windows.` } as never,
+        {
+          class: 'fr-local-row',
+          type: 'button',
+          'aria-label': `${name}. ${detail}. Ends setup and opens Settings to download it.`,
+          onclick: () => void close(!f.fromSettings, 'models'),
+        } as never,
         el('span', { class: 'fr-local-name' }, name as string),
         el('span', { class: 'fr-local-detail' }, detail as string),
-        el('span', { class: 'status-pill' }, 'Coming to Windows'),
+        el('span', { class: 'status-pill' }, 'Set up in Settings'),
       );
       return row;
     }),
@@ -549,7 +579,7 @@ function enginePage(): { node: HTMLElement; focus: () => void; announce: string;
       cardHost,
       el('p', { class: 'fr-subhead' }, 'Or keep everything on this PC'),
       local,
-      el('p', { class: 'fr-fine' }, 'Deepgram receives your audio to transcribe it. Local models will keep it on this PC.'),
+      el('p', { class: 'fr-fine' }, 'With Deepgram, your audio goes to Deepgram to be transcribed. A local model keeps it on this PC.'),
     ),
   );
   return {
@@ -562,7 +592,7 @@ function enginePage(): { node: HTMLElement; focus: () => void; announce: string;
 function keyPage(): { node: HTMLElement; focus: () => void; announce: string } {
   const f = flow as Flow;
   const head = header(1, 'Connect Deepgram');
-  const next = primary('Continue', () => go('microphone'));
+  const next: HTMLElement = primary('Continue', () => void continueFromEngine(next));
   const node = el(
     'div',
     {},

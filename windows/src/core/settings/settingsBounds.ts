@@ -9,6 +9,7 @@
  * behaviour at each end of these ranges is worth being able to test directly.
  */
 
+import { normaliseFormatterId, normaliseVoiceModelId } from '../models/catalog.js';
 import { APPEARANCES, DEFAULT_SETTINGS, normaliseMemoryLanguage, type AppSettings } from '../models.js';
 
 /**
@@ -72,6 +73,10 @@ export function normaliseSettings(settings: AppSettings): AppSettings {
     // to a weaker model that does not support `keyterm` — silently dropping the
     // dictionary feature on every request.
     languagePin: normaliseMemoryLanguage(settings.languagePin),
+    // A model the catalog no longer offers (or a backup from macOS naming Whisper) falls back
+    // to the default voice model / no formatter instead of failing every dictation.
+    voiceModelId: normaliseVoiceModelId(settings.voiceModelId),
+    formatterId: normaliseFormatterId(settings.formatterId),
     languageSwitchHotkey: settings.languageSwitchHotkey
       ? {
           accelerator: String(settings.languageSwitchHotkey.accelerator ?? ''),

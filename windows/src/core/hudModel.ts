@@ -252,17 +252,18 @@ export function errorTitle(error: DictationError): string {
     case 'tooShort':
       return 'Recording was too short';
     case 'noProvider':
-      return 'Add your Deepgram key';
+      // A setup problem says which: "Add your Gemini key in Settings.", "Parakeet is not downloaded...".
+      return error.message.length > 0 && error.message.length <= 64 ? error.message : 'No engine set up';
     case 'keyRejected':
-      return 'Deepgram key rejected';
+      return `${error.provider ?? 'Deepgram'} key rejected`;
     case 'outOfCredits':
-      return 'Deepgram credit is used up';
+      return `${error.provider ?? 'Deepgram'} out of credits`;
     case 'offline':
       return 'No connection';
     case 'timedOut':
-      return 'Deepgram took too long';
+      return 'Timed out';
     case 'providerFailed':
-      return 'Transcription failed';
+      return error.provider === 'Parakeet' ? 'Parakeet failed' : 'Transcription failed';
     case 'deliveryFailed':
       return 'Could not deliver the text';
     case 'saveFailed':

@@ -30,7 +30,9 @@ public final class DeepgramProvider: TranscriptionProvider, @unchecked Sendable 
         }
     }
 
-    public let name = "Deepgram"
+    public static let providerName = "Deepgram"
+    public let name = DeepgramProvider.providerName
+    public var modelName: String? { config.model }
     private let config: Config
     private let session: URLSession
 
@@ -136,6 +138,17 @@ public final class DeepgramProvider: TranscriptionProvider, @unchecked Sendable 
         pin.supportsSpokenPunctuation
     }
 
+    /// The catalog's Nova-3 Medical API model.
+    static let medicalModel = "nova-3-medical"
+
+    static let medicalLanguageMessage =
+        "Nova-3 Medical only speaks English. Pick another voice model or switch the language to English."
+
+    /// Auto and any English pin. Multilingual and every other language is refused.
+    static func medicalAccepts(_ pin: LanguagePin) -> Bool {
+        pin.isAuto || pin.rawValue == "en" || pin.rawValue.hasPrefix("en-")
+    }
+
     public func makeRequest(audio: Data, hint: TranscriptionHint) throws -> URLRequest {
         let apiKey = config.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !apiKey.isEmpty else {
@@ -143,7 +156,17 @@ public final class DeepgramProvider: TranscriptionProvider, @unchecked Sendable 
         }
         var components = URLComponents(url: Self.baseURL, resolvingAgainstBaseURL: false)!
         var items = [URLQueryItem(name: "model", value: config.model)]
-        Self.appendLanguageParameters(to: &items, pin: hint.languagePin)
+        if config.model == Self.medicalModel {
+            // Nova-3 Medical speaks English only, so detection across other
+            // languages is never sent: Auto and English become `language=en`,
+            // any other pin fails before a request is made.
+            guard Self.medicalAccepts(hint.languagePin) else {
+                throw ProviderError.notConfigured(Self.medicalLanguageMessage)
+            }
+            items.append(URLQueryItem(name: "language", value: "en"))
+        } else {
+            Self.appendLanguageParameters(to: &items, pin: hint.languagePin)
+        }
         if config.smartFormat {
             // `numerals` is deliberately not sent. It turns every spoken number
             // into digits ("the first" -> "the 1st", "three people" -> "3

@@ -96,22 +96,29 @@ struct HUDError: Equatable {
             message = "Recording was too short"
             symbol = "exclamationmark.triangle"
         case .noProvider:
-            message = "No engine set up"
+            // A specific setup problem (a missing key, a language the model can't speak)
+            // says so; the generic line is only for no provider at all.
+            message = error.specific ?? "No engine set up"
             symbol = "exclamationmark.triangle"
         case .keyRejected:
-            message = "Deepgram key rejected"
+            message = "\(error.providerLabel) key rejected"
             symbol = "key"
         case .outOfCredits:
-            message = "Deepgram out of credits"
+            message = "\(error.providerLabel) out of credits"
             symbol = "exclamationmark.triangle"
         case .timedOut:
             message = "Timed out"
             symbol = "clock"
         case .providerFailed, .engineFailed:
-            message = "Transcription failed"
+            message = error.provider?.hasPrefix("Parakeet") == true ? "Parakeet failed" : "Transcription failed"
             symbol = "exclamationmark.triangle"
         }
     }
+}
+
+extension DictationError {
+    /// Who to name in a key or credit message: the provider that failed, Deepgram when unknown.
+    var providerLabel: String { provider ?? "Deepgram" }
 }
 
 extension DictationFix {

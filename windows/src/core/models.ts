@@ -7,6 +7,7 @@
  */
 
 import { DEEPGRAM_LANGUAGES, normaliseLanguageCode } from './transcription/languages.js';
+import { DEFAULT_VOICE_MODEL_ID } from './models/catalog.js';
 
 /**
  * The language a setting, term or replacement is scoped to.
@@ -182,6 +183,8 @@ export interface DictationError {
   kind: DictationErrorKind;
   message: string;
   fix?: DictationFix;
+  /** Who failed ("Gemini", "ElevenLabs", "Parakeet"), when a provider did. */
+  provider?: string;
 }
 
 /**
@@ -275,6 +278,10 @@ export interface AppSettings {
   appearance: Appearance;
   /** Words per day the Insights page measures progress against. No UI sets it yet. */
   dailyWordGoal: number;
+  /** The voice (transcription) model, a catalog id such as `deepgram:nova-3`. */
+  voiceModelId: string;
+  /** The AI formatting model, a catalog id, or null for Off. */
+  formatterId: string | null;
 }
 
 export type Appearance = 'system' | 'light' | 'dark';
@@ -308,4 +315,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dictionaryBiasBudget: 100,
   appearance: 'system',
   dailyWordGoal: 2500,
+  voiceModelId: DEFAULT_VOICE_MODEL_ID,
+  formatterId: null,
 };

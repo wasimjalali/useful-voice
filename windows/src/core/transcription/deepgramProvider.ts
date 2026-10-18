@@ -10,6 +10,7 @@ import {
   DETECTION_CODES,
   supportsSpokenPunctuation as supportsSpokenPunctuationCode,
 } from './languages.js';
+import { redactSecrets } from '../redaction.js';
 import { applyTranscriptStyle } from '../formatting/transcriptStyle.js';
 
 export interface DeepgramConfig {
@@ -26,7 +27,13 @@ export interface DeepgramConfig {
   spokenPunctuation?: boolean;
   /** Overrides the default endpoint; used by tests. */
   endpoint?: string;
+  /** The Deepgram model string (the catalog's `apiModel`). Defaults to `nova-3`. */
+  model?: string;
 }
+
+/** Shown when Nova-3 Medical is chosen with a language it doesn't speak. */
+export const MEDICAL_ENGLISH_ONLY_MESSAGE =
+  'Nova-3 Medical only speaks English. Pick another voice model or switch the language to English.';
 
 export interface TranscriptionHint {
   language: string;
@@ -59,24 +66,29 @@ export type ProviderErrorKind =
   | 'timedOut'
   | 'transport'
   | 'cancelled'
-  | 'malformedResponse';
+  | 'malformedResponse'
+  /** The chosen engine can't run yet: a missing key or a local model not downloaded. */
+  | 'notConfigured';
 
 export class ProviderError extends Error {
   readonly kind: ProviderErrorKind;
   readonly status?: number;
   /** Seconds to wait, from `Retry-After`, when the server supplied it. */
   readonly retryAfterSeconds?: number;
+  /** Who failed, in the words the user sees: "Deepgram", "ElevenLabs", "Parakeet". */
+  readonly provider: string;
 
   constructor(
     kind: ProviderErrorKind,
     message: string,
-    options: { status?: number; retryAfterSeconds?: number } = {},
+    options: { status?: number; retryAfterSeconds?: number; provider?: string } = {},
   ) {
     super(message);
     this.name = 'ProviderError';
     this.kind = kind;
     this.status = options.status;
     this.retryAfterSeconds = options.retryAfterSeconds;
+    this.provider = options.provider ?? 'Deepgram';
   }
 
   /**
@@ -186,7 +198,8 @@ export interface BuiltRequest {
 export function buildRequest({ audioBytes, hint, config }: BuildRequestOptions): BuiltRequest {
   const endpoint = config.endpoint ?? DEFAULT_ENDPOINT;
   const params = new URLSearchParams();
-  params.set('model', 'nova-3');
+  const model = config.model ?? 'nova-3';
+  params.set('model', model);
 
   // Language handling.
   //
@@ -197,7 +210,14 @@ export function buildRequest({ audioBytes, hint, config }: BuildRequestOptions):
   // the most likely cause of punctuation and capitalisation looking off.
   // Detection is the documented mechanism, and it can be restricted.
   // https://developers.deepgram.com/docs/language-detection
-  if (hint.language === 'auto') {
+  if (model === 'nova-3-medical') {
+    // English only. Auto must not run detection across other languages, which the model would
+    // answer badly; any other pin is refused here, before a byte is uploaded.
+    if (hint.language !== 'auto' && !/^en(-|$)/i.test(hint.language)) {
+      throw new ProviderError('badRequest', MEDICAL_ENGLISH_ONLY_MESSAGE);
+    }
+    params.set('language', 'en');
+  } else if (hint.language === 'auto') {
     // Restricted to the languages this app offers. Every code is native to
     // Nova-3, which matters: an unsupported detected language makes Deepgram
     // fall back to a lower model, and that would drop `keyterm` — the whole
@@ -322,11 +342,8 @@ export function extractRequestId(body: string): string | null {
  * kept, and the API key is redacted if it ever appears.
  */
 export function describeErrorBody(body: string, apiKey?: string): string {
-  let text = body.slice(0, 300).replace(/\s+/g, ' ').trim();
-  if (apiKey && apiKey.length > 0) {
-    text = text.split(apiKey).join('[redacted]');
-  }
-  return text;
+  // Redact the whole body first, then cut: a cut through a key leaves a piece no pattern matches.
+  return redactSecrets(body, [apiKey]).replace(/\s+/g, ' ').trim().slice(0, 300);
 }
 
 /**

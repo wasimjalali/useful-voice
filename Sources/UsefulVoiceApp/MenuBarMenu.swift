@@ -177,9 +177,9 @@ final class MenuBarMenu: NSObject, NSMenuDelegate {
             fixItem.isHidden = true
         }
 
-        // Smart formatting is a Deepgram option; local models format on their own.
+        // Smart formatting is a Deepgram option; the other voice models format on their own.
         formattingItem.state = settings.formattingEnabled ? .on : .off
-        formattingItem.isHidden = settings.transcriptionEngine == .whisperLocal
+        formattingItem.isHidden = settings.voiceModel.provider != "deepgram"
         syncLanguage()
     }
 
@@ -258,7 +258,7 @@ final class MenuBarMenu: NSObject, NSMenuDelegate {
     /// Opens Settings. When the last issue needs the engine set up, the window
     /// scrolls to the Engine group, which is that issue's fix.
     @objc private func openSettings() {
-        let anchor: String? = viewModel.lastIssue?.fix == .openEngineSettings ? "engine" : nil
+        let anchor: String? = viewModel.lastIssue?.fix == .openEngineSettings ? "models" : nil
         actions.openSettings(anchor)
     }
 

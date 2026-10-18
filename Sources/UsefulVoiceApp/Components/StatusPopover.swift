@@ -63,6 +63,8 @@ struct ShellHealth {
     enum Level { case ready, needsAccess, problem }
 
     private(set) var engine: Engine
+    /// Whose key the voice model needs ("Deepgram", "ElevenLabs", "Gemini"), for the banners.
+    let keyProvider: String
     let microphone: SystemAccess.Microphone
     let accessibilityOn: Bool
     private(set) var issue: DictationIssue?
@@ -72,22 +74,24 @@ struct ShellHealth {
         microphone = access.microphone
         accessibilityOn = viewModel.hotkeyActive || access.accessibilityTrusted
         issue = viewModel.lastIssue
+        keyProvider = settings.voiceModel.keyProvider?.displayName ?? "Deepgram"
         if !viewModel.providerConfigured {
-            if settings.transcriptionEngine == .deepgram {
+            let voice = settings.voiceModel
+            if voice.keyProvider != nil {
                 engine = .needsKey
-            } else {
-                let model = viewModel.models.activeModel
+            } else if let whisper = ModelCatalog.whisperModel(forVoiceID: voice.id) {
                 // The board writes sizes with a decimal comma.
-                let size = model.sizeDescription.replacingOccurrences(of: ".", with: ",")
-                engine = .needsModel(name: model.displayName, size: size)
+                let size = whisper.sizeDescription.replacingOccurrences(of: ".", with: ",")
+                engine = .needsModel(name: whisper.displayName, size: size)
+            } else {
+                engine = .needsModel(name: voice.name, size: "")
             }
         } else if case .error(let error)? = viewModel.lastIssue, error.kind == .keyRejected {
             engine = .rejected
         } else if case .error(let error)? = viewModel.lastIssue, error.kind == .offline {
             engine = .offline
         } else {
-            let name = viewModel.providerName
-            engine = .ready(name.hasPrefix("Deepgram") ? "Deepgram Nova-3" : name)
+            engine = .ready(viewModel.providerName)
         }
         // Snapshot-only forcing of the engine banners and of a retained failure.
         if ProcessInfo.processInfo.environment["UV_SNAPSHOT"] != nil {

@@ -130,6 +130,9 @@ struct InsightsCost: Equatable {
     /// Nil when the vocabulary is empty: keyterm prompting is only billed with terms.
     var keytermCost: Double?
     var whisperMinutes: Int
+    /// Minutes on every other provider (ElevenLabs, Gemini, Parakeet). No price is known
+    /// for them, so they stay minutes and add nothing to the total.
+    var otherMinutes: Int = 0
     var note: String
 }
 
@@ -514,12 +517,14 @@ extension InsightsData {
         let inRange = records.filter { !$0.provider.hasSuffix("reprocess") && (since == nil || $0.createdAt >= since!) }
         var deepgram = 0.0
         var whisper = 0.0
+        var other = 0.0
         for r in inRange {
             guard let d = r.durationSeconds, d > 0 else { continue }
             if r.provider.hasPrefix("Deepgram") { deepgram += d / 60 }
             else if r.provider.hasPrefix("Whisper") { whisper += d / 60 }
+            else if r.provider != "unknown" { other += d / 60 }
         }
-        guard deepgram > 0 || whisper > 0 else { return nil }
+        guard deepgram > 0 || whisper > 0 || other > 0 else { return nil }
 
         // History keeps the newest 1.000 dictations. When it no longer reaches back to the
         // start of the range, say what the estimate covers instead of the range.
@@ -541,7 +546,8 @@ extension InsightsData {
         let nova = deepgram * deepgramPerMinute
         let key = hasTerms ? deepgram * keytermPerMinute : nil
         return InsightsCost(total: nova + (key ?? 0), deepgramMinutes: Int(deepgram.rounded()), deepgramCost: nova,
-                            keytermCost: key, whisperMinutes: Int(whisper.rounded()), note: note)
+                            keytermCost: key, whisperMinutes: Int(whisper.rounded()),
+                            otherMinutes: Int(other.rounded()), note: note)
     }
 
     static func languageName(_ code: String) -> String {

@@ -6,7 +6,7 @@
 [![Swift](https://img.shields.io/badge/Swift-F05138?logo=swift&logoColor=white)](https://swift.org)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20%7C%20Windows%2010%2B-lightgrey)
 
-Useful Voice is a fast, personal dictation app for macOS and Windows. Tap a hotkey in any app, speak, and the text lands at your cursor. Pick your engine: Deepgram Nova-3 in the cloud, or a Whisper model that runs entirely on your Mac.
+Useful Voice is a fast, personal dictation app for macOS and Windows. Tap a hotkey in any app, speak, and the text lands at your cursor. Pick your voice model: Deepgram, ElevenLabs Scribe or Gemini in the cloud, or Parakeet and Whisper models that run entirely on your Mac.
 
 <!-- Hero screenshot goes here once the owner approves captures made with synthetic data. -->
 
@@ -18,16 +18,16 @@ Useful Voice is a fast, personal dictation app for macOS and Windows. Tap a hotk
 
 **Keep what you said.** Notes are local and searchable, with pins, tags and Markdown copy. Your dictation history keeps every transcript, and Insights shows words, time saved and your streak.
 
-**Your engine, your call.** Use Deepgram Nova-3 for fast cloud transcription. Or run Whisper large-v3-turbo (recommended) or large-v3 on your Mac, with no API key and no audio leaving your device. Both handle 99 languages with auto-detect.
+**Your voice model, your call.** Use Deepgram Nova-3 (or Nova-3 Medical), ElevenLabs Scribe v2 or Gemini 3.8 Flash for cloud transcription. Or run Parakeet or Whisper on your Mac, with no API key and no audio leaving your device. An optional AI formatting step (Gemini 3.8 Flash, Claude Haiku 5.5 or Claude Sonnet 5.5) is off by default and falls back to your plain transcript on any error. Add the keys you need under Settings > API keys.
 
 ## Before you install
 
 | | |
 |---|---|
 | Works on | macOS 14 or later on Apple silicon. Windows 10 or later (see [windows/README.md](windows/README.md) for what's verified there) |
-| Engines | Deepgram Nova-3 (cloud). On macOS also local Whisper large-v3-turbo and large-v3. The Windows app uses Deepgram |
-| Stays on your device | Your dictionary, notes, history, settings and, on macOS, the last 10 recordings. Your Deepgram key sits in the macOS Keychain (Windows: encrypted with DPAPI). With a local Whisper model, your audio never leaves your Mac |
-| Leaves your device | With Deepgram, each recording's audio goes to Deepgram, plus up to 400 tokens of your dictionary words, fix results and snippet triggers as keyterms. "Sounds like" forms stay on your Mac. Picking a local model downloads its weights from Hugging Face |
+| Voice models | Deepgram Nova-3 and Nova-3 Medical, ElevenLabs Scribe v2, Gemini 3.8 Flash (cloud); Parakeet (local); on macOS also local Whisper large-v3-turbo and large-v3 |
+| Stays on your device | Your dictionary, notes, history, settings and, on macOS, the last 10 recordings. Your API keys sit in the macOS Keychain (Windows: encrypted with DPAPI). With a local Whisper model, your audio never leaves your Mac |
+| Leaves your device | With Deepgram, each recording's audio goes to Deepgram, plus up to 400 tokens of your dictionary words, fix results and snippet triggers as keyterms. "Sounds like" forms stay on your Mac. With ElevenLabs Scribe or Gemini as the voice model, the audio goes to ElevenLabs or Google instead (ElevenLabs also gets up to 50 dictionary words, Gemini up to 100). With AI formatting on, the transcript and up to 100 dictionary words go to Google or Anthropic, whatever the voice model is: a local model keeps your audio on the device, but not the text once AI formatting is on. Picking a local model downloads its weights from Hugging Face |
 | Tracking | None. No analytics, no crash reports, no ads |
 | Updates | Windows: the installed app asks GitHub for a newer release twice a day, downloads it and installs it when you quit or pick Restart to update in the tray. The Mac app doesn't check yet |
 

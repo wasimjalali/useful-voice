@@ -1,0 +1,18 @@
+NVIDIA Parakeet TDT 0.6B v2 and v3
+
+The Parakeet voice models in Useful Voice are NVIDIA's parakeet-tdt-0.6b-v2 and
+parakeet-tdt-0.6b-v3 speech recognition models, converted to Core ML by FluidInference and
+downloaded on request from Hugging Face:
+
+  https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2
+  https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3
+  https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v2-coreml
+  https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml
+
+Copyright (c) NVIDIA Corporation.
+
+Licensed under the Creative Commons Attribution 4.0 International License (CC-BY-4.0):
+https://creativecommons.org/licenses/by/4.0/legalcode
+
+Changes made: the models are converted from NVIDIA NeMo format to Core ML and quantized
+(int8 encoder for v3) by FluidInference. NVIDIA does not endorse Useful Voice.

@@ -48,12 +48,19 @@
     "files": [
       "dist/**/*",
       "package.json",
-      "!**/*.map"
+      "!**/*.map",
+      "!node_modules/sherpa-onnx-darwin-*/**",
+      "!node_modules/sherpa-onnx-linux-*/**",
+      "!node_modules/sherpa-onnx-win-ia32/**"
     ],
     "extraResources": [
       {
         "from": "build/tray",
         "to": "tray"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
       }
     ],
     "publish": [
@@ -104,9 +111,14 @@
     },
     "portable": {
       "artifactName": "${productName}-${version}-portable.${ext}"
-    }
+    },
+    "asarUnpack": [
+      "node_modules/sherpa-onnx-node/**",
+      "node_modules/sherpa-onnx-win-x64/**"
+    ]
   },
   "dependencies": {
-    "electron-updater": "6.8.10"
+    "electron-updater": "6.8.10",
+    "sherpa-onnx-node": "1.13.8"
   }
 }

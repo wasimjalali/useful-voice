@@ -113,15 +113,59 @@ public enum FirstRunGate {
                          localModelUsable: engine == .whisperLocal && activeModelUsable)
     }
 
-    /// The engine and local model the app was using when the flow opened.
+    /// Whether the voice model the app is set to can dictate without more setup:
+    /// a cloud model needs its key stored (presence only), Whisper needs its file
+    /// usable, Parakeet needs to be downloaded. Another model being downloaded
+    /// does not count, because dictation would still fail.
+    public static func voiceModelConfigured(voiceModelID: String,
+                                            keyStored: (KeyProvider) -> Bool,
+                                            whisperUsable: (WhisperModel) -> Bool,
+                                            parakeetReady: (ParakeetVersion) -> Bool) -> Bool {
+        guard let entry = ModelCatalog.voiceModel(id: voiceModelID) else { return false }
+        if let whisper = ModelCatalog.whisperModel(forVoiceID: entry.id) { return whisperUsable(whisper) }
+        if let version = ParakeetVersion(catalogID: entry.id) { return parakeetReady(version) }
+        if let provider = entry.keyProvider { return keyStored(provider) }
+        return false
+    }
+
+    /// What the app was using when the flow opened: the voice model, plus the
+    /// engine and local Whisper model it maps to.
     public struct EngineSelection: Equatable, Sendable {
         public let engine: TranscriptionEngineChoice
         public let modelID: String
+        /// The exact voice model, so a Scribe or Parakeet choice survives the setup.
+        public let voiceModelID: String
 
-        public init(engine: TranscriptionEngineChoice, modelID: String) {
+        public init(engine: TranscriptionEngineChoice, modelID: String, voiceModelID: String? = nil) {
             self.engine = engine
             self.modelID = modelID
+            self.voiceModelID = voiceModelID ?? (engine == .whisperLocal
+                ? ModelCatalog.voiceID(forWhisper: WhisperModelCatalog.model(forID: modelID) ?? WhisperModelCatalog.default)
+                : ModelCatalog.defaultVoiceID)
         }
+    }
+
+    /// The voice model the setup writes for its engine choice: Deepgram is Nova-3,
+    /// Whisper is the local model that is active.
+    public static func setupVoiceModelID(engine: TranscriptionEngineChoice, whisperModelID: String,
+                                         currentVoiceModelID: String? = nil) -> String {
+        switch engine {
+        case .deepgram:
+            // A Deepgram model already chosen (Nova-3 Medical) stays.
+            if let current = currentVoiceModelID, current.hasPrefix("deepgram:"),
+               ModelCatalog.voiceModel(id: current) != nil { return current }
+            return ModelCatalog.defaultVoiceID
+        case .whisperLocal:
+            return ModelCatalog.voiceID(
+                forWhisper: WhisperModelCatalog.model(forID: whisperModelID) ?? WhisperModelCatalog.default)
+        }
+    }
+
+    /// What the app is set to when "Run setup again" is closed without finishing:
+    /// exactly what it was before it opened. (A first launch uses
+    /// `selectionAfterAbandon`, which keeps a choice that already works.)
+    public static func selectionAfterClosingRerun(snapshot: EngineSelection) -> EngineSelection {
+        snapshot
     }
 
     /// What the app should be set to when the flow ends without finishing

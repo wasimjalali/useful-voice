@@ -35,13 +35,13 @@ struct WindowBanner: Equatable {
         case .needsKey:
             return WindowBanner(
                 systemImage: "key", tone: .warn,
-                title: "No Deepgram key.", detail: "Add one to start dictating.",
+                title: "No \(health.keyProvider) key.", detail: "Add one to start dictating.",
                 verb: "Add key", action: .fix(.openEngineSettings))
         case .rejected:
             return WindowBanner(
                 systemImage: "key", tone: .bad,
-                title: "Deepgram rejected your key.", detail: "Check it and try again.",
-                verb: "Open Engine settings", action: .fix(.openEngineSettings))
+                title: "\(health.keyProvider) rejected your key.", detail: "Check it and try again.",
+                verb: "Open Models settings", action: .fix(.openEngineSettings))
         case .offline:
             return WindowBanner(
                 systemImage: "wifi.slash", tone: .bad,
@@ -53,7 +53,7 @@ struct WindowBanner: Equatable {
             return WindowBanner(
                 systemImage: "arrow.down.circle", tone: .warn,
                 title: "\(name) isn't downloaded.", detail: "Download it to dictate locally.",
-                verb: "Download \(size)", action: .downloadModel)
+                verb: size.isEmpty ? "Download" : "Download \(size)", action: .downloadModel)
         }
         if case .error(let error)? = health.issue, let banner = issueBanner(error) {
             return banner

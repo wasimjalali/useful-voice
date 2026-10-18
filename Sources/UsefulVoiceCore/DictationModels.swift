@@ -115,11 +115,19 @@ public struct DictationError: Equatable, Sendable {
     /// The one-click fix, if there is one. `.retry` is set only when the
     /// controller retained the audio (`DictationController.canRetry`).
     public let fix: DictationFix?
+    /// The provider that failed ("Deepgram", "ElevenLabs", "Parakeet (local)"), when known.
+    public let provider: String?
+    /// The provider's own actionable text for a setup problem (a missing key, a language
+    /// it can't speak), shown instead of a generic line.
+    public let specific: String?
 
-    public init(kind: Kind, message: String, fix: DictationFix? = nil) {
+    public init(kind: Kind, message: String, fix: DictationFix? = nil,
+                provider: String? = nil, specific: String? = nil) {
         self.kind = kind
         self.message = message
         self.fix = fix
+        self.provider = provider
+        self.specific = specific
     }
 
     /// The kind a failed transcription maps to. HTTP 401 and 403 are a rejected

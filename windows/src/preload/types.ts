@@ -87,7 +87,14 @@ export interface SettingsDTO {
   dictionaryBiasBudget: number;
   appearance: 'system' | 'light' | 'dark';
   dailyWordGoal: number;
+  /** The voice model, a catalog id. */
+  voiceModelId: string;
+  /** The AI formatting model, a catalog id, or null for Off. */
+  formatterId: string | null;
+  /** The Deepgram key is saved. `keys` has every provider. */
   hasApiKey: boolean;
+  /** Which providers have a key saved. Presence only. */
+  keys: Record<import('../core/models/catalog.js').KeyProvider, boolean>;
 }
 
 export interface HistoryEntryDTO {
@@ -118,6 +125,8 @@ export interface FirstRunStateDTO {
   /** `--first-run-step=<step>`: jump straight to a step with sample data. */
   step: import('../core/firstRun/gate.js').FirstRunStep | null;
   keySaved: boolean;
+  /** The Deepgram model the engine step shows and Continue applies. */
+  engineId: string;
   hotkey: string;
   language: string;
 }

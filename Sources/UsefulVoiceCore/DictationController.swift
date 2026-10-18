@@ -355,6 +355,8 @@ public final class DictationController {
         var transcript: Transcript?
         var usedProvider: String?
         var lastError: Error?
+        var failedProvider: String?
+        var failureLine: String?
         for provider in chain {
             do {
                 transcript = try await provider.transcribe(audio: audioURL,
@@ -363,6 +365,8 @@ public final class DictationController {
                 break
             } catch {
                 lastError = error
+                failedProvider = provider.name
+                failureLine = provider.failureLine(error)
             }
         }
 
@@ -373,13 +377,18 @@ public final class DictationController {
             lastFailedContext = formattingContext
             let detail = (lastError as? ProviderError).map(Self.describe)
                 ?? lastError?.localizedDescription ?? "unknown error"
+            // One log line: provider, model and a fixed reason. The body text above is for
+            // the person, never for the log.
+            if let failureLine { diagnostics.warning("dictation", failureLine) }
             // Retry is offered only where it can help (see DictationError.fix);
             // the audio is retained for every failure, so canRetry stays true.
             let kind = DictationError.kind(forTranscriptionFailure: lastError)
             state = .error(DictationError(
                 kind: kind,
                 message: "Transcription failed: \(detail)",
-                fix: DictationError.fix(forTranscriptionFailure: kind)))
+                fix: DictationError.fix(forTranscriptionFailure: kind),
+                provider: failedProvider,
+                specific: { if case .notConfigured(let what)? = lastError as? ProviderError { return what }; return nil }()))
             return
         }
         // Transcription succeeded: any earlier failure is resolved.
@@ -454,7 +463,7 @@ public final class DictationController {
 
         // The Nova-3 fallback check is Deepgram-specific: a local engine's
         // codes (whisper's "yue") are not Deepgram detections.
-        if usedProvider != LocalWhisperProvider.providerName {
+        if !Self.reportsOtherLanguageCodes(provider: usedProvider ?? "") {
             recordDetectedLanguageCheck(rawDetected)
         }
 
@@ -530,14 +539,25 @@ public final class DictationController {
                 body.trimmingCharacters(in: .whitespacesAndNewlines)).prefix(200)
             return detail.isEmpty ? "HTTP \(status) from provider"
                                   : "HTTP \(status): \(detail)"
-        case .outOfCredits:
-            return "Your Deepgram account is out of credits. Add credits, then try again."
+        case .outOfCredits(let message):
+            return message.hasPrefix("Your ElevenLabs")
+                ? message
+                : "Your Deepgram account is out of credits. Add credits, then try again."
         case .badResponse: return "unreadable provider response"
         case .notConfigured(let what): return what
         case .timedOut: return "timed out"
         case .transport(let urlError): return urlError.localizedDescription
         case .engineFailed(let detail): return detail
         }
+    }
+
+    /// Providers whose language codes are not Deepgram detections (whisper's "yue",
+    /// ElevenLabs' ISO 639-3), so the Nova-3 check below doesn't apply to them.
+    static func reportsOtherLanguageCodes(provider: String) -> Bool {
+        provider == LocalWhisperProvider.providerName
+            || provider == ElevenLabsProvider.providerName
+            || provider == GeminiTranscriptionProvider.providerName
+            || provider.hasPrefix("Parakeet")
     }
 
     /// Record when the provider left Nova-3 to transcribe, which silently disables the

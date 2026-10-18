@@ -182,16 +182,18 @@ private func queryValue(_ request: URLRequest, _ name: String) -> [String] {
     }
 
     @Test func parakeetV2RefusesOtherLanguagesBeforeAnyWork() {
-        #expect(ParakeetLanguageGuard.refusal(for: .de, version: .v2)?.contains("English") == true)
-        #expect(ParakeetLanguageGuard.refusal(for: .en, version: .v2) == nil)
-        #expect(ParakeetLanguageGuard.refusal(for: .auto, version: .v2) == nil)
-        #expect(ParakeetLanguageGuard.refusal(for: LanguagePin(rawValue: "en-GB"), version: .v2) == nil)
+        #expect(ParakeetVersion.v2.languageProblem(for: .de)?.contains("English") == true)
+        #expect(ParakeetVersion.v2.languageProblem(for: .en) == nil)
+        #expect(ParakeetVersion.v2.languageProblem(for: LanguagePin(rawValue: "en-GB")) == nil)
+        // v2 assumes English, so the modes pass.
+        #expect(ParakeetVersion.v2.languageProblem(for: .auto) == nil)
+        #expect(ParakeetVersion.v2.languageProblem(for: .multilingual) == nil)
     }
 
     @Test func parakeetV3RefusesLanguagesOutsideItsTwentyFive() {
-        #expect(ParakeetLanguageGuard.refusal(for: .de, version: .v3) == nil)
-        #expect(ParakeetLanguageGuard.refusal(for: LanguagePin(rawValue: "ja"), version: .v3) != nil)
-        #expect(ParakeetLanguageGuard.v3Languages.count == 25)
+        #expect(ParakeetVersion.v3.languageProblem(for: .de) == nil)
+        #expect(ParakeetVersion.v3.languageProblem(for: LanguagePin(rawValue: "ja")) != nil)
+        #expect(ParakeetVersion.v3Languages.count == 25)
     }
 
     @Test func theGuardFailsFastWithoutCallingTheModel() async {
@@ -314,6 +316,16 @@ private func queryValue(_ request: URLRequest, _ name: String) -> [String] {
         #expect(!DeepgramProvider.isRetryable(status: 401))
     }
 
+    @Test func aQuotaMessageOn401IsAboutCreditsNotTheKey() {
+        let body = Data(#"{"detail":{"status":"quota_exceeded","message":"You have no credits"}}"#.utf8)
+        if case .outOfCredits(let message) = ElevenLabsProvider.error(forStatus: 401, body: body) {
+            #expect(message == "Your ElevenLabs account is out of credits.")
+        } else { Issue.record("expected out of credits") }
+        if case .http(401, _) = ElevenLabsProvider.error(forStatus: 401, body: Data(#"{"detail":{"status":"invalid_api_key"}}"#.utf8)) {} else {
+            Issue.record("a plain 401 stays a key problem")
+        }
+    }
+
     @Test func responseTextAndDetectedLanguageAreRead() throws {
         let json = #"{"text":"  Hello there. ","language_code":"eng","language_probability":0.99,"words":[]}"#
         let auto = try ElevenLabsProvider.parse(Data(json.utf8), pin: .auto)
@@ -406,10 +418,21 @@ private func queryValue(_ request: URLRequest, _ name: String) -> [String] {
                 _ = try GeminiTranscriptionProvider.parse(Data(body.utf8))
                 Issue.record("expected a failure for \(body)")
             } catch ProviderError.engineFailed(let message) {
-                #expect(message == "Gemini didn't return a transcript.")
+                #expect(message == "Gemini didn't return a complete transcript.")
             } catch { Issue.record("wrong error \(error)") }
         }
         #expect(throws: ProviderError.self) { try GeminiTranscriptionProvider.parse(Data("not json".utf8)) }
+    }
+
+    @Test func onlyAFinishedCandidateIsATranscriptWhateverTextCameBack() {
+        for reason in ["MAX_TOKENS", "SAFETY", "RECITATION", "OTHER"] {
+            let json = #"{"candidates":[{"content":{"parts":[{"text":"Half a sentence"}]},"finishReason":"\#(reason)"}]}"#
+            #expect(throws: ProviderError.self, "\(reason)") { try GeminiTranscriptionProvider.parse(Data(json.utf8)) }
+        }
+        let missing = #"{"candidates":[{"content":{"parts":[{"text":"Some text"}]}}]}"#
+        #expect(throws: ProviderError.self) { try GeminiTranscriptionProvider.parse(Data(missing.utf8)) }
+        let blockedWithText = #"{"promptFeedback":{"blockReason":"OTHER"},"candidates":[{"content":{"parts":[{"text":"x"}]},"finishReason":"STOP"}]}"#
+        #expect(throws: ProviderError.self) { try GeminiTranscriptionProvider.parse(Data(blockedWithText.utf8)) }
     }
 
     @Test func invalidKeyStatusesAreKeyProblems() {
@@ -542,6 +565,13 @@ private func queryValue(_ request: URLRequest, _ name: String) -> [String] {
         #expect(FormatterRequest.parseAnthropic(Data("[]".utf8)) == .failure("unreadable response"))
     }
 
+    @Test func aMissingStopReasonIsATruncation() {
+        let anthropic = #"{"content":[{"type":"text","text":"Fine text"}]}"#
+        #expect(FormatterRequest.parseAnthropic(Data(anthropic.utf8)) == .failure("truncated"))
+        let gemini = #"{"candidates":[{"content":{"parts":[{"text":"Fine text"}]}}]}"#
+        #expect(FormatterRequest.parseGemini(Data(gemini.utf8)) == .failure("truncated"))
+    }
+
     @Test func aReplyThatStoppedEarlyIsAFailureNeverUsableText() {
         let cut = #"{"content":[{"type":"text","text":"Half a sent"}],"stop_reason":"max_tokens"}"#
         #expect(FormatterRequest.parseAnthropic(Data(cut.utf8)) == .failure("truncated"))
@@ -559,6 +589,8 @@ private func queryValue(_ request: URLRequest, _ name: String) -> [String] {
 private final class FormatterStubURLProtocol: URLProtocol {
     nonisolated(unsafe) static var handler: ((URLRequest) throws -> (Int, Data))?
     nonisolated(unsafe) static var calls: [URLRequest] = []
+    /// Answer with headers, then never finish the body.
+    nonisolated(unsafe) static var stallAfterHeaders = false
 
     static func session() -> URLSession {
         let config = URLSessionConfiguration.ephemeral
@@ -570,6 +602,11 @@ private final class FormatterStubURLProtocol: URLProtocol {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         Self.calls.append(request)
+        if Self.stallAfterHeaders {
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            return
+        }
         guard let handler = Self.handler else { return }
         do {
             let (status, data) = try handler(request)
@@ -609,7 +646,7 @@ private final class FormatterStubURLProtocol: URLProtocol {
         return data
     }
 
-    private func reset() { FormatterStubURLProtocol.calls = []; FormatterStubURLProtocol.handler = nil }
+    private func reset() { FormatterStubURLProtocol.stallAfterHeaders = false; FormatterStubURLProtocol.calls = []; FormatterStubURLProtocol.handler = nil }
 
     private func anthropicBody(_ text: String) -> Data {
         Data(#"{"content":[{"type":"text","text":"\#(text)"}],"stop_reason":"end_turn"}"#.utf8)
@@ -655,6 +692,19 @@ private final class FormatterStubURLProtocol: URLProtocol {
         #expect(lines.contains { $0.contains("timeout") })
         // Provider, model and a fixed reason only: nothing from the dictation or a response.
         #expect(!lines.contains { $0.contains("ship it") })
+    }
+
+    @Test func aTimeoutWhileReadingTheBodyIsLoggedAsATimeout() async {
+        reset()
+        FormatterStubURLProtocol.stallAfterHeaders = true
+        let diagnostics = Diagnostics(directory: nil)
+        let slow = AIFormatter(model: ModelCatalog.languageModel(id: "gemini:gemini-3.8-flash")!,
+                               apiKey: { "k" }, session: FormatterStubURLProtocol.session(),
+                               diagnostics: diagnostics)
+        let outcome = await slow.format(spoken, vocabulary: [])
+        FormatterStubURLProtocol.stallAfterHeaders = false
+        #expect(outcome == .failed("timeout"))
+        #expect(diagnostics.entries().contains { $0.message.contains("timeout") })
     }
 
     @Test func aGuardRejectionFallsBack() async {
@@ -778,6 +828,20 @@ private final class FormatterStubURLProtocol: URLProtocol {
         #expect(FormatterGuard.accept(input: input, output: "I\u{2019}ve cleaned it: we should ship it on Wednesday after the review.") == nil)
     }
 
+    @Test func aPreambleNeedsAWordBoundary() {
+        let spoken = "i haven't finished the report but surely we can ship it on wednesday"
+        #expect(FormatterGuard.accept(input: spoken, output: "I haven't finished the report, but surely we can ship it on Wednesday.") != nil)
+        #expect(FormatterGuard.accept(input: spoken, output: "Surely we can ship it on Wednesday, I haven't finished the report.") != nil)
+        #expect(FormatterGuard.accept(input: spoken, output: "Sure, I haven't finished the report but we can ship it on Wednesday.") == nil)
+    }
+
+    @Test func moreFillersAreIgnoredAtTheStart() {
+        for filler in ["umm,", "uhh", "hmm,", "um, uh,", "erm"] {
+            let spoken = "\(filler) sure send it over on wednesday after the review please"
+            #expect(FormatterGuard.accept(input: spoken, output: "Sure, send it over on Wednesday after the review, please.") != nil, "\(filler)")
+        }
+    }
+
     @Test func aLeadingFillerDoesNotHideARealOpening() {
         let spoken = "um, sure send it over on wednesday after the review please"
         #expect(FormatterGuard.accept(input: spoken, output: "Sure, send it over on Wednesday after the review, please.") != nil)
@@ -790,6 +854,16 @@ private final class FormatterStubURLProtocol: URLProtocol {
     @Test func spacedLanguagesNeedThreeWords() {
         #expect(!AIFormatter.shouldFormat("hello there"))
         #expect(AIFormatter.shouldFormat("hello there friend"))
+    }
+
+    @Test func koreanIsSpacedSoWordsApply() {
+        #expect(!AIFormatter.shouldFormat("안녕하세요여러분"))
+        #expect(AIFormatter.shouldFormat("안녕 하세요 여러분"))
+    }
+
+    @Test func unspacedScriptsCountCodePointsWithoutSpaces() {
+        #expect(!AIFormatter.shouldFormat("你 好 吗 呀 嗯"))
+        #expect(AIFormatter.shouldFormat("你 好 吗 呀 嗯 哦"))
     }
 
     @Test func unspacedScriptsNeedSixCharacters() {
@@ -888,5 +962,47 @@ private final class FormatterStubURLProtocol: URLProtocol {
         let plan = VoiceModelSelector.resolve(voiceModelID: settings.voiceModelID, keyAvailable: { _ in false },
                                               whisperAvailability: { _ in .usable })
         #expect(VoiceModelSelector.unavailableMessage(for: plan) == "Add your ElevenLabs key in Settings.")
+    }
+}
+
+@Suite("Log reasons") struct LogReasonTests {
+    @Test func aLogReasonNeverCarriesResponseBodyText() {
+        let echo = "the transcript says: my secret plan and key sk_live_abcdef"
+        let errors: [ProviderError] = [.http(400, echo), .outOfCredits(echo), .notConfigured(echo),
+                                       .engineFailed(echo), .badResponse, .timedOut, .transport(URLError(.notConnectedToInternet))]
+        for error in errors {
+            #expect(!error.logReason.contains("secret") && !error.logReason.contains("sk_live"))
+        }
+        #expect(ProviderError.http(429, echo).logReason == "HTTP 429")
+        #expect(ProviderError.timedOut.logReason == "timeout")
+    }
+
+}
+
+@Suite("Setup keeps a Deepgram model") struct SetupDeepgramModelTests {
+    @Test func aDeepgramChoiceStaysAndAnythingElseBecomesNova3() {
+        func id(_ current: String?) -> String {
+            FirstRunGate.setupVoiceModelID(engine: .deepgram, whisperModelID: "whisper-large-v3-turbo", currentVoiceModelID: current)
+        }
+        #expect(id("deepgram:nova-3-medical") == "deepgram:nova-3-medical")
+        #expect(id("elevenlabs:scribe_v2") == "deepgram:nova-3")
+        #expect(id("whisper:large-v3") == "deepgram:nova-3")
+        #expect(id("deepgram:gone") == "deepgram:nova-3")
+        #expect(id(nil) == "deepgram:nova-3")
+    }
+}
+
+@Suite("Older builds and the engine setting") struct EngineSettingCompatibilityTests {
+    private func raw(_ defaults: UserDefaults) -> String? { defaults.string(forKey: "transcriptionEngine") }
+
+    @Test func aLocalParakeetModelWritesTheLocalEngineSoAnOlderBuildNeverGoesToTheCloud() {
+        let defaults = scratchDefaults()
+        let settings = AppSettings(defaults: defaults)
+        settings.voiceModelID = "parakeet:v3"
+        #expect(raw(defaults) == "whisperLocal")
+        settings.voiceModelID = "elevenlabs:scribe_v2"
+        #expect(raw(defaults) == "deepgram")
+        settings.voiceModelID = "whisper:large-v3"
+        #expect(raw(defaults) == "whisperLocal")
     }
 }

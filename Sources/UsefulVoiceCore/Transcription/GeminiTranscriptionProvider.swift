@@ -146,8 +146,7 @@ public final class GeminiTranscriptionProvider: TranscriptionProvider, @unchecke
 
     /// Only a reply that finished (STOP) with no text is an empty transcript, which the
     /// pipeline reports as "no speech". A blocked prompt, or a candidate that stopped
-    /// for any other reason without text, is a provider failure, so the audio is kept
-    /// for Retry.
+    /// for any other reason (or has no finish reason), is a provider failure.
     static func parse(_ data: Data) throws -> Transcript {
         struct Response: Decodable {
             struct Candidate: Decodable {
@@ -165,13 +164,15 @@ public final class GeminiTranscriptionProvider: TranscriptionProvider, @unchecke
         guard let decoded = try? JSONDecoder().decode(Response.self, from: data) else {
             throw ProviderError.badResponse
         }
-        let failure = ProviderError.engineFailed("Gemini didn't return a transcript.")
+        // Success needs a candidate that finished (STOP) with nothing blocked. Whatever
+        // text came with any other ending may be cut short, so it is a failure and the
+        // audio stays for Retry.
+        let failure = ProviderError.engineFailed("Gemini didn't return a complete transcript.")
         if decoded.promptFeedback?.blockReason != nil { throw failure }
-        guard let candidate = decoded.candidates?.first else { throw failure }
+        guard let candidate = decoded.candidates?.first, candidate.finishReason == "STOP" else { throw failure }
         let parts = candidate.content?.parts ?? []
         let text = parts.filter { $0.thought != true }.compactMap(\.text).joined()
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.isEmpty, candidate.finishReason != "STOP" { throw failure }
         return Transcript(text: text, detectedLanguage: nil, durationSeconds: nil)
     }
 }

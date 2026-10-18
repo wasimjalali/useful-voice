@@ -355,6 +355,7 @@ public final class DictationController {
         var transcript: Transcript?
         var usedProvider: String?
         var lastError: Error?
+        var failedProvider: String?
         for provider in chain {
             do {
                 transcript = try await provider.transcribe(audio: audioURL,
@@ -363,6 +364,7 @@ public final class DictationController {
                 break
             } catch {
                 lastError = error
+                failedProvider = provider.name
             }
         }
 
@@ -379,7 +381,9 @@ public final class DictationController {
             state = .error(DictationError(
                 kind: kind,
                 message: "Transcription failed: \(detail)",
-                fix: DictationError.fix(forTranscriptionFailure: kind)))
+                fix: DictationError.fix(forTranscriptionFailure: kind),
+                provider: failedProvider,
+                specific: { if case .notConfigured(let what)? = lastError as? ProviderError { return what }; return nil }()))
             return
         }
         // Transcription succeeded: any earlier failure is resolved.
@@ -530,8 +534,10 @@ public final class DictationController {
                 body.trimmingCharacters(in: .whitespacesAndNewlines)).prefix(200)
             return detail.isEmpty ? "HTTP \(status) from provider"
                                   : "HTTP \(status): \(detail)"
-        case .outOfCredits:
-            return "Your Deepgram account is out of credits. Add credits, then try again."
+        case .outOfCredits(let message):
+            return message.hasPrefix("Your ElevenLabs")
+                ? message
+                : "Your Deepgram account is out of credits. Add credits, then try again."
         case .badResponse: return "unreadable provider response"
         case .notConfigured(let what): return what
         case .timedOut: return "timed out"

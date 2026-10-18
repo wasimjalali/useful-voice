@@ -68,6 +68,22 @@ public enum ProviderError: Error {
     case engineFailed(String)
 }
 
+extension ProviderError {
+    /// What may go in a log line: the status or a fixed phrase, never response-body text
+    /// (it can echo the audio's transcript or a key).
+    public var logReason: String {
+        switch self {
+        case .http(let status, _): return "HTTP \(status)"
+        case .outOfCredits: return "out of credits"
+        case .badResponse: return "unreadable response"
+        case .notConfigured: return "not set up"
+        case .timedOut: return "timeout"
+        case .transport(let error): return "network error \(error.code.rawValue)"
+        case .engineFailed: return "engine failed"
+        }
+    }
+}
+
 public protocol TranscriptionProvider: Sendable {
     var name: String { get }
     func transcribe(audio: URL, hint: TranscriptionHint) async throws -> Transcript

@@ -408,6 +408,11 @@ public final class AppSettings {
                 defaults.set(TranscriptionEngineChoice.whisperLocal.rawValue,
                              forKey: Keys.transcriptionEngine)
                 defaults.set(whisper.id, forKey: Keys.localModelID)
+            } else if ModelCatalog.voiceModel(id: newValue)?.isLocal == true {
+                // Parakeet is on-device too: an older build that only knows the engine
+                // choice must read "local", never quietly send the audio to the cloud.
+                defaults.set(TranscriptionEngineChoice.whisperLocal.rawValue,
+                             forKey: Keys.transcriptionEngine)
             } else {
                 defaults.set(TranscriptionEngineChoice.deepgram.rawValue,
                              forKey: Keys.transcriptionEngine)

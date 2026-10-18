@@ -3,7 +3,7 @@ import Foundation
 /// Checks a model's formatted text before it replaces the transcript. Pure.
 public enum FormatterGuard {
     static let preambles = ["here is", "here's", "sure", "certainly", "i've", "i have", "of course"]
-    static let leadingFillers = ["um", "uh", "er", "erm"]
+    static let leadingFillers = ["umm", "uhh", "hmm", "erm", "um", "uh", "er"]
 
     /// The text to use, or nil when the output can't be trusted (the transcript is
     /// delivered unformatted instead).
@@ -35,9 +35,9 @@ public enum FormatterGuard {
 
         let spoken = withoutLeadingFillers(normalizeApostrophes(input.lowercased()))
         let reply = normalizeApostrophes(lowered)
-        for preamble in preambles where reply.hasPrefix(preamble) {
+        for preamble in preambles where startsWithPhrase(reply, preamble) {
             // A dictation that really starts that way ("Sure, send it") is not a preamble.
-            if !spoken.hasPrefix(preamble) { return nil }
+            if !startsWithPhrase(spoken, preamble) { return nil }
         }
         return text
     }
@@ -48,6 +48,14 @@ public enum FormatterGuard {
             .components(separatedBy: .whitespacesAndNewlines)
             .map { $0.trimmingCharacters(in: .punctuationCharacters.union(.symbols)) }
             .filter { !$0.isEmpty }
+    }
+
+    /// `text` begins with `phrase` as whole words: "i have" matches "I have it" but not
+    /// "I haven't", and "sure" matches "Sure, ok" but not "Surely".
+    private static func startsWithPhrase(_ text: String, _ phrase: String) -> Bool {
+        guard text.hasPrefix(phrase) else { return false }
+        guard let next = text.dropFirst(phrase.count).first else { return true }
+        return !(next.isLetter || next.isNumber || next == "'")
     }
 
     private static func normalizeApostrophes(_ text: String) -> String {
@@ -189,6 +197,7 @@ public enum FormatterRequest {
         guard let candidate = decoded.candidates?.first else { return .failure("empty response") }
         if candidate.finishReason != "STOP" {
             switch candidate.finishReason {
+            case nil: return .failure("truncated")
             case "MAX_TOKENS": return .failure("truncated")
             case "SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "RECITATION", "IMAGE_SAFETY":
                 return .failure("blocked")
@@ -211,6 +220,7 @@ public enum FormatterRequest {
               let blocks = decoded.content else { return .failure("unreadable response") }
         if decoded.stop_reason != "end_turn" {
             switch decoded.stop_reason {
+            case nil: return .failure("truncated")
             case "max_tokens": return .failure("truncated")
             case "refusal": return .failure("blocked")
             default: return .failure("stopped early")
@@ -262,15 +272,17 @@ public struct AIFormatter: Sendable {
     public static func shouldFormat(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.unicodeScalars.contains(where: Self.isUnspacedScript) {
-            return trimmed.count >= minimumUnspacedCharacters
+            // Code points, not whitespace.
+            return trimmed.unicodeScalars.filter { !$0.properties.isWhitespace }.count >= minimumUnspacedCharacters
         }
         return trimmed.split(whereSeparator: { $0.isWhitespace }).count >= minimumWords
     }
 
-    /// CJK, kana, Hangul, Thai, Lao, Khmer and Myanmar.
+    /// Han, Hiragana, Katakana, Thai, Lao, Khmer and Myanmar. Not Hangul: Korean is
+    /// written with spaces, so words apply.
     static func isUnspacedScript(_ scalar: Unicode.Scalar) -> Bool {
         switch scalar.value {
-        case 0x1100...0x11FF, 0x3040...0x30FF, 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xAC00...0xD7AF,
+        case 0x3040...0x30FF, 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF,
              0x0E00...0x0EFF, 0x1000...0x109F, 0x1780...0x17FF, 0x20000...0x2FA1F:
             return true
         default:

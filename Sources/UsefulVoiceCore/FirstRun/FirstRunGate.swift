@@ -147,9 +147,13 @@ public enum FirstRunGate {
 
     /// The voice model the setup writes for its engine choice: Deepgram is Nova-3,
     /// Whisper is the local model that is active.
-    public static func setupVoiceModelID(engine: TranscriptionEngineChoice, whisperModelID: String) -> String {
+    public static func setupVoiceModelID(engine: TranscriptionEngineChoice, whisperModelID: String,
+                                         currentVoiceModelID: String? = nil) -> String {
         switch engine {
         case .deepgram:
+            // A Deepgram model already chosen (Nova-3 Medical) stays.
+            if let current = currentVoiceModelID, current.hasPrefix("deepgram:"),
+               ModelCatalog.voiceModel(id: current) != nil { return current }
             return ModelCatalog.defaultVoiceID
         case .whisperLocal:
             return ModelCatalog.voiceID(

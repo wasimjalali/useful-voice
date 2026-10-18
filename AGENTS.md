@@ -35,7 +35,7 @@ Cross-platform dictation app. macOS: Swift (`Sources/UsefulVoiceCore`,
   another provider). The AI formatter is `core/formatting/aiFormatter.ts` (guard in `formatterGuard.ts`), run by `dictationService`
   before the dictionary rules. Keys of all four providers are encrypted in `settingsStore.ts`. `e2e/models.spec.ts`; under `--e2e`
   `main/e2eStub.ts` fakes all four hosts (a key starting `valid` works, `offline` fails, anything else is refused) and the
-  formatter stubs answer `<text> (formatted by Gemini|Anthropic)`.
+  formatter stubs answer `<text> (Gemini|Anthropic)`.
 
 ## Delivery
 

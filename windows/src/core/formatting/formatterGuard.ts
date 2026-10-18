@@ -7,7 +7,9 @@
 
 export type GuardResult = { ok: true; text: string } | { ok: false; reason: string };
 
-const PREAMBLE = /^(here is|here's|sure|certainly|i've|i have|of course)\b/i;
+const PREAMBLE = /^(here is|here['\u2019]s|sure|certainly|i['\u2019]ve|i have|of course)(?![\p{L}\p{N}])/iu;
+/** Leading fillers a dictation may start with before the words that look like a preamble. */
+const LEADING_FILLER = /^(?:(?:um+|uh+|er+m?|erm|hmm+)\b[\s,.]*)+/i;
 
 /** Words in a dictation at or under this count are not sent to a model at all. */
 export const MIN_FORMATTER_WORDS = 3;
@@ -33,13 +35,35 @@ export function guardFormatted(input: string, output: string): GuardResult {
   if (text.length > input.length * 2 + 40) return { ok: false, reason: 'output much longer than the input' };
   if (input.length >= 20 && text.length < input.length * 0.4) return { ok: false, reason: 'output much shorter than the input' };
   // A dictation that really starts "I have to go" must not be refused for sounding like a preamble.
-  if (PREAMBLE.test(text) && !PREAMBLE.test(input.trim())) {
+  if (PREAMBLE.test(text) && !PREAMBLE.test(input.trim().replace(LEADING_FILLER, ''))) {
     return { ok: false, reason: 'output starts with an assistant preamble' };
+  }
+  // The prompt's own scaffolding must never reach the document.
+  if (/<vocabulary>|<\/dictation>/i.test(text)) return { ok: false, reason: 'output contains the prompt markers' };
+  // A reply that has nothing to do with what was said (the model answered it, or made something up).
+  const outputWords = wordsOf(text);
+  if (outputWords.length >= 5) {
+    const known = new Set(wordsOf(input));
+    const shared = outputWords.filter((word) => known.has(word)).length;
+    if (shared < outputWords.length * 0.6) return { ok: false, reason: 'unrelated' };
   }
   return { ok: true, text };
 }
 
-/** Whether a transcript is long enough to be worth formatting. */
+function wordsOf(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    .split(/\s+/)
+    .filter((word) => word.length > 0);
+}
+
+/** Scripts written without spaces between words: a word count means nothing there. */
+const UNSPACED_SCRIPTS = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
+export const MIN_FORMATTER_CHARACTERS = 6;
+
+/** Whether a transcript is long enough to be worth formatting: 3 words, or 6 characters in an unspaced script. */
 export function worthFormatting(text: string): boolean {
+  if (UNSPACED_SCRIPTS.test(text)) return [...text.replace(/\s+/g, '')].length >= MIN_FORMATTER_CHARACTERS;
   return text.split(/\s+/).filter((token) => token.length > 0).length >= MIN_FORMATTER_WORDS;
 }

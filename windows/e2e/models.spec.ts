@@ -7,7 +7,7 @@ import { collect, historyWhere, launch, log, out, remove, saveSettings, sendToMa
 // Settings > Models and the model-aware dictation pipeline, end to end on the built app.
 // Every provider (Deepgram, ElevenLabs, Gemini, Anthropic) is answered by the e2e stub in main:
 // a key starting `valid` works, `bad` is refused, `offline` fails like a dead network. The
-// formatter stubs answer "<the dictation> (formatted by <provider>)", so what reaches the
+// formatter stubs answer "<the dictation> (<provider>)", so what reaches the
 // history proves which model ran and that its text is what was delivered.
 //
 //  1. pick models: a cloud model without its key can't be picked and sends you to its key row,
@@ -232,13 +232,13 @@ test('AI formatting delivers the formatter\'s text, keeps what was heard, and ne
   await choose(win, { formatterId: 'gemini:gemini-3.8-flash' });
   await dictate(win);
   const gemini = await lastDictation(userData, 2);
-  expect(gemini).toMatchObject({ text: 'Hello from Useful Voice. (formatted by Gemini)', rawText: 'Hello from Useful Voice.', mode: 'formatted' });
+  expect(gemini).toMatchObject({ text: 'Hello from Useful Voice. (Gemini)', rawText: 'Hello from Useful Voice.', mode: 'formatted' });
   await expect(dockStatus(win)).toContainText('Saved and copied');
 
   // Anthropic on.
   await choose(win, { formatterId: 'anthropic:claude-sonnet-5-5' });
   await dictate(win);
-  expect((await lastDictation(userData, 3)).text).toBe('Hello from Useful Voice. (formatted by Anthropic)');
+  expect((await lastDictation(userData, 3)).text).toBe('Hello from Useful Voice. (Anthropic)');
 
   // Off again.
   await choose(win, { formatterId: null });
@@ -288,7 +288,7 @@ test('each voice model reaches its own provider, and the formatter works on top 
   await choose(win, { voiceModelId: 'elevenlabs:scribe_v2', formatterId: 'anthropic:claude-haiku-5-5' });
   await dictate(win);
   count += 1;
-  expect((await lastDictation(userData, count)).text).toBe('Hello from Scribe, the ElevenLabs model. (formatted by Anthropic)');
+  expect((await lastDictation(userData, count)).text).toBe('Hello from Scribe, the ElevenLabs model. (Anthropic)');
 
   // The app asked each provider exactly for the model chosen: no other host was called for a voice model.
   const requests = await fs.readFile(path.join(userData, 'e2e.log'), 'utf8');
@@ -309,39 +309,63 @@ test('Nova-3 Medical refuses a language it does not speak before anything is sen
   expect(requests).not.toContain('nova-3-medical');
 });
 
-test('a local model starts its download when picked and becomes the voice model when it is ready', async () => {
-  const { app, win } = await start('models-local');
+test('a local model downloads when picked (no network) and becomes the voice model when it is ready', async () => {
+  const { win, userData } = await start('models-local');
   await setKey(win, 'deepgram', 'valid-deepgram');
   await win.reload();
   await win.waitForSelector('.dock');
   await openSettings(win);
 
-  // The stub reports every Parakeet model as not downloaded: the row offers the download.
+  // Nothing is on this PC yet: the row offers the download.
   const parakeet = voiceList(win).getByRole('radio', { name: /^Parakeet,/ });
   await expect(voiceList(win).getByRole('button', { name: 'Download Parakeet', exact: true })).toBeVisible();
   await parakeet.click();
-  // Not switched yet: nothing is on this PC to dictate with.
-  await expect(parakeet).toHaveAttribute('aria-checked', 'false');
-  expect((await currentSettings(win)).voiceModelId).toBe('deepgram:nova-3');
 
-  // Main reports progress, then the finished model.
-  const states = (v2: unknown) => ({ v2, v3: { status: 'notDownloaded' } });
-  await sendToMain(app, 'parakeet:changed', states({ status: 'downloading', progress: 0.4 }));
-  const bar = voiceList(win).getByRole('progressbar', { name: 'Downloading Parakeet' });
-  await expect(bar).toHaveAttribute('aria-valuenow', '40');
-  await expect(voiceList(win).getByRole('button', { name: 'Cancel' })).toBeVisible();
-  await sendToMain(app, 'parakeet:changed', states({ status: 'ready', sizeBytes: 482_000_000 }));
-  await expect(parakeet).toHaveAttribute('aria-checked', 'true');
+  // Under --e2e the download is answered by a stub inside the app: the real lifecycle runs
+  // (downloading, unpacking, ready) and the choice follows it.
+  await expect(parakeet).toHaveAttribute('aria-checked', 'true', { timeout: 20 * SECOND });
   await expect(voiceList(win).getByRole('button', { name: 'Delete Parakeet' })).toBeVisible();
   expect((await currentSettings(win)).voiceModelId).toBe('parakeet:v2');
+  const states = await win.evaluate(() => (window as unknown as { usefulVoice: { parakeetStates(): Promise<Record<string, { status: string; sizeBytes?: number }>> } }).usefulVoice.parakeetStates());
+  // Four one-byte files from the stub: the real 480 MB archive was never fetched.
+  expect(states.v2).toMatchObject({ status: 'ready', sizeBytes: 4 });
+  const requests = await fs.readFile(path.join(userData, 'e2e.log'), 'utf8');
+  expect(requests).toMatch(/parakeet GET https:\/\/github\.com\//);
+  // Every request the app made for the model went to the in-app stub, and no other host was asked.
+  expect(requests.split('\n').filter((line) => / parakeet GET /.test(line)).length).toBe(1);
 
   // A failed download offers a retry, and does not switch anything.
   const multilingual = voiceList(win).getByRole('radio', { name: /^Parakeet Multilingual,/ });
-  await multilingual.click();
-  await sendToMain(app, 'parakeet:changed', { v2: { status: 'ready', sizeBytes: 482_000_000 }, v3: { status: 'failed', message: 'offline' } });
+  await sendToMain(run!.app, 'parakeet:changed', { v2: states.v2, v3: { status: 'failed', message: 'offline' } });
   await expect(voiceList(win).getByRole('button', { name: 'Retry Parakeet Multilingual' })).toBeVisible();
   await expect(multilingual).toHaveAttribute('aria-checked', 'false');
   expect((await currentSettings(win)).voiceModelId).toBe('parakeet:v2');
+});
+
+test('removing the formatter\'s key turns AI formatting off; removing the voice model\'s key keeps it', async () => {
+  const { win } = await start('models-remove-key');
+  await setKey(win, 'deepgram', 'valid-deepgram');
+  await setKey(win, 'gemini', 'valid-gemini');
+  await win.reload();
+  await win.waitForSelector('.dock');
+  await choose(win, { voiceModelId: 'gemini-audio:gemini-3.8-flash', formatterId: 'gemini:gemini-3.8-flash' });
+  await openSettings(win);
+  await keyRow(win, 'gemini').getByRole('button', { name: 'Remove Gemini key' }).click();
+  await expect(keyRow(win, 'gemini')).toContainText('No key added');
+  const after = await currentSettings(win);
+  expect(after.formatterId).toBeNull();
+  expect(after.voiceModelId).toBe('gemini-audio:gemini-3.8-flash');
+  await expect(formatList(win).getByRole('radio', { name: /^Off/ })).toHaveAttribute('aria-checked', 'true');
+});
+
+test('About opens the shipped third-party notices', async () => {
+  const { win, userData } = await start('models-notices');
+  await openSettings(win);
+  await win.locator('#settings-about').scrollIntoViewIfNeeded();
+  await win.locator('#settings-about .s-row', { hasText: 'Third-party notices' }).getByRole('button', { name: 'Open' }).click();
+  await expect
+    .poll(async () => (await fs.readFile(path.join(userData, 'e2e.log'), 'utf8')).split('\n').find((line) => line.includes(' open-notices ')) ?? '')
+    .toMatch(/THIRD_PARTY_NOTICES\.md$/);
 });
 
 test('Settings > Models in light and dark, wide and narrow (screenshots)', async () => {
@@ -360,6 +384,8 @@ test('Settings > Models in light and dark, wide and narrow (screenshots)', async
       await shot(win, `models-${appearance}-${label}`);
       await win.locator('#settings-keys').scrollIntoViewIfNeeded();
       await shot(win, `keys-${appearance}-${label}`);
+      await win.locator('#settings-about').scrollIntoViewIfNeeded();
+      await shot(win, `about-${appearance}-${label}`);
     }
   }
 });

@@ -1,4 +1,4 @@
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 /**
@@ -23,7 +23,7 @@ export const E2E_GEMINI_TRANSCRIPT = 'Hello from Gemini, the voice model.';
 
 /** What the formatter stubs make of a dictation: the text, marked with who formatted it. */
 export function e2eFormatted(text: string, provider: 'Gemini' | 'Anthropic'): string {
-  return `${text.trim()} (formatted by ${provider})`;
+  return `${text.trim()} (${provider})`;
 }
 
 type StubHost = 'deepgram' | 'elevenlabs' | 'gemini' | 'anthropic';
@@ -92,6 +92,37 @@ async function answer(host: StubHost, init: RequestInit | undefined): Promise<Re
   if (method === 'GET') return json({ data: [] });
   const messages = body.messages as Array<{ content?: string }> | undefined;
   return json({ content: [{ type: 'text', text: e2eFormatted(dictationIn(messages?.[0]?.content ?? ''), 'Anthropic') }] });
+}
+
+/**
+ * Parakeet's download under `--e2e`: no request leaves the machine. The "server" answers a tiny
+ * archive, the "extraction" writes four one-byte files, and each URL asked for lands in e2e.log.
+ */
+export function parakeetE2eDeps(userData: string): {
+  fetch: typeof fetch;
+  extract: (archive: string, destDir: string) => Promise<void>;
+  spawnWorker: () => Promise<never>;
+} {
+  return {
+    fetch: (async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      try {
+        appendFileSync(path.join(userData, 'e2e.log'), `${new Date().toISOString()} parakeet GET ${url}\n`);
+      } catch {
+        // The log is a diagnostic aid only.
+      }
+      return new Response(new Uint8Array(64), { status: 200, headers: { 'content-length': '64' } });
+    }) as typeof fetch,
+    extract: async (_archive, destDir) => {
+      for (const name of ['encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'tokens.txt']) {
+        writeFileSync(path.join(destDir, name), 'x');
+      }
+    },
+    // The one-byte "model" can't be loaded: no recognition process under --e2e.
+    spawnWorker: async () => {
+      throw new Error('no recognition worker under --e2e');
+    },
+  };
 }
 
 export function installProviderStubs(userData: string): void {

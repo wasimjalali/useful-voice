@@ -17,6 +17,8 @@ import {
   transcribe as transcribeGeminiVoice,
 } from '../src/core/transcription/geminiTranscribeProvider.js';
 import { checkProviderKey, keyCheckRequest } from '../src/core/models/providerKeyCheck.js';
+import { setSecretSource } from '../src/core/redaction.js';
+import { describeErrorBody } from '../src/core/transcription/deepgramProvider.js';
 import { parakeetLanguageProblem } from '../src/core/transcription/parakeetLanguages.js';
 
 const audio = new Uint8Array(64_000).fill(7);
@@ -204,8 +206,20 @@ describe('Gemini as a voice model', () => {
   it('reads the joined non-thought text, and treats silence as an empty transcript', () => {
     expect(parseGeminiVoice({ candidates: [{ content: { parts: [{ text: 'hmm', thought: true }, { text: ' Hello ' }, { text: 'world.' }] } }] }).text).toBe('Hello world.');
     expect(parseGeminiVoice({ candidates: [] }).text).toBe('');
-    expect(parseGeminiVoice({ promptFeedback: { blockReason: 'OTHER' } }).text).toBe('');
+    expect(() => parseGeminiVoice({ promptFeedback: { blockReason: 'OTHER' } })).toThrow("Gemini didn't return a transcript");
     expect(() => parseGeminiVoice('x')).toThrow(ProviderError);
+  });
+
+  it('fails a blocked prompt or a cut-off answer with no text, so the audio is kept for Retry; STOP with no text is silence', async () => {
+    const answer = (body: unknown) => vi.fn(async () => json(body));
+    const hint = { language: 'auto', keyterms: [] };
+    for (const body of [{ promptFeedback: { blockReason: 'OTHER' } }, { candidates: [{ finishReason: 'SAFETY' }] }, { candidates: [{ finishReason: 'MAX_TOKENS' }] }]) {
+      const error = await reason(transcribeGeminiVoice({ audio, hint, config, fetchImpl: answer(body) as never, sleep: noSleep }));
+      expect(error.kind).toBe('malformedResponse');
+      expect(error.message).toContain("Gemini didn't return a transcript");
+    }
+    const silence = await transcribeGeminiVoice({ audio, hint, config, fetchImpl: answer({ candidates: [{ finishReason: 'STOP', content: { parts: [] } }] }) as never });
+    expect(silence.text).toBe('');
   });
 
   it('treats 400 invalid key, 401 and 403 as a key problem, never leaking it', async () => {
@@ -227,6 +241,25 @@ describe('Gemini as a voice model', () => {
     const transcript = await transcribeGeminiVoice({ audio, hint: { language: 'auto', keyterms: [] }, config, fetchImpl: retried as never, sleep: noSleep });
     expect(transcript.text).toBe('fine');
     expect(retried).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('error bodies', () => {
+  it('redact before they truncate, so a key cut by the limit is still hidden', () => {
+    const key = 'abcdefghijklmnopqrstuvwxyz0123456789ABCD';
+    const body = `${'x '.repeat(145)}${key} trailing`;
+    const text = describeErrorBody(body, key);
+    expect(text).not.toContain('abcdefghij');
+    expect(text.length).toBeLessThanOrEqual(300);
+  });
+  it('redact every stored key, and key-shaped strings that were never stored', () => {
+    setSecretSource(() => ['stored-eleven-key', 'stored-gemini-key']);
+    try {
+      const text = describeErrorBody('bad stored-eleven-key and stored-gemini-key and sk-ant-api03-abcdefghij and AIzaSyA1234567890abcdefgh');
+      expect(text).not.toMatch(/stored-|sk-ant|AIza/);
+    } finally {
+      setSecretSource(() => []);
+    }
   });
 });
 

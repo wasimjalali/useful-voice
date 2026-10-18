@@ -25,7 +25,7 @@ is split by what is actually provable on each platform.
 | All platform-free logic | `npm test`: **616 tests, 25 files**, run on macOS |
 | Type safety | `npm run typecheck`: clean |
 | Build | `npm run build`: main, preload and renderer all emitted |
-| Preload↔renderer contract | `npm run self-test`: API exposed, 83 methods, no Node leak |
+| Preload↔renderer contract | `npm run self-test`: API exposed, 84 methods, no Node leak |
 | Renderer loads under CSP | `npm run self-test`: shell paints, 5 nav items |
 | Audio-capable recorder window | `npm run self-test`: `getUserMedia` and `AudioContext` present |
 | Keyterm ceiling | `npm run self-test`: 400 terms compressed to 400 tokens, 384 dropped |
@@ -151,7 +151,7 @@ that it did.
 
 ### Where the security boundary is
 
-The renderer can call 83 named IPC channels and nothing else. It cannot read the
+The renderer can call 84 named IPC channels and nothing else. It cannot read the
 filesystem, and it can never read an API key. It can only ask whether one is
 configured. Each key (Deepgram, ElevenLabs, Gemini, Anthropic) is encrypted with DPAPI via Electron's `safeStorage`, so it is
 unreadable from another Windows account or from a copy of the file on another
@@ -207,9 +207,7 @@ Everything lives in `%APPDATA%\Useful Voice`:
 
 Audio is held in memory only while transcribing and is never written to disk. With a cloud
 voice model, each recording's audio is uploaded to that provider (Deepgram, ElevenLabs or
-Gemini) along with your dictionary's correct spellings. With AI formatting on, the transcript
-text and your dictionary words go to the formatting provider (Gemini or Anthropic). With
-Parakeet, audio stays on your PC. Nothing else leaves your PC, and there is no analytics or
+Gemini) along with your dictionary's correct spellings. With AI formatting on, the transcript text and up to 100 of your dictionary words are sent to Google (Gemini) or Anthropic (Claude), whichever you chose. With a local model (Parakeet), audio stays on your PC unless AI formatting is on, and then only the transcript text leaves it. Nothing else leaves your PC, and there is no analytics or
 tracking. Uninstalling keeps this folder on purpose; Settings
 shows the path so you can remove it yourself.
 

@@ -189,6 +189,9 @@ const api = {
   testApiKey: (): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke('settings:test-api-key'),
   resetApiKey: (): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke('settings:reset-api-key'),
 
+  /** Opens the shipped third-party notices file. */
+  openNotices: (): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke('app:open-notices'),
+
   // ---- models and their keys ----
   /** Saves a provider's key (encrypted in main). The renderer never reads one back. */
   setProviderKey: (provider: KeyProvider, key: string): Promise<{ ok: boolean; error?: string }> =>

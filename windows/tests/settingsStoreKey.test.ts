@@ -108,29 +108,3 @@ describe('stored API key', () => {
     expect(store.hasStoredKey).toBe(true);
   });
 });
-
-// B1: a settings file written before the delivery settings existed loads with the old
-// behaviour (restore after a proven paste, paste everywhere), and both new settings
-// survive a save and a reload.
-describe('delivery settings on disk', () => {
-  it('fills the new settings with their defaults for an older file', async () => {
-    const dir = await folderWith({ version: 1, settings: { languagePin: 'de', soundEffectsEnabled: false } });
-    const store = new SettingsStore(dir);
-    await store.load();
-    expect(store.all.restorePreviousClipboard).toBe(true);
-    expect(store.all.typeOutApps).toEqual([]);
-    expect(store.all.languagePin).toBe('de');
-  });
-
-  it('round-trips both settings through a save', async () => {
-    const dir = await folderWith(null);
-    const store = new SettingsStore(dir);
-    await store.load();
-    store.update({ restorePreviousClipboard: false, typeOutApps: ['WindowsTerminal.exe', 'putty'] });
-    await store.save();
-    const reloaded = new SettingsStore(dir);
-    await reloaded.load();
-    expect(reloaded.all.restorePreviousClipboard).toBe(false);
-    expect(reloaded.all.typeOutApps).toEqual(['windowsterminal', 'putty']);
-  });
-});

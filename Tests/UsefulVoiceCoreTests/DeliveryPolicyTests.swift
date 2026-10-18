@@ -95,25 +95,4 @@ import Testing
         #expect(proven.allSatisfy { $0.restoresUserClipboard })
         #expect(unproven.allSatisfy { !$0.restoresUserClipboard })
     }
-
-    // MARK: - The clipboard setting
-
-    @Test func testProvenSafeRestoreHappensWithTheDefaultSetting() {
-        #expect(DeliveryPolicy.shouldRestoreClipboard(
-            proven: true, canRestoreSafely: true, restorePreviousClipboard: true))
-    }
-
-    @Test func testSettingOffLeavesTheDictationEvenAfterAProvenPaste() {
-        #expect(!DeliveryPolicy.shouldRestoreClipboard(
-            proven: true, canRestoreSafely: true, restorePreviousClipboard: false))
-    }
-
-    @Test func testUnprovenOrUnsafeNeverRestoresWhateverTheSetting() {
-        for setting in [true, false] {
-            #expect(!DeliveryPolicy.shouldRestoreClipboard(
-                proven: false, canRestoreSafely: true, restorePreviousClipboard: setting))
-            #expect(!DeliveryPolicy.shouldRestoreClipboard(
-                proven: true, canRestoreSafely: false, restorePreviousClipboard: setting))
-        }
-    }
 }

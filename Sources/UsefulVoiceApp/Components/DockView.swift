@@ -23,10 +23,6 @@ struct DockIssue: Equatable {
         switch issue {
         case .copiedNotPasted, .copiedAppChanged, .copiedSecureField, .copiedNotLanded:
             (lead, rest, icon, tone, micOff) = ("Copied.", "Press \u{2318}V to paste.", "exclamationmark.triangle", .warning, false)
-        case .copiedPartlyTyped:
-            (lead, rest, icon, tone, micOff) = ("Partly typed.", "The full text is on your clipboard.", "exclamationmark.triangle", .warning, false)
-        case .copiedHasLineBreaks:
-            (lead, rest, icon, tone, micOff) = ("Copied.", "It has line breaks, so it wasn't typed. Press \u{2318}V.", "exclamationmark.triangle", .warning, false)
         case .error(let error):
             let saved = canRetry ? "Your recording is saved on this Mac." : ""
             micOff = error.kind == .micUnavailable
@@ -178,7 +174,7 @@ struct StreamDock: View {
                 switch mode {
                 case .pasted: return .done(words: words, destination: app.map { "Inserted into \($0)" } ?? "Inserted")
                 case .copied: return .done(words: words, destination: "Saved and copied")
-                case .copiedNotPasted, .copiedAppChanged, .copiedSecureField, .copiedNotLanded, .copiedPartlyTyped, .copiedHasLineBreaks: break
+                case .copiedNotPasted, .copiedAppChanged, .copiedSecureField, .copiedNotLanded: break
                 }
             }
             return .idle

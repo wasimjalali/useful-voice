@@ -87,12 +87,6 @@ export interface SettingsDTO {
   dictionaryBiasBudget: number;
   appearance: 'system' | 'light' | 'dark';
   dailyWordGoal: number;
-  /** Put the previous clipboard back after a proven paste (default on). */
-  restorePreviousClipboard: boolean;
-  /** Apps that get the dictation typed out instead of pasted. */
-  typeOutApps: string[];
-  /** Read-only: apps dictated into this session, newest first. Never saved. */
-  recentTargetApps?: string[];
   hasApiKey: boolean;
 }
 

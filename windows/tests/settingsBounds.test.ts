@@ -7,7 +7,6 @@ import {
   MAX_SILENCE_TIMEOUT_SECONDS,
   MIN_RECORDING_SECONDS,
   MIN_SILENCE_TIMEOUT_SECONDS,
-  MAX_TYPE_OUT_APPS,
   normaliseSettings,
 } from '../src/core/settings/settingsBounds.js';
 
@@ -134,30 +133,5 @@ describe('normaliseSettings', () => {
       languageSwitchHotkey: { accelerator: 42 as unknown as string, pushToTalk: false },
     });
     expect(result.languageSwitchHotkey?.accelerator).toBe('42');
-  });
-});
-
-describe('delivery settings (B1)', () => {
-  const withSettings = (patch: Record<string, unknown>) =>
-    normaliseSettings({ ...DEFAULT_SETTINGS, ...patch } as typeof DEFAULT_SETTINGS);
-
-  it('defaults to restoring the clipboard and pasting everywhere', () => {
-    expect(DEFAULT_SETTINGS.restorePreviousClipboard).toBe(true);
-    expect(DEFAULT_SETTINGS.typeOutApps).toEqual([]);
-  });
-
-  it('keeps restoring unless the file says false, so an older settings file is unchanged', () => {
-    expect(withSettings({ restorePreviousClipboard: undefined }).restorePreviousClipboard).toBe(true);
-    expect(withSettings({ restorePreviousClipboard: 'no' }).restorePreviousClipboard).toBe(true);
-    expect(withSettings({ restorePreviousClipboard: false }).restorePreviousClipboard).toBe(false);
-  });
-
-  it('normalises the type-out list: app ids, no blanks, no duplicates, capped', () => {
-    expect(withSettings({ typeOutApps: ['WindowsTerminal.exe', '', 'windowsterminal', 'PuTTY', 7] }).typeOutApps)
-      .toEqual(['windowsterminal', 'putty']);
-    expect(withSettings({ typeOutApps: 'putty' }).typeOutApps).toEqual([]);
-    expect(withSettings({ typeOutApps: undefined }).typeOutApps).toEqual([]);
-    const many = Array.from({ length: 80 }, (_, index) => `app${index}`);
-    expect(withSettings({ typeOutApps: many }).typeOutApps).toHaveLength(MAX_TYPE_OUT_APPS);
   });
 });

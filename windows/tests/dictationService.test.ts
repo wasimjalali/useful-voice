@@ -70,9 +70,6 @@
  *  34. Clearing history leaves failed audio that "Retry last recording" can still use.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { DeliveryTarget } from '../src/core/delivery/deliveryTarget.js';
-import { DELIVERY_TIMEOUT } from '../src/core/delivery/deliveryFlow.js';
-import { LINE_BREAKS, PARTLY_TYPED } from '../src/core/hudModel.js';
 import {
   DictationService,
   classifyRecordingFailure,
@@ -165,8 +162,8 @@ class FakeTranscriber implements TranscriberPort {
 
 class FakeSink implements TextSinkPort {
   delivered: string[] = [];
-  requests: Array<{ text: string; targetApp?: string; targetHandle?: number; target?: DeliveryTarget; mode: string; signal?: AbortSignal }> = [];
-  result: { delivered: boolean; clipboardFallback: boolean; cancelled?: boolean; partlyTyped?: boolean; lineBreaks?: boolean; pasteFailed?: boolean } = { delivered: true, clipboardFallback: false };
+  requests: Array<{ text: string; targetApp?: string; targetHandle?: number; mode: string; signal?: AbortSignal }> = [];
+  result: { delivered: boolean; clipboardFallback: boolean; cancelled?: boolean } = { delivered: true, clipboardFallback: false };
   /** Never resolves, to exercise the delivery timeout. */
   hang = false;
   /** Waits for the abort signal and reports it stopped before pasting, like the real sink. */
@@ -175,7 +172,7 @@ class FakeSink implements TextSinkPort {
   gate: Promise<void> | null = null;
   error: Error | null = null;
 
-  async deliver(request: { text: string; targetApp?: string; targetHandle?: number; target?: DeliveryTarget; mode: string; signal?: AbortSignal }): Promise<{ delivered: boolean; clipboardFallback: boolean; cancelled?: boolean; partlyTyped?: boolean; lineBreaks?: boolean; pasteFailed?: boolean }> {
+  async deliver(request: { text: string; targetApp?: string; targetHandle?: number; mode: string; signal?: AbortSignal }): Promise<{ delivered: boolean; clipboardFallback: boolean; cancelled?: boolean }> {
     this.delivered.push(request.text);
     this.requests.push(request);
     if (this.error) throw this.error;
@@ -214,7 +211,6 @@ function setup(options: {
   apiKey?: string | null;
   formatter?: FormatterPort;
   tickMs?: number;
-  deliveryTimeoutMs?: number;
 } = {}) {
   const recorder = new FakeRecorder();
   const transcriber = new FakeTranscriber();
@@ -256,7 +252,7 @@ function setup(options: {
     onDiagnostic: (category, message) => diagnostics.push({ category, message }),
     idFactory,
     formatter: options.formatter,
-    deliveryTimeoutMs: options.deliveryTimeoutMs ?? 200,
+    deliveryTimeoutMs: 200,
     tickMs: options.tickMs,
   });
 
@@ -605,43 +601,6 @@ describe('delivery that never calls back', () => {
     // The service must accept a new dictation.
     await ctx.service.toggle({ source: 'hotkey' });
     expect(ctx.service.currentState).toBe('recording');
-  });
-
-  it('stops the sink when it times out, so no keystroke follows', async () => {
-    const ctx = setup();
-    let keystrokes = 0;
-    let seen: AbortSignal | undefined;
-    ctx.sink.deliver = async (request) => {
-      seen = request.signal;
-      // A sink stuck past the timeout (a slow script), then about to press Ctrl+V.
-      await new Promise((resolve) => setTimeout(resolve, 350));
-      if (!request.signal?.aborted) keystrokes += 1;
-      return { delivered: true, clipboardFallback: false };
-    };
-    await ctx.service.startRecording({ source: 'hotkey', target: { appId: 'notepad', windowHandle: 7 } });
-    await ctx.service.stopAndProcess();
-    expect(ctx.service.currentState).toBe('idle');
-    expect(seen?.aborted).toBe(true);
-    expect(seen?.reason).toBe(DELIVERY_TIMEOUT);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(keystrokes).toBe(0);
-    expect(ctx.diagnostics).toContainEqual({ category: 'delivery', message: 'timed out; stopped the sink' });
-  });
-
-  it('gives the sink a time budget that ends before the service gives up', async () => {
-    const ctx = setup();
-    await ctx.service.startRecording({ source: 'hotkey' });
-    await ctx.service.stopAndProcess();
-    const budget = (ctx.sink.requests[0] as { timeBudgetMs?: number }).timeBudgetMs;
-    expect(budget).toBeGreaterThan(0);
-    expect(budget).toBeLessThan(200);
-  });
-
-  it('gives whole milliseconds for an odd timeout', async () => {
-    const ctx = setup({ deliveryTimeoutMs: 201 });
-    await ctx.service.startRecording({ source: 'hotkey' });
-    await ctx.service.stopAndProcess();
-    expect((ctx.sink.requests[0] as { timeBudgetMs?: number }).timeBudgetMs).toBe(100);
   });
 
   it('treats a throwing sink as delivered-to-clipboard, not as a lost dictation', async () => {
@@ -1295,51 +1254,6 @@ describe('outcomes', () => {
     expect(ctx.outcomes).toEqual([{ kind: 'delivered', words: 2, result: 'copiedNotPasted', appName: 'Notepad' }]);
   });
 
-  it('says "partly typed" when typing stopped part way, never plain "copied"', async () => {
-    const ctx = setup();
-    ctx.sink.result = { delivered: false, clipboardFallback: true, partlyTyped: true };
-    await ctx.service.toggle({ source: 'hotkey', targetApp: 'Terminal' });
-    await ctx.service.toggle({ source: 'hotkey' });
-    expect(ctx.outcomes).toEqual([
-      { kind: 'delivered', words: 2, result: 'copiedNotPasted', appName: 'Terminal', partlyTyped: true },
-    ]);
-    expect(ctx.statuses.at(-1)?.message).toBe(PARTLY_TYPED);
-    expect(PARTLY_TYPED).toBe('Partly typed. The full text is on your clipboard.');
-  });
-
-  it('flags the outcome as blocked only when the paste script failed', async () => {
-    const blocked = setup();
-    blocked.sink.result = { delivered: false, clipboardFallback: true, pasteFailed: true };
-    await blocked.service.toggle({ source: 'hotkey', targetApp: 'Admin tool' });
-    await blocked.service.toggle({ source: 'hotkey' });
-    expect(blocked.outcomes).toEqual([
-      { kind: 'delivered', words: 2, result: 'copiedNotPasted', appName: 'Admin tool', pasteBlocked: true },
-    ]);
-    for (const result of [
-      { delivered: false, clipboardFallback: true },
-      { delivered: false, clipboardFallback: true, lineBreaks: true },
-      { delivered: false, clipboardFallback: true, partlyTyped: true },
-    ]) {
-      const ctx = setup();
-      ctx.sink.result = result;
-      await ctx.service.toggle({ source: 'hotkey', targetApp: 'Notepad' });
-      await ctx.service.toggle({ source: 'hotkey' });
-      expect(ctx.outcomes[0]).not.toHaveProperty('pasteBlocked');
-    }
-  });
-
-  it('says why when text with a line break was copied instead of typed', async () => {
-    const ctx = setup();
-    ctx.sink.result = { delivered: false, clipboardFallback: true, lineBreaks: true };
-    await ctx.service.toggle({ source: 'hotkey', targetApp: 'Terminal' });
-    await ctx.service.toggle({ source: 'hotkey' });
-    expect(ctx.outcomes).toEqual([
-      { kind: 'delivered', words: 2, result: 'copiedNotPasted', appName: 'Terminal', lineBreaks: true },
-    ]);
-    expect(ctx.statuses.at(-1)?.message).toBe(LINE_BREAKS);
-    expect(LINE_BREAKS).toBe("Copied. It has line breaks, so it wasn't typed. Press Ctrl+V.");
-  });
-
   it('emits no outcome for a failure', async () => {
     const ctx = setup();
     ctx.recorder.audio = capturedAudio({ hadSpeech: false });
@@ -1950,19 +1864,6 @@ describe('review round 1: delivery target and failures', () => {
     await window.service.toggle({ source: 'window', targetApp: 'Slack', targetHandle: 4242 });
     await window.service.toggle({ source: 'window' });
     expect(window.sink.requests[0]?.targetHandle).toBeUndefined();
-  });
-
-  it('hands the target locked at the hotkey press to the sink, and none for a window dictation', async () => {
-    const target: DeliveryTarget = { appId: 'slack', processId: 501, windowHandle: 4242, focusHandle: 7 };
-    const hotkey = setup();
-    await hotkey.service.toggle({ source: 'hotkey', targetApp: 'Slack', targetHandle: 4242, target });
-    await hotkey.service.toggle({ source: 'hotkey' });
-    expect(hotkey.sink.requests[0]?.target).toEqual(target);
-
-    const window = setup();
-    await window.service.toggle({ source: 'window', target });
-    await window.service.toggle({ source: 'window' });
-    expect(window.sink.requests[0]?.target).toBeUndefined();
   });
 
   it('reports a sink that moved the paste to the clipboard as copied-not-pasted', async () => {

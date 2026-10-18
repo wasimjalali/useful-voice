@@ -122,7 +122,6 @@ test('the capsule is named for each HUD state and the timer is not a live region
     [{ kind: 'done', words: 24, saved: false }, 'Inserted, 24 words', 'done'],
     [{ kind: 'done', words: 1, saved: true }, 'Saved and copied, 1 word', 'done'],
     [{ kind: 'copied' }, 'Copied. Press Ctrl+V to paste', 'copied'],
-    [{ kind: 'copied', lineBreaks: true }, "Copied. It has line breaks, so it wasn't typed. Press Ctrl+V.", 'copied'],
     [{ kind: 'cancelled' }, 'Cancelled', 'cancelled'],
     [{ kind: 'language', name: 'Deutsch' }, 'Language: Deutsch', 'language'],
     [{ kind: 'error', error: { kind: 'offline', message: 'Could not reach Deepgram.', fix: 'retry' } }, 'No connection', 'error'],

@@ -14,8 +14,6 @@ Useful Voice is a fast, personal dictation app for macOS and Windows. Tap a hotk
 
 **Dictate anywhere.** Tap your key (Right Command by default), speak, tap again. The text is inserted at your cursor. If the insert can't be confirmed, the text stays on your clipboard, so a missed insert is one paste away. Esc cancels. Recording stops by itself after 60 seconds of silence.
 
-**It lands where you started.** The app, window and text field you were in when you pressed the key are locked in. If you click elsewhere while it transcribes, Useful Voice brings that field back before it pastes. If it can't (the app quit, say), it pastes nowhere else: the text stays on your clipboard. Settings > Pasting chooses whether your old clipboard comes back after a paste, and which apps get the text typed out as keystrokes instead (for terminals and apps that block paste).
-
 **Teach it your words.** Add names and specialist spellings to your dictionary. They help recognition and fix casing on your Mac. Add a "sounds like" form and misheard variants are rewritten after transcription. Fix a recurring mistake once and it stays fixed.
 
 **Keep what you said.** Notes are local and searchable, with pins, tags and Markdown copy. Your dictation history keeps every transcript, and Insights shows words, time saved and your streak.

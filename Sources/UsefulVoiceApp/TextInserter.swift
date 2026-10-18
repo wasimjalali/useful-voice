@@ -3,13 +3,52 @@ import ApplicationServices
 import Carbon.HIToolbox
 import UsefulVoiceCore
 
-/// How a paste-mode delivery ended (see `InsertionOutcome` in the core).
-typealias DeliveryOutcome = InsertionOutcome
+enum DeliveryOutcome {
+    case insertedViaAX   // typed into the focused element
+    case pasted          // synthetic Cmd-V landed (or a Cmd-V app where we can't prove it)
+    case clipboardOnly   // nothing landed; the user pastes manually
+    case secureFieldCopied // a password field has focus: left on the clipboard, never typed
+    case failed          // the clipboard write itself failed: the text is nowhere but History
+}
 
-/// Delivers final text: paste at the cursor (or typed, for apps the user chose),
-/// AX insert as a fallback, and the clipboard as the never-lose backup. The user's
-/// own clipboard is restored across delivery, but ONLY when we can prove the text
-/// actually landed.
+/// Proof that a paste actually landed, gathered from the *target* element.
+///
+/// Pasting is verified against the focused element, never against the shared
+/// pasteboard: Universal Clipboard, Handoff and clipboard managers all read the
+/// pasteboard too, and their read used to be mistaken for a consumed paste.
+struct PasteProof: Equatable {
+    /// Identity of the element that was focused before the paste. A different
+    /// element afterwards means the character counts are not comparable.
+    let elementIdentifier: String
+    /// Character count of that element before the paste, when readable.
+    let beforeCount: Int?
+    /// Character count now, when readable.
+    let afterCount: Int?
+    /// Length of the text we were trying to insert, in UTF-16 units (what AX
+    /// counts), never grapheme clusters.
+    let payloadLength: Int
+
+    var growth: Int? {
+        guard let beforeCount, let afterCount else { return nil }
+        return afterCount - beforeCount
+    }
+
+    /// Whether the growth is consistent with our payload landing.
+    ///
+    /// A bare `after > before` accepted a growth of one character as proof that
+    /// a 400-character dictation had landed, and accepted growth caused by the
+    /// user typing something unrelated. Requiring the growth to account for the
+    /// payload makes "landed" mean what it says; anything less falls through to
+    /// the safe branch that keeps the dictation on the clipboard.
+    var isConsistentWithPayload: Bool {
+        guard growth == payloadLength else { return false }
+        return true
+    }
+}
+
+/// Delivers final text: paste at the cursor, AX insert as a fallback, and the
+/// clipboard as the never-lose backup. The user's own clipboard is restored
+/// across delivery, but ONLY when we can prove the text actually landed.
 ///
 /// Why proof matters (the clipboard-loss bug): the previous version put the text
 /// on the clipboard as a lazy promise and treated the promise being read as
@@ -21,34 +60,33 @@ typealias DeliveryOutcome = InsertionOutcome
 /// identity and character count before and after, and only restores the user's
 /// clipboard when that same element grew by exactly the payload length. Every
 /// uncertain path errs toward keeping the dictation.
-///
-/// The order of it all (checks, method, proof, fallback, restore) is the core's
-/// `InsertionFlow`, tested in `InsertionFlowTests`; this struct supplies the macOS
-/// effects.
 struct TextInserter {
-    private let timing: InsertionTiming
+    /// First consumption check. A synthetic Cmd-V is usually consumed within
+    /// tens of ms; this is a comfortable margin.
+    private let firstCheck: TimeInterval
+    /// Last-chance check for slow consumers (Electron apps under load).
+    private let finalCheck: TimeInterval
 
-    // Effects, injected so the policy can be exercised without AppKit.
+    // Effects, injected so the policy can be exercised in tests without AppKit.
     private let pasteboard: () -> NSPasteboard
     private let isSecureInput: () -> Bool
     /// Posts a synthetic Cmd-V. Returns whether it could be posted at all
     /// (Accessibility trust is required); false means it never went out.
     private let synthesizePaste: () -> Bool
-    /// Posts one batch of UTF-16 units as Unicode key events (type-out mode).
-    private let postKeys: ([UInt16]) -> Bool
     /// Writes text into the focused element via AX. Returns the raw AX result,
     /// which is not trusted on its own (Terminal reports success but inserts
-    /// nothing) - the flow verifies with a character-count check.
+    /// nothing) - the caller verifies with a character-count check.
     private let axInsert: (String) -> Bool
     /// Identifies the focused element and reports its character count, or nil
     /// when the element is AX-blind (Electron, web views, terminals) or there is
     /// no Accessibility trust.
-    private let focusedProbe: () -> FocusProbe?
+    private let focusedProbe: () -> (identifier: String, charCount: Int?)?
     /// Restores the user's clipboard after delivery. Returns false when the
     /// clipboard could not be restored (it changed, or the write failed).
     private let restoreClipboard: (_ items: [NSPasteboardItem], _ pb: NSPasteboard,
                                    _ expectedChangeCount: Int) -> Bool
-    /// Schedules `work` after `delay`. Real delivery uses the main queue.
+    /// Schedules `work` after `delay`. Real delivery uses the main queue; tests
+    /// run it inline.
     private let schedule: (TimeInterval, @escaping () -> Void) -> Void
     /// Called after delivery so the app layer can keep the snapshot available
     /// for the user's undo window.
@@ -57,72 +95,135 @@ struct TextInserter {
     init(pasteboard: @escaping () -> NSPasteboard = { .general },
          isSecureInput: @escaping () -> Bool = { IsSecureEventInputEnabled() },
          synthesizePaste: @escaping () -> Bool = TextInserter.postCommandV,
-         postKeys: @escaping ([UInt16]) -> Bool = TextInserter.postUnicodeBatch,
          axInsert: @escaping (String) -> Bool = TextInserter.axWriteSelectedText,
-         focusedProbe: @escaping () -> FocusProbe? = TextInserter.probeFocusedElement,
+         focusedProbe: @escaping () -> (identifier: String, charCount: Int?)?
+            = TextInserter.probeFocusedElement,
          restoreClipboard: @escaping ([NSPasteboardItem], NSPasteboard, Int) -> Bool
             = TextInserter.restoreIfUnchanged,
          schedule: @escaping (TimeInterval, @escaping () -> Void) -> Void
             = TextInserter.mainQueueSchedule,
          onDeliverySettled: (() -> Void)? = nil,
-         timing: InsertionTiming = InsertionTiming()) {
+         firstCheck: TimeInterval = 0.25,
+         finalCheck: TimeInterval = 0.6) {
         self.pasteboard = pasteboard
         self.isSecureInput = isSecureInput
         self.synthesizePaste = synthesizePaste
-        self.postKeys = postKeys
         self.axInsert = axInsert
         self.focusedProbe = focusedProbe
         self.restoreClipboard = restoreClipboard
         self.schedule = schedule
         self.onDeliverySettled = onDeliverySettled
-        self.timing = timing
+        self.firstCheck = firstCheck
+        self.finalCheck = finalCheck
     }
 
-    /// - Parameters:
-    ///   - request: the text, the target's app (which picks paste or type-out) and
-    ///     the user's clipboard setting.
-    ///   - onTarget: checked right before anything is posted. False means the target
-    ///     captured at the hotkey press is no longer focused (or shows another page):
-    ///     nothing is posted and the dictation stays on the clipboard.
-    ///   - stillOnTarget: checked before every typed batch after the first, by
-    ///     identity only (no page read). False stops typing.
-    func deliver(_ request: InsertionRequest,
-                 onTarget: @escaping () -> Bool = { true },
-                 stillOnTarget: @escaping () -> Bool = { true },
+    func deliver(_ text: String,
                  completion: @escaping (DeliveryOutcome) -> Void = { _ in }) {
         let pb = pasteboard()
-        // The user's clipboard, copied aside by `saveClipboard`, and the change count
-        // of our own write, so a restore never clobbers something copied since.
-        final class Saved { var items: [NSPasteboardItem] = []; var changeCount = 0 }
-        let saved = Saved()
-        let effects = InsertionEffects(
-            isSecureInput: isSecureInput,
-            saveClipboard: {
-                let snapshot = Clipboard.snapshot(pb)
-                saved.items = Clipboard.restorableItems(from: snapshot) ?? []
-                // A clipboard we could not fully copy must never be "restored": that
-                // would replace the user's data with less than it held.
-                return !saved.items.isEmpty || snapshot.isEmptiness
-            },
-            writeClipboard: { text in
-                // Concrete (not lazy), marked so a re-entrant snapshot skips our item.
-                guard Clipboard.writeString(text, marker: true, to: pb) else { return false }
-                saved.changeCount = pb.changeCount
-                return true
-            },
-            recoverClipboard: {
-                if !saved.items.isEmpty { Clipboard.restore(saved.items, to: pb) }
-            },
-            restoreClipboard: { self.restoreClipboard(saved.items, pb, saved.changeCount) },
-            onTarget: onTarget,
-            stillOnTarget: stillOnTarget,
-            postPaste: synthesizePaste,
-            postKeys: postKeys,
-            axInsert: axInsert,
-            probe: focusedProbe,
-            schedule: schedule,
-            settled: { self.onDeliverySettled?() })
-        InsertionFlow.run(request, timing: timing, effects: effects, completion: completion)
+
+        // A secure field is active: never type or paste into a password box.
+        // Leave the text on the clipboard so the user can paste it somewhere
+        // safe themselves. Nothing is snapshotted: a password manager's
+        // clipboard entry must not be copied into our process. Spec section 5.
+        if isSecureInput() {
+            completion(Clipboard.writeString(text, marker: true, to: pb) ? .secureFieldCopied : .failed)
+            return
+        }
+
+        // Snapshot the user's clipboard for a possible restore, and the focused
+        // element so we can later tell whether it actually grew by our payload.
+        let snapshot = Clipboard.snapshot(pb)
+        let saved = Clipboard.restorableItems(from: snapshot) ?? []
+        // A clipboard we could not fully copy must never be "restored": that
+        // would replace the user's data with less than it held. In that case we
+        // keep the dictation on the clipboard and tell the user (the HUD shows
+        // the manual-paste hint), which loses nothing.
+        let canRestoreSafely = !saved.isEmpty || snapshot.isEmptiness
+        let probeBefore = focusedProbe()
+
+        // Concrete (not lazy) so a missed insert always leaves something to
+        // paste, marked so a re-entrant snapshot skips our own item.
+        guard Clipboard.writeString(text, marker: true, to: pb) else {
+            // The clipboard could not be written at all. Nothing was posted, so
+            // the dictation survives only in History; report the failure. The
+            // failed write may already have cleared the clipboard, so put the
+            // user's own contents back when they were copied safely.
+            if canRestoreSafely, !saved.isEmpty {
+                Clipboard.restore(saved, to: pb)
+            }
+            completion(.failed)
+            onDeliverySettled?()
+            return
+        }
+        let ourChangeCount = pb.changeCount
+
+        let posted = synthesizePaste()
+
+        let restore = { (proof: Bool) -> Bool in
+            guard proof, canRestoreSafely else { return false }
+            return self.restoreClipboard(saved, pb, ourChangeCount)
+        }
+
+        // AX reports a field's length in UTF-16 units, so the payload is measured the
+        // same way: `text.count` (grapheme clusters) never matched a Persian line with
+        // a ZWNJ, an emoji or a CRLF.
+        let payloadLength = text.utf16.count
+
+        // Run when the paste was not confirmed, with the last probe taken after it:
+        // try a direct AX insert where we can verify it, then decide.
+        let runFallback = { (afterPaste: (identifier: String, charCount: Int?)?) in
+            // Did the posted paste change the target without matching the payload?
+            // Then it landed somewhere we can't measure exactly, and an AX insert on
+            // top of it would put the text in twice. A field that stopped answering
+            // counts as changed for the same reason (the label "Inserted" may then be
+            // optimistic, but nothing is lost: no restore, the dictation stays on the
+            // clipboard and in History).
+            let targetChanged: Bool = {
+                guard posted, let before = probeBefore, before.charCount != nil else { return false }
+                guard let after = afterPaste else { return true }
+                return after.identifier != before.identifier || after.charCount != before.charCount
+            }()
+            // Only into a field that reports its length and did not change: an AX
+            // insert we can't verify is never trusted, and after a posted paste into
+            // such a field it would double the text.
+            var axInsertGrew = false
+            if let before = probeBefore, let beforeCount = before.charCount,
+               !targetChanged, !self.isSecureInput(),
+               self.axInsert(text),
+               let after = self.focusedProbe(),
+               after.identifier == before.identifier,
+               let afterCount = after.charCount,
+               afterCount - beforeCount == payloadLength {
+                axInsertGrew = true
+            }
+            let decision = DeliveryPolicy.finalDecision(
+                pastePosted: posted, axVisible: probeBefore?.charCount != nil,
+                axInsertGrew: axInsertGrew, targetChanged: targetChanged)
+            self.apply(decision, restore: restore, completion: completion)
+        }
+
+        guard posted else { runFallback(nil); return }
+
+        // Checks are scheduled, never blocking, so the target stays responsive
+        // while it reads the clipboard and grows.
+        schedule(firstCheck) {
+            if self.landed(since: probeBefore, after: self.focusedProbe(), payloadLength: payloadLength) {
+                _ = restore(true)
+                completion(.pasted)
+                self.onDeliverySettled?()
+                return
+            }
+            self.schedule(self.finalCheck - self.firstCheck) {
+                let after = self.focusedProbe()
+                if self.landed(since: probeBefore, after: after, payloadLength: payloadLength) {
+                    _ = restore(true)
+                    completion(.pasted)
+                    self.onDeliverySettled?()
+                } else {
+                    runFallback(after)
+                }
+            }
+        }
     }
 
     /// Copy mode: puts `text` on the clipboard and nothing else. No snapshot, no
@@ -138,6 +239,42 @@ struct TextInserter {
         return true
     }
 
+    /// Whether the paste provably landed: the SAME element is still focused and
+    /// it grew by exactly the payload length. An unverifiable target never
+    /// counts as proof, and neither does growth of the wrong size or growth in a
+    /// different element.
+    private func landed(since probeBefore: (identifier: String, charCount: Int?)?,
+                        after: (identifier: String, charCount: Int?)?,
+                        payloadLength: Int) -> Bool {
+        guard let probeBefore else { return false }
+        guard let after else { return false }
+        guard after.identifier == probeBefore.identifier else { return false }
+        return PasteProof(elementIdentifier: after.identifier,
+                           beforeCount: probeBefore.charCount,
+                           afterCount: after.charCount,
+                           payloadLength: payloadLength)
+            .isConsistentWithPayload
+    }
+
+    private func apply(_ decision: DeliveryDecision,
+                       restore: (Bool) -> Bool,
+                       completion: (DeliveryOutcome) -> Void) {
+        if decision.restoresUserClipboard {
+            _ = restore(true)
+        }
+        switch decision {
+        case .insertedViaAXRestore:
+            completion(.insertedViaAX)
+        case .pastedRestore, .keepDictationPasted:
+            completion(.pasted)
+        case .keepDictationManual:
+            // The dictation is already concrete on the clipboard; the HUD hint
+            // tells the user to paste it.
+            completion(.clipboardOnly)
+        }
+        onDeliverySettled?()
+    }
+
     // MARK: - Real macOS effects
 
     private static func mainQueueSchedule(_ delay: TimeInterval,
@@ -151,7 +288,7 @@ struct TextInserter {
     /// element: focus moving between the two reads used to produce a meaningless
     /// "it grew" verdict that triggered the destructive clipboard restore.
     /// Returns nil when there is no Accessibility trust or no focused element.
-    private static func probeFocusedElement() -> FocusProbe? {
+    private static func probeFocusedElement() -> (identifier: String, charCount: Int?)? {
         guard AXIsProcessTrusted() else { return nil }
         let systemWide = AXUIElementCreateSystemWide()
         var focusedRef: CFTypeRef?
@@ -201,7 +338,7 @@ struct TextInserter {
                 ? (roleRef as? String ?? "?") : "?"
             identifier = "\(role)#\(CFHash(element))"
         }
-        return FocusProbe(identifier: identifier, charCount: count)
+        return (identifier, count)
     }
 
     private static func axWriteSelectedText(_ text: String) -> Bool {
@@ -230,31 +367,6 @@ struct TextInserter {
         guard !items.isEmpty else { return false }
         guard pb.changeCount == expectedChangeCount else { return false }
         return Clipboard.restore(items, to: pb)
-    }
-
-    /// Posts one batch of UTF-16 units as a synthesised Unicode key press.
-    ///
-    /// The event carries the characters themselves (`keyboardSetUnicodeString`), so
-    /// the result does not depend on the keyboard layout. The batches come from
-    /// `TypeOutChunker` (never splitting an emoji); `InsertionFlow` schedules them
-    /// one by one and checks for a password field and the target before each.
-    private static func postUnicodeBatch(_ units: [UInt16]) -> Bool {
-        guard AXIsProcessTrusted() else { return false }
-        guard let source = CGEventSource(stateID: .combinedSessionState),
-              let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
-              let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
-        else { return false }
-        units.withUnsafeBufferPointer { buffer in
-            down.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: buffer.baseAddress)
-            up.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: buffer.baseAddress)
-        }
-        // No modifiers: a key still held from the hotkey must not turn the text
-        // into shortcuts.
-        down.flags = []
-        up.flags = []
-        down.post(tap: .cghidEventTap)
-        up.post(tap: .cghidEventTap)
-        return true
     }
 
     private static func postCommandV() -> Bool {

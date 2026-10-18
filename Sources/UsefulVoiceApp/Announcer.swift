@@ -1,5 +1,4 @@
 import AppKit
-import UsefulVoiceCore
 
 /// Speaks HUD state changes to VoiceOver. The HUD panel never takes focus, so
 /// nothing would announce it: the app posts an NSAccessibility announcement on
@@ -24,10 +23,6 @@ enum Announcer {
             return Message(text: done.label, urgent: false)
         case .copiedNotPasted:
             return Message(text: "Copied. Press Command V to paste", urgent: true)
-        case .partlyTyped:
-            return Message(text: DictationIssue.partlyTypedMessage, urgent: true)
-        case .lineBreaks:
-            return Message(text: HUDDisplay.lineBreaksSpoken, urgent: true)
         case .cancelled: return Message(text: "Cancelled", urgent: false)
         case .error(let error): return Message(text: error.message, urgent: true)
         case .language(let pin): return Message(text: "Language, \(pin.hudName)", urgent: false)

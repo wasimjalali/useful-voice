@@ -545,29 +545,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             deliver: { [weak self] text, mode, done in
                 switch mode {
                 case .paste:
-                    guard let self else { return }
-                    // The target locked at the hotkey press: the controller has
-                    // already brought it back if focus moved. Its app picks how the
-                    // text goes in (typed for apps the user chose, else pasted), and
-                    // it is checked once more right before anything is posted (and
-                    // before every typed batch).
-                    let target = self.controller?.deliveryTarget
-                    let request = InsertionRequest(
-                        text: text, appID: target?.appID,
-                        typeOutApps: self.settings.typeOutAppIDs,
-                        restorePreviousClipboard: self.settings.restorePreviousClipboard)
-                    self.inserter.deliver(
-                        request,
-                        onTarget: {
-                            guard let target else { return false }
-                            return TargetLock.matches(target, FocusTracker.shared.snapshot())
-                        },
-                        stillOnTarget: {
-                            // Between typed batches: identity only, no page read.
-                            guard let target else { return false }
-                            return TargetLock.identityMatches(target, FocusTracker.shared.snapshot(includePage: false))
-                        }
-                    ) { outcome in
+                    self?.inserter.deliver(text) { outcome in
                         switch outcome {
                         case .failed:
                             done(.failure(DeliveryFailure()))
@@ -578,16 +556,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             done(.success(AXIsProcessTrusted() ? .copiedNotLanded : .copiedNotPasted))
                         case .secureFieldCopied:
                             done(.success(.copiedSecureField))
-                        case .partlyTyped:
-                            // Some of it went in: say so, or the user pastes a
-                            // second copy blind.
-                            done(.success(.copiedPartlyTyped))
-                        case .copiedHasLineBreaks:
-                            done(.success(.copiedHasLineBreaks))
-                        case .targetLost:
-                            // Focus left the target between the check and the paste:
-                            // the same "copied" notice as any unreachable target.
-                            done(.success(.copiedAppChanged))
                         case .insertedViaAX, .pasted:
                             done(.success(.pasted))
                         }
@@ -635,15 +603,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     language: MemoryLanguage(languagePin: ctx.language)
                 )
             },
-            context: { [weak self, settings, languageMemory] in
+            context: { [settings, languageMemory] in
                 let memory = languageMemory.snapshot()
-                // Format for the app the user dictated into: the target locked at
-                // the hotkey press, not whatever is in front after transcription.
-                // A window dictation has no target and formats for the app in front.
-                let appBundleID = self?.controller?.deliveryTarget?.appID
-                    ?? NSWorkspace.shared.frontmostApplication?.bundleIdentifier
                 return FormattingContext(
-                    appBundleID: appBundleID,
+                    appBundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
                     dictionaryWords: Self.dictionaryBiasWords(
                         from: memory,
                         languagePin: settings.languagePin
@@ -657,15 +620,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.viewModel?.refreshLanguageMemory()
             },
             isSecureInputActive: { IsSecureEventInputEnabled() },
-            focusTarget: { FocusTracker.shared.snapshot() },
-            isTargetRunning: { FocusTracker.shared.isRunning($0) },
-            reactivate: { await FocusTracker.shared.reactivate($0) },
-            typeOutApps: { [settings] in settings.typeOutAppIDs }
+            frontmostApp: {
+                let app = NSWorkspace.shared.frontmostApplication
+                return FrontmostApp(id: app?.bundleIdentifier, name: app?.localizedName)
+            }
         )
         controller.onStateChange = { [weak self] state in
-            if state == .recording, let target = self?.controller?.deliveryTarget {
-                FocusTracker.shared.noteRecent(target)
-            }
             self?.render(state: state)
             self?.viewModel?.refreshState(state)
             self?.viewModel?.canRetry = self?.controller?.canRetry ?? false
@@ -1096,8 +1056,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .copied: hud.show(.done(.savedAndCopied(words: words)))
             case .copiedNotPasted: hud.show(.copiedNotPasted(fix: .openAccessibilitySettings))
             case .copiedAppChanged, .copiedSecureField, .copiedNotLanded: hud.show(.copiedNotPasted(fix: nil))
-            case .copiedPartlyTyped: hud.show(.partlyTyped)
-            case .copiedHasLineBreaks: hud.show(.lineBreaks)
             }
         }
     }

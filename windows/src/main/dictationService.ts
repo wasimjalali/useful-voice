@@ -9,9 +9,6 @@ import type {
   MemoryLanguage,
 } from '../core/models.js';
 import { applyMemory } from '../core/memory/memoryPostProcessor.js';
-import type { DeliveryTarget } from '../core/delivery/deliveryTarget.js';
-import { DELIVERY_TIMEOUT } from '../core/delivery/deliveryFlow.js';
-import { LINE_BREAKS, PARTLY_TYPED } from '../core/hudModel.js';
 import { selectKeyterms } from '../core/memory/biasBuilder.js';
 import { RecordingClock, SilenceWatchdog } from '../core/audio/silenceWatchdog.js';
 import { LEVEL_METER_GAIN, MINIMUM_AUDIO_BYTES } from '../core/audio/wav.js';
@@ -77,40 +74,19 @@ export interface DeliveryRequest {
    */
   targetHandle?: number;
   /**
-   * The full target captured at the hotkey press (app, process, window, focused child,
-   * browser address). Delivery pastes only into it. Absent in copy mode.
-   */
-  target?: DeliveryTarget;
-  /**
    * Aborted when the user cancels. The sink must check it right before it pastes and
-   * stop there; once the paste is sent it finishes and reports `delivered`. Aborted
-   * with the reason `DELIVERY_TIMEOUT` when the service stopped waiting: the sink must
-   * then send no keystroke at all, and leave the text on the clipboard.
+   * stop there; once the paste is sent it finishes and reports `delivered`.
    */
   signal?: AbortSignal;
-  /**
-   * How long the sink has, from the moment it is called. It plans its steps (and caps
-   * typing) to finish within it, ahead of the service's own timeout.
-   */
-  timeBudgetMs?: number;
 }
 
 export interface DeliveryResult {
-  /**
-   * Whether the text went in: proven, or a keystroke sent that can't be proven (the
-   * text then stays on the clipboard, and the notice is still "Inserted").
-   */
+  /** Whether the text provably reached the target. */
   delivered: boolean;
   /** Whether the dictation is still on the clipboard as a fallback. */
   clipboardFallback: boolean;
   /** The sink stopped before pasting because the signal aborted. Nothing was sent. */
   cancelled?: boolean;
-  /** Typing stopped part way: some of the text went in, all of it is on the clipboard. */
-  partlyTyped?: boolean;
-  /** An app that types, and the text has a line break: copied only, nothing sent. */
-  lineBreaks?: boolean;
-  /** The paste script failed: Windows refused the keystroke (an elevated target). */
-  pasteFailed?: boolean;
 }
 
 export interface TextSinkPort {
@@ -164,8 +140,6 @@ export interface StartOptions {
   targetApp?: string;
   /** Its window handle, so delivery can tell the user has since moved elsewhere. */
   targetHandle?: number;
-  /** The full target captured at the hotkey press. Only a hotkey dictation uses it. */
-  target?: DeliveryTarget;
 }
 
 export interface DictationOutcome {
@@ -188,19 +162,8 @@ export interface DictationOutcome {
   snippetIds: string[];
 }
 
-/**
- * How long delivery may take before the state is released anyway. Room for the target
- * lock (reading the foreground, bringing the target back once, reading it again) and for
- * typing a long dictation out.
- */
-export const DEFAULT_DELIVERY_TIMEOUT_MS = 10_000;
-
-/**
- * The part of the delivery timeout the sink does not get (at most half of it): room for
- * it to notice its deadline, stop and put the text on the clipboard before the service
- * gives up.
- */
-export const DELIVERY_TIMEOUT_MARGIN_MS = 1500;
+/** How long delivery may take before the state is released anyway. */
+export const DEFAULT_DELIVERY_TIMEOUT_MS = 5000;
 
 /** How often the silence and max-length limits are checked, independent of audio frames. */
 export const DEFAULT_TICK_MS = 250;
@@ -221,7 +184,6 @@ interface Session {
   readonly source: DictationSource;
   readonly targetApp?: string;
   readonly targetHandle?: number;
-  readonly target?: DeliveryTarget;
   readonly rawMode: boolean;
   /** The text reached the clipboard or the target, so a later failure is not a failed dictation. */
   delivered: boolean;
@@ -315,7 +277,6 @@ export class DictationService {
       // A window dictation never pastes, so it has no target to record.
       targetApp: options.source === 'hotkey' ? options.targetApp : undefined,
       targetHandle: options.source === 'hotkey' ? options.targetHandle : undefined,
-      target: options.source === 'hotkey' ? options.target : undefined,
       rawMode: options.rawMode === true,
       delivered: false,
       stopping: false,
@@ -759,25 +720,8 @@ export class DictationService {
       this.finish(session, finalText, 'pasted', session.targetApp);
       return;
     }
-    if (delivered.clipboardFallback && delivered.partlyTyped) {
-      // Some of it went in before typing stopped: say so, or the user pastes a second copy
-      // blind. The whole text is on the clipboard.
-      this.finish(session, finalText, 'copiedNotPasted', session.targetApp, PARTLY_TYPED, 'partlyTyped');
-      return;
-    }
-    if (delivered.clipboardFallback && delivered.lineBreaks) {
-      this.finish(session, finalText, 'copiedNotPasted', session.targetApp, LINE_BREAKS, 'lineBreaks');
-      return;
-    }
     if (delivered.clipboardFallback) {
-      this.finish(
-        session,
-        finalText,
-        'copiedNotPasted',
-        session.targetApp,
-        'Copied to your clipboard. Press Ctrl+V to paste it.',
-        delivered.pasteFailed ? 'pasteBlocked' : undefined,
-      );
+      this.finish(session, finalText, 'copiedNotPasted', session.targetApp, 'Copied to your clipboard. Press Ctrl+V to paste it.');
       return;
     }
     // Neither pasted nor on the clipboard: only a broken sink reports this.
@@ -794,11 +738,9 @@ export class DictationService {
     result: DictationDelivery,
     appName?: string,
     idleMessage?: string,
-    notice?: 'partlyTyped' | 'lineBreaks' | 'pasteBlocked',
   ): void {
     const event: DictationOutcomeEvent = { kind: 'delivered', words: countWords(text), result };
     if (appName !== undefined) event.appName = appName;
-    if (notice) event[notice] = true;
     this.emitOutcome(session, event);
     this.session = null;
     this.setState('idle', idleMessage);
@@ -835,16 +777,7 @@ export class DictationService {
   private async deliver(text: string, mode: 'paste' | 'copy', session: Session): Promise<DeliveryResult> {
     const timeoutMs = this.deps.deliveryTimeoutMs ?? DEFAULT_DELIVERY_TIMEOUT_MS;
     let timer: NodeJS.Timeout | null = null;
-    // This delivery's own signal: a cancel passes through to it, and a timeout aborts it
-    // with `DELIVERY_TIMEOUT` so the sink stops for good instead of pasting late.
-    const delivery = new AbortController();
-    const cancel = this.abortController?.signal;
-    const onCancel = (): void => delivery.abort(cancel?.reason);
-    if (cancel?.aborted) onCancel();
-    else cancel?.addEventListener('abort', onCancel, { once: true });
     try {
-      // Whole milliseconds: the platform scripts take an integer deadline.
-      const timeBudgetMs = Math.floor(Math.max(timeoutMs / 2, timeoutMs - DELIVERY_TIMEOUT_MARGIN_MS));
       const request: DeliveryRequest =
         mode === 'paste'
           ? {
@@ -852,19 +785,16 @@ export class DictationService {
               mode,
               targetApp: session.targetApp,
               targetHandle: session.targetHandle,
-              target: session.target,
-              signal: delivery.signal,
-              timeBudgetMs,
+              signal: this.abortController?.signal,
             }
-          : { text, mode, signal: delivery.signal, timeBudgetMs };
+          : { text, mode, signal: this.abortController?.signal };
       const result = await Promise.race([
         this.deps.sink.deliver(request),
         new Promise<DeliveryResult>((resolve) => {
-          timer = setTimeout(() => {
-            delivery.abort(DELIVERY_TIMEOUT);
-            this.deps.onDiagnostic?.('delivery', 'timed out; stopped the sink');
-            resolve({ delivered: false, clipboardFallback: true });
-          }, timeoutMs);
+          timer = setTimeout(
+            () => resolve({ delivered: false, clipboardFallback: true }),
+            timeoutMs,
+          );
           timer.unref?.();
         }),
       ]);
@@ -874,7 +804,6 @@ export class DictationService {
       return { delivered: false, clipboardFallback: true };
     } finally {
       if (timer) clearTimeout(timer);
-      cancel?.removeEventListener('abort', onCancel);
       this.clearDeliveryTimer();
     }
   }

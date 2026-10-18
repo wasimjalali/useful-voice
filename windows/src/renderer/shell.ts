@@ -4,7 +4,6 @@ import { createBanner } from './components/banners.js';
 import { computeHealth, createStatusButton, type HealthInput } from './components/statusPopover.js';
 import { mountAnnouncer } from './components/announcer.js';
 import { createLandingMark } from './components/landingMark.js';
-import { isPasteBlocked } from '../core/hudModel.js';
 import type {
   DictationError,
   DictationStateEvent,
@@ -394,7 +393,7 @@ export function mountMain(pages: Record<Page, PageModule>): void {
   api.onOutcome((outcome) => {
     if (outcome.kind !== 'delivered') return;
     state.lastError = null;
-    state.pasteBlocked = isPasteBlocked(outcome);
+    state.pasteBlocked = outcome.result === 'copiedNotPasted';
     renderChrome();
   });
 

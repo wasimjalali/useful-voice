@@ -30,11 +30,6 @@ struct SettingsPage: View {
     @State private var silenceTimeout = 60.0
     @State private var recordingsToKeep = 10
     @State private var soundEffectsEnabled = true
-    @State private var restoreClipboard = true
-    @State private var typeOutAppIDs: [String] = []
-    /// Apps listed under "Type instead of paste" on this visit: the ones switched on,
-    /// plus any added or switched off here, so a row does not vanish under the pointer.
-    @State private var typeOutRows: [String] = []
     @State private var appearance: AppearanceChoice = .system
     @State private var dailyGoal = AppSettings.defaultDailyWordGoal
     @State private var isTesting = false
@@ -69,9 +64,6 @@ struct SettingsPage: View {
         _silenceTimeout = State(initialValue: settings.silenceTimeout)
         _recordingsToKeep = State(initialValue: settings.recordingsToKeep)
         _soundEffectsEnabled = State(initialValue: settings.soundEffectsEnabled)
-        _restoreClipboard = State(initialValue: settings.restorePreviousClipboard)
-        _typeOutAppIDs = State(initialValue: settings.typeOutAppIDs)
-        _typeOutRows = State(initialValue: settings.typeOutAppIDs)
         _appearance = State(initialValue: settings.appearance)
         _dailyGoal = State(initialValue: settings.dailyWordGoal)
         _system = StateObject(wrappedValue: SettingsSystemState(history: viewModel.historyStore))
@@ -94,7 +86,7 @@ struct SettingsPage: View {
 
     static let groups: [(id: String, title: String)] = [
         ("general", "General"), ("engine", "Engine"), ("formatting", "Formatting"),
-        ("pasting", "Pasting"), ("hotkeys", "Hotkeys"), ("appearance", "Appearance"), ("data", "Data"),
+        ("hotkeys", "Hotkeys"), ("appearance", "Appearance"), ("data", "Data"),
         ("importExport", "Import and export"), ("diagnostics", "Diagnostics"), ("about", "About"),
     ]
 
@@ -158,7 +150,6 @@ struct SettingsPage: View {
                     generalGroup
                     engineGroup
                     formattingGroup
-                    pastingGroup
                     hotkeysGroup
                     appearanceGroup
                     dataGroup
@@ -507,96 +498,6 @@ struct SettingsPage: View {
                                  + "and fixes mistakes afterwards.")
             }
         }
-    }
-
-    // MARK: - Pasting
-
-    private var pastingGroup: some View {
-        SettingsGroup(id: "pasting", title: "Pasting") {
-            SettingsRow(title: "Restore clipboard after paste",
-                        detail: restoreClipboard ? nil : "Your dictation stays on the clipboard.") {
-                Toggle("", isOn: restoreClipboardBinding).labelsHidden()
-                    .accessibilityLabel("Restore clipboard after paste")
-            }
-            SettingsRow(title: "Type instead of paste") {
-                addTypeOutAppMenu
-            }
-            ForEach(typeOutRows, id: \.self) { id in
-                SettingsRow(title: Self.appName(for: id)) {
-                    Toggle("", isOn: typeOutBinding(for: id)).labelsHidden()
-                        .accessibilityLabel("Type into \(Self.appName(for: id))")
-                }
-            }
-        }
-    }
-
-    /// Apps to switch to typing: the ones dictated into this session first, then the
-    /// apps that are open. Useful Voice itself and apps already listed are left out.
-    private var addTypeOutAppMenu: some View {
-        let listed = Set(typeOutRows.map { $0.lowercased() })
-        let own = Bundle.main.bundleIdentifier?.lowercased()
-        let recent = FocusTracker.shared.recentApps
-            .filter { !listed.contains($0.id.lowercased()) && $0.id.lowercased() != own }
-        let recentIDs = Set(recent.map { $0.id.lowercased() })
-        let running = NSWorkspace.shared.runningApplications
-            .filter { $0.activationPolicy == .regular }
-            .compactMap { app -> AppChoice? in
-                guard let id = app.bundleIdentifier else { return nil }
-                return AppChoice(id: id, name: app.localizedName ?? id)
-            }
-            .filter { !listed.contains($0.id.lowercased()) && !recentIDs.contains($0.id.lowercased())
-                && $0.id.lowercased() != own }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        return Menu {
-            if !recent.isEmpty {
-                Section("Recent") {
-                    ForEach(recent) { app in
-                        Button(app.name) { addTypeOutApp(app.id) }
-                    }
-                }
-            }
-            Section("Open apps") {
-                ForEach(running) { app in
-                    Button(app.name) { addTypeOutApp(app.id) }
-                }
-            }
-        } label: {
-            Label("Add app", systemImage: "plus").font(.uv(.ui, .medium))
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .accessibilityLabel("Add an app to type into")
-    }
-
-    private func addTypeOutApp(_ id: String) {
-        if !typeOutRows.contains(where: { $0.lowercased() == id.lowercased() }) {
-            typeOutRows.append(id)
-        }
-        setTypeOut(true, for: id)
-    }
-
-    private func setTypeOut(_ enabled: Bool, for id: String) {
-        settings.setTypeOut(enabled, forAppID: id)
-        typeOutAppIDs = settings.typeOutAppIDs
-        saved()
-    }
-
-    private func typeOutBinding(for id: String) -> Binding<Bool> {
-        Binding(get: { typeOutAppIDs.contains { $0.lowercased() == id.lowercased() } },
-                set: { setTypeOut($0, for: id) })
-    }
-
-    /// The app's display name from its bundle id, or the id when it is not installed.
-    private static func appName(for id: String) -> String {
-        if let running = NSRunningApplication.runningApplications(withBundleIdentifier: id).first,
-           let name = running.localizedName {
-            return name
-        }
-        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
-            return FileManager.default.displayName(atPath: url.path)
-                .replacingOccurrences(of: ".app", with: "")
-        }
-        return id
     }
 
     // MARK: - Hotkeys
@@ -993,11 +894,6 @@ struct SettingsPage: View {
                 set: { spokenPunctuationEnabled = $0; settings.spokenPunctuationEnabled = $0; saved() })
     }
 
-    private var restoreClipboardBinding: Binding<Bool> {
-        Binding(get: { restoreClipboard },
-                set: { restoreClipboard = $0; settings.restorePreviousClipboard = $0; saved() })
-    }
-
     private var soundBinding: Binding<Bool> {
         Binding(get: { soundEffectsEnabled },
                 set: { soundEffectsEnabled = $0; settings.soundEffectsEnabled = $0; saved() })
@@ -1046,11 +942,6 @@ struct SettingsPage: View {
         silenceTimeout = settings.silenceTimeout
         recordingsToKeep = settings.recordingsToKeep
         soundEffectsEnabled = settings.soundEffectsEnabled
-        restoreClipboard = settings.restorePreviousClipboard
-        typeOutAppIDs = settings.typeOutAppIDs
-        typeOutRows = typeOutRows + typeOutAppIDs.filter { id in
-            !typeOutRows.contains { $0.lowercased() == id.lowercased() }
-        }
         appearance = settings.appearance
         dailyGoal = settings.dailyWordGoal
         system.refresh()

@@ -1,6 +1,20 @@
 import { createHash } from 'node:crypto';
-import type { KeystrokeResult } from '../core/delivery/pasteFlow.js';
+import type { Authorization, KeystrokeResult } from '../core/delivery/pasteFlow.js';
 import { PowerShellHostError, type RunOptions } from './powershellHost.js';
+
+/** The C# behind the foreground-window reads, compiled once in the host and per call in a one-shot process. */
+export const FOREGROUND_TYPE = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class UvForeground {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr hWnd);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+}
+"@
+`;
 
 /**
  * Sending Ctrl+V through PowerShell, and knowing afterwards what is and is not known.
@@ -25,6 +39,7 @@ const TOKEN = {
   sent: 'UVSENT',
   blockedOwn: 'UVBLOCKED:own',
   blockedClipboard: 'UVBLOCKED:clipboard',
+  blockedUnreadable: 'UVBLOCKED:unreadable',
 } as const;
 
 /** SHA-256 of the dictation as the script computes it: UTF-8, line endings as LF. */
@@ -54,14 +69,14 @@ export interface PasteScriptInput {
 export function pasteScriptBody(input: PasteScriptInput): string {
   if (!Number.isSafeInteger(input.ownPid) || input.ownPid <= 0) throw new Error('invalid process id');
   if (!/^[0-9a-f]{64}$/.test(input.clipboardHash)) throw new Error('invalid clipboard hash');
+  // The order is deliberate: the clipboard is read and hashed first, and the foreground
+  // window only afterwards, so the pid that is checked is the one that will receive the
+  // key, with nothing slow between the read and SendKeys.
   return `
 $uvOwnPid = ${input.ownPid}
 $uvAllowOwn = ${input.allowOwnWindow ? '$true' : '$false'}
 $uvWant = '${input.clipboardHash}'
-$h = [UvForeground]::GetForegroundWindow()
-$procId = 0
-[void][UvForeground]::GetWindowThreadProcessId($h, [ref]$procId)
-$have = 'unreadable'
+$have = $null
 try {
   $text = Get-Clipboard -Raw
   if ($null -eq $text) { $text = '' }
@@ -69,10 +84,15 @@ try {
   $sha = [Security.Cryptography.SHA256]::Create()
   $have = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($text))).Replace('-', '').ToLower()
 } catch {}
-if ((-not $uvAllowOwn) -and ($procId -eq $uvOwnPid)) {
-  Write-Output '${TOKEN.blockedOwn}'
+$h = [UvForeground]::GetForegroundWindow()
+$procId = 0
+[void][UvForeground]::GetWindowThreadProcessId($h, [ref]$procId)
+if ($null -eq $have) {
+  Write-Output '${TOKEN.blockedUnreadable}'
 } elseif ($have -ne $uvWant) {
   Write-Output '${TOKEN.blockedClipboard}'
+} elseif ((-not $uvAllowOwn) -and ($procId -eq $uvOwnPid)) {
+  Write-Output '${TOKEN.blockedOwn}'
 } else {
   $uvShell.SendKeys('^v')
   Write-Output '${TOKEN.sent}'
@@ -81,11 +101,14 @@ if ((-not $uvAllowOwn) -and ($procId -eq $uvOwnPid)) {
 }
 
 /** What the script said, from the last line it printed. Anything unexpected is indeterminate. */
-export function parsePasteOutput(stdout: string): 'sent' | 'blocked-own' | 'blocked-clipboard' | 'indeterminate' {
+export function parsePasteOutput(
+  stdout: string,
+): 'sent' | 'blocked-own' | 'blocked-clipboard' | 'blocked-unreadable' | 'indeterminate' {
   const last = stdout.trim().split(/\r?\n/).pop()?.trim();
   if (last === TOKEN.sent) return 'sent';
   if (last === TOKEN.blockedOwn) return 'blocked-own';
   if (last === TOKEN.blockedClipboard) return 'blocked-clipboard';
+  if (last === TOKEN.blockedUnreadable) return 'blocked-unreadable';
   return 'indeterminate';
 }
 
@@ -101,9 +124,11 @@ export interface ScriptHost {
  */
 export type OneShotRunner = (script: string, timeoutMs: number, signal?: AbortSignal) => Promise<string>;
 
-export interface HostedGuard {
-  signal?: AbortSignal;
-  beforeWrite?: () => boolean;
+export interface Timeouts {
+  /** The limit on a request written to the warm host. */
+  hostMs: number;
+  /** The limit on a one-shot process: a cold powershell.exe, the C# compile, the work. */
+  oneShotMs: number;
 }
 
 /**
@@ -119,24 +144,57 @@ export async function runHosted(
   oneShot: OneShotRunner,
   hostScript: string,
   oneShotScript: string,
-  timeoutMs: number,
-  guard: HostedGuard = {},
+  timeouts: Timeouts,
+  signal?: AbortSignal,
 ): Promise<string> {
-  const { signal, beforeWrite } = guard;
   if (host && !host.isUnavailable) {
     try {
-      return await host.run(hostScript, { timeoutMs, signal, beforeWrite });
+      return await host.run(hostScript, { timeoutMs: timeouts.hostMs, signal });
     } catch (error) {
       if (!(error instanceof PowerShellHostError) || error.sent || error.kind === 'aborted') throw error;
       // Never written (the host would not start, or was given up on): fall through.
     }
   }
-  // The same checks as the host makes before it writes: a keystroke script never starts
-  // after an abort or once the caller's condition stopped holding.
-  if (signal?.aborted || (beforeWrite && !beforeWrite())) {
+  if (signal?.aborted) throw new PowerShellHostError('aborted', 'aborted before it was sent', false);
+  return oneShot(oneShotScript, timeouts.oneShotMs, signal);
+}
+
+/** Decides at the last moment what to send: the script, or false to send nothing. */
+export type Prepare = () => string | false | Promise<string | false>;
+
+/**
+ * Like `runHosted` for a script that is decided at the last moment. `prepare` runs when the
+ * request reaches the front of the host's queue, or just before a one-shot process is
+ * started, and its answer is what is sent. A refusal is `aborted` and unsent.
+ */
+export async function runPrepared(
+  host: ScriptHost | null,
+  oneShot: OneShotRunner,
+  oneShotPrelude: string,
+  prepare: Prepare,
+  timeouts: Timeouts,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (host && !host.isUnavailable) {
+    try {
+      return await host.run('', { timeoutMs: timeouts.hostMs, signal, prepare });
+    } catch (error) {
+      if (!(error instanceof PowerShellHostError) || error.sent || error.kind === 'aborted') throw error;
+      // Never written: fall through to a one-shot process, after preparing again.
+    }
+  }
+  if (signal?.aborted) throw new PowerShellHostError('aborted', 'aborted before it was sent', false);
+  let script: string | false;
+  try {
+    script = await prepare();
+  } catch {
+    script = false;
+  }
+  // The preparing can take time (a look at the window): the signal may have aborted.
+  if (script === false || signal?.aborted) {
     throw new PowerShellHostError('aborted', 'aborted before it was sent', false);
   }
-  return oneShot(oneShotScript, timeoutMs, signal);
+  return oneShot(oneShotPrelude + script, timeouts.oneShotMs, signal);
 }
 
 export interface SendDeps {
@@ -144,37 +202,37 @@ export interface SendDeps {
   oneShot: OneShotRunner;
   /** What a one-shot process needs before the body: the types and `$uvShell`. */
   oneShotPrelude: string;
-  timeoutMs: number;
+  timeouts: Timeouts;
 }
 
 export interface SendRequest {
   text: string;
   signal?: AbortSignal;
-  canSend: () => boolean;
-  allowOwnWindow: boolean;
+  /** Asked at the last moment; the script is built from the answer. */
+  authorize: () => Authorization | Promise<Authorization>;
   ownPid: number;
 }
 
 /**
  * Send Ctrl+V if it is still right to, and say what is known about it.
  *
- * `signal` and `canSend` are checked when the request reaches the front of the host's
- * queue, right before it is written, and again before a one-shot process is started. A
- * one-shot process is also killed if the signal aborts while it runs, but that proves
- * nothing, so it is indeterminate.
+ * The script is built at the last moment, from `authorize`, so the own-process guard is
+ * lifted only for a check that has just passed. A one-shot process is killed if the
+ * signal aborts while it runs, but that proves nothing, so it is indeterminate.
  */
 export async function sendPasteKeystroke(deps: SendDeps, request: SendRequest): Promise<KeystrokeResult> {
-  if (request.signal?.aborted || !request.canSend()) return 'blocked';
-  const body = pasteScriptBody({
-    ownPid: request.ownPid,
-    allowOwnWindow: request.allowOwnWindow,
-    clipboardHash: clipboardHash(request.text),
-  });
+  if (request.signal?.aborted) return 'blocked';
+  const hash = clipboardHash(request.text);
+  const build = (authorization: Authorization): string | false =>
+    authorization === false
+      ? false
+      : pasteScriptBody({ ownPid: request.ownPid, allowOwnWindow: authorization.allowOwnWindow, clipboardHash: hash });
+  const prepare: Prepare = () => {
+    const authorization = request.authorize();
+    return authorization instanceof Promise ? authorization.then(build) : build(authorization);
+  };
   try {
-    const stdout = await runHosted(deps.host, deps.oneShot, body, deps.oneShotPrelude + body, deps.timeoutMs, {
-      signal: request.signal,
-      beforeWrite: request.canSend,
-    });
+    const stdout = await runPrepared(deps.host, deps.oneShot, deps.oneShotPrelude, prepare, deps.timeouts, request.signal);
     return parsePasteOutput(stdout);
   } catch (error) {
     // Proven unsent: it never left the queue, or no process ever started.

@@ -71,11 +71,11 @@ const noOneShot: OneShotRunner = async () => {
 };
 
 function request(overrides: Partial<SendRequest> = {}): SendRequest {
-  return { text: 'hello world', canSend: () => true, allowOwnWindow: false, ownPid: 4242, ...overrides };
+  return { text: 'hello world', authorize: () => ({ allowOwnWindow: false }), ownPid: 4242, ...overrides };
 }
 
 function deps(host: ReturnType<typeof makeHost>['host'] | null, oneShot: OneShotRunner = noOneShot) {
-  return { host, oneShot, oneShotPrelude: 'PRELUDE\n', timeoutMs: 2500 };
+  return { host, oneShot, oneShotPrelude: 'PRELUDE\n', timeouts: { hostMs: 2500, oneShotMs: 8000 } };
 }
 
 beforeEach(() => {
@@ -100,6 +100,31 @@ describe('the paste script', () => {
     expect(body.indexOf('Get-Clipboard')).toBeLessThan(body.indexOf('SendKeys'));
     expect(body.indexOf('UVBLOCKED:own')).toBeLessThan(body.indexOf('SendKeys'));
     expect(body.indexOf('UVBLOCKED:clipboard')).toBeLessThan(body.indexOf('SendKeys'));
+    expect(body.indexOf('UVBLOCKED:unreadable')).toBeLessThan(body.indexOf('SendKeys'));
+  });
+
+  it('reads the foreground window after the clipboard and its hash, right before the guards', () => {
+    // The slow work (clipboard read, hashing) comes first, so the pid that is checked is the
+    // one that will receive the key.
+    const body = pasteScriptBody({ ownPid: 1, allowOwnWindow: false, clipboardHash: clipboardHash('x') });
+    const hashed = body.indexOf('ComputeHash');
+    const foreground = body.indexOf('GetForegroundWindow');
+    const guard = body.indexOf('UVBLOCKED:unreadable');
+    expect(hashed).toBeGreaterThan(-1);
+    expect(foreground).toBeGreaterThan(hashed);
+    expect(guard).toBeGreaterThan(foreground);
+  });
+
+  it('checks the clipboard before the own-process guard', () => {
+    const body = pasteScriptBody({ ownPid: 1, allowOwnWindow: false, clipboardHash: clipboardHash('x') });
+    expect(body.indexOf("Write-Output 'UVBLOCKED:clipboard'")).toBeLessThan(body.indexOf("Write-Output 'UVBLOCKED:own'"));
+    expect(body.indexOf("Write-Output 'UVBLOCKED:unreadable'")).toBeLessThan(body.indexOf("Write-Output 'UVBLOCKED:clipboard'"));
+  });
+
+  it('treats a clipboard that cannot be read as its own case, not as a mismatch', () => {
+    const body = pasteScriptBody({ ownPid: 1, allowOwnWindow: false, clipboardHash: clipboardHash('x') });
+    expect(body).toContain('$have = $null');
+    expect(body).toContain('if ($null -eq $have)');
   });
 
   it('lets a dictation that started in our window skip the own-process check', () => {
@@ -137,6 +162,7 @@ describe('parsePasteOutput', () => {
     expect(parsePasteOutput('UVSENT')).toBe('sent');
     expect(parsePasteOutput('noise\r\nUVBLOCKED:own\r\n')).toBe('blocked-own');
     expect(parsePasteOutput('UVBLOCKED:clipboard')).toBe('blocked-clipboard');
+    expect(parsePasteOutput('UVBLOCKED:unreadable')).toBe('blocked-unreadable');
   });
 
   it('treats anything else as indeterminate', () => {
@@ -151,6 +177,7 @@ describe('sendPasteKeystroke through the host', () => {
       ['UVSENT', 'sent'],
       ['UVBLOCKED:own', 'blocked-own'],
       ['UVBLOCKED:clipboard', 'blocked-clipboard'],
+      ['UVBLOCKED:unreadable', 'blocked-unreadable'],
     ] as const) {
       const { host, children } = makeHost();
       await host.start();
@@ -235,7 +262,7 @@ describe('sendPasteKeystroke through the host', () => {
     child.onRequest = () => undefined;
     const slow = host.run('slow').catch(() => undefined);
     let allowed = true;
-    const pending = sendPasteKeystroke(deps(host), request({ canSend: () => allowed }));
+    const pending = sendPasteKeystroke(deps(host), request({ authorize: () => (allowed ? { allowOwnWindow: false } : false) }));
     await vi.advanceTimersByTimeAsync(0);
     allowed = false;
     child.reply(child.written[1]?.id as string, 'fine');
@@ -248,8 +275,47 @@ describe('sendPasteKeystroke through the host', () => {
     const { host, children } = makeHost();
     await host.start();
     expect(await sendPasteKeystroke(deps(host), request({ signal: AbortSignal.abort() }))).toBe('blocked');
-    expect(await sendPasteKeystroke(deps(host), request({ canSend: () => false }))).toBe('blocked');
+    expect(await sendPasteKeystroke(deps(host), request({ authorize: () => false }))).toBe('blocked');
     expect(children[0]?.written).toHaveLength(1);
+  });
+
+  it('lifts the own-process guard only for an authorisation that just passed, decided at write time', async () => {
+    const { host, children } = makeHost();
+    await host.start();
+    const child = children[0] as FakeChild;
+    child.onRequest = () => undefined;
+    let granted = false;
+    const slow = host.run('slow').catch(() => undefined);
+    const pending = sendPasteKeystroke(
+      deps(host),
+      request({ authorize: () => ({ allowOwnWindow: granted }) }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    // The answer changes while the request waits: the script is built from the later one.
+    granted = true;
+    child.reply(child.written[1]?.id as string, 'done');
+    await slow;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(child.written[2]?.script).toContain('$uvAllowOwn = $true');
+    child.reply(child.written[2]?.id as string, 'UVSENT');
+    expect(await pending).toBe('sent');
+  });
+
+  it('waits for an asynchronous authorisation before writing, and holds the queue meanwhile', async () => {
+    const { host, children } = makeHost();
+    await host.start();
+    const child = children[0] as FakeChild;
+    child.onRequest = (req, self) => self.reply(req.id, 'UVSENT');
+    let release: (value: { allowOwnWindow: boolean }) => void = () => undefined;
+    const pending = sendPasteKeystroke(
+      deps(host),
+      request({ authorize: () => new Promise((resolve) => (release = resolve)) }),
+    );
+    await vi.advanceTimersByTimeAsync(50);
+    expect(child.written).toHaveLength(1);
+    release({ allowOwnWindow: true });
+    expect(await pending).toBe('sent');
+    expect(child.written[1]?.script).toContain('$uvAllowOwn = $true');
   });
 });
 
@@ -296,17 +362,45 @@ describe('sendPasteKeystroke through a one-shot process', () => {
     expect(await sendPasteKeystroke(deps(noHost, oneShot), request())).toBe('failed');
   });
 
-  it('never starts a process once the signal aborted', async () => {
+  it('never starts a process when authorisation refuses', async () => {
     const oneShot = vi.fn<OneShotRunner>();
-    // Aborted after the first check but before the process: simulate via canSend flipping.
-    let first = true;
-    const canSend = (): boolean => {
-      const answer = first;
-      first = false;
-      return answer;
-    };
-    expect(await sendPasteKeystroke(deps(noHost, oneShot), request({ canSend }))).toBe('blocked');
+    expect(await sendPasteKeystroke(deps(noHost, oneShot), request({ authorize: () => false }))).toBe('blocked');
     expect(oneShot).not.toHaveBeenCalled();
+  });
+
+  it('never starts a process when the signal aborts while authorisation runs', async () => {
+    const oneShot = vi.fn<OneShotRunner>();
+    const controller = new AbortController();
+    let release: (value: { allowOwnWindow: boolean }) => void = () => undefined;
+    const pending = sendPasteKeystroke(
+      deps(noHost, oneShot),
+      request({ signal: controller.signal, authorize: () => new Promise((resolve) => (release = resolve)) }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+    release({ allowOwnWindow: false });
+    expect(await pending).toBe('blocked');
+    expect(oneShot).not.toHaveBeenCalled();
+  });
+
+  it('gives a cold one-shot process its own, longer budget than the warm host', async () => {
+    const budgets: number[] = [];
+    const oneShot: OneShotRunner = async (_script, timeoutMs) => {
+      budgets.push(timeoutMs);
+      return 'UVSENT';
+    };
+    await sendPasteKeystroke(deps(noHost, oneShot), request());
+    expect(budgets).toEqual([8000]);
+  });
+
+  it('builds the one-shot script from the authorisation of the moment', async () => {
+    const seen: string[] = [];
+    const oneShot: OneShotRunner = async (script) => {
+      seen.push(script);
+      return 'UVSENT';
+    };
+    await sendPasteKeystroke(deps(noHost, oneShot), request({ authorize: () => ({ allowOwnWindow: true }) }));
+    expect(seen[0]).toContain('$uvAllowOwn = $true');
   });
 
   it('falls back to a one-shot process only for a request the host never wrote', async () => {

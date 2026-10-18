@@ -95,6 +95,8 @@ export interface DeliveryResult {
    * something else meanwhile). Neither pasted nor copied, and the newer copy is untouched.
    */
   clipboardChanged?: boolean;
+  /** Nothing was sent because the clipboard could not be read: another app has it open. */
+  clipboardUnreadable?: boolean;
 }
 
 export interface TextSinkPort {
@@ -786,6 +788,13 @@ export class DictationService {
       this.fail(session, {
         kind: 'deliveryFailed',
         message: "Not pasted because the clipboard changed. It's saved in Useful Voice.",
+      });
+      return;
+    }
+    if (delivered.clipboardUnreadable) {
+      this.fail(session, {
+        kind: 'deliveryFailed',
+        message: "Not pasted because another app is using the clipboard. It's saved in Useful Voice.",
       });
       return;
     }

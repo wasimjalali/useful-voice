@@ -165,7 +165,7 @@ class FakeTranscriber implements TranscriberPort {
 class FakeSink implements TextSinkPort {
   delivered: string[] = [];
   requests: Array<{ text: string; targetApp?: string; startedInOwnWindow?: boolean; mode: string; signal?: AbortSignal }> = [];
-  result: { delivered: boolean; clipboardFallback: boolean; cancelled?: boolean; clipboardChanged?: boolean } = { delivered: true, clipboardFallback: false };
+  result: { delivered: boolean; clipboardFallback: boolean; cancelled?: boolean; clipboardChanged?: boolean; clipboardUnreadable?: boolean } = { delivered: true, clipboardFallback: false };
   /** Never resolves, to exercise the delivery timeout. */
   hang = false;
   /** Waits for the abort signal and reports it stopped before pasting, like the real sink. */
@@ -176,7 +176,7 @@ class FakeSink implements TextSinkPort {
   gate: Promise<void> | null = null;
   error: Error | null = null;
 
-  async deliver(request: { text: string; targetApp?: string; startedInOwnWindow?: boolean; mode: string; signal?: AbortSignal }): Promise<{ delivered: boolean; clipboardFallback: boolean; cancelled?: boolean; clipboardChanged?: boolean }> {
+  async deliver(request: { text: string; targetApp?: string; startedInOwnWindow?: boolean; mode: string; signal?: AbortSignal }): Promise<{ delivered: boolean; clipboardFallback: boolean; cancelled?: boolean; clipboardChanged?: boolean; clipboardUnreadable?: boolean }> {
     this.delivered.push(request.text);
     this.requests.push(request);
     if (this.error) throw this.error;
@@ -2145,6 +2145,19 @@ describe('delivery timeout stops the sink', () => {
     await ctx.service.toggle({ source: 'hotkey' });
     expect(ctx.outcomes).toEqual([{ kind: 'delivered', words: 2, result: 'copiedNotPasted', appName: 'Slack' }]);
     expect(ctx.service.currentState).toBe('idle');
+  });
+
+  it('reports a clipboard another app holds open as its own error, with the dictation saved', async () => {
+    const ctx = setup();
+    ctx.sink.result = { delivered: false, clipboardFallback: false, clipboardUnreadable: true };
+    await ctx.service.toggle({ source: 'hotkey', targetApp: 'Slack' });
+    await ctx.service.toggle({ source: 'hotkey' });
+    expect(ctx.completed).toEqual(['hello world']);
+    expect(ctx.statuses.at(-1)?.error).toEqual({
+      kind: 'deliveryFailed',
+      message: "Not pasted because another app is using the clipboard. It's saved in Useful Voice.",
+    });
+    expect(ctx.outcomes.some((outcome) => outcome.kind === 'delivered')).toBe(false);
   });
 
   it('reports a clipboard that changed as an error that says so, with the dictation saved', async () => {

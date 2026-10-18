@@ -7,6 +7,7 @@ import type { ParakeetState } from '../src/core/models/parakeet.js';
 import type { ParakeetWorkerRequest, ParakeetWorkerResponse } from '../src/core/models/parakeetProtocol.js';
 import { checkParakeetLanguage, parseWavToFloat32 } from '../src/core/models/parakeetSupport.js';
 import { ProviderError } from '../src/core/transcription/deepgramProvider.js';
+import { classifyTranscriptionFailure, describeTranscriptionFailure } from '../src/main/dictationService.js';
 import { ParakeetModels, type ParakeetWorkerHandle } from '../src/main/parakeet.js';
 
 const FILES = ['encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'tokens.txt'];
@@ -536,6 +537,84 @@ describe('worker handling', () => {
     await models.download('v2');
     await vi.waitFor(() => expect(workers[0]?.requests[0]?.loadOnly).toBe(true));
     expect(spawnWorker).toHaveBeenCalledTimes(1);
+  });
+
+  it('every failure carries the Parakeet provider and reads as a local engine problem', async () => {
+    seedReady('v2');
+    const errors: unknown[] = [];
+    const grab = async (p: Promise<unknown>) => p.catch((e) => errors.push(e));
+
+    // crash
+    const crash = new ParakeetModels(dir, {
+      spawnWorker: async () => new FakeWorker((w) => queueMicrotask(() => w.crash())),
+    });
+    await grab(crash.transcribe(wav(), 'v2'));
+    // timeout
+    const slow = new ParakeetModels(dir, {
+      spawnWorker: async () => new FakeWorker(() => undefined),
+      requestTimeoutMs: () => 20,
+    });
+    await grab(slow.transcribe(wav(), 'v2'));
+    // load failure reported by the worker
+    const broken = new ParakeetModels(dir, {
+      spawnWorker: async () => new FakeWorker((w, r) => queueMicrotask(() => w.reply({ id: r.id, ok: false, error: 'bad model' }))),
+    });
+    await grab(broken.transcribe(wav(), 'v2'));
+    // start failure, language, not downloaded, bad WAV
+    await grab(new ParakeetModels(dir, { spawnWorker: async () => { throw new Error('x'); } }).transcribe(wav(), 'v2'));
+    await grab(broken.transcribe(wav(), 'v2', undefined, 'fr'));
+    await grab(new ParakeetModels(path.join(dir, 'empty')).transcribe(wav(), 'v2'));
+    await grab(broken.transcribe(new Uint8Array(3), 'v2'));
+    const aborted = new AbortController();
+    aborted.abort();
+    await grab(broken.transcribe(wav(), 'v2', aborted.signal));
+
+    expect(errors).toHaveLength(8);
+    for (const e of errors) expect(e).toMatchObject({ name: 'ProviderError', provider: 'Parakeet' });
+    expect((errors[0] as Error).message).toBe('Parakeet stopped unexpectedly. Try again.');
+    expect((errors[1] as Error).message).toBe('Parakeet took too long. Try again.');
+    // None of them is shown as a network problem.
+    for (const e of errors) {
+      expect(describeTranscriptionFailure(e)).not.toMatch(/internet|Could not reach|Deepgram/i);
+      expect(classifyTranscriptionFailure(e).kind).not.toBe('offline');
+    }
+  });
+
+  it('remove stops the worker only when it holds that version; the other keeps running', async () => {
+    seedReady('v2');
+    seedReady('v3');
+    let release!: () => void;
+    const workers: FakeWorker[] = [];
+    const models = new ParakeetModels(dir, {
+      spawnWorker: async () => {
+        const w = new FakeWorker((fw, r) => {
+          if (r.modelDir.endsWith('parakeet-v3')) release = () => fw.reply({ id: r.id, ok: true, text: 'v3 text', loadMs: 0, decodeMs: 0 });
+          else echo(fw, r);
+        });
+        workers.push(w);
+        return w;
+      },
+    });
+    await models.transcribe(wav(), 'v2'); // worker holds v2
+    const running = models.transcribe(wav(), 'v3'); // v3 in flight
+    await vi.waitFor(() => expect(workers[0]!.requests).toHaveLength(2));
+    await models.remove('v2'); // v2 files go, v3 keeps decoding
+    expect(workers[0]!.killed).toBe(false);
+    release();
+    expect((await running).text).toBe('v3 text');
+
+    // Now the worker holds v3: removing v3 stops it, removing the other would not have.
+    await models.remove('v3');
+    expect(workers[0]!.killed).toBe(true);
+  });
+
+  it('remove stops the worker when it holds that version and nothing else is running', async () => {
+    const { models, workers } = setup(echo);
+    await models.transcribe(wav(), 'v2');
+    await models.remove('v3');
+    expect(workers[0]!.killed).toBe(false);
+    await models.remove('v2');
+    expect(workers[0]!.killed).toBe(true);
   });
 
   it('dispose kills the worker and fails what is pending', async () => {

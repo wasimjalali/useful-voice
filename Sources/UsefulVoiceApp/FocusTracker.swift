@@ -40,10 +40,14 @@ final class FocusTracker {
     /// tree is ready by the hotkey press. Measured on Dia: the address is readable about
     /// 80 to 95 ms after the switch.
     private var browserAccessibilityOn: Set<pid_t> = []
+    /// Timeouts per browser process: a hung browser is asked at most three times, so it
+    /// cannot hold up every hotkey press for the AX timeout.
+    private var browserAccessibilityTimeouts: [pid_t: Int] = [:]
     private var browserObservers: [NSObjectProtocol] = []
 
-    /// Starts switching browsers on as they come to the front. Not for snapshot renders,
-    /// which must not touch other apps.
+    /// Starts switching browsers on as they come to the front. Only on a normal launch:
+    /// renders and forced first-run previews must not touch other apps, and until this
+    /// runs nothing is switched on (the hotkey-press call below waits for it too).
     func startBrowserAccessibility() {
         guard browserObservers.isEmpty else { return }
         let center = NSWorkspace.shared.notificationCenter
@@ -66,6 +70,7 @@ final class FocusTracker {
             MainActor.assumeIsolated {
                 guard let pid else { return }
                 FocusTracker.shared.browserAccessibilityOn.remove(pid)
+                FocusTracker.shared.browserAccessibilityTimeouts[pid] = nil
             }
         })
         if let app = NSWorkspace.shared.frontmostApplication {
@@ -74,15 +79,19 @@ final class FocusTracker {
     }
 
     private func enableBrowserAccessibility(pid: pid_t, bundleID: String?) {
-        guard AXIsProcessTrusted(), KnownBrowsers.isBrowser(bundleID: bundleID),
+        guard !browserObservers.isEmpty, AXIsProcessTrusted(), KnownBrowsers.isBrowser(bundleID: bundleID),
               !browserAccessibilityOn.contains(pid) else { return }
         let axApp = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(axApp, Self.messagingTimeout)
         let result = AXUIElementSetAttributeValue(axApp, "AXManualAccessibility" as CFString, kCFBooleanTrue)
-        // A busy browser (timeout) is asked again next time; a definite answer is final.
-        if result == .success || result == .attributeUnsupported || result == .actionUnsupported {
-            browserAccessibilityOn.insert(pid)
+        // A definite answer is final. A busy browser is asked again next time, up to three times.
+        if result == .cannotComplete {
+            let timeouts = (browserAccessibilityTimeouts[pid] ?? 0) + 1
+            browserAccessibilityTimeouts[pid] = timeouts
+            if timeouts < 3 { return }
+            Diagnostics.shared.error("focus", "browser \(bundleID ?? "?") did not answer the accessibility switch three times; its page address may not be read")
         }
+        browserAccessibilityOn.insert(pid)
     }
 
     /// What has focus now. Nil only when no app is frontmost.

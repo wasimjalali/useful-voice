@@ -269,6 +269,7 @@ public final class AppSettings {
         static let formattingEnabled = "formattingEnabled"
         static let spokenPunctuationEnabled = "spokenPunctuationEnabled"
         static let soundEffectsEnabled = "soundEffectsEnabled"
+        static let pauseMediaWhileDictating = "pauseMediaWhileDictating"
         static let lastExportFolder = "lastExportFolder"
         static let transcriptionEngine = "transcriptionEngine"
         static let localModelID = "localModelID"
@@ -375,6 +376,13 @@ public final class AppSettings {
     public var soundEffectsEnabled: Bool {
         get { defaults.object(forKey: Keys.soundEffectsEnabled) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Keys.soundEffectsEnabled) }
+    }
+
+    /// Pause whatever is playing while a dictation records, and play it again when the
+    /// recording ends. Default: on.
+    public var pauseMediaWhileDictating: Bool {
+        get { defaults.object(forKey: Keys.pauseMediaWhileDictating) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Keys.pauseMediaWhileDictating) }
     }
 
     public var lastExportFolder: String {

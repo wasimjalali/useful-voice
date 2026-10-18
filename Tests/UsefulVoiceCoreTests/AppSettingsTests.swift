@@ -21,6 +21,15 @@ import Foundation
         #expect(settings.hotkeyKeycode == 54)          // Right Command
         #expect(settings.languageSwitchKeycode == 60)  // Right Shift (under Return)
         #expect(settings.soundEffectsEnabled == true)
+        #expect(settings.pauseMediaWhileDictating == true)
+    }
+
+    @Test func testPauseMediaSettingRoundTripsUnderItsKey() {
+        settings.pauseMediaWhileDictating = false
+        #expect(settings.pauseMediaWhileDictating == false)
+        #expect(defaults.object(forKey: "pauseMediaWhileDictating") as? Bool == false)
+        settings.pauseMediaWhileDictating = true
+        #expect(settings.pauseMediaWhileDictating == true)
     }
 
     @Test func testRoundTrip() {

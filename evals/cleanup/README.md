@@ -1,5 +1,10 @@
 # Cleanup eval
 
+> The cleanup runtime and its CI workflow were removed in PR #63. The harness needs the
+> sources at commit d4d1132 to run again (`core_entry.ts` imports
+> `windows/src/core/formatting/cleanup*.js`, and the macOS pipeline test needs the Swift
+> cleanup sources). Everything under `evals/` is kept as the record.
+
 Decides whether a small local model ships on top of the deterministic cleanup rules. The
 write-up and numbers are in `evals/results/2026-10-16-cleanup.md`.
 

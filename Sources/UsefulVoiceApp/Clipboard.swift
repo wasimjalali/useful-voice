@@ -3,12 +3,15 @@ import UsefulVoiceCore
 
 /// Save and restore the user's clipboard around a synthetic paste or copy.
 ///
-/// Dictation temporarily puts its text on the clipboard to drive Cmd-V.
-/// Good dictation tools never leave the user's
-/// clipboard clobbered, so we snapshot it first and put it back once the paste
-/// has landed. Promised/lazy types (file promises and the like) can't be copied
-/// out and are dropped on restore; the common types (text, RTF, images, URLs)
-/// round-trip fine.
+/// Dictation temporarily puts its text on the clipboard to drive Cmd-V, so we
+/// snapshot the clipboard first and put it back once the paste has landed.
+///
+/// The restore is not lossless. Only the types in `eagerTypes` (plain text, RTF,
+/// RTFD, HTML, tab-separated text, URLs and file URLs, TIFF, PNG and PDF) are copied
+/// and put back. Any other type on an item (an app's private type, a web archive, a
+/// spreadsheet's own format, a file promise) is not restored: a rich copy comes back
+/// with its text, RTF, HTML and image representations only. Paste-once and password
+/// manager items are never touched at all (`sensitiveTypes`).
 enum Clipboard {
     /// Marks pasteboard items Useful Voice itself wrote during delivery. snapshot()
     /// skips them: deep-copying one would force its lazy PasteSentinel promise

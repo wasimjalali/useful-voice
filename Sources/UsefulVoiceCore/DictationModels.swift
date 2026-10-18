@@ -26,8 +26,10 @@ public enum DeliveryResult: Sendable, Equatable {
     case copiedNotPasted
     /// Copy mode: the text is on the clipboard, as asked.
     case copied
-    /// Paste mode, but the user moved to another app before delivery, so the text
-    /// was copied instead of pasted into the wrong place. Not a permission problem.
+    /// Paste mode, but Useful Voice's own window was in front at delivery (the
+    /// dictation started in another app, or in a window with no editable field
+    /// focused), so the text was copied instead of pasted nowhere. Moving to another
+    /// app does not cause this: that still pastes there. Not a permission problem.
     case copiedAppChanged
     /// Paste mode, but a password field took focus, so nothing was typed into it
     /// and the text was left on the clipboard. Not a permission problem.
@@ -216,7 +218,8 @@ public enum DictationIssue: Equatable, Sendable {
     case error(DictationError)
     /// The paste could not be posted: Accessibility is off.
     case copiedNotPasted
-    /// The user switched apps, so the text was copied. Permissions are fine.
+    /// Useful Voice's own window was in front at delivery with nowhere to paste, so
+    /// the text was copied. Permissions are fine.
     case copiedAppChanged
     /// The measured field did not take the paste although Accessibility is on.
     /// Permissions are fine.

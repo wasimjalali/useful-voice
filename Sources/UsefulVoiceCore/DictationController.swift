@@ -47,9 +47,14 @@ public final class DictationController {
     /// The app in front. Read when a hotkey dictation starts and again at delivery,
     /// so a dictation stopped from Useful Voice's own window is copied, not pasted.
     private let frontmostApp: () -> FrontmostApp?
+    /// Whether a text field of Useful Voice's own has keyboard focus (an editable
+    /// text view is first responder). Asked only when a hotkey dictation started and
+    /// ends in Useful Voice's own window.
+    private let isOwnFieldFocused: () -> Bool
     /// Useful Voice's own bundle id, the one app a hotkey dictation never pastes into
-    /// unless it also started there.
-    static let ownAppID = Keychain.service
+    /// unless it also started there. Must match CFBundleIdentifier in bundle/Info.plist
+    /// (a test compares them).
+    static let ownAppID = "ai.useful.voice"
     private var pendingRawMode = false
     /// Where the dictation now in flight was started, and the app it will paste
     /// into. Written once, when recording starts, and never by the stop toggle,
@@ -97,6 +102,7 @@ public final class DictationController {
                 formatterUnavailable: @escaping () -> Void = {},
                 now: @escaping () -> Date = { Date() },
                 isSecureInputActive: @escaping () -> Bool = { false },
+                isOwnFieldFocused: @escaping () -> Bool = { true },
                 frontmostApp: @escaping () -> FrontmostApp? = { nil }) {
         self.recorder = recorder
         self.providers = providers
@@ -113,6 +119,7 @@ public final class DictationController {
         self.formatterUnavailable = formatterUnavailable
         self.now = now
         self.isSecureInputActive = isSecureInputActive
+        self.isOwnFieldFocused = isOwnFieldFocused
         self.frontmostApp = frontmostApp
         // The recorder calls this on the main thread and only for its live
         // session (see AudioRecording.onAutoStop), so it acts at once: no extra
@@ -164,10 +171,19 @@ public final class DictationController {
     /// when there is nothing to retry. The result is always saved and copied, never
     /// pasted: it belongs to an old recording, whatever started it.
     public func retryLast() {
-        guard canRetry, let url = lastFailedAudio else { return }
+        guard let url = lastFailedAudio else { return }
         switch state {
         case .recording, .transcribing, .delivering: return
         case .idle, .error: break
+        }
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            // The file was deleted behind our back: say so, and stop offering Retry.
+            lastFailedAudio = nil
+            lastFailedContext = nil
+            state = .error(DictationError(
+                kind: .recordingFailed,
+                message: "The recording for this dictation is gone, so it can't be retried."))
+            return
         }
         state = .transcribing
         let savedContext = lastFailedContext
@@ -475,13 +491,15 @@ public final class DictationController {
         // The one exception: Useful Voice's own window came to the front after the
         // dictation started elsewhere (stopped from the dock), where a paste would
         // land nowhere useful, so it is copied and the HUD says so. Started and still
-        // in Useful Voice (a note) pastes.
+        // in Useful Voice (a note) pastes, but only into an editable field of ours:
+        // with none focused the paste would land nowhere, so that is copied too.
         var deliverMode = deliveryMode
         var pasteRedirected = false
-        if deliverMode == .paste, let now = frontmostApp(),
-           now.id == Self.ownAppID, startApp?.id != Self.ownAppID {
-            deliverMode = .copy
-            pasteRedirected = true
+        if deliverMode == .paste, let now = frontmostApp(), now.id == Self.ownAppID {
+            if startApp?.id != Self.ownAppID || !isOwnFieldFocused() {
+                deliverMode = .copy
+                pasteRedirected = true
+            }
         }
         deliver(finalText, deliverMode) { [weak self] report in
             guard let self, self.state == .delivering,

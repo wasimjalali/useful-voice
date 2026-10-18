@@ -82,7 +82,7 @@ Snapshot-only state hooks (they act only when `UV_SNAPSHOT` is set):
 | `UV_BANNER` | `mic`, `accessibility`, `keyMissing`, `keyInvalid`, `offline`, `modelMissing` |
 | `UV_VOCAB_FILTER` | `all`, `words`, `fixes`, `snippets`, `suggestions` |
 | `UV_INSIGHTS_RANGE`, `UV_INSIGHTS_FIXTURE` | `7d`/`30d`/`all`; `empty`/`firstWeek`/`full` |
-| `UV_SETTINGS_ANCHOR`, `UV_SETTINGS_STATE` | a group id; `noKey`, `invalidKey`, `confirmDelete` |
+| `UV_SETTINGS_ANCHOR`, `UV_SETTINGS_STATE` | a group id (`models` the Models group, `keys` API keys; `engine` is an alias of `models`); `noKey`, `invalidKey`, `confirmDelete`, `modelsSample` (sample keys, downloads and formatter), `modelsCompact` (modelsSample with the narrow row layout) |
 | `UV_HUD_STATE` | `recording`, `recordingLoud`, `silence`, `transcribing`, `local`, `localFa`, `inserting`, `done`, `doneSaved`, `copied`, `cancelled`, `errorNetwork`, `errorMic`, `language`, `picker` (renders the HUD alone; try `480x210`, picker `360x440`) |
 | `UV_MENU_HEADER` | `idle`, `recording` (the menu bar header row, `260x76`) |
 
@@ -101,6 +101,15 @@ UV_FIRST_RUN=force UV_FIRST_RUN_STEP=engine UV_SNAPSHOT="$PWD/fr-engine.png@1040
 ```
 
 A snapshot run skips the Keychain read at launch (it only needs to know a key exists).
+
+## Models (macOS)
+
+`Sources/UsefulVoiceCore/Models/ModelCatalog.swift` is the model list; `Tests/Fixtures/models/catalog.json` is the shared source
+and `ModelsTests` compares them (the formatter and Gemini transcribe prompts have fixtures too). Settings save two catalog ids:
+`voiceModelID` (default `deepgram:nova-3`, migrated from `transcriptionEngine` and `localModelID`, which are kept in step) and
+`formatterModelID` (nil = Off). API keys live in the Keychain per provider (`ProviderKeyStore`; `DeepgramKeyStore` is its old
+name). `VoiceModelSelector` picks the provider and never falls back between providers. The AI formatter (`AIFormatter`) runs in
+the controller's `format:` closure in `AppDelegate` before the Language Memory step, and any failure delivers the plain transcript.
 
 ## Identity and the one-time migration
 

@@ -219,10 +219,22 @@ final class UsefulVoiceViewModel: ObservableObject {
             providerConfigured = false
             providerSetupHint = "Download your model again in Settings"
         }
+        syncParakeetPin()
         languagePin = settings.languagePin
         hotkeyKeycode = settings.hotkeyKeycode
         languageSwitchKeycode = settings.languageSwitchKeycode
         onRecordingSettingsChange?(settings.silenceTimeout, settings.recordingsToKeep)
+    }
+
+    /// Keeps the selected Parakeet version loaded (cold start is slow), and lets go when
+    /// another voice model is selected.
+    func syncParakeetPin() {
+        if let version = ParakeetVersion(catalogID: settings.voiceModelID) {
+            parakeet.pinned = version
+            parakeet.preload(version)
+        } else if parakeet.pinned != nil {
+            parakeet.pinned = nil
+        }
     }
 
     /// Starts the download the selected voice model is waiting for.

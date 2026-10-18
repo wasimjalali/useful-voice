@@ -38,6 +38,12 @@ public final class ParakeetModelManager: ObservableObject {
         states[version] ?? .notDownloaded
     }
 
+    /// The version kept loaded in memory (the selected voice model), nil when none is.
+    public var pinned: ParakeetVersion?
+
+    /// Loads `version` ahead of the first dictation. A no-op when it is loaded or not downloaded.
+    public func preload(_ version: ParakeetVersion) {}
+
     public func download(_ version: ParakeetVersion) {}
 
     public func cancelDownload(_ version: ParakeetVersion) {}

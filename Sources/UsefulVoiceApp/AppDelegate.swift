@@ -70,6 +70,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The hotkey and the menu bar item start a hotkey dictation (pasted into the
     /// app in front); the window's mic button passes `.window` (saved and copied).
     private func toggleDictation(source: DictationSource = .hotkey) {
+        // Cheap when the model is already loaded; covers a model that was evicted.
+        if let version = ParakeetVersion(catalogID: settings.voiceModelID) { parakeet.preload(version) }
         controller?.toggle(source: source)
     }
 

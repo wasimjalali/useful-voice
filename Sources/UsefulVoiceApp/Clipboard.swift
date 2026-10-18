@@ -27,6 +27,14 @@ enum Clipboard {
         .tiff, .png, .pdf,
     ]
 
+    /// Types password managers and other apps put on an item they do not want kept
+    /// (nspasteboard.org): a secret, or a value meant to be pasted once. Such an item
+    /// is never copied into our process, and the clipboard is never restored over it.
+    static let sensitiveTypes: Set<String> = [
+        "org.nspasteboard.ConcealedType",
+        "org.nspasteboard.TransientType",
+    ]
+
     /// The outcome of a snapshot, so callers can tell "the clipboard was empty"
     /// apart from "the clipboard holds data we could not copy".
     enum SnapshotResult {
@@ -43,6 +51,12 @@ enum Clipboard {
     /// Deep-copy the current items so they survive a `clearContents()`.
     static func snapshot(_ pasteboard: NSPasteboard = .general) -> SnapshotResult {
         guard let items = pasteboard.pasteboardItems else { return .empty }
+        // Looked at by type name only, before any data is read: a password manager's
+        // entry must not be copied into this process, and putting it back later
+        // would turn a transient copy into a lasting one.
+        if items.contains(where: { $0.types.contains { sensitiveTypes.contains($0.rawValue) } }) {
+            return .incomplete(reason: "the clipboard holds a concealed or transient item")
+        }
         // Both identities' markers: a paste the old build left is still ours.
         let userItems = items.filter { !DeliveryMarker.marks(types: $0.types.map(\.rawValue)) }
         guard !userItems.isEmpty else { return .empty }
@@ -51,9 +65,12 @@ enum Clipboard {
         for item in userItems {
             let copy = NSPasteboardItem()
             for type in item.types where eagerTypes.contains(type) {
-                if let data = item.data(forType: type) {
-                    copy.setData(data, forType: type)
+                // A listed type whose data cannot be read (a failed file promise, an
+                // owner that went away) would be silently missing from the restore.
+                guard let data = item.data(forType: type) else {
+                    return .incomplete(reason: "\(type.rawValue) on the clipboard could not be read")
                 }
+                copy.setData(data, forType: type)
             }
             // An item with no representations means nothing readable was
             // available. Restoring it would clear the clipboard and put back

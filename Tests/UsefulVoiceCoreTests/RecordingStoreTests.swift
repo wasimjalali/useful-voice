@@ -45,4 +45,39 @@ import Foundation
         let names = remaining.map(\.lastPathComponent).sorted()
         #expect(names.allSatisfy { $0 >= "1970-01-01T00-05-00" })
     }
+
+    @Test func testPruneSparesTheProtectedRecording() throws {
+        var urls: [URL] = []
+        for i in 0..<5 {
+            let url = store.newRecordingURL(date: Date(timeIntervalSince1970: Double(i * 100)))
+            try Data([0x00]).write(to: url)
+            try "t".write(to: url.deletingPathExtension().appendingPathExtension("txt"),
+                          atomically: true, encoding: .utf8)
+            urls.append(url)
+        }
+        try store.prune(keep: 2, protecting: urls[0])    // the oldest
+        let remaining = try FileManager.default
+            .contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "wav" }
+            .map(\.lastPathComponent).sorted()
+        // The newest two, plus the protected one that the keep count would drop.
+        #expect(remaining == [urls[0], urls[3], urls[4]].map(\.lastPathComponent))
+        #expect(FileManager.default.fileExists(
+            atPath: urls[0].deletingPathExtension().appendingPathExtension("txt").path))
+        #expect(!FileManager.default.fileExists(atPath: urls[1].path))
+    }
+
+    @Test func testProtectingAnAlreadyKeptRecordingChangesNothing() throws {
+        var urls: [URL] = []
+        for i in 0..<4 {
+            let url = store.newRecordingURL(date: Date(timeIntervalSince1970: Double(i * 100)))
+            try Data([0x00]).write(to: url)
+            urls.append(url)
+        }
+        try store.prune(keep: 2, protecting: urls[3])
+        let remaining = try FileManager.default
+            .contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "wav" }
+        #expect(remaining.count == 2)
+    }
 }

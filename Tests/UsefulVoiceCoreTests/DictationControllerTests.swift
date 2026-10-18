@@ -16,6 +16,8 @@ final class FakeRecorder: AudioRecording {
     var didCaptureSpeech = true
     /// Set to make `stop()` throw, exercising the failed-stop early return.
     var stopError: Error?
+    /// Set to model a capture that ended early (device lost, disk write failed).
+    var captureError: Error?
     var configuredSilenceTimeout: TimeInterval?
     /// Set to make `start()` throw, exercising the failed-start path.
     var startError: Error?
@@ -112,7 +114,10 @@ final class SwitchingProvider: TranscriptionProvider, @unchecked Sendable {
         try? FileManager.default.removeItem(at: dir)
     }
 
+    private let diagnostics = Diagnostics(directory: nil)
+
     private func makeController(providers: [TranscriptionProvider],
+                                recordingsToKeep: Int = 10,
                                 now: @escaping () -> Date = { Date() },
                                 isSecureInputActive: @escaping () -> Bool = { false })
         -> DictationController {
@@ -121,12 +126,13 @@ final class SwitchingProvider: TranscriptionProvider, @unchecked Sendable {
             providers: { providers },
             store: store,
             hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
-            recordingsToKeep: 10,
+            recordingsToKeep: recordingsToKeep,
             deliver: { [weak self] text, mode, done in self?.fakeDeliver(text, mode, done) },
             record: { [weak self] record in
                 self?.records.append(record)
                 self?.timeline.append("record")
             },
+            diagnostics: diagnostics,
             now: now,
             isSecureInputActive: isSecureInputActive,
             frontmostApp: { [weak self] in
@@ -666,6 +672,92 @@ final class SwitchingProvider: TranscriptionProvider, @unchecked Sendable {
         #expect(error.kind == .noProvider)
         #expect(error.fix == .openEngineSettings)
         #expect(error.message.contains("provider"))
+    }
+
+    // MARK: - Never lose a recording
+
+    /// No provider configured: the speech is still on disk, so Retry works once an
+    /// engine is set up. Previously the audio was dropped on this path.
+    @Test func testNoProviderKeepsTheAudioForRetry() async throws {
+        var chain: [TranscriptionProvider] = []
+        let controller = DictationController(
+            recorder: recorder,
+            providers: { chain },
+            store: store,
+            hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
+            recordingsToKeep: 10,
+            deliver: { [weak self] text, mode, done in self?.fakeDeliver(text, mode, done) },
+            diagnostics: diagnostics)
+        wire(controller)
+        controller.toggle()
+        await controller.toggleAndWait()
+        guard case .error(let error) = controller.state else {
+            Issue.record("expected error state"); return
+        }
+        #expect(error.kind == .noProvider)
+        #expect(controller.canRetry)
+        let audio = try #require(recorder.startedURL)
+        #expect(FileManager.default.fileExists(atPath: audio.path))
+
+        chain = [okProvider("kept speech")]   // the user set up an engine
+        await controller.retryLastAndWait()
+        #expect(delivered == ["kept speech"])
+        #expect(deliveredModes == [.copy])
+        #expect(!controller.canRetry)
+    }
+
+    /// A later dictation's prune must not delete the file Retry points at, even when
+    /// the keep count says it is too old.
+    @Test func testPruneNeverDeletesTheRetryAudio() async throws {
+        let controller = makeController(providers: [failingProvider(.http(500, "boom"))],
+                                        recordingsToKeep: 1)
+        controller.toggle()
+        await controller.toggleAndWait()
+        let retryAudio = try #require(recorder.startedURL)
+        #expect(controller.canRetry)
+
+        try await Task.sleep(nanoseconds: 20_000_000)   // the next file name sorts later
+        recorder.didCaptureSpeech = false               // a silent dictation prunes the store
+        controller.toggle()
+        await controller.toggleAndWait()
+
+        #expect(FileManager.default.fileExists(atPath: retryAudio.path))
+        #expect(controller.canRetry)
+    }
+
+    /// If the retained file is gone (deleted by hand, volume unmounted), Retry is not
+    /// offered instead of failing on a missing file.
+    @Test func testCanRetryIsFalseWhenTheAudioFileIsGone() async throws {
+        let controller = makeController(providers: [failingProvider(.http(500, "boom"))])
+        controller.toggle()
+        await controller.toggleAndWait()
+        let audio = try #require(recorder.startedURL)
+        #expect(controller.canRetry)
+        try FileManager.default.removeItem(at: audio)
+        #expect(!controller.canRetry)
+        controller.retryLast()
+        #expect(controller.state != .transcribing)
+        #expect(delivered.isEmpty)
+    }
+
+    /// The capture ended early (microphone unplugged): what was recorded is still
+    /// transcribed and delivered, and the cause is logged.
+    @Test func testCaptureErrorStillTranscribesAndDeliversWhatWasCaptured() async throws {
+        recorder.captureError = AudioRecorderError.inputDeviceLost
+        let controller = makeController(providers: [okProvider("half a sentence")])
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(delivered == ["half a sentence"])
+        let warnings = diagnostics.entries(level: .warning)
+        #expect(warnings.count == 1)
+        #expect(warnings.first?.message.contains("disconnected") == true)
+    }
+
+    @Test func testHealthyCaptureLogsNoWarning() async throws {
+        let controller = makeController(providers: [okProvider()])
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(diagnostics.entries(level: .warning).isEmpty)
     }
 
     // MARK: - Detected language
@@ -1417,12 +1509,13 @@ final class SwitchingProvider: TranscriptionProvider, @unchecked Sendable {
     }
 
     @Test func testErrorsWithoutRetainedAudioNeverOfferRetry() async throws {
-        // Secure field, start failure, stop failure, silence, too short and no
-        // provider all leave nothing to retry, so none may carry .retry.
+        // Secure field, start failure, stop failure, silence and too short leave
+        // nothing to retry. No provider keeps the audio so Retry works after setup
+        // (see testNoProviderKeepsTheAudioForRetry), but its fix is Settings, not .retry.
         var errors: [DictationError] = []
-        func capture(_ controller: DictationController) {
+        func capture(_ controller: DictationController, keepsAudio: Bool = false) {
             if case .error(let error) = controller.state { errors.append(error) }
-            #expect(!controller.canRetry)
+            #expect(controller.canRetry == keepsAudio)
         }
 
         capture({ let c = makeController(providers: [okProvider()], isSecureInputActive: { true })
@@ -1453,7 +1546,7 @@ final class SwitchingProvider: TranscriptionProvider, @unchecked Sendable {
 
         let none = makeController(providers: [])
         none.toggle(); await none.toggleAndWait()
-        capture(none)
+        capture(none, keepsAudio: true)
 
         let blank = makeController(providers: [okProvider("   ")])
         blank.toggle(); await blank.toggleAndWait()

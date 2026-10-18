@@ -291,6 +291,9 @@ struct TextInserter {
     private static func probeFocusedElement() -> (identifier: String, charCount: Int?)? {
         guard AXIsProcessTrusted() else { return nil }
         let systemWide = AXUIElementCreateSystemWide()
+        // The focused-element fetch is itself a cross-process call (to the frontmost
+        // app); without a timeout a hung app stalls delivery for the AX default.
+        AXUIElementSetMessagingTimeout(systemWide, 0.5)
         var focusedRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(
                 systemWide, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
@@ -344,6 +347,7 @@ struct TextInserter {
     private static func axWriteSelectedText(_ text: String) -> Bool {
         guard AXIsProcessTrusted() else { return false }
         let systemWide = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(systemWide, 0.5)
         var focusedRef: CFTypeRef?
         let focusErr = AXUIElementCopyAttributeValue(
             systemWide, kAXFocusedUIElementAttribute as CFString, &focusedRef)
@@ -375,11 +379,13 @@ struct TextInserter {
         // back (and the HUD shows the manual-paste hint) instead of waiting on
         // a paste that can never land.
         guard AXIsProcessTrusted() else { return false }
+        // The key that types "v" in the current layout, not the physical ANSI V key.
+        let vKey = PasteKeyCode.current()
         guard let source = CGEventSource(stateID: .combinedSessionState),
               let keyDown = CGEvent(keyboardEventSource: source,
-                                    virtualKey: 9, keyDown: true),  // V
+                                    virtualKey: vKey, keyDown: true),
               let keyUp = CGEvent(keyboardEventSource: source,
-                                  virtualKey: 9, keyDown: false)
+                                  virtualKey: vKey, keyDown: false)
         else { return false }
         keyDown.flags = .maskCommand
         keyUp.flags = .maskCommand
@@ -395,5 +401,66 @@ private extension Clipboard.SnapshotResult {
     var isEmptiness: Bool {
         if case .empty = self { return true }
         return false
+    }
+}
+
+/// The virtual key code that types "v" in the layout Cmd shortcuts currently use.
+///
+/// Key 9 is the physical ANSI V key; on Dvorak it types another letter, so a
+/// synthetic Cmd plus key 9 fires a different shortcut there. The layout is the
+/// current keyboard layout, or the current ASCII-capable one when the current layout
+/// is not Latin (Russian, Arabic, Persian): that is the layout macOS reads Cmd
+/// shortcuts from. Looked up once per layout and cached; falls back to 9.
+enum PasteKeyCode {
+    static let ansiV: CGKeyCode = 9
+
+    private static let lock = NSLock()
+    private static var cache: [String: CGKeyCode] = [:]
+
+    static func current() -> CGKeyCode {
+        guard let source = layoutSource() else { return ansiV }
+        let id = property(source, kTISPropertyInputSourceID) as? String ?? "?"
+        lock.lock(); defer { lock.unlock() }
+        if let cached = cache[id] { return cached }
+        let resolved = resolve(source) ?? ansiV
+        cache[id] = resolved
+        return resolved
+    }
+
+    private static func layoutSource() -> TISInputSource? {
+        guard let current = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue() else {
+            return TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue()
+        }
+        let ascii = property(current, kTISPropertyInputSourceIsASCIICapable) as? Bool ?? true
+        if ascii { return current }
+        return TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue() ?? current
+    }
+
+    private static func property(_ source: TISInputSource, _ key: CFString) -> AnyObject? {
+        guard let raw = TISGetInputSourceProperty(source, key) else { return nil }
+        return Unmanaged<AnyObject>.fromOpaque(raw).takeUnretainedValue()
+    }
+
+    private static func resolve(_ source: TISInputSource) -> CGKeyCode? {
+        guard let data = property(source, kTISPropertyUnicodeKeyLayoutData) as? Data else { return nil }
+        return data.withUnsafeBytes { raw -> CGKeyCode? in
+            guard let base = raw.baseAddress else { return nil }
+            let layout = base.assumingMemoryBound(to: UCKeyboardLayout.self)
+            let keyboardType = UInt32(LMGetKbdType())
+            // The Command modifier state, so "Dvorak - QWERTY Cmd" style layouts report
+            // the letter their shortcuts use.
+            let commandState = UInt32((cmdKey >> 8) & 0xFF)
+            let code = KeyCodeSearch.keyCode(producing: "v") { keyCode in
+                var deadKeys: UInt32 = 0
+                var length = 0
+                var chars = [UniChar](repeating: 0, count: 4)
+                let status = UCKeyTranslate(
+                    layout, keyCode, UInt16(kUCKeyActionDown), commandState, keyboardType,
+                    OptionBits(kUCKeyTranslateNoDeadKeysBit), &deadKeys, chars.count, &length, &chars)
+                guard status == noErr, length > 0 else { return nil }
+                return String(utf16CodeUnits: chars, count: length)
+            }
+            return code.map { CGKeyCode($0) }
+        }
     }
 }

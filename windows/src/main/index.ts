@@ -8,8 +8,9 @@ import os from 'node:os';
 import { DataStore } from '../core/settings/dataStore.js';
 import { removeStaleTempFiles, writeJsonAtomic } from '../core/settings/jsonStore.js';
 import { planLoginItem, wasAutoStarted } from '../core/settings/autostart.js';
-import { decideClipboardRestore, isProbablyVerifiable } from '../core/delivery/clipboardRestore.js';
-import { pasteLandsInOwnWindow } from '../core/delivery/pasteTarget.js';
+import { deliverText } from '../core/delivery/pasteFlow.js';
+import { createHotkeyRepeatGuard } from '../core/settings/hotkeyRepeat.js';
+import { escapeCancelsIn } from '../core/settings/escapeShortcut.js';
 import {
   normaliseMemoryLanguage,
   type AppSettings,
@@ -56,6 +57,8 @@ import {
   playCue,
   restoreClipboard,
   snapshotClipboard,
+  startPowerShellHost,
+  stopPowerShellHost,
 } from './windowsPlatform.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -114,8 +117,6 @@ if (E2E) {
   process.on('uncaughtException', (error) => e2eLog(`uncaught ${error.stack ?? error.message}`));
   process.on('unhandledRejection', (reason) => e2eLog(`unhandled ${String(reason)}`));
 }
-
-const CLIPBOARD_RESTORE_DELAY_MS = 700;
 
 /**
  * The HUD window is a fixed transparent area, big enough for the widest state, so the
@@ -308,8 +309,12 @@ class UsefulVoiceApp {
   /** Talks to the hidden recorder window: start acks, tokens, discard on cancel. */
   private recorder!: RecorderBridge;
 
-  /** Whether Esc is registered as a global shortcut. It is, only while recording. */
+  /** Whether Esc is registered as a global shortcut. It is, only while recording or transcribing. */
   private escapeRegistered = false;
+  /** Drops the repeat events of a held dictation hotkey. */
+  private readonly hotkeyRepeatGuard = createHotkeyRepeatGuard();
+  /** Counts dictation starts, so a late window lookup cannot label the next dictation. */
+  private dictationStarts = 0;
 
   /** Set once `quit()` starts, so a second Quit or launch during it changes nothing. */
   private quitting: Promise<void> | null = null;
@@ -345,6 +350,12 @@ class UsefulVoiceApp {
 
     this.diagnostics = new Diagnostics(app.getPath('userData'));
     this.diagnostics.log('app', `starting ${app.getVersion()} on ${os.release()}`);
+    // The window lookup and the paste share one long-lived PowerShell, started now so the
+    // first hotkey press finds its C# already compiled. Without it they fall back to a
+    // one-shot process per call.
+    void startPowerShellHost((message) => this.diagnostics.log('powershell', message)).then((ok) => {
+      if (process.platform === 'win32' && !ok) this.diagnostics.log('powershell', 'host unavailable; using one process per call');
+    });
     if (wasAutoStarted(process.argv)) {
       // Recorded so "why was this running?" is answerable from Settings. A launch
       // from the login entry and a user double-click look identical from here, and
@@ -854,7 +865,7 @@ class UsefulVoiceApp {
         window.show();
         window.focus();
         window.webContents.focus();
-        this.syncEscapeShortcut(this.service.currentState === 'recording');
+        this.syncEscapeShortcut(escapeCancelsIn(this.service.currentState));
         // A fresh page opens itself when it loads; a kept one is told to reset and refocus.
         if (existing) window.webContents.send('app:openLanguagePicker');
       };
@@ -898,7 +909,7 @@ class UsefulVoiceApp {
     window.on('blur', () => this.closeLanguagePicker(false));
     window.on('closed', () => {
       this.pickerWindow = null;
-      this.syncEscapeShortcut(this.service.currentState === 'recording');
+      this.syncEscapeShortcut(escapeCancelsIn(this.service.currentState));
     });
     this.pickerWindow = window;
     return window;
@@ -913,7 +924,7 @@ class UsefulVoiceApp {
     const finish = (): void => {
       this.pickerClosing = false;
       if (!window.isDestroyed()) window.hide();
-      this.syncEscapeShortcut(this.service.currentState === 'recording');
+      this.syncEscapeShortcut(escapeCancelsIn(this.service.currentState));
     };
     if (!restoreFocus || target === null) {
       finish();
@@ -928,7 +939,7 @@ class UsefulVoiceApp {
     window.setIgnoreMouseEvents(true);
     // Still the foreground window until the restore lands, but invisible: it takes no keys,
     // and the global Esc (cancel) is registered again at once.
-    this.syncEscapeShortcut(this.service.currentState === 'recording');
+    this.syncEscapeShortcut(escapeCancelsIn(this.service.currentState));
     void restoreForegroundWindow(target, {
       onlyIfForeground: window.getNativeWindowHandle().readUInt32LE(0),
       timeoutMs: PICKER_RESTORE_TIMEOUT_MS,
@@ -1032,6 +1043,7 @@ class UsefulVoiceApp {
     } finally {
       this.parakeet?.dispose();
       globalShortcut.unregisterAll();
+      stopPowerShellHost();
       this.tray?.destroy();
       // `app.exit` skips the quit events electron-updater listens for, so a downloaded
       // update is handed to its installer here, on every quit.
@@ -1078,7 +1090,7 @@ class UsefulVoiceApp {
     globalShortcut.unregisterAll();
     // `unregisterAll` also drops Esc, so put it back if a recording is running.
     this.escapeRegistered = false;
-    this.syncEscapeShortcut(this.service?.currentState === 'recording');
+    this.syncEscapeShortcut(this.service ? escapeCancelsIn(this.service.currentState) : false);
     const accelerator = this.settings.all.hotkey.accelerator;
     // The tray's "Start dictation (...)" line must show the hotkey from the first
     // menu open and after it is changed, not only after the next status change.
@@ -1092,7 +1104,10 @@ class UsefulVoiceApp {
     // cannot parse throws; that is a refusal too, never a crash.
     let ok = false;
     try {
-      ok = globalShortcut.register(accelerator, () => void this.toggleDictation('hotkey'));
+      // Held, the key repeats and each repeat would toggle: the guard lets one event through.
+      ok = globalShortcut.register(accelerator, () => {
+        if (this.hotkeyRepeatGuard()) void this.toggleDictation('hotkey');
+      });
     } catch (error) {
       this.diagnostics.log('hotkey', `could not register ${accelerator}: ${(error as Error).message}`);
     }
@@ -1256,7 +1271,7 @@ class UsefulVoiceApp {
     this.broadcast('dictation:state', status);
     this.recordingTarget = status.state === 'recording' ? status.targetApp : undefined;
     this.syncTray();
-    this.syncEscapeShortcut(status.state === 'recording');
+    this.syncEscapeShortcut(escapeCancelsIn(status.state));
     // The HUD follows every state, errors included: one model decides what it shows.
     this.hudModel.status(status);
     // Leaving the recording state hands the paste to whatever is in front, so a picker that
@@ -1284,42 +1299,58 @@ class UsefulVoiceApp {
   /**
    * Start or stop a dictation from `source`.
    *
-   * Only a hotkey start needs the foreground window: that is the app its text is
-   * pasted into. A window start pastes nothing, so it records no target at all.
+   * Recording starts at once. A hotkey start still wants to know the app it will paste
+   * into, but only for the label: that lookup runs beside the recorder start and fills
+   * the label in when it is back. Whether the dictation began in one of our own windows
+   * is a synchronous read, so it costs nothing at the press.
    */
   private async toggleDictation(requested: DictationSource): Promise<void> {
     // Once the quit has begun nothing may start recording: the flush and the window teardown
-    // below would race it. Checked again after the awaits, where a press that was already
-    // waiting on the foreground window lands.
+    // below would race it.
     if (this.quitting) return;
     // While the setup flow is open the hotkey dictates into the flow's own field, never
     // into the app in front.
     const source: DictationSource = requested === 'hotkey' && this.firstRun.open ? 'window' : requested;
     this.lastToggleSource = source;
+    // A press while the recorder is still starting is a stop, not another start.
+    const state = this.service.currentState;
+    const starts = (state === 'idle' || state === 'error') && !this.service.isStarting;
     // A dictation that starts while the flow is open is the flow's practice dictation.
-    if (this.firstRun.open && (this.service.currentState === 'idle' || this.service.currentState === 'error')) {
-      this.practiceActive = true;
+    if (this.firstRun.open && starts) this.practiceActive = true;
+    let startedInOwnWindow: boolean | undefined;
+    if (starts) this.recordingHandle = undefined;
+    if (source === 'hotkey' && starts) {
+      // A paste lands wherever the cursor is when the text is ready, so the window in
+      // front now is not recorded as a destination. Only "did it begin in our window"
+      // matters, and Electron knows that without asking Windows.
+      startedInOwnWindow = BrowserWindow.getFocusedWindow() !== null;
+      this.lookUpTargetApp(++this.dictationStarts);
     }
-    let targetApp: string | undefined;
-    let targetHandle: number | undefined;
-    if (this.service.currentState === 'idle' || this.service.currentState === 'error') this.recordingHandle = undefined;
-    if (source === 'hotkey' && (this.service.currentState === 'idle' || this.service.currentState === 'error')) {
-      // Capture which app is focused NOW, before recording. By the time the
-      // transcript is ready the user may have clicked elsewhere, and pasting into
-      // the wrong window is worse than not pasting at all.
-      const target = await foregroundWindow();
-      targetApp = target ? target.title || target.processName : undefined;
-      targetHandle = target?.handle;
-      this.recordingHandle = targetHandle;
-    }
-    if (this.quitting) return;
-    await this.service.toggle({ source, targetApp, targetHandle });
+    await this.service.toggle({ source, startedInOwnWindow });
     void this.data.flush();
   }
 
+  /** Name the app a hotkey dictation started over, without making the recorder wait for it. */
+  private lookUpTargetApp(start: number): void {
+    void foregroundWindow().then((target) => {
+      // Another dictation has begun since, or this one is over: the answer is stale.
+      if (!target || start !== this.dictationStarts) return;
+      const state = this.service.currentState;
+      if (state !== 'recording' && !this.service.isStarting) return;
+      const label = target.title || target.processName;
+      this.recordingHandle = target.handle;
+      this.service.setTargetApp(label);
+      if (state === 'recording') {
+        this.recordingTarget = label;
+        this.syncTray();
+      }
+    });
+  }
+
   /**
-   * Esc cancels a recording, and is a global shortcut only while one is running.
-   * Registered for the whole session it would swallow Esc in every other app.
+   * Esc cancels a dictation, and is a global shortcut only while one can still be
+   * cancelled (recording or transcribing). Registered for the whole session it would
+   * swallow Esc in every other app.
    */
   private syncEscapeShortcut(recording: boolean): void {
     // The language picker needs Esc for itself while it is open.
@@ -1351,97 +1382,26 @@ class UsefulVoiceApp {
    * The contract: the text is ALWAYS available afterwards, either pasted or on the
    * clipboard. The macOS version restored the previous clipboard contents on a
    * timer that could fire before the paste landed, destroying the dictation — so
-   * the restore here is gated on proof that the paste actually arrived, and an
-   * unverifiable target keeps the text on the clipboard instead.
+   * the restore here is gated (see `decideClipboardRestore`): the keystroke went out,
+   * focus stayed, and the clipboard still holds our text. Otherwise the text stays on
+   * the clipboard.
    *
-   * This method only observes; every rule about what may then happen to the
-   * clipboard lives in `decideClipboardRestore`, so the contract is testable without
-   * Electron and cannot drift from what the tests assert.
+   * The ordering rules (never paste after an abort, when to restore) live in
+   * `deliverText`, so they are testable without Electron; this only supplies the ports.
    */
-  private async deliver(request: DeliveryRequest): Promise<DeliveryResult> {
-    const { text, mode, targetApp } = request;
-    // A cancel that arrived before anything touched the clipboard stops here, on every
-    // path: copy, moved window and paste alike.
-    const cancelled: DeliveryResult = { delivered: false, clipboardFallback: false, cancelled: true };
-    if (request.signal?.aborted) return cancelled;
-    if (mode === 'copy') {
-      // Nothing is pasted, so there is nothing to confirm and nothing to restore: the
-      // dictation simply becomes the clipboard.
-      clipboard.writeText(text);
-      return { delivered: true, clipboardFallback: false };
-    }
-    const target = await foregroundWindow();
-    if (request.signal?.aborted) return cancelled;
-    if (pasteLandsInOwnWindow(request.targetHandle, target, this.ownWindowHandles())) {
-      // The user stopped from the dock, so Useful Voice is in front: a paste would land
-      // nowhere useful. Leave it on the clipboard. Any other window gets the paste.
-      this.diagnostics.log('delivery', 'Useful Voice is in front; copied instead of pasting');
-      clipboard.writeText(text);
-      return { delivered: false, clipboardFallback: true };
-    }
-    const snapshot = snapshotClipboard();
-
-    clipboard.writeText(text);
-
-    // The last point at which a cancel can still stop the paste. After this line the
-    // keystroke is sent and the dictation is delivered whatever the user does next.
-    if (request.signal?.aborted) {
-      this.restoreSnapshot(snapshot);
-      return cancelled;
-    }
-    const pasteSent = await pasteClipboard();
-
-    // Confirmation is limited to observing that focus did not move and that the
-    // clipboard was consumed: reading the target's text is not possible without a
-    // UI-automation dependency. Both reads are skipped when they could not mean
-    // anything — an unverifiable target, or a paste that never ran.
-    let focusAfter = null as Awaited<ReturnType<typeof foregroundWindow>>;
-    let stillOurs = false;
-    if (pasteSent && isProbablyVerifiable(target)) {
-      // The target needs a moment to handle the keystroke; reading the clipboard
-      // sooner would see our own text and call a landed paste a failure.
-      await delay(CLIPBOARD_RESTORE_DELAY_MS);
-      focusAfter = await foregroundWindow();
-      stillOurs = clipboardHoldsText(text);
-    }
-
-    const decision = decideClipboardRestore({
-      clipboard: snapshot,
-      target,
-      pasteSent,
-      focusAfter,
-      clipboardStillHoldsText: stillOurs,
+  private deliver(request: DeliveryRequest): Promise<DeliveryResult> {
+    return deliverText(request, {
+      writeText: (text) => clipboard.writeText(text),
+      snapshot: snapshotClipboard,
+      restore: restoreClipboard,
+      holdsText: clipboardHoldsText,
+      foregroundWindow,
+      pasteKeystroke: (signal) => pasteClipboard(signal),
+      // Synchronous: one of our windows has focus. The HUD is not focusable, so it never counts.
+      ownWindowInFront: () => BrowserWindow.getFocusedWindow() !== null,
+      delay,
+      log: (category, message) => this.diagnostics.log(category, message),
     });
-
-    if (decision.restore) {
-      this.restoreSnapshot(snapshot);
-    } else if (decision.reason === 'snapshot-incomplete') {
-      this.diagnostics.log('clipboard', 'not restoring: original could not be captured fully');
-    } else if (decision.reason === 'unverifiable-target') {
-      const name = target?.processName ?? targetApp ?? 'the target app';
-      this.diagnostics.log('delivery', `unverifiable target (${name}); left on clipboard`);
-    }
-
-    return { delivered: decision.delivered, clipboardFallback: !decision.delivered };
-  }
-
-  /** Native handles of every window Useful Voice has open, as `foregroundWindow` reports them. */
-  private ownWindowHandles(): number[] {
-    return BrowserWindow.getAllWindows()
-      .filter((window) => !window.isDestroyed())
-      .map((window) => window.getNativeWindowHandle().readUInt32LE(0));
-  }
-
-  /**
-   * Put a snapshot back and report whether the clipboard really holds it again.
-   *
-   * Whether it may be put back at all has already been decided: this only writes.
-   */
-  private restoreSnapshot(snapshot: ReturnType<typeof snapshotClipboard>): void {
-    const restored = restoreClipboard(snapshot);
-    if (!restored) {
-      this.diagnostics.log('clipboard', 'restore did not verify; dictation left in place');
-    }
   }
 
   /** The newest dictation still in the history, so a deleted one is never copied back. */

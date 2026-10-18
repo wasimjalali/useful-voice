@@ -58,8 +58,8 @@
  *      (or mid-recording) never becomes micUnavailable.
  *  30. Esc during delivery still pastes and then drops the history row, or claims
  *      "Cancelled" for a paste that went out.
- *  31. A hotkey dictation pastes into whatever is in front at delivery: the start
- *      window's handle must reach the sink.
+ *  31. A hotkey dictation pastes into whatever is in front at delivery: whether it
+ *      started in our own window must reach the sink.
  *  32. A clipboard or sink failure is untyped, so the HUD says "Transcription failed".
  *  33. A callback that throws mid-pipeline (history, status listener, settings) leaves
  *      the session stuck in transcribing or delivering.
@@ -71,6 +71,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  DEFAULT_DELIVERY_TIMEOUT_MS,
   DictationService,
   classifyRecordingFailure,
   classifyTranscriptionFailure,
@@ -85,6 +86,7 @@ import {
   type TextSinkPort,
   type TranscriberPort,
 } from '../src/main/dictationService.js';
+import { DELIVERY_TIMED_OUT, WORST_CASE_DELIVERY_MS } from '../src/core/delivery/timing.js';
 import { ProviderError, type Transcript } from '../src/core/transcription/deepgramProvider.js';
 import { FormatterError } from '../src/core/formatting/aiFormatter.js';
 import { DETECTION_CODES, resolveDetectedLanguage } from '../src/core/transcription/languages.js';
@@ -163,7 +165,7 @@ class FakeTranscriber implements TranscriberPort {
 
 class FakeSink implements TextSinkPort {
   delivered: string[] = [];
-  requests: Array<{ text: string; targetApp?: string; targetHandle?: number; mode: string; signal?: AbortSignal }> = [];
+  requests: Array<{ text: string; targetApp?: string; startedInOwnWindow?: boolean; mode: string; signal?: AbortSignal }> = [];
   result: { delivered: boolean; clipboardFallback: boolean; cancelled?: boolean } = { delivered: true, clipboardFallback: false };
   /** Never resolves, to exercise the delivery timeout. */
   hang = false;
@@ -173,7 +175,7 @@ class FakeSink implements TextSinkPort {
   gate: Promise<void> | null = null;
   error: Error | null = null;
 
-  async deliver(request: { text: string; targetApp?: string; targetHandle?: number; mode: string; signal?: AbortSignal }): Promise<{ delivered: boolean; clipboardFallback: boolean; cancelled?: boolean }> {
+  async deliver(request: { text: string; targetApp?: string; startedInOwnWindow?: boolean; mode: string; signal?: AbortSignal }): Promise<{ delivered: boolean; clipboardFallback: boolean; cancelled?: boolean }> {
     this.delivered.push(request.text);
     this.requests.push(request);
     if (this.error) throw this.error;
@@ -1566,9 +1568,10 @@ describe('races between entry points', () => {
     starting.open();
     await first;
     expect(ctx.recorder.startCalls).toBe(1);
-    expect(ctx.service.currentState).toBe('recording');
-    // The first press owns the dictation, so it is the hotkey's.
-    await ctx.service.toggle({ source: 'window' });
+    // The second press is a stop, applied once recording began; it never starts another
+    // recorder. The first press owns the dictation, so it is the hotkey's.
+    expect(ctx.recorder.stopCalls).toBe(1);
+    expect(ctx.service.currentState).toBe('idle');
     expect(ctx.sink.requests[0]).toMatchObject({ mode: 'paste', targetApp: 'Slack' });
   });
 
@@ -2007,21 +2010,21 @@ describe('review round 1: recorder failures outside start()', () => {
 describe('review round 1: delivery target and failures', () => {
   it('hands the start window to the sink for a hotkey dictation only', async () => {
     const hotkey = setup();
-    await hotkey.service.toggle({ source: 'hotkey', targetApp: 'Slack', targetHandle: 4242 });
+    await hotkey.service.toggle({ source: 'hotkey', targetApp: 'Slack', startedInOwnWindow: true });
     await hotkey.service.toggle({ source: 'hotkey' });
-    expect(hotkey.sink.requests[0]).toMatchObject({ mode: 'paste', targetApp: 'Slack', targetHandle: 4242 });
+    expect(hotkey.sink.requests[0]).toMatchObject({ mode: 'paste', targetApp: 'Slack', startedInOwnWindow: true });
 
     const window = setup();
-    await window.service.toggle({ source: 'window', targetApp: 'Slack', targetHandle: 4242 });
+    await window.service.toggle({ source: 'window', targetApp: 'Slack', startedInOwnWindow: true });
     await window.service.toggle({ source: 'window' });
-    expect(window.sink.requests[0]?.targetHandle).toBeUndefined();
+    expect(window.sink.requests[0]?.startedInOwnWindow).toBeUndefined();
   });
 
   it('reports a sink that moved the paste to the clipboard as copied-not-pasted', async () => {
     // What the real sink answers when the window in front at delivery is not the start window.
     const ctx = setup();
     ctx.sink.result = { delivered: false, clipboardFallback: true };
-    await ctx.service.toggle({ source: 'hotkey', targetApp: 'Slack', targetHandle: 1 });
+    await ctx.service.toggle({ source: 'hotkey', targetApp: 'Slack', startedInOwnWindow: false });
     await ctx.service.toggle({ source: 'hotkey' });
     expect(ctx.outcomes).toEqual([{ kind: 'delivered', words: 2, result: 'copiedNotPasted', appName: 'Slack' }]);
     expect(ctx.statuses.at(-1)?.message).toContain('Ctrl+V');
@@ -2209,5 +2212,152 @@ describe('review round 2: failure after the text was delivered', () => {
     await service.toggle({ source: 'hotkey' });
     await service.toggle({ source: 'hotkey' });
     expect(statuses.at(-1)?.error?.kind).toBe('providerFailed');
+  });
+});
+
+
+describe('delivery timeout stops the sink', () => {
+  // Failure cases: the timeout wins while the sink is still going, and the sink goes on
+  // to press Ctrl+V after the person was told the text was only copied.
+  it('aborts the sink with the timeout reason when the timeout wins', async () => {
+    const ctx = setup();
+    ctx.sink.hang = true;
+    await ctx.service.toggle({ source: 'hotkey', targetApp: 'Slack' });
+    await ctx.service.toggle({ source: 'hotkey' });
+    const signal = ctx.sink.requests[0]?.signal;
+    expect(signal?.aborted).toBe(true);
+    expect(signal?.reason).toBe(DELIVERY_TIMED_OUT);
+    // The service reports what is true: the text is on the clipboard, not pasted.
+    expect(ctx.outcomes).toEqual([{ kind: 'delivered', words: 2, result: 'copiedNotPasted', appName: 'Slack' }]);
+    expect(ctx.service.currentState).toBe('idle');
+  });
+
+  it('does not abort a sink that finishes in time', async () => {
+    const ctx = setup();
+    await ctx.service.toggle({ source: 'hotkey' });
+    await ctx.service.toggle({ source: 'hotkey' });
+    expect(ctx.sink.requests[0]?.signal?.aborted).toBe(false);
+  });
+
+  it('still aborts the sink on a cancel, without the timeout reason', async () => {
+    const ctx = setup();
+    ctx.sink.honorAbort = true;
+    await ctx.service.toggle({ source: 'hotkey' });
+    const processing = ctx.service.toggle({ source: 'hotkey' });
+    await vi.waitFor(() => expect(ctx.service.currentState).toBe('delivering'));
+    await ctx.service.cancel();
+    await processing;
+    const signal = ctx.sink.requests[0]?.signal;
+    expect(signal?.aborted).toBe(true);
+    expect(signal?.reason).not.toBe(DELIVERY_TIMED_OUT);
+  });
+
+  it('defaults to a timeout above the sink worst case', () => {
+    expect(DEFAULT_DELIVERY_TIMEOUT_MS).toBeGreaterThan(WORST_CASE_DELIVERY_MS);
+  });
+});
+
+describe('a stop press while the recorder is starting', () => {
+  // Failure case: the second press goes down the start path, is ignored, and the
+  // dictation keeps recording with nobody holding the key.
+  it('stops as soon as recording begins', async () => {
+    const ctx = setup();
+    const start = gate();
+    ctx.recorder.startGate = start.promise;
+    const first = ctx.service.toggle({ source: 'hotkey' });
+    await vi.waitFor(() => expect(ctx.service.isStarting).toBe(true));
+    await ctx.service.toggle({ source: 'hotkey' });
+    expect(ctx.service.currentState).toBe('idle');
+    start.open();
+    await first;
+    expect(ctx.recorder.stopCalls).toBe(1);
+    expect(ctx.sink.delivered).toEqual(['hello world']);
+    expect(ctx.service.currentState).toBe('idle');
+    expect(ctx.recorder.startCalls).toBe(1);
+  });
+
+  it('records the intent once however many stop presses arrive', async () => {
+    const ctx = setup();
+    const start = gate();
+    ctx.recorder.startGate = start.promise;
+    const first = ctx.service.toggle({ source: 'hotkey' });
+    await vi.waitFor(() => expect(ctx.service.isStarting).toBe(true));
+    await ctx.service.toggle({ source: 'hotkey' });
+    await ctx.service.toggle({ source: 'hotkey' });
+    start.open();
+    await first;
+    expect(ctx.recorder.stopCalls).toBe(1);
+    expect(ctx.service.currentState).toBe('idle');
+  });
+
+  it('does not stop the next dictation after a start that failed', async () => {
+    const ctx = setup();
+    const start = gate();
+    ctx.recorder.startGate = start.promise;
+    ctx.recorder.startError = new Error('Permission denied');
+    const first = ctx.service.toggle({ source: 'hotkey' });
+    await vi.waitFor(() => expect(ctx.service.isStarting).toBe(true));
+    await ctx.service.toggle({ source: 'hotkey' });
+    start.open();
+    await first;
+    expect(ctx.service.currentState).toBe('error');
+    ctx.recorder.startGate = null;
+    ctx.recorder.startError = null;
+    await ctx.service.toggle({ source: 'hotkey' });
+    expect(ctx.service.currentState).toBe('recording');
+    expect(ctx.recorder.stopCalls).toBe(0);
+  });
+
+  it('does not stop the next dictation after a cancel during the start', async () => {
+    const ctx = setup();
+    const start = gate();
+    ctx.recorder.startGate = start.promise;
+    const first = ctx.service.toggle({ source: 'hotkey' });
+    await vi.waitFor(() => expect(ctx.service.isStarting).toBe(true));
+    await ctx.service.toggle({ source: 'hotkey' });
+    await ctx.service.cancel();
+    start.open();
+    await first;
+    ctx.recorder.startGate = null;
+    await ctx.service.toggle({ source: 'hotkey' });
+    expect(ctx.service.currentState).toBe('recording');
+    expect(ctx.recorder.stopCalls).toBe(0);
+  });
+});
+
+describe('the target app arrives after recording started', () => {
+  it('labels the session when the lookup finishes while the recorder is starting', async () => {
+    const ctx = setup();
+    const start = gate();
+    ctx.recorder.startGate = start.promise;
+    const first = ctx.service.toggle({ source: 'hotkey' });
+    await vi.waitFor(() => expect(ctx.service.isStarting).toBe(true));
+    ctx.service.setTargetApp('Slack');
+    start.open();
+    await first;
+    expect(ctx.statuses.find((status) => status.state === 'recording')?.targetApp).toBe('Slack');
+    await ctx.service.toggle({ source: 'hotkey' });
+    expect(ctx.outcomes).toEqual([{ kind: 'delivered', words: 2, result: 'pasted', appName: 'Slack' }]);
+  });
+
+  it('labels the session when the lookup finishes while recording', async () => {
+    const ctx = setup();
+    await ctx.service.toggle({ source: 'hotkey' });
+    ctx.service.setTargetApp('Notepad');
+    await ctx.service.toggle({ source: 'hotkey' });
+    expect(ctx.sink.requests[0]).toMatchObject({ targetApp: 'Notepad' });
+    expect(ctx.records[0]?.appName).toBe('Notepad');
+  });
+
+  it('ignores a late answer once nothing is running, and for a window dictation', async () => {
+    const ctx = setup();
+    ctx.service.setTargetApp('Slack');
+    await ctx.service.toggle({ source: 'window' });
+    ctx.service.setTargetApp('Slack');
+    await ctx.service.toggle({ source: 'window' });
+    expect(ctx.sink.requests[0]).not.toHaveProperty('targetApp', 'Slack');
+    await ctx.service.toggle({ source: 'hotkey' });
+    await ctx.service.toggle({ source: 'hotkey' });
+    expect(ctx.sink.requests[1]?.targetApp).toBeUndefined();
   });
 });

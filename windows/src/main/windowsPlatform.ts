@@ -1,12 +1,19 @@
 import { clipboard, app } from 'electron';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { FOREGROUND_QUERY_TIMEOUT_MS, PASTE_KEYSTROKE_TIMEOUT_MS } from '../core/delivery/timing.js';
+import { PowerShellHost, PowerShellHostError, hostArguments } from './powershellHost.js';
 // The delivery policy's view of a window: the same identity (process + handle) with
 // the title the UI needs on top, so window info can be handed straight to the policy.
-import type { PasteTarget } from '../core/delivery/clipboardRestore.js';
+import {
+  hasUnrestorableFormat,
+  restoreSnapshotTo,
+  type PasteTarget,
+  type RestoreOutcome,
+} from '../core/delivery/clipboardRestore.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -35,31 +42,28 @@ export interface ForegroundWindowInfo extends PasteTarget {
  *
  * `SendKeys` via PowerShell is used rather than a native addon: it needs no
  * compilation step, so the packaged app has no native binary to keep in step with
- * the Electron version. It is slower than a keybd_event call, which is irrelevant
- * here — one keystroke per dictation.
+ * the Electron version. It runs in the long-lived PowerShell host (see
+ * `powershellHost.ts`), so the keystroke goes out within a few milliseconds instead of
+ * after a process start.
+ *
+ * `signal` is checked when the request reaches the front of the host's queue, right
+ * before it is written: an aborted delivery never presses the key. Returns false when
+ * the keystroke did not go out (or was aborted first).
  */
-export async function pasteClipboard(): Promise<boolean> {
+export async function pasteClipboard(signal?: AbortSignal): Promise<boolean> {
+  if (signal?.aborted) return false;
   try {
-    await runPowerShell('$wshell = New-Object -ComObject WScript.Shell; $wshell.SendKeys("^v")');
+    await runHosted('$uvShell.SendKeys("^v")', PASTE_ONE_SHOT, PASTE_KEYSTROKE_TIMEOUT_MS, signal);
     return true;
   } catch {
     return false;
   }
 }
 
-/**
- * Which window has focus right now.
- *
- * Used for two things: showing the user which app will receive their text, and
- * proving that a paste landed in the same window it was aimed at. Comparing these
- * before and after is what makes "it landed" mean something — a paste that arrived
- * in a different window, or that only appeared to land because the user typed
- * something, must not trigger the clipboard restore.
- *
- * Returns null when the query fails, which callers treat as "cannot verify".
- */
-export async function foregroundWindow(): Promise<ForegroundWindowInfo | null> {
-  const script = `
+const PASTE_ONE_SHOT = '$wshell = New-Object -ComObject WScript.Shell; $wshell.SendKeys("^v")';
+
+/** The C# behind `foregroundWindow`, compiled once in the host and per call in a one-shot process. */
+const FOREGROUND_TYPE = `
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -70,6 +74,9 @@ public class UvForeground {
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
 }
 "@
+`;
+
+const FOREGROUND_BODY = `
 $h = [UvForeground]::GetForegroundWindow()
 $len = [UvForeground]::GetWindowTextLength($h)
 $sb = New-Object System.Text.StringBuilder ($len + 1)
@@ -82,8 +89,20 @@ try { $name = (Get-Process -Id $procId -ErrorAction Stop).ProcessName } catch {}
 # backtick escape for a tab, and the backtick collides with JS template syntax.
 Write-Output ("{0}{1}{2}{1}{3}" -f $h.ToInt64(), [char]31, $name, $sb.ToString())
 `;
+
+/**
+ * Which window has focus right now.
+ *
+ * Used for two things: showing the user which app will receive their text, and
+ * deciding whether the previous clipboard may be put back after a paste. Comparing
+ * these before and after is what lets the restore be attributed to the window the
+ * paste was aimed at.
+ *
+ * Returns null when the query fails, which callers treat as "cannot verify".
+ */
+export async function foregroundWindow(): Promise<ForegroundWindowInfo | null> {
   try {
-    const { stdout } = await runPowerShell(script);
+    const stdout = await runHosted(FOREGROUND_BODY, FOREGROUND_TYPE + FOREGROUND_BODY, FOREGROUND_QUERY_TIMEOUT_MS);
     const line = stdout.trim().split(/\r?\n/).pop() ?? '';
     // Split on the unit separator emitted above.
     const [handleText, processName, ...titleParts] = line.split('\u001f');
@@ -163,10 +182,15 @@ export function ownProcessName(): string {
 export async function playCue(kind: 'start' | 'stop' | 'error'): Promise<void> {
   const file = await ensureCueFile(kind);
   if (!file) return;
+  const quoted = file.replace(/'/g, "''");
   try {
-    // PowerShell's SoundPlayer is the dependency-free option.
-    await runPowerShell(
-      `(New-Object Media.SoundPlayer '${file.replace(/'/g, "''")}').PlaySync()`,
+    // In the host the cue plays on its own thread (`Play`, not `PlaySync`), so it never
+    // holds up a paste queued behind it. The player is kept in a variable so it is not
+    // collected while it sounds.
+    await runHosted(
+      `$uvCue_${kind} = New-Object Media.SoundPlayer '${quoted}'; $uvCue_${kind}.Play()`,
+      // The one-shot process dies with the script, so it has to wait for the sound.
+      `(New-Object Media.SoundPlayer '${quoted}').PlaySync()`,
       // A cue that takes longer than this is not feedback any more.
       2000,
     );
@@ -247,8 +271,6 @@ function buildCue(kind: 'start' | 'stop' | 'error'): Buffer {
 /** Snapshot the clipboard so it can be put back after delivery. */
 export interface ClipboardSnapshot {
   formats: string[];
-  /** Only the formats that can be read eagerly and restored faithfully. */
-  data: Record<string, Buffer>;
   text: string;
   html: string;
   rtf: string;
@@ -259,71 +281,38 @@ export interface ClipboardSnapshot {
 /**
  * Copy the clipboard's contents.
  *
- * Only formats that can be read synchronously and written back faithfully are
- * captured. Anything else marks the snapshot `incomplete`, and an incomplete
- * snapshot is never restored: replacing the user's clipboard with something less
- * than it held would destroy data.
+ * Only plain text, HTML and RTF are captured, because those are the only formats the
+ * restore writes back. Any other format on the clipboard (an image, a file list, a
+ * proprietary type) marks the snapshot `incomplete`, and an incomplete snapshot is
+ * never restored: replacing the user's clipboard with something less than it held
+ * would destroy data.
  */
 export function snapshotClipboard(): ClipboardSnapshot {
   const formats = clipboard.availableFormats();
-  const data: Record<string, Buffer> = {};
-  let incomplete = false;
-
-  const readable = ['text/plain', 'text/html', 'text/rtf', 'image/png', 'image/bmp'];
-  for (const format of formats) {
-    const normalised = format.toLowerCase();
-    const known = readable.find((candidate) => normalised === candidate || normalised.startsWith(candidate));
-    if (!known) {
-      // A format we cannot faithfully restore (a file list, a proprietary type).
-      incomplete = true;
-      continue;
-    }
-    try {
-      const value = clipboard.readBuffer(format);
-      if (value.length > 0) data[format] = value;
-    } catch {
-      incomplete = true;
-    }
+  let incomplete = hasUnrestorableFormat(formats);
+  let text = '';
+  let html = '';
+  let rtf = '';
+  try {
+    text = clipboard.readText();
+    html = clipboard.readHTML();
+    rtf = clipboard.readRTF();
+  } catch {
+    incomplete = true;
   }
-
-  return {
-    formats,
-    data,
-    text: clipboard.readText(),
-    html: clipboard.readHTML(),
-    rtf: clipboard.readRTF(),
-    incomplete,
-  };
+  return { formats, text, html, rtf, incomplete };
 }
 
 /**
- * Put a snapshot back. Returns whether the clipboard now holds what we restored.
+ * Put a snapshot back. Returns what ended up on the clipboard.
  *
  * Verifying is not paranoia: `clipboard.clear()` invalidates the previous owner
  * immediately and is not atomic with the write that follows, so an unchecked write
  * could leave the clipboard EMPTY, losing both the user's data and the dictation.
+ * When the restore fails the dictation text is put back instead.
  */
-export function restoreClipboard(snapshot: ClipboardSnapshot): boolean {
-  const parts: Array<{ text?: string; html?: string; rtf?: string }> = [];
-  const entry: { text?: string; html?: string; rtf?: string } = {};
-  if (snapshot.text.length > 0) entry.text = snapshot.text;
-  if (snapshot.html.length > 0) entry.html = snapshot.html;
-  if (snapshot.rtf.length > 0) entry.rtf = snapshot.rtf;
-
-  if (Object.keys(entry).length === 0) {
-    // Nothing restorable (an image-only or unreadable clipboard). Do not clear.
-    return false;
-  }
-  parts.push(entry);
-
-  clipboard.clear();
-  clipboard.write(parts[0] as { text?: string; html?: string; rtf?: string });
-
-  // Read back to confirm.
-  if (snapshot.text.length > 0) return clipboard.readText() === snapshot.text;
-  if (snapshot.html.length > 0) return clipboard.readHTML().length > 0;
-  if (snapshot.rtf.length > 0) return clipboard.readRTF().length > 0;
-  return false;
+export function restoreClipboard(snapshot: ClipboardSnapshot, dictationText: string): RestoreOutcome {
+  return restoreSnapshotTo(clipboard, snapshot, dictationText);
 }
 
 /** Whether the clipboard still holds exactly what we put there. */
@@ -389,6 +378,61 @@ export class Diagnostics {
 
 export function appVersion(): string {
   return app.getVersion();
+}
+
+/**
+ * Run a script in the PowerShell host, or in a one-shot process when there is none.
+ *
+ * `hostScript` assumes the host's setup has run (types compiled, `$uvShell` defined);
+ * `oneShotScript` carries everything it needs itself. The fallback is taken only for a
+ * request that never reached the host: a request that was sent and then timed out or
+ * died may already have run, and running a paste twice is worse than not at all.
+ */
+async function runHosted(
+  hostScript: string,
+  oneShotScript: string,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (host && !host.isUnavailable) {
+    try {
+      return await host.run(hostScript, { timeoutMs, signal });
+    } catch (error) {
+      if (!(error instanceof PowerShellHostError) || error.sent || error.kind === 'aborted') throw error;
+      // Never sent (the host would not start, or was given up on): fall through.
+    }
+  }
+  if (signal?.aborted) throw new Error('aborted');
+  return (await runPowerShell(oneShotScript, timeoutMs)).stdout;
+}
+
+let host: PowerShellHost | null = null;
+
+/** Compiled once per host start: everything the hotkey and delivery scripts rely on. */
+const HOST_SETUP = FOREGROUND_TYPE + '\n$uvShell = New-Object -ComObject WScript.Shell';
+
+/**
+ * Start the long-lived PowerShell host. Call at app ready: the first hotkey press then
+ * finds the C# already compiled. Resolves false (and the app keeps using one-shot
+ * processes) off Windows or when the host cannot start.
+ */
+export async function startPowerShellHost(log?: (message: string) => void): Promise<boolean> {
+  if (process.platform !== 'win32') return false;
+  if (!host) {
+    host = new PowerShellHost({
+      spawn: () =>
+        spawn('powershell.exe', hostArguments(), { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }),
+      setupScript: HOST_SETUP,
+      log,
+    });
+  }
+  return host.start();
+}
+
+/** Stop the host. Safe to call when it never started. */
+export function stopPowerShellHost(): void {
+  host?.dispose();
+  host = null;
 }
 
 async function runPowerShell(script: string, timeoutMs = 8000): Promise<{ stdout: string; stderr: string }> {

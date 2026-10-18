@@ -73,7 +73,11 @@ public final class DictationController {
     private var lastFailedContext: FormattingContext?
 
     /// True when a failed dictation can be retried on its retained audio.
-    public var canRetry: Bool { lastFailedAudio != nil }
+    /// False once the retained file is gone (deleted by hand, volume unmounted).
+    public var canRetry: Bool {
+        guard let url = lastFailedAudio else { return false }
+        return FileManager.default.fileExists(atPath: url.path)
+    }
 
     public init(recorder: AudioRecording,
                 providers: @escaping () -> [TranscriptionProvider],
@@ -160,7 +164,7 @@ public final class DictationController {
     /// when there is nothing to retry. The result is always saved and copied, never
     /// pasted: it belongs to an old recording, whatever started it.
     public func retryLast() {
-        guard let url = lastFailedAudio else { return }
+        guard canRetry, let url = lastFailedAudio else { return }
         switch state {
         case .recording, .transcribing, .delivering: return
         case .idle, .error: break
@@ -243,13 +247,19 @@ public final class DictationController {
                 message: "Couldn't stop recording: \(error.localizedDescription)"))
             return
         }
+        // Capture ended early (the microphone vanished, the disk filled). What was
+        // recorded before that is real speech, so it is still transcribed and
+        // delivered; the cause goes to the log.
+        if let captureError = recorder.captureError {
+            diagnostics.warning("audio", "Capture ended early, delivering what was recorded: \(captureError.localizedDescription)")
+        }
         // The user was silent the whole time: never transcribe it. A silent clip
         // makes Whisper echo its prompt bias (the whole dictionary) back as a
         // fake transcript, which then gets formatted, pasted and left on the
         // clipboard. Discard here so nothing is uploaded, billed or delivered.
         guard recorder.didCaptureSpeech else {
             pendingRawMode = false   // the raw intent dies with this dictation
-            try? store.prune(keep: recordingsToKeep)
+            pruneRecordings()
             state = .error(Self.noSpeech)
             return
         }
@@ -258,6 +268,11 @@ public final class DictationController {
         let measuredDuration = recordingStartedAt.map { max(0, now().timeIntervalSince($0)) }
         await process(audioURL: audioURL, measuredDuration: measuredDuration,
                       mode: mode, appName: appName, startApp: startApp)
+    }
+
+    /// Drops old recordings, but never the audio Retry still points at.
+    private func pruneRecordings() {
+        try? store.prune(keep: recordingsToKeep, protecting: lastFailedAudio)
     }
 
     private static let noSpeech = DictationError(
@@ -291,15 +306,6 @@ public final class DictationController {
             TranscriptionHint(languagePin: $0.language,
                               dictionaryWords: $0.dictionaryWords)
         } ?? hint()
-        let chain = providers()
-        guard !chain.isEmpty else {
-            state = .error(DictationError(
-                kind: .noProvider,
-                message: "No transcription provider configured. Open Settings.",
-                fix: .openEngineSettings))
-            return
-        }
-
         // A header-only or near-empty WAV (an instant tap, a denied mic, a capture
         // race) is rejected by the provider with a 400 that reads as a mysterious
         // provider error. Catch it before the upload and the bill, and say so
@@ -307,8 +313,24 @@ public final class DictationController {
         // 44-byte header.
         let attrs = try? FileManager.default.attributesOfItem(atPath: audioURL.path)
         let audioBytes = (attrs?[.size] as? Int) ?? 0
-        guard audioBytes >= 44 + 3200 else {
-            try? store.prune(keep: recordingsToKeep)
+        let longEnough = audioBytes >= 44 + 3200
+
+        let chain = providers()
+        guard !chain.isEmpty else {
+            // The speech is on disk: keep it, so Retry works once an engine is set up.
+            if longEnough {
+                lastFailedAudio = audioURL
+                lastFailedContext = formattingContext
+            }
+            state = .error(DictationError(
+                kind: .noProvider,
+                message: "No transcription provider configured. Open Settings.",
+                fix: .openEngineSettings))
+            return
+        }
+
+        guard longEnough else {
+            pruneRecordings()
             state = .error(DictationError(
                 kind: .tooShort, message: "Recording was too short."))
             return
@@ -352,7 +374,7 @@ public final class DictationController {
         // formatted, recorded, or delivered (an empty deliver would also wipe the
         // clipboard). Spec section 5. The STT call was already billed by the API.
         guard !transcript.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            try? store.prune(keep: recordingsToKeep)
+            pruneRecordings()
             state = .error(Self.noSpeech)
             return
         }
@@ -437,7 +459,7 @@ public final class DictationController {
             audioPath: audioURL.path))
 
         state = .delivering
-        try? store.prune(keep: recordingsToKeep)
+        pruneRecordings()
         // Hold .delivering until delivery actually settles; the busy mutex then
         // spans the whole paste/verify/restore window instead of dropping to
         // .idle the instant the synthetic paste is posted.

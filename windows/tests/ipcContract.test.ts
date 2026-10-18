@@ -249,7 +249,10 @@ describe('dictation telemetry and outcome channels', () => {
   it('lets the renderer start a dictation only as a window dictation', () => {
     // Pasting is the hotkey's privilege: the renderer API takes no source argument.
     expect(mainSource).toContain("ipcMain.handle('dictation:toggle', () => this.toggleDictation('window'))");
-    expect(mainSource).toContain("globalShortcut.register(accelerator, () => void this.toggleDictation('hotkey'))");
+    // The hotkey is the only caller that passes 'hotkey', and it goes through the repeat guard.
+    expect(mainSource).toMatch(
+      /globalShortcut\.register\(accelerator, \(\) => \{\s*if \(this\.hotkeyRepeatGuard\(\)\) void this\.toggleDictation\('hotkey'\);/,
+    );
     expect(preloadSource).toContain("toggleDictation: (): Promise<void> => ipcRenderer.invoke('dictation:toggle')");
   });
 });

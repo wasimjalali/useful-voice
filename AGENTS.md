@@ -29,6 +29,15 @@ Cross-platform dictation app. macOS: Swift (`Sources/UsefulVoiceCore`,
   limits the app allows are 15 s of silence and 30 s of recording, so those two specs take 20 s and 35 s. Never press the
   hotkey to completion in a spec: it would paste into whatever is in front of the machine.
 
+## Delivery
+
+A hotkey dictation pastes wherever the cursor is when the text is ready, on both platforms; only Useful Voice's own
+window in front at delivery (a stop from the dock) copies instead, unless the dictation started there. On Windows the
+paste, the foreground read and the sound cues go through one long-lived PowerShell (`src/main/powershellHost.ts`,
+started at app ready, types compiled once); the delivery order lives in `src/core/delivery/pasteFlow.ts` and the
+clipboard rule in `src/core/delivery/clipboardRestore.ts` (a sent Ctrl+V counts as delivered; the old clipboard is put
+back only when it is provably safe).
+
 ## Windows renderer layout
 
 `windows/src/renderer/`: `renderer.ts` (entry) wires `shell.ts` (rail, header, banners,

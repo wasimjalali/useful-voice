@@ -21,7 +21,7 @@ public enum MediaEffectsError: Error, LocalizedError {
 /// The real effects of `MediaPausePolicy`.
 ///
 /// What works on macOS 26 and later, measured on this machine (see
-/// `scripts/media-pause-e2e/README.md`):
+/// `scripts/media-pause-e2e/run.sh`):
 /// - MediaRemote's read functions (`...IsPlaying`, `...ApplicationPID`, `GetNowPlayingInfo`)
 ///   answer "nothing playing" to a third-party process, so they are not used to decide.
 /// - Core Audio's process list (public API, macOS 14.2 and later) says which processes are

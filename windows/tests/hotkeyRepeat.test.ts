@@ -8,7 +8,7 @@ import {
 // Failure modes, written before the code:
 //  1. a held key repeats every ~30 ms and toggles recording off and on again
 //  2. the window is measured from the last ACCEPTED event, so a key held for a second
-//     re-toggles every 350 ms
+//     re-toggles every window
 //  3. a real second press right after the window is swallowed
 //  4. the very first press is dropped
 
@@ -38,6 +38,14 @@ describe('createHotkeyRepeatGuard', () => {
     return times.map(() => guard());
   }
 
+  it.each([250, 500, 1000])('lets a key held past a %d ms repeat delay through once', (delay) => {
+    const times = [0];
+    for (let t = delay; t <= delay + 2000; t += 33) times.push(t);
+    const results = guardAt(times);
+    expect(results[0]).toBe(true);
+    expect(results.slice(1).filter(Boolean)).toHaveLength(0);
+  });
+
   it('lets a held key through once, however long it is held', () => {
     // A press, then auto-repeat every 33 ms for two seconds, after Windows' shortest
     // keyboard repeat delay (250 ms).
@@ -55,10 +63,10 @@ describe('createHotkeyRepeatGuard', () => {
   });
 
   it('accepts a deliberate second press after the key was released', () => {
-    expect(guardAt([0, 1000, 2000])).toEqual([true, true, true]);
+    expect(guardAt([0, 1500, 3000])).toEqual([true, true, true]);
   });
 
   it('accepts a press once the repeats have stopped for a full window', () => {
-    expect(guardAt([0, 100, 200, 600])).toEqual([true, false, false, true]);
+    expect(guardAt([0, 100, 200, 200 + HOTKEY_REPEAT_WINDOW_MS])).toEqual([true, false, false, true]);
   });
 });

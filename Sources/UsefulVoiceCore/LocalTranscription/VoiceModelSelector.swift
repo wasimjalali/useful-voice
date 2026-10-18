@@ -78,10 +78,7 @@ public struct ParakeetLanguageGuard: TranscriptionProvider {
         self.inner = inner
     }
 
-    public static let v3Languages: Set<String> = [
-        "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it", "lv",
-        "lt", "mt", "pl", "pt", "ro", "ru", "sk", "sl", "es", "sv", "uk",
-    ]
+    public static let v3Languages: Set<String> = ParakeetVersion.v3Languages
 
     /// nil when the pin works with this version, else the message to show.
     public static func refusal(for pin: LanguagePin, version: ParakeetVersion) -> String? {

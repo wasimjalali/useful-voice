@@ -13,6 +13,8 @@ import { selectKeyterms } from '../core/memory/biasBuilder.js';
 import { RecordingClock, SilenceWatchdog } from '../core/audio/silenceWatchdog.js';
 import { LEVEL_METER_GAIN, MINIMUM_AUDIO_BYTES } from '../core/audio/wav.js';
 import { ProviderError, type Transcript } from '../core/transcription/deepgramProvider.js';
+import { FormatterError } from '../core/formatting/aiFormatter.js';
+import { worthFormatting } from '../core/formatting/formatterGuard.js';
 import { detectionStayedOnNova3, resolveDetectedLanguage } from '../core/transcription/languages.js';
 
 export type DictationState = 'idle' | 'recording' | 'transcribing' | 'delivering' | 'error';
@@ -93,8 +95,19 @@ export interface TextSinkPort {
   deliver(request: DeliveryRequest): Promise<DeliveryResult>;
 }
 
-/** Optional post-processing (the formatter). Absent means raw text is used. */
-export type FormatterPort = (text: string, language: MemoryLanguage) => Promise<string>;
+/** What the AI formatter is given besides the text. */
+export interface FormatContext {
+  /** The dictation's cancel: aborting it abandons the formatter call. */
+  signal: AbortSignal;
+  /** Dictionary words the model should spell as written, at most 100. */
+  vocabulary: string[];
+}
+
+/**
+ * The AI formatter. It resolves to the formatted text and throws (a FormatterError, ideally)
+ * when it can't: the dictation then goes out unformatted. Absent means no formatter is wired.
+ */
+export type FormatterPort = (text: string, language: MemoryLanguage, context: FormatContext) => Promise<string>;
 
 export interface DictationServiceDeps {
   recorder: RecorderPort;
@@ -103,11 +116,16 @@ export interface DictationServiceDeps {
   settings: () => AppSettings;
   memory: () => LanguageMemorySnapshot;
   /**
-   * Reads the stored Deepgram key. A function (not a value) so the key is fetched
-   * only when a request is about to be made, and so it never has to be held in a
-   * component that the renderer can reach.
+   * Reads the stored key of the chosen voice model's provider. A function (not a value) so
+   * the key is fetched only when a request is about to be made, and so it never has to be
+   * held in a component that the renderer can reach. Returns null when it is missing.
    */
   apiKey: () => Promise<string | null>;
+  /**
+   * What to tell the person when `apiKey` finds no key ("No ElevenLabs key is set..."). Absent
+   * means the Deepgram wording. A local model has no key: it returns a non-null `apiKey`.
+   */
+  missingKeyMessage?: () => string;
   onStatus: (status: DictationStatus) => void;
   /**
    * Called once per dictation that was delivered or cancelled, BEFORE the idle
@@ -568,7 +586,7 @@ export class DictationService {
       this.retain(captured, language);
       this.fail(session, {
         kind: 'noProvider',
-        message: 'No Deepgram API key is set. Add one in Settings to start dictating.',
+        message: this.deps.missingKeyMessage?.() ?? 'No Deepgram API key is set. Add one in Settings to start dictating.',
         fix: 'openEngineSettings',
       });
       return;
@@ -634,34 +652,47 @@ export class DictationService {
     // symptom (the user's own terminology misspelled) reads as a dictionary
     // fault, so it is worth a log line. Only the code is recorded, never
     // transcript text or the key.
-    if (rawDetected && !detectionStayedOnNova3(rawDetected)) {
+    if (rawDetected && settings.voiceModelId.startsWith('deepgram:') && !detectionStayedOnNova3(rawDetected)) {
       this.deps.onDiagnostic?.(
         'dictation',
         `detected language '${rawDetected}' is outside Nova-3, so the provider may have fallen back to a lower model and keyterms may have been dropped`,
       );
     }
 
-    // Deterministic memory pass: never skipped, even in raw mode. Raw mode means
-    // "do not run the formatter", not "do not apply the user's dictionary".
-    const memoryResult = applyMemory(rawText, snapshot, effectiveLanguage);
-
-    let finalText = memoryResult.text;
+    // The AI formatter runs on the transcript BEFORE the user's own rules, so their
+    // dictionary, fixes and snippets always have the last word. It is skipped in raw mode,
+    // for a transcript of two words or fewer, and whenever it fails for any reason: the
+    // dictation must never be lost or held up by it.
+    let formatterInput = rawText;
     let mode: 'raw' | 'formatted' = 'raw';
-    if (!rawMode && settings.formattingEnabled && this.deps.formatter) {
+    if (!rawMode && settings.formatterId !== null && this.deps.formatter && worthFormatting(rawText)) {
       try {
-        const formatted = await this.deps.formatter(memoryResult.text, effectiveLanguage);
-        if (formatted.trim().length > 0) {
-          const reApplied = applyMemory(formatted, snapshot, effectiveLanguage);
-          finalText = reApplied.text;
+        const formatted = (
+          await this.deps.formatter(rawText, effectiveLanguage, {
+            signal: this.abortController?.signal ?? new AbortController().signal,
+            vocabulary: selection.terms.slice(0, 100),
+          })
+        ).trim();
+        if (formatted.length > 0 && formatted !== rawText) {
+          formatterInput = formatted;
           mode = 'formatted';
         }
-      } catch {
-        // A formatter failure must never lose the dictation: fall back to the
-        // unformatted text, which is already correct.
-        mode = 'raw';
+      } catch (error) {
+        // Only the reason is logged: never the key or the dictation text.
+        if (current()) {
+          this.deps.onDiagnostic?.(
+            'formatter',
+            error instanceof FormatterError ? `skipped (${error.kind}): ${error.message}` : 'skipped (unexpected error)',
+          );
+        }
       }
       if (!current()) return;
     }
+
+    // Deterministic memory pass: never skipped, even in raw mode. Raw mode means
+    // "do not run the formatter", not "do not apply the user's dictionary".
+    const memoryResult = applyMemory(formatterInput, snapshot, effectiveLanguage);
+    const finalText = memoryResult.text;
 
     if (finalText.trim().length === 0) {
       this.fail(session, { kind: 'noSpeech', message: 'The transcript came back empty.' });
@@ -880,6 +911,9 @@ export function classifyTranscriptionFailure(error: unknown): DictationError {
   const message = transcriptionFailureMessage(error);
   if (error instanceof ProviderError) {
     switch (error.kind) {
+      case 'notConfigured':
+        // A missing key or a model that isn't downloaded: the fix is in Settings.
+        return { kind: 'noProvider', message, fix: 'openEngineSettings' };
       case 'unauthorized':
         return { kind: 'keyRejected', message, fix: 'openEngineSettings' };
       case 'outOfCredits':
@@ -909,21 +943,23 @@ export function describeTranscriptionFailure(error: unknown): string {
 function transcriptionFailureMessage(error: unknown): string {
   if (error instanceof ProviderError) {
     switch (error.kind) {
+      case 'notConfigured':
+        return error.message;
       case 'unauthorized':
-        return 'Deepgram rejected your API key. Check it in Settings.';
+        return `${error.provider} rejected your API key. Check it in Settings.`;
       case 'rateLimited':
-        return 'Deepgram is rate limiting requests. Try again in a moment.';
+        return `${error.provider} is rate limiting requests. Try again in a moment.`;
       case 'timedOut':
         return 'Transcription timed out. Check your internet connection and try again.';
       case 'transport':
-        return 'Could not reach Deepgram. Check your internet connection.';
+        return `Could not reach ${error.provider}. Check your internet connection.`;
       case 'badRequest':
         // The provider's message is already bounded and has the key redacted.
         return error.message;
       case 'outOfCredits':
-        return 'Your Deepgram credit is used up. Add credit in your Deepgram account, then try again.';
+        return `Your ${error.provider} credit is used up. Add credit in your ${error.provider} account, then try again.`;
       case 'serverError':
-        return 'Deepgram is having trouble right now. Try again shortly.';
+        return `${error.provider} is having trouble right now. Try again shortly.`;
       case 'malformedResponse':
       case 'cancelled':
         return error.message;

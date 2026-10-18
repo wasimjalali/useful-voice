@@ -13,6 +13,8 @@ import type {
   ResolvedTheme,
   SettingsDTO,
 } from './types.js';
+import type { KeyProvider } from '../core/models/catalog.js';
+import type { ParakeetState, ParakeetVersion } from '../core/models/parakeet.js';
 
 /**
  * Subscribe to a main-process broadcast.
@@ -186,6 +188,23 @@ const api = {
   clearApiKey: (): Promise<void> => ipcRenderer.invoke('settings:clear-api-key'),
   testApiKey: (): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke('settings:test-api-key'),
   resetApiKey: (): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke('settings:reset-api-key'),
+
+  // ---- models and their keys ----
+  /** Saves a provider's key (encrypted in main). The renderer never reads one back. */
+  setProviderKey: (provider: KeyProvider, key: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('models:set-key', provider, key),
+  clearProviderKey: (provider: KeyProvider): Promise<void> => ipcRenderer.invoke('models:clear-key', provider),
+  testProviderKey: (provider: KeyProvider): Promise<{ ok: boolean; message: string }> =>
+    ipcRenderer.invoke('models:test-key', provider),
+  parakeetStates: (): Promise<Record<ParakeetVersion, ParakeetState>> => ipcRenderer.invoke('parakeet:states'),
+  parakeetDownload: (version: ParakeetVersion): Promise<void> => ipcRenderer.invoke('parakeet:download', version),
+  parakeetCancel: (version: ParakeetVersion): Promise<void> => ipcRenderer.invoke('parakeet:cancel', version),
+  parakeetRemove: (version: ParakeetVersion): Promise<void> => ipcRenderer.invoke('parakeet:remove', version),
+  onParakeetChanged: (handler: (states: Record<ParakeetVersion, ParakeetState>) => void): (() => void) => {
+    const listener = (_event: unknown, states: Record<ParakeetVersion, ParakeetState>): void => handler(states);
+    ipcRenderer.on('parakeet:changed', listener);
+    return () => ipcRenderer.removeListener('parakeet:changed', listener);
+  },
 
   // ---- first-run setup ----
   firstRunState: (): Promise<FirstRunStateDTO> => ipcRenderer.invoke('firstrun:get'),

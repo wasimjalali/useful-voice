@@ -15,7 +15,7 @@ function setup(modelId: string, keys: Partial<Record<KeyProvider, string>> = {})
     urls.push(url);
     if (url.includes('deepgram')) return ok({ results: { channels: [{ alternatives: [{ transcript: 'from deepgram' }] }] } });
     if (url.includes('elevenlabs')) return ok({ text: 'from scribe', language_code: 'eng' });
-    return ok({ candidates: [{ content: { parts: [{ text: 'from gemini' }] } }] });
+    return ok({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'from gemini' }] } }] });
   });
   const parakeet = { transcribe: vi.fn(async (): Promise<Transcript> => ({ text: 'from parakeet', durationSeconds: null, detectedLanguage: null })) };
   const transcriber = createTranscriber({ voiceModelId: () => modelId, key: (provider) => keys[provider] ?? null, parakeet, fetchImpl: fetchImpl as never });

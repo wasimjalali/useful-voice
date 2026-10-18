@@ -685,6 +685,10 @@ export class DictationService {
     } catch (error) {
       // A cancelled upload ends here without a word: the cancel already reported it.
       if (!current()) return;
+      // Only provider, model, status and a fixed reason reach the log: a response body can echo the audio's text.
+      if (!(error instanceof ProviderError && error.kind === 'cancelled')) {
+        this.deps.onDiagnostic?.('transcription', transcriptionLogLine(error, settings.voiceModelId));
+      }
       // Keep the audio so Retry does not make the user dictate again.
       this.retain(captured, language);
       this.fail(session, classifyTranscriptionFailure(error));
@@ -1021,6 +1025,12 @@ export function classifyTranscriptionFailure(error: unknown): DictationError {
     }
   }
   return { kind: 'providerFailed', message, fix: 'retry' };
+}
+
+/** The log line for a failed transcription: provider, model, HTTP status and the kind, never the message. */
+export function transcriptionLogLine(error: unknown, modelId: string): string {
+  if (!(error instanceof ProviderError)) return `model ${modelId} failed: unexpected error`;
+  return `${error.provider} (${modelId}) failed: ${error.kind}${error.status !== undefined ? ` HTTP ${error.status}` : ''}`;
 }
 
 /** Turn a transcription failure into something the user can act on. */

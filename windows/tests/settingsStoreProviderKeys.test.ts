@@ -73,6 +73,43 @@ describe('provider keys', () => {
     expect((await read(dir)).providerKeys).toBeUndefined();
   });
 
+  it('keeps an encrypted key exactly as it is on disk when a later save runs without encryption', async () => {
+    const dir = await folder();
+    const first = new SettingsStore(dir);
+    await first.load();
+    first.setKey('gemini', 'AIza-keep');
+    await first.save();
+    const before = (await read(dir)).providerKeys.gemini;
+
+    const store = new SettingsStore(dir);
+    await store.load();
+    available = false;
+    store.update({ appearance: 'dark' });
+    await store.save();
+    const file = await read(dir);
+    expect(file.providerKeys.gemini).toEqual(before);
+    expect(JSON.stringify(file)).not.toContain('AIza-keep');
+    expect(file.providerKeys.gemini.plaintext).toBeUndefined();
+  });
+
+  it('writes no entry for a key that was never encrypted when a save runs without encryption', async () => {
+    const dir = await folder();
+    const store = new SettingsStore(dir);
+    await store.load();
+    store.setKey('anthropic', 'sk-ant-new'); // encryption available: held in memory, save pending
+    available = false;
+    await store.save();
+    // The pending save started before encryption went away may or may not have run; what matters is no text on disk.
+    expect(JSON.stringify(await read(dir))).not.toContain('sk-ant-new');
+  });
+
+  it('lists the keys that are on disk but can\'t be read', async () => {
+    const dir = await folder({ version: 1, settings: {}, providerKeys: { anthropic: { data: blob('written by another account') } }, apiKeyEncrypted: blob('also foreign') });
+    const store = new SettingsStore(dir);
+    await store.load();
+    expect(store.unreadableKeys().sort()).toEqual(['Anthropic', 'Deepgram']);
+  });
+
   it('refuses an empty key', async () => {
     const store = new SettingsStore(await folder());
     await store.load();

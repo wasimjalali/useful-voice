@@ -45,6 +45,13 @@ let redrawModels: (() => void) | null = null;
 let detachParakeet: (() => void) | null = null;
 const keyRows = new Map<KeyProvider, { edit: () => void }>();
 
+/** A formatter whose key is missing or unreadable can't run, so the list shows Off rather than pretend. */
+function shownFormatterId(id: string | null): string | null {
+  const model = LANGUAGE_MODELS.find((candidate) => candidate.id === id);
+  const provider = model ? keyProviderOf(model) : null;
+  return model && provider && keys()[provider] ? model.id : null;
+}
+
 const keys = (): KeyPresence =>
   state.settings?.keys ?? { deepgram: false, elevenlabs: false, gemini: false, anthropic: false };
 
@@ -214,7 +221,13 @@ export function modelsGroup(host: ModelsHost): HTMLElement {
       const isSelected = (entry?.id ?? null) === selectedId;
       group.append(modelRow(kind, entry, selectedId, known ? isSelected : index === 0));
     });
-    return el('div', {}, el('h3', { class: 'm-title', id: titleId }, title), el('div', { class: 's-surface' }, header, group));
+    return el(
+      'div',
+      {},
+      el('h3', { class: 'm-title', id: titleId }, title),
+      el('div', { class: 's-surface' }, header, group),
+      kind === 'language' ? el('p', { class: 's-note m-privacy' }, "AI formatting sends each transcript to the model's provider.") : null,
+    );
   };
 
   const redraw = (): void => {
@@ -224,7 +237,7 @@ export function modelsGroup(host: ModelsHost): HTMLElement {
     const index = focused ? [...container.querySelectorAll('.m-row')].indexOf(focused) : -1;
     container.replaceChildren(
       list('voice', 'Voice model', VOICE_MODELS, settings.voiceModelId, false),
-      list('language', 'AI formatting', LANGUAGE_MODELS, settings.formatterId, true),
+      list('language', 'AI formatting', LANGUAGE_MODELS, shownFormatterId(settings.formatterId), true),
     );
     // A repaint must not cost a keyboard user their place.
     if (index >= 0) container.querySelectorAll<HTMLElement>('.m-row .m-pick')[index]?.focus();

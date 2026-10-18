@@ -125,6 +125,8 @@ export interface FirstRunStateDTO {
   /** `--first-run-step=<step>`: jump straight to a step with sample data. */
   step: import('../core/firstRun/gate.js').FirstRunStep | null;
   keySaved: boolean;
+  /** The Deepgram model the engine step shows and Continue applies. */
+  engineId: string;
   hotkey: string;
   language: string;
 }

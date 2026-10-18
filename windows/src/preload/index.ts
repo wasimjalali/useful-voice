@@ -218,6 +218,8 @@ const api = {
   /** Checks a pasted key against Deepgram without saving it. */
   firstRunCheckKey: (key: string): Promise<FirstRunKeyCheck> => ipcRenderer.invoke('firstrun:check-key', key),
   firstRunSaveKey: (key: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('firstrun:save-key', key),
+  /** Continue on the engine step: applies the model the step showed. */
+  firstRunApplyEngine: (): Promise<void> => ipcRenderer.invoke('firstrun:apply-engine'),
   firstRunSetLanguage: (code: string): Promise<void> => ipcRenderer.invoke('firstrun:set-language', code),
   /** Validated and trial-registered in main; `error` says why a hotkey was refused. */
   firstRunSetHotkey: (accelerator: string): Promise<{ ok: boolean; error?: string }> =>

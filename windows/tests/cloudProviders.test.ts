@@ -17,6 +17,7 @@ import {
   transcribe as transcribeGeminiVoice,
 } from '../src/core/transcription/geminiTranscribeProvider.js';
 import { checkProviderKey, keyCheckRequest } from '../src/core/models/providerKeyCheck.js';
+import { transcriptionLogLine } from '../src/main/dictationService.js';
 import { setSecretSource } from '../src/core/redaction.js';
 import { describeErrorBody } from '../src/core/transcription/deepgramProvider.js';
 import { parakeetLanguageProblem } from '../src/core/transcription/parakeetLanguages.js';
@@ -204,19 +205,28 @@ describe('Gemini as a voice model', () => {
   });
 
   it('reads the joined non-thought text, and treats silence as an empty transcript', () => {
-    expect(parseGeminiVoice({ candidates: [{ content: { parts: [{ text: 'hmm', thought: true }, { text: ' Hello ' }, { text: 'world.' }] } }] }).text).toBe('Hello world.');
-    expect(parseGeminiVoice({ candidates: [] }).text).toBe('');
-    expect(() => parseGeminiVoice({ promptFeedback: { blockReason: 'OTHER' } })).toThrow("Gemini didn't return a transcript");
+    expect(parseGeminiVoice({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'hmm', thought: true }, { text: ' Hello ' }, { text: 'world.' }] } }] }).text).toBe('Hello world.');
+    expect(() => parseGeminiVoice({ promptFeedback: { blockReason: 'OTHER' } })).toThrow("Gemini didn't return a complete transcript");
     expect(() => parseGeminiVoice('x')).toThrow(ProviderError);
   });
 
   it('fails a blocked prompt or a cut-off answer with no text, so the audio is kept for Retry; STOP with no text is silence', async () => {
     const answer = (body: unknown) => vi.fn(async () => json(body));
     const hint = { language: 'auto', keyterms: [] };
-    for (const body of [{ promptFeedback: { blockReason: 'OTHER' } }, { candidates: [{ finishReason: 'SAFETY' }] }, { candidates: [{ finishReason: 'MAX_TOKENS' }] }]) {
+    const text = { content: { parts: [{ text: 'a plausible transcript' }] } };
+    for (const body of [
+      { promptFeedback: { blockReason: 'OTHER' } },
+      { candidates: [] },
+      { candidates: [{ finishReason: 'SAFETY' }] },
+      { candidates: [{ finishReason: 'MAX_TOKENS' }] },
+      { candidates: [{ finishReason: 'RECITATION', ...text }] },
+      { candidates: [{ finishReason: 'OTHER', ...text }] },
+      { candidates: [text] },
+      { promptFeedback: { blockReason: 'SAFETY' }, candidates: [{ finishReason: 'STOP', ...text }] },
+    ]) {
       const error = await reason(transcribeGeminiVoice({ audio, hint, config, fetchImpl: answer(body) as never, sleep: noSleep }));
       expect(error.kind).toBe('malformedResponse');
-      expect(error.message).toContain("Gemini didn't return a transcript");
+      expect(error.message).toContain("Gemini didn't return a complete transcript");
     }
     const silence = await transcribeGeminiVoice({ audio, hint, config, fetchImpl: answer({ candidates: [{ finishReason: 'STOP', content: { parts: [] } }] }) as never });
     expect(silence.text).toBe('');
@@ -233,10 +243,16 @@ describe('Gemini as a voice model', () => {
     }
   });
 
+  it('logs only provider, model, status and kind for a failed transcription', () => {
+    const error = new ProviderError('badRequest', 'Transcription failed (HTTP 400): the dictation text here', { status: 400, provider: 'ElevenLabs' });
+    expect(transcriptionLogLine(error, 'elevenlabs:scribe_v2')).toBe('ElevenLabs (elevenlabs:scribe_v2) failed: badRequest HTTP 400');
+    expect(transcriptionLogLine(new Error('body echo'), 'deepgram:nova-3')).not.toContain('echo');
+  });
+
   it('keeps a plain 400 as a bad request, retries 429 and 5xx', async () => {
     const bad = vi.fn(async () => new Response('{"error":{"message":"bad audio"}}', { status: 400 }));
     expect((await reason(transcribeGeminiVoice({ audio, hint: { language: 'auto', keyterms: [] }, config, fetchImpl: bad as never }))).kind).toBe('badRequest');
-    const answers = [new Response('{}', { status: 429 }), new Response('{}', { status: 500 }), json({ candidates: [{ content: { parts: [{ text: 'fine' }] } }] })];
+    const answers = [new Response('{}', { status: 429 }), new Response('{}', { status: 500 }), json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'fine' }] } }] })];
     const retried = vi.fn(async () => answers.shift() as Response);
     const transcript = await transcribeGeminiVoice({ audio, hint: { language: 'auto', keyterms: [] }, config, fetchImpl: retried as never, sleep: noSleep });
     expect(transcript.text).toBe('fine');

@@ -59,7 +59,7 @@ export function buildRequest(audio: Uint8Array, hint: TranscriptionHint, config:
   const parts: Array<Record<string, unknown>> = [
     { inlineData: { mimeType: 'audio/wav', data: Buffer.from(audio).toString('base64') } },
   ];
-  const words = hint.keyterms.map((term) => term.trim()).filter((term) => term.length > 0).slice(0, MAX_VOCABULARY_WORDS);
+  const words = hint.keyterms.map((term) => term.replace(/[<>]/g, '').trim()).filter((term) => term.length > 0).slice(0, MAX_VOCABULARY_WORDS);
   if (words.length > 0) parts.push({ text: `<vocabulary>${words.join(', ')}</vocabulary>` });
   const language = pinnedLanguageName(hint.language);
   if (language) parts.push({ text: `Language: ${language}` });
@@ -82,10 +82,11 @@ export function parseResponse(payload: unknown): Transcript {
   }
   const text = parseGeminiResponse(payload).trim();
   const outcome = geminiOutcome(payload);
-  // Only a finished answer (STOP) with no text is silence. A blocked prompt or a cut-off answer is
-  // a failure, so the audio is kept and Retry works.
-  if (text.length === 0 && (outcome.blocked || (outcome.finishReason !== null && outcome.finishReason !== 'STOP'))) {
-    throw new ProviderError('malformedResponse', "Gemini didn't return a transcript. Try again.", { provider: PROVIDER });
+  // Success is a first candidate that finished with STOP and a prompt that wasn't blocked, whatever
+  // text came back: anything else (MAX_TOKENS, SAFETY, RECITATION, no finish reason, no candidate)
+  // is a failure, so the audio is kept and Retry works. STOP with no text is silence.
+  if (outcome.blocked || !outcome.hasCandidate || outcome.finishReason !== 'STOP') {
+    throw new ProviderError('malformedResponse', "Gemini didn't return a complete transcript.", { provider: PROVIDER });
   }
   return { text, durationSeconds: null, detectedLanguage: null };
 }

@@ -44,6 +44,8 @@ interface StoredKey {
 
 /** One extra key in memory: the key when it could be read, the blob when it could not. */
 interface ExtraKey {
+  /** The blob as last read from or written to disk, kept so a save without encryption never rewrites it. */
+  stored?: StoredKey;
   key: string | null;
   /** The stored blob as read, kept when it could not be decrypted so a save writes it back untouched. */
   undecrypted: StoredKey | null;
@@ -121,13 +123,23 @@ export class SettingsStore {
       const entry = stored?.[provider];
       if (!entry || typeof entry.data !== 'string' || entry.data.length === 0) continue;
       const key = this.decrypt(entry.data, entry.plaintext === true);
-      this.extraKeys.set(provider, { key, undecrypted: key === null ? entry : null, onDisk: true });
+      this.extraKeys.set(provider, { key, stored: entry, undecrypted: key === null ? entry : null, onDisk: true });
       if (key === null) {
         this.lastSaveError = new Error(
           `The stored ${KEY_PROVIDER_INFO[provider].name} key could not be decrypted on this account. Re-enter it in Settings.`,
         );
       }
     }
+  }
+
+  /** Names of the providers whose stored key is on disk but couldn't be read on this account. */
+  unreadableKeys(): string[] {
+    const names: string[] = [];
+    if (this.keyOnDisk && this.apiKey === null) names.push(KEY_PROVIDER_INFO.deepgram.name);
+    for (const [provider, entry] of this.extraKeys) {
+      if (entry.onDisk && entry.key === null) names.push(KEY_PROVIDER_INFO[provider].name);
+    }
+    return names;
   }
 
   get isLoaded(): boolean {
@@ -336,8 +348,14 @@ export class SettingsStore {
     const providerKeys: Partial<Record<ExtraKeyProvider, StoredKey>> = {};
     for (const [provider, entry] of this.extraKeys) {
       if (entry.key !== null && entry.key.length > 0) {
-        const encrypted = this.encrypt(entry.key);
-        providerKeys[provider] = { data: encrypted.data, ...(encrypted.plaintextFallback ? { plaintext: true } : {}) };
+        if (safeStorage.isEncryptionAvailable()) {
+          const encrypted = this.encrypt(entry.key);
+          entry.stored = { data: encrypted.data };
+          providerKeys[provider] = entry.stored;
+        } else if (entry.stored) {
+          // No encryption right now: the blob already on disk stays exactly as it is. A key is never written as text.
+          providerKeys[provider] = entry.stored;
+        }
       } else if (entry.undecrypted) {
         providerKeys[provider] = entry.undecrypted;
       }

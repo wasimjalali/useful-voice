@@ -922,3 +922,61 @@ test('leaving Try it while the recorder is still starting never starts a recordi
     await remove(userData);
   }
 });
+
+// ---- the engine step and the saved voice model ---------------------------------------
+
+test('the engine step shows the model it will use and Continue applies exactly that', async () => {
+  for (const [saved, shown, expected] of [
+    ['elevenlabs:scribe_v2', 'Deepgram Nova-3', 'deepgram:nova-3'],
+    ['deepgram:nova-3-medical', 'Deepgram Nova-3 Medical', 'deepgram:nova-3-medical'],
+  ] as const) {
+    const userData = await freshDir();
+    await fs.writeFile(path.join(userData, 'settings.json'), JSON.stringify({ version: 1, settings: { voiceModelId: saved } }));
+    const run = await launch(`engine-${expected}`, userData);
+    try {
+      const { win } = run;
+      await fr(win).getByRole('button', { name: 'Get started' }).click();
+      await expect(page(win, 'engine')).toBeVisible();
+      await expect(win.locator('.fr-card-name')).toHaveText(shown);
+      // Nothing changes until Continue.
+      expect((await readJson(path.join(userData, 'settings.json')))?.settings).toMatchObject({ voiceModelId: saved });
+      const key = fr(win).getByLabel('Deepgram API key');
+      await key.fill('valid-walk-key');
+      await key.press('Enter');
+      await expect(page(win, 'deepgramKey')).toBeVisible();
+      await page(win, 'deepgramKey').getByRole('button', { name: 'Continue', exact: true }).click();
+      await expect(page(win, 'microphone')).toBeVisible();
+      const after = await settingsWhere(userData, (s) => (s?.settings as { voiceModelId?: string } | undefined)?.voiceModelId === expected);
+      expect((after?.settings as { voiceModelId: string }).voiceModelId).toBe(expected);
+    } finally {
+      await run.stop();
+      await remove(userData);
+    }
+  }
+});
+
+test('a forced setup applies the engine for its own dictations and leaves the saved model alone', async () => {
+  const userData = await seedUserData({ firstRunCompleted: true });
+  await fs.writeFile(
+    path.join(userData, 'settings.json'),
+    JSON.stringify({ version: 1, firstRunCompleted: true, settings: { voiceModelId: 'elevenlabs:scribe_v2' } }),
+  );
+  const before = await fs.readFile(path.join(userData, 'settings.json'));
+  const run = await launch('engine-forced', userData, ['--force-first-run']);
+  try {
+    const { win } = run;
+    await fr(win).getByRole('button', { name: 'Get started' }).click();
+    await expect(win.locator('.fr-card-name')).toHaveText('Deepgram Nova-3');
+    const key = fr(win).getByLabel('Deepgram API key');
+    await key.fill('valid-walk-key');
+    await key.press('Enter');
+    await page(win, 'deepgramKey').getByRole('button', { name: 'Continue', exact: true }).click();
+    await expect(page(win, 'microphone')).toBeVisible();
+    // The saved choice is what Settings reports, and the file is byte for byte what it was.
+    expect((await win.evaluate(() => window.usefulVoice.getSettings())).voiceModelId).toBe('elevenlabs:scribe_v2');
+    expect((await fs.readFile(path.join(userData, 'settings.json'))).equals(before)).toBe(true);
+  } finally {
+    await run.stop();
+    await remove(userData);
+  }
+});

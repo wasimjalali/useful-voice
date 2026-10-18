@@ -206,7 +206,9 @@ class UsefulVoiceApp {
     language: string | null;
     /** The key checked in a forced run, held in memory only so the practice dictation can use it. */
     key: string | null;
-  } = { pending: false, forced: false, step: null, sandbox: false, open: false, language: null, key: null };
+    /** The voice model the setup applied in a forced run. The saved choice is never touched, so it is back when the run ends. */
+    voiceModelId: string | null;
+  } = { pending: false, forced: false, step: null, sandbox: false, open: false, language: null, key: null, voiceModelId: null };
 
   /**
    * The setup flow is gone (closed, crashed, reloaded or left): later hotkey dictations
@@ -295,7 +297,16 @@ class UsefulVoiceApp {
 
   /** The voice model dictation uses now. */
   private voiceModelId(): string {
-    return this.settings.all.voiceModelId;
+    return (this.firstRun.sandbox ? this.firstRun.voiceModelId : null) ?? this.settings.all.voiceModelId;
+  }
+
+  /**
+   * The model the setup's engine step offers: a Deepgram model. A saved Deepgram choice (Nova-3
+   * Medical included) stays; anything else becomes Nova-3, which is what Continue applies.
+   */
+  private setupEngineId(): string {
+    const current = this.voiceModelId();
+    return current.startsWith('deepgram:') ? current : 'deepgram:nova-3';
   }
 
   /**
@@ -374,7 +385,11 @@ class UsefulVoiceApp {
     );
     this.parakeet = new ParakeetModels(app.getPath('userData'), E2E ? parakeetE2eDeps(app.getPath('userData')) : undefined);
     this.parakeet.onChange((states) => this.broadcast(PARAKEET_CHANNELS.changed, states));
-    if (this.settings.saveError) {
+    // Each stored key that can't be read is logged once, with the provider only. Its row shows "Add key".
+    for (const name of this.settings.unreadableKeys()) {
+      this.diagnostics.log('settings', `the stored ${name} key couldn't be read on this account`);
+    }
+    if (this.settings.saveError && this.settings.unreadableKeys().length === 0) {
       this.diagnostics.log('settings', this.settings.saveError.message);
     }
     // A write that still failed after its retries (a file held open for long) leaves a trace.
@@ -1294,7 +1309,9 @@ class UsefulVoiceApp {
     if (status.state === 'recording') {
       void playCue('start').catch(() => undefined);
     } else if (status.state === 'error') {
-      this.diagnostics.log('dictation', status.message ?? 'error');
+      // A transcription error's text can carry an excerpt of the provider's reply; its own log line says what failed.
+      const fromProvider = status.error !== undefined && ['providerFailed', 'keyRejected', 'outOfCredits', 'offline', 'timedOut', 'noProvider'].includes(status.error.kind);
+      this.diagnostics.log('dictation', fromProvider ? `error: ${status.error?.kind}` : (status.message ?? 'error'));
       void playCue('error').catch(() => undefined);
     }
   }
@@ -1672,6 +1689,7 @@ class UsefulVoiceApp {
       step: this.firstRun.step,
       // A forced run pretends to be a new install: whatever key is saved does not count.
       keySaved: !this.firstRun.forced && this.settings.hasApiKey,
+      engineId: this.setupEngineId(),
       hotkey: this.settings.all.hotkey.accelerator,
       language: this.firstRun.language ?? this.settings.all.languagePin,
     };
@@ -1692,9 +1710,6 @@ class UsefulVoiceApp {
       }
       const result = this.settings.setApiKey(key);
       if (!result.ok) return result;
-      // The setup's engine step offers Deepgram Nova-3, so finishing it makes that the voice model.
-      this.settings.update({ voiceModelId: 'deepgram:nova-3' });
-      this.syncParakeet(false);
       const saved = await this.settings.save();
       if (!saved.ok) return { ok: false, error: saved.message ?? "Couldn't save the key. Try again." };
       this.broadcast('settings:changed');
@@ -1722,7 +1737,21 @@ class UsefulVoiceApp {
       this.broadcast('settings:changed');
       return { ok: true };
     });
+    // Continue on the engine step: apply exactly the model the page showed.
+    ipcMain.handle('firstrun:apply-engine', () => {
+      const target = this.setupEngineId();
+      if (this.firstRun.sandbox) {
+        this.firstRun.voiceModelId = target;
+        return;
+      }
+      if (this.settings.all.voiceModelId !== target) {
+        this.settings.update({ voiceModelId: target });
+        this.syncParakeet(false);
+        this.broadcast('settings:changed');
+      }
+    });
     ipcMain.handle('firstrun:finish', (_event, completed: unknown) => {
+      this.firstRun.voiceModelId = null;
       this.firstRun.pending = false;
       this.firstRun.open = false;
       if (completed === true && !this.firstRun.sandbox) this.settings.markFirstRunCompleted();
@@ -2370,14 +2399,14 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     // The count is checked against the documented boundary rather than a vague lower
     // bound: `tests/ipcContract.test.ts` pins this same number to the README, so a
     // channel added or lost anywhere fails one of the two.
-    // 84: the models and their keys (`openNotices`, `setProviderKey`, `clearProviderKey`, `testProviderKey`, `parakeetStates`,
+    // 85: the models and their keys (`firstRunApplyEngine`, `openNotices`, `setProviderKey`, `clearProviderKey`, `testProviderKey`, `parakeetStates`,
     // `parakeetDownload`, `parakeetCancel`, `parakeetRemove`, `onParakeetChanged`), the first-run setup (`firstRunState`, `firstRunEndPractice`, `firstRunSetOpen`, `firstRunCheckKey`,
     // `firstRunSaveKey`, `firstRunSetLanguage`, `firstRunSetHotkey`, `firstRunFinish`,
     // `onPracticeResult`), the theme (`getTheme`, `onThemeChanged`), `showDiagnosticsLog`, `onOutcome` +
     // `onTelemetry`, `getFlags`, and the floating windows (`onHudView`, `hudPointer`,
     // `hudAction`, `hudDrag`, `onAnnounce`, `pickerChoose`, `pickerClose`, `onSettingsChanged`), and `sendAudioStarted`.
     // Kept in step with the README by the comment below.
-    const EXPECTED_API_METHODS = 84;
+    const EXPECTED_API_METHODS = 85;
     record(
       'preload exposes API',
       preloadProbe.hasApi

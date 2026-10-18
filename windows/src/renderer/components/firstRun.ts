@@ -1,4 +1,5 @@
 import { api } from '../api.js';
+import { voiceModelById } from '../../core/models/catalog.js';
 import { el, icon } from './dom.js';
 import { createLandingMark } from './landingMark.js';
 import { languagePicker } from './languagePicker.js';
@@ -45,6 +46,8 @@ const GLYPHS = {
 
 interface Flow {
   page: Page;
+  /** The Deepgram model the engine step shows and Continue applies. */
+  engineId: string;
   forced: boolean;
   /** Opened from Settings "Run setup again": it can be closed without finishing. */
   fromSettings: boolean;
@@ -100,6 +103,7 @@ function open(state: FirstRunStateDTO, fromSettings: boolean): void {
   const jump = step ? jumpFor(step) : null;
   flow = {
     page: jump?.page ?? 'welcome',
+    engineId: state.engineId,
     forced: state.forced,
     fromSettings,
     frozen: step !== null,
@@ -329,10 +333,21 @@ const KEY_MESSAGES = {
   saveFailed: "Couldn't save the key. Try again.",
 };
 
+/** Continue on an engine step: the model the page showed is applied before the next step. */
+async function continueFromEngine(): Promise<void> {
+  try {
+    await api.firstRunApplyEngine();
+  } catch {
+    // The model stays as it was; the next steps still work.
+  }
+  go('microphone');
+}
+
 function enginePage(): { node: HTMLElement; focus: () => void; announce: string; cleanup?: () => void } {
   const f = flow as Flow;
   const head = header(1, 'Choose how it listens');
-  const cardHost = el('div', { class: 'fr-card', role: 'group', 'aria-label': 'Deepgram Nova-3' } as never);
+  const engineName = `Deepgram ${voiceModelById(f.engineId)?.name ?? 'Nova-3'}`;
+  const cardHost = el('div', { class: 'fr-card', role: 'group', 'aria-label': engineName } as never);
   let focusTarget: HTMLElement | null = null;
 
   const drawCard = (): void => {
@@ -341,14 +356,14 @@ function enginePage(): { node: HTMLElement; focus: () => void; announce: string;
       el(
         'div',
         { class: 'fr-card-head' },
-        el('span', { class: 'fr-card-name' }, 'Deepgram Nova-3'),
+        el('span', { class: 'fr-card-name' }, engineName),
         el('span', { class: 'fr-card-tag' }, 'Selected'),
       ),
       el('p', { class: 'fr-card-sub' }, 'In the cloud. Fastest and most accurate.'),
       el('div', { class: 'fr-card-rule' }),
     ];
     if (connected) {
-      const next = el('button', { class: 'fr-card-btn', type: 'button', onclick: () => go('microphone') } as never, 'Continue');
+      const next = el('button', { class: 'fr-card-btn', type: 'button', onclick: () => void continueFromEngine() } as never, 'Continue');
       next.dataset.primary = '';
       const change = el(
         'button',
@@ -562,7 +577,7 @@ function enginePage(): { node: HTMLElement; focus: () => void; announce: string;
 function keyPage(): { node: HTMLElement; focus: () => void; announce: string } {
   const f = flow as Flow;
   const head = header(1, 'Connect Deepgram');
-  const next = primary('Continue', () => go('microphone'));
+  const next = primary('Continue', () => void continueFromEngine());
   const node = el(
     'div',
     {},

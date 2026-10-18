@@ -3,6 +3,9 @@
 // as the system's Now Playing app with play and pause handlers, and logs every command with a
 // wall-clock timestamp. It never produces audible sound.
 //
+// `--background` makes it a plain audio stream with no Now Playing registration and no
+// command handlers, like a call app holding an output stream open: nothing can pause it.
+//
 // Controlled over stdin, one word per line: `play`, `pause` (what a user would do), `quit`.
 // Build and run through `scripts/media-pause-e2e/run.sh`.
 import AVFoundation
@@ -11,7 +14,7 @@ import MediaPlayer
 
 let arguments = CommandLine.arguments
 guard let logIndex = arguments.firstIndex(of: "--log"), arguments.count > logIndex + 1 else {
-    FileHandle.standardError.write(Data("usage: player --log <file> [--paused]\n".utf8))
+    FileHandle.standardError.write(Data("usage: player --log <file> [--paused] [--background]\n".utf8))
     exit(2)
 }
 let logURL = URL(fileURLWithPath: arguments[logIndex + 1])
@@ -36,8 +39,10 @@ engine.attach(silence)
 engine.connect(silence, to: engine.mainMixerNode, format: format)
 
 var playing = false
+let isBackground = arguments.contains("--background")
 
 func publishNowPlaying() {
+    guard !isBackground else { return }
     MPNowPlayingInfoCenter.default().nowPlayingInfo = [
         MPMediaItemPropertyTitle: "Silent test track",
         MPMediaItemPropertyArtist: "media-pause-e2e",
@@ -64,24 +69,27 @@ func setPlaying(_ on: Bool, why: String) {
     log("STATE \(playing ? "playing" : "paused") (\(why))")
 }
 
-let center = MPRemoteCommandCenter.shared()
-center.playCommand.isEnabled = true
-center.pauseCommand.isEnabled = true
-center.togglePlayPauseCommand.isEnabled = true
-center.playCommand.addTarget { _ in
-    log("COMMAND play")
-    setPlaying(true, why: "remote play")
-    return .success
-}
-center.pauseCommand.addTarget { _ in
-    log("COMMAND pause")
-    setPlaying(false, why: "remote pause")
-    return .success
-}
-center.togglePlayPauseCommand.addTarget { _ in
-    log("COMMAND togglePlayPause")
-    setPlaying(!playing, why: "remote toggle")
-    return .success
+if !isBackground {
+    let center = MPRemoteCommandCenter.shared()
+    center.playCommand.isEnabled = true
+    center.pauseCommand.isEnabled = true
+    center.togglePlayPauseCommand.isEnabled = true
+    center.playCommand.addTarget { _ in
+        log("COMMAND play")
+        setPlaying(true, why: "remote play")
+        return .success
+    }
+    center.pauseCommand.addTarget { _ in
+        log("COMMAND pause")
+        setPlaying(false, why: "remote pause")
+        return .success
+    }
+    // Registered so a stray media key would be seen: the app must never send one.
+    center.togglePlayPauseCommand.addTarget { _ in
+        log("COMMAND togglePlayPause")
+        setPlaying(!playing, why: "remote toggle")
+        return .success
+    }
 }
 
 let app = NSApplication.shared

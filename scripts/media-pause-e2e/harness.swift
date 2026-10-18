@@ -26,10 +26,11 @@ final class Player {
     let logURL: URL
     private(set) var pid: Int32 = 0
 
-    init(playerPath: String, logURL: URL, startPaused: Bool) throws {
+    init(playerPath: String, logURL: URL, startPaused: Bool, background: Bool = false) throws {
         self.logURL = logURL
         process.executableURL = URL(fileURLWithPath: playerPath)
         process.arguments = ["--log", logURL.path] + (startPaused ? ["--paused"] : [])
+            + (background ? ["--background"] : [])
         process.standardInput = stdin
         try process.run()
         pid = process.processIdentifier
@@ -113,6 +114,11 @@ struct Harness {
         let only = arguments[3]
         try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
 
+        // A full run starts from clean player logs, so an old one cannot colour the checks.
+        if only == "all", let old = try? FileManager.default.contentsOfDirectory(at: outDir, includingPropertiesForKeys: nil) {
+            for url in old where url.lastPathComponent.hasPrefix("player-") { try? FileManager.default.removeItem(at: url) }
+        }
+
         // Never pause the owner's real media.
         let busy = outputting()
         if !busy.isEmpty {
@@ -128,7 +134,9 @@ struct Harness {
             ("D-user-plays-and-pauses-with-nothing-held", scenarioUserPlaysAndPauses),
             ("E-back-to-back", scenarioBackToBack),
             ("F-quit-while-paused", scenarioQuit),
-            ("G-media-key-fallback", scenarioMediaKeyFallback),
+            ("G-background-stream", scenarioBackgroundStream),
+            ("I-user-plays-then-pauses-again-mid-dictation", scenarioUserPlaysThenPausesAgain),
+            ("J-play-reaches-a-different-app", scenarioPlayReachesAnotherApp),
             ("H-latency-x10", scenarioLatency),
         ]
         for (name, run) in scenarios where only == "all" || only == name {
@@ -139,6 +147,13 @@ struct Harness {
             }
             note("--- \(name)")
             do { try run() } catch { record(name, "ran without an error", false, "\(error)") }
+        }
+        // The Play/Pause key toggles and is never used: no scenario may have seen one.
+        if only == "all", let logs = try? FileManager.default.contentsOfDirectory(at: outDir, includingPropertiesForKeys: nil) {
+            let toggles = logs.filter { $0.lastPathComponent.hasPrefix("player-") }
+                .filter { ((try? String(contentsOf: $0, encoding: .utf8)) ?? "").contains("togglePlayPause") }
+            record("all", "no Play/Pause key press reached any player", toggles.isEmpty,
+                   toggles.map(\.lastPathComponent).joined(separator: ", "))
         }
         write(outDir, skipped: [])
         let failed = checks.filter { !$0.passed }
@@ -262,7 +277,7 @@ struct Harness {
         policy.flush()
         Thread.sleep(forTimeInterval: 0.2)
         policy.recordingEnded()
-        Thread.sleep(forTimeInterval: 0.03)   // inside the resume grace
+        Thread.sleep(forTimeInterval: 0.3)    // inside the 400 ms resume grace
         policy.recordingStarted()
         Thread.sleep(forTimeInterval: 0.8)
         policy.flush()
@@ -291,22 +306,85 @@ struct Harness {
         record(s, "shutdown() resumed before returning", resumed && player.commands("play").count == 1, "took \(ms(took))")
     }
 
-    /// The system Pause command is made to do nothing, so the policy has to use the media key.
-    static func scenarioMediaKeyFallback() throws {
-        let s = "G-media-key-fallback"
+    /// A call app keeps its output stream open the whole time and cannot be paused. It must
+    /// stay untouched, and it must not stop the player from resuming.
+    static func scenarioBackgroundStream() throws {
+        let s = "G-background-stream"
+        let background = try Player(playerPath: Self.playerPath, logURL: logURL(s + "-background"),
+                                    startPaused: false, background: true)
+        defer { background.quit() }
         let player = try Player(playerPath: Self.playerPath, logURL: logURL(s), startPaused: false)
         defer { player.quit() }
-        let policy = makePolicy(diagnostics: Diagnostics(directory: nil), effects: IgnoresCommands(real: effects))
+        let diagnostics = Diagnostics(directory: nil)
+        let policy = makePolicy(diagnostics: diagnostics)
+        record(s, "both streams are outputting", outputting().contains { $0.pid == player.pid }
+               && outputting().contains { $0.pid == background.pid })
+
+        let t0 = Date().timeIntervalSince1970
         policy.recordingStarted()
-        let stopped = waitOutput(pid: player.pid, playing: false, timeout: 2)
+        let stopped = waitOutput(pid: player.pid, playing: false, timeout: 1.5)
         policy.flush()
-        record(s, "media key paused the player", stopped != nil && player.commands("togglePlayPause").count == 1,
-               "toggle commands \(player.commands("togglePlayPause").count)")
+        record(s, "the player was paused", stopped != nil && player.commands("pause").count == 1,
+               stopped.map { ms($0 - t0) } ?? "still outputting")
+        record(s, "the background stream kept outputting", outputting().contains { $0.pid == background.pid })
+        Thread.sleep(forTimeInterval: 0.8)   // a dictation, long enough for the 500 ms watch
         policy.recordingEnded()
-        let started = waitOutput(pid: player.pid, playing: true, timeout: 2.5)
+        let started = waitOutput(pid: player.pid, playing: true, timeout: 3)
         policy.flush()
-        record(s, "media key resumed the player", started != nil && player.commands("togglePlayPause").count == 2,
-               "toggle commands \(player.commands("togglePlayPause").count)")
+        record(s, "the player resumed although the background stream never stopped",
+               started != nil && player.commands("play").count == 1, "play \(player.commands("play").count)")
+        record(s, "the background stream was never touched", outputting().contains { $0.pid == background.pid })
+        note("diagnostics: " + diagnostics.entries().map { "[\($0.level.rawValue)] \($0.message)" }.joined(separator: " | "))
+    }
+
+    /// Held player, then the user plays it and pauses it again before the dictation ends.
+    /// The end looks quiet, but the 500 ms watch saw it, so nothing resumes.
+    static func scenarioUserPlaysThenPausesAgain() throws {
+        let s = "I-user-plays-then-pauses-again-mid-dictation"
+        let player = try Player(playerPath: Self.playerPath, logURL: logURL(s), startPaused: false)
+        defer { player.quit() }
+        let policy = makePolicy(diagnostics: Diagnostics(directory: nil))
+        policy.recordingStarted()
+        _ = waitOutput(pid: player.pid, playing: false, timeout: 1.5)
+        policy.flush()
+        player.send("play")
+        _ = waitOutput(pid: player.pid, playing: true, timeout: 1)
+        Thread.sleep(forTimeInterval: 1.2)   // the watch runs every 500 ms
+        player.send("pause")
+        _ = waitOutput(pid: player.pid, playing: false, timeout: 1)
+        policy.recordingEnded()
+        Thread.sleep(forTimeInterval: 1.0)
+        policy.flush()
+        record(s, "no play command from us", player.commands("play").isEmpty, "play commands: \(player.commands("play").count)")
+        record(s, "player left paused as the user left it", !outputting().contains { $0.pid == player.pid })
+    }
+
+    /// While the dictation ran, another app became the Now Playing app. Play then reaches that
+    /// app; the policy must pause it again rather than leave an unintended app playing. What
+    /// macOS does with the second app is observed, not assumed, so both outcomes are checked.
+    static func scenarioPlayReachesAnotherApp() throws {
+        let s = "J-play-reaches-a-different-app"
+        let player = try Player(playerPath: Self.playerPath, logURL: logURL(s), startPaused: false)
+        defer { player.quit() }
+        let policy = makePolicy(diagnostics: Diagnostics(directory: nil))
+        policy.recordingStarted()
+        _ = waitOutput(pid: player.pid, playing: false, timeout: 1.5)
+        policy.flush()
+        let other = try Player(playerPath: Self.playerPath, logURL: logURL(s + "-other"), startPaused: true)
+        defer { other.quit() }
+        policy.recordingEnded()
+        Thread.sleep(forTimeInterval: 2.0)
+        policy.flush()
+        let otherPlays = other.commands("play").count
+        if otherPlays > 0 {
+            record(s, "Play reached the other app, which was paused again", other.commands("pause").count >= 1
+                   && !outputting().contains { $0.pid == other.pid }, "other: play \(otherPlays), pause \(other.commands("pause").count)")
+            record(s, "nothing unintended is left playing", outputting().isEmpty)
+        } else {
+            record(s, "macOS kept the first app as Now Playing, so it resumed", player.commands("play").count == 1
+                   && outputting().contains { $0.pid == player.pid }, "first app play \(player.commands("play").count)")
+            note("note: the second app never became Now Playing here, so the undo path is covered by the unit tests only")
+        }
     }
 
     /// Ten dictations in a row on one player: the numbers the report quotes.
@@ -367,17 +445,4 @@ struct Harness {
         text += "\n\(checks.filter(\.passed).count) of \(checks.count) checks passed\n"
         try? text.write(to: outDir.appendingPathComponent("harness.log"), atomically: true, encoding: .utf8)
     }
-}
-
-/// Wraps the real effects but swallows the Pause and Play commands, as if macOS refused
-/// them, so the media-key fallback is the only way through.
-final class IgnoresCommands: MediaEffects, @unchecked Sendable {
-    let real: SystemMediaEffects
-    init(real: SystemMediaEffects) { self.real = real }
-    func outputtingPlayers() throws -> [MediaPlayerID] { try real.outputtingPlayers() }
-    func isAlive(_ player: MediaPlayerID) -> Bool { real.isAlive(player) }
-    func sendPause() throws {}
-    func sendPlay() throws {}
-    func sendPlayPauseKey() throws { try real.sendPlayPauseKey() }
-    func sleep(_ seconds: TimeInterval) { real.sleep(seconds) }
 }

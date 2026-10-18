@@ -1,22 +1,5 @@
-import AppKit
 import CoreAudio
 import Foundation
-
-public enum MediaEffectsError: Error, LocalizedError {
-    case mediaRemoteUnavailable(String)
-    case commandRefused(String)
-    case coreAudio(String, OSStatus)
-    case keyEventUnavailable
-
-    public var errorDescription: String? {
-        switch self {
-        case .mediaRemoteUnavailable(let detail): return "MediaRemote is unavailable: \(detail)"
-        case .commandRefused(let name): return "The system refused the \(name) command"
-        case .coreAudio(let what, let status): return "Core Audio \(what) failed (\(status))"
-        case .keyEventUnavailable: return "Could not build the media key event"
-        }
-    }
-}
 
 /// The real effects of `MediaPausePolicy`.
 ///
@@ -27,7 +10,8 @@ public enum MediaEffectsError: Error, LocalizedError {
 /// - Core Audio's process list (public API, macOS 14.2 and later) says which processes are
 ///   outputting audio, which is the detection and the check that a command had an effect.
 /// - MediaRemote's *send* function still delivers Pause and Play to the Now Playing app.
-/// - The Play/Pause media key is the fallback; it toggles, so the policy checks first.
+/// - The Play/Pause media key is NOT used: it toggles, and can start a paused Now Playing app
+///   while another process keeps an output stream open.
 public final class SystemMediaEffects: MediaEffects, @unchecked Sendable {
     private let ownPID = ProcessInfo.processInfo.processIdentifier
     private let mediaRemote = MediaRemoteLibrary()
@@ -38,6 +22,10 @@ public final class SystemMediaEffects: MediaEffects, @unchecked Sendable {
 
     public func outputtingPlayers() throws -> [MediaPlayerID] {
         var address = Self.address(kAudioHardwarePropertyProcessObjectList)
+        // macOS 14.0 and 14.1 have no process list: the policy turns the feature off once.
+        guard AudioObjectHasProperty(AudioObjectID(kAudioObjectSystemObject), &address) else {
+            throw MediaEffectsError.processListUnsupported
+        }
         var size: UInt32 = 0
         var status = AudioObjectGetPropertyDataSize(
             AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size)
@@ -67,22 +55,6 @@ public final class SystemMediaEffects: MediaEffects, @unchecked Sendable {
 
     public func sendPause() throws { try mediaRemote.send(.pause) }
     public func sendPlay() throws { try mediaRemote.send(.play) }
-
-    public func sendPlayPauseKey() throws {
-        // NX_KEYTYPE_PLAY, as a system-defined event (subtype 8): key down, then key up.
-        for isDown in [true, false] {
-            let flags = isDown ? 0xA00 : 0xB00
-            guard let event = NSEvent.otherEvent(
-                with: .systemDefined, location: .zero,
-                modifierFlags: NSEvent.ModifierFlags(rawValue: UInt(flags)),
-                timestamp: 0, windowNumber: 0, context: nil,
-                subtype: 8, data1: (16 << 16) | flags, data2: -1),
-                  let cgEvent = event.cgEvent else {
-                throw MediaEffectsError.keyEventUnavailable
-            }
-            cgEvent.post(tap: .cghidEventTap)
-        }
-    }
 
     public func sleep(_ seconds: TimeInterval) {
         Thread.sleep(forTimeInterval: seconds)

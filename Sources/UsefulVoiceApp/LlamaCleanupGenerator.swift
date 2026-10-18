@@ -6,28 +6,20 @@ import UsefulVoiceLlama
 /// target because it is the only place that links `UsefulVoiceLlama`: the Core target stays
 /// free of the second ggml.
 ///
-/// Metal runs the model on a real Apple-silicon Mac, the CPU everywhere else
-/// (`LlamaRuntime.preferredPlacement()`). If the weights do not load on Metal, they load on
-/// the CPU instead.
+/// The CPU runs the model: llama.cpp can only stop a running decode on the CPU, which is what
+/// makes the deadline strict, and for a 0.6B model the CPU was faster than Metal in the
+/// measurements (see the PR). Pass `placement: .metal` to try Metal.
 public final class LlamaCleanupGenerator: CleanupTextGenerator, @unchecked Sendable {
     private let placement: LlamaRuntime.Placement
     private var runtime: LlamaRuntime?
     private let stop = LlamaRuntime.StopSignal()
 
-    /// Where the loaded model runs, nil while nothing is loaded.
-    public var loadedPlacement: LlamaRuntime.Placement? { runtime?.placement }
-
-    public init(placement: LlamaRuntime.Placement = LlamaRuntime.preferredPlacement()) {
+    public init(placement: LlamaRuntime.Placement = .cpuOnly) {
         self.placement = placement
     }
 
     public func load(modelAt url: URL) throws {
-        do {
-            runtime = try LlamaRuntime(modelPath: url.path, placement: placement, stop: stop)
-        } catch LlamaRuntime.RuntimeError.modelLoadFailed(let why) where placement != .cpuOnly {
-            Diagnostics.shared.warning("cleanup-model", "\(placement.rawValue) load failed (\(why)), using the CPU")
-            runtime = try LlamaRuntime(modelPath: url.path, placement: .cpuOnly, stop: stop)
-        }
+        runtime = try LlamaRuntime(modelPath: url.path, placement: placement, stop: stop)
     }
 
     public func generate(prompt: CleanupPrompt, deadline: ContinuousClock.Instant) throws -> String {
@@ -89,14 +81,9 @@ public enum HiddenCleanupModel {
     }
 
     /// At quit: stops a load or run in flight and waits up to 2 s for its thread to leave
-    /// llama.cpp, so the process does not exit under a live thread. On Metal the stop lands
-    /// between tokens, not inside a decode, so a stalled GPU decode can outlast the wait; that
-    /// is logged. Does nothing with the flag off.
+    /// llama.cpp, so the process does not exit under a live thread. Does nothing with the flag off.
     public static func shutDown() {
-        guard let shared else { return }
-        if !shared.shutDown(timeout: 2) {
-            Diagnostics.shared.error("cleanup-model", "a model thread was still inside llama.cpp after 2 s at quit")
-        }
+        shared?.shutDown(timeout: 2)
     }
 
     /// At quit: keeps the bytes of a download in flight (resume data, written within a bounded

@@ -160,10 +160,9 @@ struct LlamaWhisperCoexistenceTests {
         #expect(try controlCount(evil) == controlCount(plain))
     }
 
-    /// On the CPU and on the placement the app picks here (Metal on a real Apple-silicon Mac).
-    @Test(.timeLimit(.minutes(5)), arguments: Array(Set([LlamaRuntime.Placement.cpuOnly, LlamaRuntime.preferredPlacement()])))
-    func aPassedDeadlineStopsTheRun(placement: LlamaRuntime.Placement) throws {
-        let runtime = try LlamaRuntime(modelPath: s1, placement: placement)
+    @Test(.timeLimit(.minutes(5)))
+    func aPassedDeadlineStopsTheRun() throws {
+        let runtime = try LlamaRuntime(modelPath: s1)
         #expect(throws: LlamaRuntime.RuntimeError.deadlineExceeded) {
             try runtime.complete(prompt: prompt(cardInput), deadline: .now.advanced(by: .milliseconds(-1)))
         }
@@ -173,7 +172,7 @@ struct LlamaWhisperCoexistenceTests {
         #expect(throws: LlamaRuntime.RuntimeError.deadlineExceeded) {
             try runtime.complete(prompt: prompt(cardInput), deadline: .now.advanced(by: .milliseconds(5)))
         }
-        print("COEXIST \(placement.rawValue) 5 ms deadline stopped the run after \(ms(started.duration(to: .now))) ms")
+        print("COEXIST 5 ms deadline stopped the run after \(ms(started.duration(to: .now))) ms")
         // The runtime is still usable afterwards.
         let ok = try runtime.complete(prompt: prompt(cardInput), deadline: .now.advanced(by: .seconds(60)))
         #expect(!ok.text.isEmpty)
@@ -214,27 +213,6 @@ struct LlamaWhisperCoexistenceTests {
         #expect(stoppedMs < fullMs * 0.6)
     }
 
-    /// The quit path on the placement the app picks here (Metal on a real Apple-silicon Mac,
-    /// where llama.cpp cannot abort inside a decode): `shutDown(timeout: 2)` during a run of a
-    /// prompt near the 1,536 token cap must see the model thread leave llama.cpp within the wait.
-    @Test(.timeLimit(.minutes(5)))
-    func aQuitDuringALongRunEndsWithinTheWait() async throws {
-        let generator = LlamaCleanupGenerator()
-        let model = LocalCleanupModel(modelURL: URL(fileURLWithPath: s1), generator: generator, idleUnloadAfter: .seconds(600))
-        await model.begin()
-        await model.waitForLoad()
-        try #require(await model.isLoaded)
-        let text = (1...78).map { "item \($0) goes to room \($0 + 100) and costs \($0 * 3) dollars." }.joined(separator: " ")
-        let run = Task { await model.clean(text, controlLine: control, deadline: .now.advanced(by: .seconds(60))) }
-        try await Task.sleep(for: .milliseconds(150))
-        let started = ContinuousClock.now
-        let left = model.shutDown(timeout: 2)
-        let tookMs = ms(started.duration(to: .now))
-        print("COEXIST quit 150 ms into a long \(String(describing: generator.loadedPlacement)) run: thread left=\(left) after \(tookMs) ms")
-        #expect(left)
-        #expect(await run.value == nil)
-    }
-
     @Test(.timeLimit(.minutes(5)))
     func pipelineWithTheRealModel() async throws {
         let generator = LlamaCleanupGenerator()
@@ -242,7 +220,6 @@ struct LlamaWhisperCoexistenceTests {
         await model.begin()
         await model.waitForLoad()
         #expect(await model.isLoaded)
-        print("COEXIST pipeline placement \(String(describing: generator.loadedPlacement)) (preferred here: \(LlamaRuntime.preferredPlacement()))")
         let gates = CleanupPipeline.Gates(flagOn: true, modelInstalled: true, physicalMemoryBytes: 16 << 30)
         let result = await CleanupPipeline.run(
             raw: cardInput, language: "en", category: nil, style: nil,
@@ -259,7 +236,7 @@ struct LlamaWhisperCoexistenceTests {
     }
 
     /// Not an assertion test: the numbers the PR quotes. CPU first, then Metal (which may not
-    /// start on a virtual runner). The placement the app picks here is printed first. Resident memory is the whole test process, with whisper's
+    /// start on a virtual runner). Resident memory is the whole test process, with whisper's
     /// tiny model loaded too in the "with whisper" rows.
     @Test(.timeLimit(.minutes(10)))
     func measure() throws {
@@ -271,12 +248,7 @@ struct LlamaWhisperCoexistenceTests {
             "can you open the file source slash app dot ts and rename the function get user to fetch user",
         ]
         print("MEASURE baseline \(memoryMB())")
-        let preferred = LlamaRuntime.preferredPlacement()
-        print("MEASURE preferred placement \(preferred.rawValue)")
-        // The five dictations on Metal and the Metal abort probes below run only where the app
-        // uses Metal: on CI's virtual Mac they took about 4.5 of the 10 minutes this test has.
-        let placements: [LlamaRuntime.Placement] = preferred == .metal ? [.cpuOnly, .metal] : [.cpuOnly]
-        for (placement, repeats) in placements.map({ ($0, 1) }) {
+        for (placement, repeats) in [(LlamaRuntime.Placement.cpuOnly, 1)] {
             let label = placement.rawValue
             do {
                 let t0 = ContinuousClock.now
@@ -326,21 +298,5 @@ struct LlamaWhisperCoexistenceTests {
         } catch {
             print("MEASURE metal failed: \(error)")
         }
-        // Does a deadline stop a Metal run before its first token? A prompt of about 900 tokens,
-        // then one near the 1,536 token cap, each run once in full, then with the deadline at a
-        // quarter of its time to the first token. (On Metal `llama_decode` returns before the
-        // GPU is done; the wait is in sampling.)
-        for items in preferred == .metal ? [45, 78] : [] { do {
-            let runtime = try LlamaRuntime(modelPath: s1, placement: .metal)
-            let long = prompt((1...items).map { "item \($0) goes to room \($0 + 100) and costs \($0 * 3) dollars." }.joined(separator: " "))
-            let full = try runtime.complete(prompt: long, deadline: .now.advanced(by: .seconds(120)))
-            let cut = Duration.milliseconds(Int(full.stats.prefillSeconds * 250))
-            let t = ContinuousClock.now
-            var outcome = "finished"
-            do { _ = try runtime.complete(prompt: long, deadline: .now.advanced(by: cut)) } catch { outcome = "\(error)" }
-            print("MEASURE metal abort: prompt \(full.stats.promptTokens) tokens, first token after \(full.stats.prefillSeconds * 1000) ms (native prompt \(full.stats.nativePromptMs) ms), whole run \(full.stats.totalSeconds * 1000) ms; deadline at \(ms(cut)) ms -> \(outcome) after \(ms(t.duration(to: .now))) ms")
-        } catch {
-            print("MEASURE metal abort failed: \(error)")
-        } }
     }
 }

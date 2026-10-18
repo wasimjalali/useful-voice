@@ -1,6 +1,6 @@
 # S1-mini on macOS: runtime choice, memory and latency (2026-10-16)
 
-The same harness on a real Apple M4: `2026-10-16-s1-mini-macos-m4-local.md` (CPU still about 2x over the deadline, Metal about 20x faster). The app now picks Metal there and keeps the CPU on virtual Macs like this runner: `2026-10-16-s1-mini-macos-metal.md`.
+The same harness on a real Apple M4: `2026-10-16-s1-mini-macos-m4-local.md` (CPU still about 2x over the deadline, Metal about 20x faster).
 
 ## Question
 

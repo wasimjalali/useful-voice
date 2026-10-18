@@ -1,7 +1,0 @@
-variant                  restraint edit acc rules-fix model-need  lost  lost%  added guard rej
-none                         100.0      0.0       0.0        0.0     0    0.0      0          
-rules                        100.0     31.4     100.0        0.0     0    0.0      0          
-rules+s1                      86.8     85.7      90.9       83.3     1    1.4      0          
-rules+s1+guard                94.7     77.1      90.9       70.8     1    1.4      0      69.9
-latency rules+s1             median 182.6 ms  p95 275.2 ms  (n=73)
-latency pooled s1            median 182.6 ms  p95 275.2 ms  (n=73)

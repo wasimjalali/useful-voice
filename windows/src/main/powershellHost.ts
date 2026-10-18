@@ -116,10 +116,12 @@ export interface RunOptions {
    */
   signal?: AbortSignal;
   /**
-   * Asked right before the request is written, after any wait in the queue. False rejects
-   * it as `aborted` without writing: the world changed while it waited.
+   * Called when the request reaches the front of the queue, right before it is written, and
+   * returns the script to send, or false to refuse. It may be asynchronous: the queue holds
+   * still while it runs, so nothing else is written meanwhile. A refusal rejects the request
+   * as `aborted` without writing it: the world changed while it waited. A throw is a refusal.
    */
-  beforeWrite?: () => boolean;
+  prepare?: () => string | false | Promise<string | false>;
 }
 
 interface Pending {
@@ -128,7 +130,7 @@ interface Pending {
   resolve: (output: string) => void;
   reject: (error: PowerShellHostError) => void;
   signal?: AbortSignal;
-  beforeWrite?: () => boolean;
+  prepare?: () => string | false | Promise<string | false>;
   /** Limit on the run, counted from the moment the request is written. */
   timeoutMs: number;
   /** Removes the abort listener a queued request holds. */
@@ -159,6 +161,8 @@ export class PowerShellHost {
   private starting: Promise<boolean> | null = null;
   /** True from the moment a launch begins, including its synchronous first part. */
   private launching = false;
+  /** A request's `prepare` is running: nothing else may be written until it answers. */
+  private preparing = false;
   private deaths: number[] = [];
 
   constructor(private readonly options: PowerShellHostOptions) {
@@ -220,7 +224,7 @@ export class PowerShellHost {
         resolve,
         reject,
         signal: options.signal,
-        beforeWrite: options.beforeWrite,
+        prepare: options.prepare,
         timeoutMs,
         detach: null,
         timer: null,
@@ -330,17 +334,69 @@ export class PowerShellHost {
   // ---- the queue ---------------------------------------------------------
 
   private pump(): void {
-    if (this.state !== 'ready' || this.current) return;
+    if (this.state !== 'ready' || this.current || this.preparing) return;
     while (this.queue.length > 0) {
       const next = this.queue.shift() as Pending;
-      if (next.signal?.aborted || (next.beforeWrite && !next.beforeWrite())) {
-        this.settle(next);
-        next.reject(new PowerShellHostError('aborted', 'aborted before it was sent', false));
+      if (next.signal?.aborted) {
+        this.refuse(next);
         continue;
+      }
+      if (next.prepare) {
+        let prepared: string | false | Promise<string | false>;
+        try {
+          prepared = next.prepare();
+        } catch {
+          prepared = false;
+        }
+        if (typeof prepared !== 'string' && prepared !== false) {
+          this.preparing = true;
+          void this.finishPrepare(next, prepared, this.generation);
+          return;
+        }
+        if (prepared === false) {
+          this.refuse(next);
+          continue;
+        }
+        next.script = prepared;
       }
       this.write(next);
       return;
     }
+  }
+
+  /** The asynchronous half of `pump`: wait for `prepare`, then write, refuse or wait for a restart. */
+  private async finishPrepare(next: Pending, answer: Promise<string | false>, generation: number): Promise<void> {
+    let prepared: string | false;
+    try {
+      prepared = await answer;
+    } catch {
+      prepared = false;
+    }
+    this.preparing = false;
+    if (next.signal?.aborted || prepared === false) {
+      this.refuse(next);
+      this.pump();
+      return;
+    }
+    if (this.state === 'disabled' || this.state === 'disposed') {
+      this.settle(next);
+      next.reject(new PowerShellHostError('unavailable', 'the PowerShell host is not available', false));
+      return;
+    }
+    if (generation !== this.generation || this.state !== 'ready' || this.current) {
+      // The host died during the check (even if a new process is already up). It keeps its
+      // place and is prepared again on the new process: what it learned may be stale.
+      this.queue.unshift(next);
+      this.pump();
+      return;
+    }
+    next.script = prepared;
+    this.write(next);
+  }
+
+  private refuse(pending: Pending): void {
+    this.settle(pending);
+    pending.reject(new PowerShellHostError('aborted', 'aborted before it was sent', false));
   }
 
   private write(pending: Pending): void {

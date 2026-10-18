@@ -16,8 +16,14 @@
 /** Reading which window is in front (the HUD label and the language picker; not delivery). */
 export const FOREGROUND_QUERY_TIMEOUT_MS = 2500;
 
-/** Sending Ctrl+V once the request is written, per attempt. */
+/** Sending Ctrl+V once the request is written to the warm host. */
 export const PASTE_KEYSTROKE_TIMEOUT_MS = 2500;
+
+/**
+ * The same through a one-shot process, the fallback when there is no host: a cold
+ * powershell.exe, the C# compile and the clipboard read take far longer than a warm host.
+ */
+export const PASTE_ONE_SHOT_TIMEOUT_MS = 8000;
 
 /** How long a cold PowerShell host may take to compile its types and answer. */
 export const HOST_STARTUP_TIMEOUT_MS = 20_000;
@@ -26,11 +32,11 @@ export const HOST_STARTUP_TIMEOUT_MS = 20_000;
 const CLIPBOARD_WORK_MS = 500;
 
 /**
- * The longest a sink can legitimately run after its request is written: the keystroke's
- * own budget plus the clipboard work. A written request is never retried elsewhere, so
- * this is counted once.
+ * The longest a sink can legitimately run after its request is written: the slower of the
+ * two budgets (a one-shot process) plus the clipboard work. A written request is never
+ * retried elsewhere, so this is counted once.
  */
-export const WRITTEN_DELIVERY_MAX_MS = PASTE_KEYSTROKE_TIMEOUT_MS + CLIPBOARD_WORK_MS;
+export const WRITTEN_DELIVERY_MAX_MS = Math.max(PASTE_KEYSTROKE_TIMEOUT_MS, PASTE_ONE_SHOT_TIMEOUT_MS) + CLIPBOARD_WORK_MS;
 
 /**
  * The longest a delivery can take end to end: a request that waits out a cold host start

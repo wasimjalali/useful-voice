@@ -3,6 +3,7 @@ import {
   hasRestorableContent,
   hasUnrestorableFormat,
   mayRestoreAfterCancel,
+  sameClipboardText,
   restoreSnapshotTo,
   type ClipboardContents,
   type ClipboardPort,
@@ -139,5 +140,17 @@ describe('restoreSnapshotTo', () => {
     const { port, state } = fakeClipboard();
     expect(restoreSnapshotTo(port, clipboard({ text: '' }), 'the dictation')).toBe('nothing-to-restore');
     expect(state.text).toBe('the dictation');
+  });
+});
+
+describe('sameClipboardText', () => {
+  it('treats CRLF and LF alike, in either direction', () => {
+    expect(sameClipboardText('one\r\ntwo', 'one\ntwo')).toBe(true);
+    expect(sameClipboardText('one\ntwo', 'one\r\ntwo')).toBe(true);
+  });
+
+  it('tells a changed clipboard apart, including a trailing newline', () => {
+    expect(sameClipboardText('one', 'one\n')).toBe(false);
+    expect(sameClipboardText('something newer', 'one')).toBe(false);
   });
 });

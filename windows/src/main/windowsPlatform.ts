@@ -8,15 +8,17 @@ import {
   FOREGROUND_QUERY_TIMEOUT_MS,
   HOST_STARTUP_TIMEOUT_MS,
   PASTE_KEYSTROKE_TIMEOUT_MS,
+  PASTE_ONE_SHOT_TIMEOUT_MS,
 } from '../core/delivery/timing.js';
-import type { KeystrokeRequest, KeystrokeResult } from '../core/delivery/pasteFlow.js';
-import { runHosted as runHostedWith, sendPasteKeystroke, type OneShotRunner } from './keystroke.js';
+import type { ClipboardState, KeystrokeRequest, KeystrokeResult } from '../core/delivery/pasteFlow.js';
+import { FOREGROUND_TYPE, runHosted as runHostedWith, sendPasteKeystroke, type OneShotRunner } from './keystroke.js';
 import { PowerShellHost, PowerShellHostError, hostArguments } from './powershellHost.js';
 // The delivery policy's view of a window: the same identity (process + handle) with
 // the title the UI needs on top, so window info can be handed straight to the policy.
 import {
   hasUnrestorableFormat,
   restoreSnapshotTo,
+  sameClipboardText,
   type PasteTarget,
   type RestoreOutcome,
 } from '../core/delivery/clipboardRestore.js';
@@ -59,27 +61,13 @@ export interface ForegroundWindowInfo extends PasteTarget {
  */
 export function pasteClipboard(request: KeystrokeRequest): Promise<KeystrokeResult> {
   return sendPasteKeystroke(
-    { host, oneShot: runOneShot, oneShotPrelude: ONE_SHOT_PRELUDE(), timeoutMs: PASTE_KEYSTROKE_TIMEOUT_MS },
+    { host, oneShot: runOneShot, oneShotPrelude: ONE_SHOT_PRELUDE(), timeouts: { hostMs: PASTE_KEYSTROKE_TIMEOUT_MS, oneShotMs: PASTE_ONE_SHOT_TIMEOUT_MS } },
     { ...request, ownPid: process.pid },
   );
 }
 
 /** What a one-shot process needs before the paste body: the types and the shell object. */
 const ONE_SHOT_PRELUDE = (): string => FOREGROUND_TYPE + '\n$uvShell = New-Object -ComObject WScript.Shell\n';
-
-/** The C# behind `foregroundWindow`, compiled once in the host and per call in a one-shot process. */
-const FOREGROUND_TYPE = `
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class UvForeground {
-  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr hWnd);
-  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
-  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
-}
-"@
-`;
 
 const FOREGROUND_BODY = `
 $h = [UvForeground]::GetForegroundWindow()
@@ -189,6 +177,7 @@ export async function playCue(kind: 'start' | 'stop' | 'error'): Promise<void> {
       // The one-shot process dies with the script, so it has to wait for the sound.
       `(New-Object Media.SoundPlayer '${quoted}').PlaySync()`,
       // A cue that takes longer than this is not feedback any more.
+      2000,
       2000,
     );
   } catch {
@@ -312,12 +301,17 @@ export function restoreClipboard(snapshot: ClipboardSnapshot, dictationText: str
   return restoreSnapshotTo(clipboard, snapshot, dictationText);
 }
 
-/** Whether the clipboard still holds exactly what we put there. */
-export function clipboardHoldsText(expected: string): boolean {
+/**
+ * Whether the clipboard still holds exactly what we put there: `holds`, `changed`, or
+ * `unreadable` when another app has the clipboard open and the read throws. Line endings
+ * are compared as LF on both sides, because Windows may hand back CRLF for what was written
+ * as LF.
+ */
+export function clipboardState(expected: string): ClipboardState {
   try {
-    return clipboard.readText() === expected;
+    return sameClipboardText(clipboard.readText(), expected) ? 'holds' : 'changed';
   } catch {
-    return false;
+    return 'unreadable';
   }
 }
 
@@ -378,8 +372,13 @@ export function appVersion(): string {
 }
 
 /** Run a script in the PowerShell host, or in a one-shot process when there is none. */
-function runHosted(hostScript: string, oneShotScript: string, timeoutMs: number): Promise<string> {
-  return runHostedWith(host, runOneShot, hostScript, oneShotScript, timeoutMs);
+function runHosted(
+  hostScript: string,
+  oneShotScript: string,
+  hostMs: number,
+  oneShotMs: number = PASTE_ONE_SHOT_TIMEOUT_MS,
+): Promise<string> {
+  return runHostedWith(host, runOneShot, hostScript, oneShotScript, { hostMs, oneShotMs });
 }
 
 /**

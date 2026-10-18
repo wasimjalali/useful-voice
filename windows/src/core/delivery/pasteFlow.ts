@@ -17,9 +17,13 @@ import { DELIVERY_TIMED_OUT } from './timing.js';
  *  - After that point the previous clipboard is never put back: nothing proves the target
  *    consumed Ctrl+V, and one that stalls would paste the old clipboard instead of the
  *    dictation. The dictation stays on the clipboard.
- *  - The port re-checks everything at the moment it writes (and the script re-checks the
- *    foreground process and the clipboard hash just before SendKeys), because the world
- *    changes while a request waits.
+ *  - Once the dictation has been written, no path writes it again without first checking
+ *    that the clipboard still holds it: a newer copy by the person is never overwritten.
+ *    If it is gone the delivery ends as "not pasted" and the newer copy stays.
+ *  - Permission is just-in-time. Everything that decides whether the key may go (the
+ *    clipboard, which window is in front, whether a text field of ours has focus) is asked
+ *    again by `authorize` when the request reaches the front of the queue, and the script
+ *    asks the clipboard and the foreground process once more right before SendKeys.
  */
 
 export interface PasteFlowRequest {
@@ -37,6 +41,8 @@ export interface PasteFlowResult {
   cancelled?: boolean;
   /** Nothing was sent because the clipboard no longer held the dictation. */
   clipboardChanged?: boolean;
+  /** Nothing was sent because the clipboard could not be read (another app holds it). */
+  clipboardUnreadable?: boolean;
 }
 
 /**
@@ -45,27 +51,41 @@ export interface PasteFlowResult {
  *  - `indeterminate`: the request was written or a process was started, and it ended some
  *    other way (abort, timeout, script error, process exit). The key may have gone out.
  *  - `failed`: it never started (no PowerShell at all). Proven unsent.
- *  - `blocked`: the signal aborted or `canSend` refused while it still waited. Proven unsent.
- *  - `blocked-own` / `blocked-clipboard`: the script itself refused just before SendKeys
- *    because our own window was in front, or the clipboard no longer held the dictation.
- *    Proven unsent.
+ *  - `blocked`: the signal aborted or `authorize` refused while it still waited. Proven unsent.
+ *  - `blocked-own` / `blocked-clipboard` / `blocked-unreadable`: the script itself refused
+ *    just before SendKeys. Proven unsent.
  */
-export type KeystrokeResult = 'sent' | 'indeterminate' | 'failed' | 'blocked' | 'blocked-own' | 'blocked-clipboard';
+export type KeystrokeResult =
+  | 'sent'
+  | 'indeterminate'
+  | 'failed'
+  | 'blocked'
+  | 'blocked-own'
+  | 'blocked-clipboard'
+  | 'blocked-unreadable';
+
+/** `false` refuses; otherwise whether the script may skip its own-process guard. */
+export type Authorization = false | { allowOwnWindow: boolean };
 
 export interface KeystrokeRequest {
   text: string;
   signal?: AbortSignal;
-  /** Asked at the moment the request is written; false means nothing may be sent. */
-  canSend: () => boolean;
-  /** The dictation started in our window, so the script lets it paste into our own process. */
-  allowOwnWindow: boolean;
+  /**
+   * Asked when the request reaches the front of the queue, immediately before it is
+   * written. The script is built from the answer, so the own-process guard is lifted only
+   * for a check that has just passed.
+   */
+  authorize: () => Authorization | Promise<Authorization>;
 }
+
+export type ClipboardState = 'holds' | 'changed' | 'unreadable';
 
 export interface PasteFlowPorts<S extends ClipboardContents> {
   writeText(text: string): void;
   snapshot(): S;
   restore(snapshot: S, dictationText: string): RestoreOutcome;
-  holdsText(text: string): boolean;
+  /** Whether the clipboard still holds exactly this text. A read that fails is `unreadable`. */
+  clipboardState(text: string): ClipboardState;
   pasteKeystroke(request: KeystrokeRequest): Promise<KeystrokeResult>;
   /** One of our own windows has focus right now. A synchronous read. */
   ownWindowInFront(): boolean;
@@ -85,6 +105,31 @@ export async function deliverText<S extends ClipboardContents>(
   const startedInOwnWindow = request.startedInOwnWindow === true;
   const aborted = (): boolean => signal?.aborted === true;
   const timedOut = (): boolean => signal?.reason === DELIVERY_TIMED_OUT;
+  /** The dictation has been written to the clipboard by this delivery. */
+  let written = false;
+
+  const notPasted = (state: 'changed' | 'unreadable'): PasteFlowResult => {
+    ports.log('delivery', state === 'changed' ? 'not pasted: the clipboard changed' : 'not pasted: the clipboard is in use');
+    return state === 'changed'
+      ? { delivered: false, clipboardFallback: false, clipboardChanged: true }
+      : { delivered: false, clipboardFallback: false, clipboardUnreadable: true };
+  };
+
+  /**
+   * Leave the dictation on the clipboard and say it is copied. Before the dictation was
+   * written that means writing it. After, it means checking that it is still there: if
+   * the clipboard changed, the newer copy stays and nothing is claimed.
+   */
+  const leaveOnClipboard = (): PasteFlowResult => {
+    if (written) {
+      const state = ports.clipboardState(text);
+      if (state !== 'holds') return notPasted(state);
+    } else {
+      ports.writeText(text);
+      written = true;
+    }
+    return { delivered: false, clipboardFallback: true };
+  };
 
   /**
    * Stop before the keystroke (proven unsent). A timeout is reported by the service as
@@ -94,11 +139,10 @@ export async function deliverText<S extends ClipboardContents>(
    * and worth restoring.
    */
   const stopBeforePaste = (snapshot: S | null): PasteFlowResult => {
-    if (timedOut()) {
-      ports.writeText(text);
-      return { delivered: false, clipboardFallback: true };
+    if (timedOut()) return leaveOnClipboard();
+    if (snapshot && mayRestoreAfterCancel(snapshot, ports.clipboardState(text) === 'holds')) {
+      ports.restore(snapshot, text);
     }
-    if (snapshot && mayRestoreAfterCancel(snapshot, ports.holdsText(text))) ports.restore(snapshot, text);
     return { delivered: false, clipboardFallback: false, cancelled: true };
   };
 
@@ -113,58 +157,61 @@ export async function deliverText<S extends ClipboardContents>(
 
   const copyBecauseOwnWindow = (why: string): PasteFlowResult => {
     // One of our windows is in front and a paste would land nowhere useful (the person
-    // stopped from the dock, or no text field has focus). Leave it on the clipboard.
+    // stopped from the dock, or no text field has focus).
     ports.log('delivery', `${why}; copied instead of pasting`);
-    ports.writeText(text);
-    return { delivered: false, clipboardFallback: true };
+    return leaveOnClipboard();
   };
 
-  // Our own window in front. A dictation started elsewhere is copied. One that started in
-  // our window pastes only into a focused text field; a button, the page, a password box
-  // or the language picker would swallow the keystroke.
-  let ownFieldChecked = false;
-  if (ports.ownWindowInFront()) {
-    if (!startedInOwnWindow) return copyBecauseOwnWindow('Useful Voice is in front');
-    ownFieldChecked = await ports.ownFieldAcceptsPaste();
-    if (aborted()) return stopBeforePaste(null);
-    if (!ownFieldChecked) return copyBecauseOwnWindow('no text field of Useful Voice has focus');
-  }
+  // A dictation that began elsewhere is copied as soon as one of our windows is in front.
+  if (!startedInOwnWindow && ports.ownWindowInFront()) return copyBecauseOwnWindow('Useful Voice is in front');
 
   const snapshot = ports.snapshot();
   ports.writeText(text);
+  written = true;
 
   if (aborted()) return stopBeforePaste(snapshot);
 
   // Why the port was last refused, so a `blocked` answer can be told apart.
-  const refusal: { reason: 'own' | 'clipboard' | null } = { reason: null };
-  const canSend = (): boolean => {
-    if (ports.ownWindowInFront() && !(startedInOwnWindow && ownFieldChecked)) {
+  const refusal: { reason: 'own' | 'clipboard' | 'unreadable' | null } = { reason: null };
+  const authorize = async (): Promise<Authorization> => {
+    // The clipboard first: if the person's newer copy is there, nothing else matters.
+    const state = ports.clipboardState(text);
+    if (state !== 'holds') {
+      refusal.reason = state === 'changed' ? 'clipboard' : 'unreadable';
+      return false;
+    }
+    if (!ports.ownWindowInFront()) return { allowOwnWindow: false };
+    // One of our windows is in front. Only a dictation that began in our window may paste
+    // there, and only into a text field that has focus right now.
+    if (!startedInOwnWindow || !(await ports.ownFieldAcceptsPaste())) {
       refusal.reason = 'own';
       return false;
     }
-    if (!ports.holdsText(text)) {
-      refusal.reason = 'clipboard';
+    // The check took time: the clipboard and the window may have moved again.
+    const after = ports.clipboardState(text);
+    if (after !== 'holds') {
+      refusal.reason = after === 'changed' ? 'clipboard' : 'unreadable';
       return false;
     }
-    return true;
+    return { allowOwnWindow: ports.ownWindowInFront() };
   };
 
-  const keystroke = await ports.pasteKeystroke({ text, signal, canSend, allowOwnWindow: startedInOwnWindow });
+  const keystroke = await ports.pasteKeystroke({ text, signal, authorize });
 
   if (keystroke === 'sent' || keystroke === 'indeterminate') {
     // The key may have gone out, so this is delivered whatever the signal says now: no
     // cancel, no "Press Ctrl+V", no restore. The dictation stays on the clipboard.
     return { delivered: true, clipboardFallback: false };
   }
-  if (keystroke === 'failed') return { delivered: false, clipboardFallback: true };
 
-  // Blocked, so nothing was sent. A cancel or timeout wins over the reason it was blocked.
+  // Everything else is proven unsent. A cancel or timeout wins over the reason.
   if (aborted()) return stopBeforePaste(snapshot);
+  if (keystroke === 'failed') return leaveOnClipboard();
   if (keystroke === 'blocked-clipboard' || (keystroke === 'blocked' && refusal.reason === 'clipboard')) {
-    // The person (or another app) copied something after the dictation was written. Their
-    // newer copy is left alone and nothing is claimed: the caller reports an error.
-    ports.log('delivery', 'not pasted: the clipboard changed while waiting');
-    return { delivered: false, clipboardFallback: false, clipboardChanged: true };
+    return notPasted('changed');
+  }
+  if (keystroke === 'blocked-unreadable' || (keystroke === 'blocked' && refusal.reason === 'unreadable')) {
+    return notPasted('unreadable');
   }
   return copyBecauseOwnWindow('Useful Voice came to the front');
 }

@@ -235,20 +235,114 @@ describe('PowerShellHost', () => {
     expect(child.written.map((entry) => entry.script)).toEqual([SETUP, 'hung']);
   });
 
-  it('does not write a request whose beforeWrite check refuses', async () => {
+  it('does not write a request whose prepare step refuses', async () => {
     const { host, children } = makeHost();
     await host.start();
     const child = children[0] as FakeChild;
     child.onRequest = () => undefined;
     let allowed = true;
     const slow = host.run('slow');
-    const paste = host.run('paste', { beforeWrite: () => allowed }).catch((e: unknown) => e);
+    const paste = host.run('paste', { prepare: () => (allowed ? 'paste' : false) }).catch((e: unknown) => e);
     await vi.advanceTimersByTimeAsync(0);
     allowed = false;
     child.reply(child.written[1]?.id as string, 'done');
     await slow;
     expect(await paste).toMatchObject({ kind: 'aborted', sent: false });
     expect(child.written.map((entry) => entry.script)).toEqual([SETUP, 'slow']);
+  });
+
+  it('writes the script that prepare returns, not the one it was given', async () => {
+    const { host, children } = makeHost();
+    await host.start();
+    const child = children[0] as FakeChild;
+    const answer = await host.run('original', { prepare: () => 'prepared' });
+    expect(answer).toBe('ran:prepared');
+    expect(child.written.map((entry) => entry.script)).toEqual([SETUP, 'prepared']);
+  });
+
+  it('holds the queue still while an asynchronous prepare runs', async () => {
+    const { host, children } = makeHost();
+    await host.start();
+    const child = children[0] as FakeChild;
+    let release: (script: string | false) => void = () => undefined;
+    const first = host.run('first', {
+      prepare: () => new Promise<string | false>((resolve) => (release = resolve)),
+    });
+    const second = host.run('second');
+    await vi.advanceTimersByTimeAsync(50);
+    // Nothing is written while the first request is still being checked.
+    expect(child.written.map((entry) => entry.script)).toEqual([SETUP]);
+    release('first, checked');
+    expect(await first).toBe('ran:first, checked');
+    expect(await second).toBe('ran:second');
+    expect(child.written.map((entry) => entry.script)).toEqual([SETUP, 'first, checked', 'second']);
+  });
+
+  it('refuses after an asynchronous prepare says no, and carries on with the queue', async () => {
+    const { host, children } = makeHost();
+    await host.start();
+    const child = children[0] as FakeChild;
+    const first = host.run('first', { prepare: async () => false as const }).catch((e: unknown) => e);
+    const second = host.run('second');
+    expect(await first).toMatchObject({ kind: 'aborted', sent: false });
+    expect(await second).toBe('ran:second');
+    expect(child.written.map((entry) => entry.script)).toEqual([SETUP, 'second']);
+  });
+
+  it('treats a prepare that throws as a refusal', async () => {
+    const { host, children } = makeHost();
+    await host.start();
+    const sync = await host
+      .run('a', {
+        prepare: () => {
+          throw new Error('boom');
+        },
+      })
+      .catch((e: unknown) => e);
+    const later = await host.run('b', { prepare: () => Promise.reject(new Error('boom')) }).catch((e: unknown) => e);
+    expect(sync).toMatchObject({ kind: 'aborted', sent: false });
+    expect(later).toMatchObject({ kind: 'aborted', sent: false });
+    expect(children[0]?.written).toHaveLength(1);
+  });
+
+  it('does not write a request that was aborted while its prepare ran', async () => {
+    const { host, children } = makeHost();
+    await host.start();
+    const controller = new AbortController();
+    let release: (script: string | false) => void = () => undefined;
+    const pending = host
+      .run('paste', {
+        signal: controller.signal,
+        prepare: () => new Promise<string | false>((resolve) => (release = resolve)),
+      })
+      .catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+    release('paste');
+    expect(await pending).toMatchObject({ kind: 'aborted', sent: false });
+    expect(children[0]?.written).toHaveLength(1);
+  });
+
+  it('prepares a request again on the new process when the host died during its prepare', async () => {
+    const { host, children } = makeHost();
+    await host.start();
+    let prepares = 0;
+    let release: (script: string | false) => void = () => undefined;
+    const pending = host.run('paste', {
+      prepare: () => {
+        prepares += 1;
+        if (prepares === 1) return new Promise<string | false>((resolve) => (release = resolve));
+        return 'paste again';
+      },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    (children[0] as FakeChild).emit('exit', 1);
+    await vi.advanceTimersByTimeAsync(10);
+    release('stale');
+    expect(await pending).toBe('ran:paste again');
+    expect(prepares).toBe(2);
+    expect(children).toHaveLength(2);
+    expect(children[1]?.written.map((entry) => entry.script)).toEqual([SETUP, 'paste again']);
   });
 
   it('treats a broken stdin pipe as a death: fails the request and restarts', async () => {

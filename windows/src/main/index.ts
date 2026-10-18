@@ -49,7 +49,7 @@ import {
 } from './dictationService.js';
 import {
   Diagnostics,
-  clipboardHoldsText,
+  clipboardState,
   foregroundWindow,
   restoreForegroundWindow,
   pasteClipboard,
@@ -1382,7 +1382,7 @@ class UsefulVoiceApp {
       writeText: (text) => clipboard.writeText(text),
       snapshot: snapshotClipboard,
       restore: restoreClipboard,
-      holdsText: clipboardHoldsText,
+      clipboardState,
       pasteKeystroke: (keystroke) => pasteClipboard(keystroke),
       // Synchronous: one of our windows has focus. The HUD is not focusable, so it never counts.
       ownWindowInFront: () => BrowserWindow.getFocusedWindow() !== null,

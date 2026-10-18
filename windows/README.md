@@ -165,8 +165,8 @@ nothing newer was copied meanwhile and it was captured exactly (text, HTML or RT
 an image or a file list is not). Just before it sends the key, the paste checks that
 Useful Voice is not the window in front (unless the dictation began in one of its text
 fields) and that the clipboard still holds the dictation; if you copied something else in
-the meantime, nothing is pasted, your copy is left alone and the dictation is saved in
-Useful Voice. A paste that was already on its way when something went wrong counts as
+the meantime, or another app has the clipboard open, nothing is pasted, your copy is left
+alone and the dictation is saved in Useful Voice. A paste that was already on its way when something went wrong counts as
 pasted. Losing a dictation is worse than losing a clipboard.
 
 **A silent recording is rejected.** A silent clip can make a speech model echo its

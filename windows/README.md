@@ -63,8 +63,6 @@ Then open **Settings** and paste a Deepgram API key from
 <https://console.deepgram.com/>. The key is required before dictation will work;
 the app says so plainly rather than failing silently.
 
-The text before the cursor is read with UI Automation and the send key is pressed with SendKeys, both only in the window you started in.
-
 ## Building installers
 
 ```bash

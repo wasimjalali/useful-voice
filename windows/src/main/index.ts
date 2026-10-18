@@ -286,6 +286,10 @@ class UsefulVoiceApp {
       setMedia: (sessions: unknown) => this.fakeMedia?.set(sessions as Record<string, FakeStatus>),
       mediaState: () => this.fakeMedia?.snapshot(),
       mediaCalls: () => this.fakeMedia?.calls.slice(),
+      scrubMedia: (arg: unknown) => {
+        const { id, byMs } = arg as { id: string; byMs: number };
+        this.fakeMedia?.scrub(id, byMs);
+      },
       mainWindows: () => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().includes('view=main')).length,
     };
   }
@@ -1071,15 +1075,11 @@ class UsefulVoiceApp {
   private async runQuit(options: { restartToUpdate?: boolean }): Promise<void> {
     try {
       await this.service.cancel();
-      // Whatever was paused for a dictation plays again before the app goes; bounded, so a
-      // slow player cannot hold the quit.
-      let mediaTimer: NodeJS.Timeout | undefined;
-      await Promise.race([
-        this.media.shutdown(),
-        new Promise<void>((resolve) => {
-          mediaTimer = setTimeout(resolve, 2500);
-        }),
-      ]).finally(() => clearTimeout(mediaTimer));
+      // Whatever was paused for a dictation plays again before the app goes. Bounded, so a
+      // slow player cannot hold the quit: the budget covers a warm media host. Logged before
+      // the diagnostics are flushed below, so a miss is on record.
+      const mediaResumed = await this.media.shutdown(2500);
+      if (!mediaResumed) this.diagnostics.log('media', 'quit: could not confirm the media was played again; it may stay paused');
       await this.saveRendererDrafts();
       // Always give the data a chance to reach disk before exiting: a debounced
       // save that never fires would lose the user's last dictionary edit.

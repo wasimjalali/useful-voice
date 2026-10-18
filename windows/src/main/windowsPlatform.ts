@@ -19,7 +19,7 @@ import {
   type OneShotRunner,
 } from './keystroke.js';
 import { PowerShellHost, PowerShellHostError, hostArguments } from './powershellHost.js';
-import { MEDIA_PRELUDE, parsePausedOutput, pausePlayingScript, resumeScript } from './mediaScripts.js';
+import { MEDIA_PRELUDE, listPlayingScript, parsePausedOutput, parsePlayingOutput, pauseScript, resumeScript } from './mediaScripts.js';
 import type { MediaEffects } from '../core/media/mediaPausePolicy.js';
 // The delivery policy's view of a window: the same identity (process + handle) with
 // the title the UI needs on top, so window info can be handed straight to the policy.
@@ -485,13 +485,17 @@ export function createMediaEffects(
   const run = (body: string): Promise<string> =>
     runHostedWith(mediaScriptHost(log), runOneShot, body, MEDIA_PRELUDE + body, timeouts);
   return {
-    async pausePlaying() {
+    async listPlaying() {
       if (!available) return [];
-      return parsePausedOutput(await run(pausePlayingScript(appUserModelId)));
+      return parsePlayingOutput(await run(listPlayingScript(appUserModelId)));
     },
-    async resume(ids) {
-      if (!available || ids.length === 0) return;
-      await run(resumeScript(ids));
+    async pause(ids) {
+      if (!available || ids.length === 0) return [];
+      return parsePausedOutput(await run(pauseScript(ids)));
+    },
+    async resume(sessions) {
+      if (!available || sessions.length === 0) return;
+      await run(resumeScript(sessions));
     },
     warm() {
       if (available) void mediaScriptHost(log).start();

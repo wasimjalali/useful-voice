@@ -29,19 +29,29 @@ function setup() {
   const status: Record<string, 'Playing' | 'Paused'> = { spotify: 'Playing', edge: 'Playing', idle: 'Paused' };
   const calls: string[] = [];
   const effects: MediaEffects = {
-    async pausePlaying() {
-      calls.push('pause');
-      const ids = Object.keys(status).filter((id) => status[id] === 'Playing');
-      for (const id of ids) status[id] = 'Paused';
-      return ids;
+    async listPlaying() {
+      calls.push('list');
+      return Object.keys(status)
+        .filter((id) => status[id] === 'Playing')
+        .map((id) => ({ id, position: 0, updated: 0 }));
     },
-    async resume(ids) {
+    async pause(ids) {
+      calls.push('pause');
+      const done = [];
+      for (const id of ids) {
+        if (status[id] !== 'Playing') continue;
+        status[id] = 'Paused';
+        done.push({ id, position: 0, updated: 0 });
+      }
+      return done;
+    },
+    async resume(held) {
       calls.push('resume');
-      for (const id of ids) if (status[id] === 'Paused') status[id] = 'Playing';
+      for (const { id } of held) if (status[id] === 'Paused') status[id] = 'Playing';
     },
   };
   const logs: string[] = [];
-  const media = new MediaPausePolicy({ effects, enabled: () => true, log: (m) => logs.push(m) });
+  const media = new MediaPausePolicy({ effects, enabled: () => true, log: (m) => logs.push(m), graceMs: 10 });
   const recorder = new Recorder();
   let releaseTranscript: (() => void) | null = null;
   const service = new DictationService({
@@ -155,7 +165,8 @@ describe('media while dictating, through the dictation service', () => {
     await ctx.service.cancel();
     await ctx.media.settled();
     expect(ctx.status).toEqual(allPlaying);
-    expect(ctx.calls.filter((call) => call === 'pause')).toHaveLength(2);
+    // The second press landed inside the grace: still paused, never paused again.
+    expect(ctx.calls.filter((call) => call === 'pause')).toHaveLength(1);
     ctx.release();
     await first;
   });

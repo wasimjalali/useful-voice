@@ -1055,9 +1055,9 @@ private func waitOutGrace(_ policy: MediaPausePolicy, _ seconds: TimeInterval = 
         #expect(media.callList == ["pause", "play"])
     }
 
-    // MARK: A pause that was sent is never dropped because Now Playing became unreadable
+    // MARK: Now Playing unreadable after a pause: stay paused, never resume blindly
 
-    @Test func nowPlayingThatBecomesUnreadableRightAfterThePauseIsStillRemembered() {
+    @Test func nowPlayingThatBecomesUnreadableRightAfterThePauseLeavesItPaused() {
         let media = FakeMedia()
         media.nowPlayingAvailable = true
         media.start(spotify)
@@ -1065,14 +1065,13 @@ private func waitOutGrace(_ policy: MediaPausePolicy, _ seconds: TimeInterval = 
         let (policy, diagnostics) = makePolicy(media, watch: 100)
         policy.recordingStarted(); policy.flush()
         policy.recordingEnded()
-        settle(policy) { media.callList.contains("play") }
-        #expect(media.callList == ["pause", "play"])   // resumed by the audio list, using the app read before the pause
-        #expect(media.isPlaying == [spotify])
-        #expect(diagnostics.entries().contains { $0.message.contains("not confirmed paused") })
-        #expect(!diagnostics.entries().contains { $0.message.contains("Could not confirm the pause") })
+        waitOutGrace(policy)
+        #expect(media.callList == ["pause"])           // no Play, and nothing launched
+        #expect(!media.launchedMusic)
+        #expect(diagnostics.entries().contains { $0.message.contains("paused: couldn't confirm it's safe to play") })
     }
 
-    @Test func nowPlayingThatTurnsUnreadableBeforeTheEndFallsBackToTheAudioGate() {
+    @Test func nowPlayingThatTurnsUnreadableBeforeTheEndLeavesItPaused() {
         let media = FakeMedia()
         media.nowPlayingAvailable = true
         media.start(spotify)
@@ -1080,36 +1079,25 @@ private func waitOutGrace(_ policy: MediaPausePolicy, _ seconds: TimeInterval = 
         policy.recordingStarted(); policy.flush()
         media.nowPlayingAvailable = false
         policy.recordingEnded()
-        settle(policy) { media.callList.contains("play") }
-        #expect(media.callList == ["pause", "play"])
-        #expect(diagnostics.entries().contains { $0.message.contains("by the audio process list") })
-    }
-
-    @Test func theAudioGateStillRefusesWhenThePausedAppIsPlayingAgain() {
-        let media = FakeMedia()
-        media.nowPlayingAvailable = true
-        media.start(spotify)
-        let (policy, _) = makePolicy(media, watch: 100)
-        policy.recordingStarted(); policy.flush()
-        media.nowPlayingAvailable = false
-        media.start(spotify)                         // the user pressed play meanwhile
-        policy.recordingEnded()
         waitOutGrace(policy)
         #expect(media.callList == ["pause"])
+        #expect(media.isPlaying.isEmpty)
+        #expect(diagnostics.entries().contains { $0.message.contains("Left") })
     }
 
-    @Test func theAudioGateDoesNotResumeAnAppThatIsGone() {
+    @Test func leavingItPausedIsLoggedOnceAcrossDictations() {
         let media = FakeMedia()
-        media.nowPlayingAvailable = true
-        media.start(spotify)
-        let (policy, _) = makePolicy(media, watch: 100)
-        policy.recordingStarted(); policy.flush()
-        media.nowPlayingAvailable = false
-        media.die(spotify)
-        policy.recordingEnded()
-        waitOutGrace(policy)
-        #expect(media.callList == ["pause"])
-        #expect(!media.launchedMusic)
+        let (policy, diagnostics) = makePolicy(media, watch: 100)
+        for _ in 0..<3 {
+            media.nowPlayingAvailable = true
+            media.start(spotify)
+            policy.recordingStarted(); policy.flush()
+            media.nowPlayingAvailable = false
+            policy.recordingEnded()
+            waitOutGrace(policy)
+        }
+        #expect(diagnostics.entries().filter { $0.message.contains("Left") }.count == 1)
+        #expect(!media.callList.contains("play"))
     }
 
     // MARK: Audio fallback with Chromium and slow players

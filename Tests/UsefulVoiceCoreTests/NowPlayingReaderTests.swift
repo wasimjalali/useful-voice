@@ -34,6 +34,7 @@ private struct FakeHelper {
     open(my $m, '<', "$dir/mode") or die "no mode"; my $mode = <$m>; chomp $mode; close $m;
     open(my $s, '>>', "$dir/started"); print $s "x\\n"; close $s;
     exit 3 if $mode eq 'exit-before-ready';
+    if ($mode eq 'never-ready') { select(undef, undef, undef, 60); exit 0; }
     print "{\\"ready\\":1}\\n";
     my $count = 0;
     while (my $line = <STDIN>) {
@@ -66,7 +67,7 @@ private func makeReader(_ helper: FakeHelper,
                         verify: @escaping (URL) -> String? = { _ in nil },
                         backoff: [TimeInterval] = [30, 120],
                         readTimeout: TimeInterval = 5,
-                        startTimeout: TimeInterval = 30,
+                        startTimeout: TimeInterval = 5,
                         clock: HandClock = HandClock()) -> (NowPlayingReader, Diagnostics) {
     let diagnostics = Diagnostics(directory: nil)
     let reader = NowPlayingReader(directory: helper.directory, diagnostics: diagnostics, verify: verify,
@@ -91,12 +92,50 @@ private func makeReader(_ helper: FakeHelper,
     @Test func aHelperThatExitsBeforeItIsReadyFallsBackWithoutCrashing() throws {
         let helper = try FakeHelper(); defer { helper.remove() }
         try helper.mode("exit-before-ready")
-        let (reader, diagnostics) = makeReader(helper)   // a 30 s start timeout: the exit has to be noticed, not waited out
+        let (reader, diagnostics) = makeReader(helper, startTimeout: 60)   // the exit has to be noticed, not waited out
         let began = Date()
         #expect(reader.read() == nil)           // stop() writes "quit" to a perl that already died: no SIGPIPE
-        #expect(Date().timeIntervalSince(began) < 15)
-        #expect(reader.read() == nil)
+        #expect(Date().timeIntervalSince(began) < 30)
+        #expect(reader.read() == nil)           // a failed start backs off at once: no second launch
+        #expect(helper.launches == 1)
         #expect(diagnostics.entries().contains { $0.category == "media" && $0.level == .warning })
+    }
+
+    // 2. A failed start backs off at once, and a start never holds the caller long.
+
+    @Test func aHelperThatNeverBecomesReadyBacksOffAtOnceAndRetriesAfterTheFirstStep() throws {
+        let helper = try FakeHelper(); defer { helper.remove() }
+        try helper.mode("never-ready")
+        let clock = HandClock()
+        let (reader, diagnostics) = makeReader(helper, backoff: [30, 120], startTimeout: 0.3, clock: clock)
+        let began = Date()
+        #expect(reader.read() == nil)           // the start gives up after its timeout, not after 5 s or 30 s
+        #expect(Date().timeIntervalSince(began) < 5)
+        #expect(helper.launches == 1)
+        #expect(diagnostics.entries().contains { $0.message.contains("trying again in 30 s") })
+        #expect(reader.read() == nil)           // backing off: nothing started
+        #expect(helper.launches == 1)
+
+        clock.advance(31)
+        #expect(reader.read() == nil)           // the retry fails the same way, now for the longer step
+        #expect(helper.launches == 2)
+        #expect(diagnostics.entries().last?.message.contains("trying again in 120 s") == true)
+
+        try helper.mode("ok")
+        clock.advance(121)
+        #expect(reader.read() != nil)           // and recovers when it can start
+    }
+
+    @Test func aReadDoesNotWaitForAWarmUpThatIsStillStartingTheHelper() throws {
+        let helper = try FakeHelper(); defer { helper.remove() }
+        try helper.mode("never-ready")
+        let (reader, _) = makeReader(helper, startTimeout: 3)
+        reader.warmUp()                          // holds the start for up to 3 s
+        let deadline = Date().addingTimeInterval(20)
+        while helper.launches == 0, Date() < deadline { usleep(2000) }
+        let began = Date()
+        #expect(reader.read() == nil)            // not ready yet: answered at once
+        #expect(Date().timeIntervalSince(began) < 1.5)
     }
 
     @Test func warmingUpAHelperThatCannotLoadDoesNotCrashTheApp() throws {

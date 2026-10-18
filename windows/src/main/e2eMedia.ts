@@ -67,7 +67,7 @@ export class FakeMedia implements MediaEffects {
 
   async resume(held: HeldSession[]): Promise<ResumeResult> {
     this.record(`resume:${held.map((session) => session.id).join(',')}`);
-    const result: ResumeResult = { refused: [], touched: [], unconfirmed: [] };
+    const result: ResumeResult = { refused: [], touched: [], unconfirmed: [], skipped: [] };
     for (const entry of held) {
       const session = this.sessions.get(entry.id);
       if (!session || session.status !== 'Paused') continue;

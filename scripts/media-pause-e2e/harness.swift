@@ -392,7 +392,8 @@ struct Harness {
         let s = "H-latency-x10"
         let player = try Player(playerPath: Self.playerPath, logURL: logURL(s), startPaused: false)
         defer { player.quit() }
-        let policy = makePolicy(diagnostics: Diagnostics(directory: nil))
+        let diagnostics = Diagnostics(directory: nil)
+        let policy = makePolicy(diagnostics: diagnostics)
         var pauseCmd: [Double] = [], pauseOut: [Double] = [], playCmd: [Double] = [], playOut: [Double] = []
         for round in 1...10 {
             let before = (player.commands("pause").count, player.commands("play").count)
@@ -412,6 +413,7 @@ struct Harness {
             note("round \(round): pause cmd \(pauseCmd.last.map(ms) ?? "-"), stopped \(pauseOut.last.map(ms) ?? "-"), play cmd \(playCmd.last.map(ms) ?? "-"), resumed \(playOut.last.map(ms) ?? "-")")
             Thread.sleep(forTimeInterval: 0.3)
         }
+        note("diagnostics: " + diagnostics.entries().map { "[\($0.level.rawValue)] \($0.message)" }.joined(separator: " | "))
         func stats(_ values: [Double]) -> String {
             guard !values.isEmpty else { return "no data" }
             let sorted = values.sorted()

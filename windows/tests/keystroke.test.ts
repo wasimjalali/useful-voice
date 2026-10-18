@@ -2,8 +2,10 @@ import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clipboardHash,
+  OWN_FIELD_FRESH_MS,
   parsePasteOutput,
   pasteScriptBody,
+  readTimeouts,
   sendPasteKeystroke,
   type OneShotRunner,
   type SendRequest,
@@ -288,7 +290,7 @@ describe('sendPasteKeystroke through the host', () => {
     const slow = host.run('slow').catch(() => undefined);
     const pending = sendPasteKeystroke(
       deps(host),
-      request({ authorize: () => ({ allowOwnWindow: granted }) }),
+      request({ authorize: () => ({ allowOwnWindow: granted, checkedAt: Date.now() }) }),
     );
     await vi.advanceTimersByTimeAsync(0);
     // The answer changes while the request waits: the script is built from the later one.
@@ -306,16 +308,53 @@ describe('sendPasteKeystroke through the host', () => {
     await host.start();
     const child = children[0] as FakeChild;
     child.onRequest = (req, self) => self.reply(req.id, 'UVSENT');
-    let release: (value: { allowOwnWindow: boolean }) => void = () => undefined;
+    let release: (value: { allowOwnWindow: boolean; checkedAt?: number }) => void = () => undefined;
     const pending = sendPasteKeystroke(
       deps(host),
       request({ authorize: () => new Promise((resolve) => (release = resolve)) }),
     );
     await vi.advanceTimersByTimeAsync(50);
     expect(child.written).toHaveLength(1);
-    release({ allowOwnWindow: true });
+    release({ allowOwnWindow: true, checkedAt: Date.now() });
     expect(await pending).toBe('sent');
     expect(child.written[1]?.script).toContain('$uvAllowOwn = $true');
+  });
+});
+
+describe('how fresh an own-field check must be', () => {
+  async function scriptFor(authorization: { allowOwnWindow: boolean; checkedAt?: number }, waitMs = 0): Promise<string> {
+    const { host, children } = makeHost();
+    await host.start();
+    const child = children[0] as FakeChild;
+    child.onRequest = (req, self) => self.reply(req.id, 'UVSENT');
+    await vi.advanceTimersByTimeAsync(waitMs);
+    await sendPasteKeystroke(deps(host), request({ authorize: () => authorization }));
+    return child.written[1]?.script ?? '';
+  }
+
+  it('lifts the guard for a check made just now', async () => {
+    expect(await scriptFor({ allowOwnWindow: true, checkedAt: Date.now() })).toContain('$uvAllowOwn = $true');
+  });
+
+  it('keeps the guard when the check is older than the limit', async () => {
+    const checkedAt = Date.now();
+    vi.setSystemTime(checkedAt + OWN_FIELD_FRESH_MS + 1);
+    expect(await scriptFor({ allowOwnWindow: true, checkedAt })).toContain('$uvAllowOwn = $false');
+  });
+
+  it('keeps the guard when no check time is given at all', async () => {
+    expect(await scriptFor({ allowOwnWindow: true })).toContain('$uvAllowOwn = $false');
+  });
+
+  it('keeps the guard when the answer was no', async () => {
+    expect(await scriptFor({ allowOwnWindow: false, checkedAt: Date.now() })).toContain('$uvAllowOwn = $false');
+  });
+});
+
+describe('readTimeouts', () => {
+  it('gives a read the same limit in the host and in a one-shot process', () => {
+    // The long one-shot budget is for the paste keystroke only.
+    expect(readTimeouts(2500)).toEqual({ hostMs: 2500, oneShotMs: 2500 });
   });
 });
 
@@ -371,7 +410,7 @@ describe('sendPasteKeystroke through a one-shot process', () => {
   it('never starts a process when the signal aborts while authorisation runs', async () => {
     const oneShot = vi.fn<OneShotRunner>();
     const controller = new AbortController();
-    let release: (value: { allowOwnWindow: boolean }) => void = () => undefined;
+    let release: (value: { allowOwnWindow: boolean; checkedAt?: number }) => void = () => undefined;
     const pending = sendPasteKeystroke(
       deps(noHost, oneShot),
       request({ signal: controller.signal, authorize: () => new Promise((resolve) => (release = resolve)) }),
@@ -393,14 +432,15 @@ describe('sendPasteKeystroke through a one-shot process', () => {
     expect(budgets).toEqual([8000]);
   });
 
-  it('builds the one-shot script from the authorisation of the moment', async () => {
+  it('never lifts the own-process guard in a one-shot process, however fresh the check', async () => {
     const seen: string[] = [];
     const oneShot: OneShotRunner = async (script) => {
       seen.push(script);
       return 'UVSENT';
     };
-    await sendPasteKeystroke(deps(noHost, oneShot), request({ authorize: () => ({ allowOwnWindow: true }) }));
-    expect(seen[0]).toContain('$uvAllowOwn = $true');
+    await sendPasteKeystroke(deps(noHost, oneShot), request({ authorize: () => ({ allowOwnWindow: true, checkedAt: Date.now() }) }));
+    // A cold process takes far longer than a check stays fresh: the guard stays on.
+    expect(seen[0]).toContain('$uvAllowOwn = $false');
   });
 
   it('falls back to a one-shot process only for a request the host never wrote', async () => {

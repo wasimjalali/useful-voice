@@ -97,6 +97,8 @@ export interface PowerShellHostOptions {
   setupScript: string;
   /** Default per-request limit, from enqueue to the sentinel. */
   requestTimeoutMs?: number;
+  /** How long a request's `prepare` may take before the request is refused (unsent). */
+  prepareTimeoutMs?: number;
   /** How long the setup script may take on a cold start. */
   startupTimeoutMs?: number;
   /** Unexpected deaths allowed within `restartWindowMs` before the host is given up on. */
@@ -145,6 +147,7 @@ interface Pending {
 export class PowerShellHost {
   private readonly requestTimeoutMs: number;
   private readonly startupTimeoutMs: number;
+  private readonly prepareTimeoutMs: number;
   private readonly maxRestarts: number;
   private readonly restartWindowMs: number;
   private readonly now: () => number;
@@ -163,11 +166,14 @@ export class PowerShellHost {
   private launching = false;
   /** A request's `prepare` is running: nothing else may be written until it answers. */
   private preparing = false;
+  /** Ends the wait for the `prepare` that is running: set while one runs. */
+  private releasePrepare: (() => void) | null = null;
   private deaths: number[] = [];
 
   constructor(private readonly options: PowerShellHostOptions) {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 5000;
     this.startupTimeoutMs = options.startupTimeoutMs ?? 20_000;
+    this.prepareTimeoutMs = options.prepareTimeoutMs ?? 1000;
     this.maxRestarts = options.maxRestarts ?? 3;
     this.restartWindowMs = options.restartWindowMs ?? 60_000;
     this.now = options.now ?? (() => Date.now());
@@ -260,6 +266,8 @@ export class PowerShellHost {
   dispose(): void {
     if (this.state === 'disposed') return;
     this.state = 'disposed';
+    // A request whose prepare is running is rejected too, not left waiting for it.
+    this.releasePrepare?.();
     this.teardownProcess();
     this.failAll(new PowerShellHostError('unavailable', 'the PowerShell host was stopped', false));
   }
@@ -364,30 +372,51 @@ export class PowerShellHost {
     }
   }
 
-  /** The asynchronous half of `pump`: wait for `prepare`, then write, refuse or wait for a restart. */
+  /**
+   * The asynchronous half of `pump`: wait for `prepare`, then write, refuse or wait for a
+   * restart. The wait is bounded and can be cut short: a `prepare` that takes longer than
+   * `prepareTimeoutMs` refuses the request (unsent) so the queue moves on, an abort of the
+   * request releases it at once, and `dispose` rejects it.
+   */
   private async finishPrepare(next: Pending, answer: Promise<string | false>, generation: number): Promise<void> {
+    let timer: NodeJS.Timeout | null = null;
+    let onAbort: (() => void) | null = null;
+    const released = new Promise<false>((resolve) => {
+      this.releasePrepare = () => resolve(false);
+      timer = setTimeout(() => resolve(false), this.prepareTimeoutMs);
+      timer.unref?.();
+      onAbort = () => resolve(false);
+      next.signal?.addEventListener('abort', onAbort, { once: true });
+    });
     let prepared: string | false;
     try {
-      prepared = await answer;
+      prepared = await Promise.race([answer, released]);
     } catch {
       prepared = false;
     }
+    if (timer) clearTimeout(timer);
+    if (onAbort) next.signal?.removeEventListener('abort', onAbort);
+    this.releasePrepare = null;
     this.preparing = false;
-    if (next.signal?.aborted || prepared === false) {
-      this.refuse(next);
-      this.pump();
-      return;
-    }
     if (this.state === 'disabled' || this.state === 'disposed') {
       this.settle(next);
       next.reject(new PowerShellHostError('unavailable', 'the PowerShell host is not available', false));
       return;
     }
+    if (next.signal?.aborted || prepared === false) {
+      this.refuse(next);
+      this.pump();
+      return;
+    }
     if (generation !== this.generation || this.state !== 'ready' || this.current) {
       // The host died during the check (even if a new process is already up). It keeps its
-      // place and is prepared again on the new process: what it learned may be stale.
+      // place and is prepared again on the new process: what it learned may be stale. If no
+      // process is coming up, start one now, so it does not sit there until its caller
+      // gives up; if that fails, the queue is rejected as unavailable and the caller falls
+      // back to a one-shot process at once.
       this.queue.unshift(next);
-      this.pump();
+      if (this.state === 'ready') this.pump();
+      else void this.start();
       return;
     }
     next.script = prepared;

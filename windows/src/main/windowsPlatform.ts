@@ -11,7 +11,13 @@ import {
   PASTE_ONE_SHOT_TIMEOUT_MS,
 } from '../core/delivery/timing.js';
 import type { ClipboardState, KeystrokeRequest, KeystrokeResult } from '../core/delivery/pasteFlow.js';
-import { FOREGROUND_TYPE, runHosted as runHostedWith, sendPasteKeystroke, type OneShotRunner } from './keystroke.js';
+import {
+  FOREGROUND_TYPE,
+  readTimeouts,
+  runHosted as runHostedWith,
+  sendPasteKeystroke,
+  type OneShotRunner,
+} from './keystroke.js';
 import { PowerShellHost, PowerShellHostError, hostArguments } from './powershellHost.js';
 // The delivery policy's view of a window: the same identity (process + handle) with
 // the title the UI needs on top, so window info can be handed straight to the policy.
@@ -177,7 +183,6 @@ export async function playCue(kind: 'start' | 'stop' | 'error'): Promise<void> {
       // The one-shot process dies with the script, so it has to wait for the sound.
       `(New-Object Media.SoundPlayer '${quoted}').PlaySync()`,
       // A cue that takes longer than this is not feedback any more.
-      2000,
       2000,
     );
   } catch {
@@ -376,9 +381,9 @@ function runHosted(
   hostScript: string,
   oneShotScript: string,
   hostMs: number,
-  oneShotMs: number = PASTE_ONE_SHOT_TIMEOUT_MS,
 ): Promise<string> {
-  return runHostedWith(host, runOneShot, hostScript, oneShotScript, { hostMs, oneShotMs });
+  // Reads and cues keep a short one-shot limit too: the long budget is for the paste only.
+  return runHostedWith(host, runOneShot, hostScript, oneShotScript, readTimeouts(hostMs));
 }
 
 /**

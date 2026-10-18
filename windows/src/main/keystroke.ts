@@ -124,6 +124,14 @@ export interface ScriptHost {
  */
 export type OneShotRunner = (script: string, timeoutMs: number, signal?: AbortSignal) => Promise<string>;
 
+/**
+ * A text-field check older than this no longer justifies pasting into our own window: the
+ * focus may have moved since. The check runs right before the request is written, so on the
+ * warm host it is milliseconds old; a cold one-shot process takes far longer and never gets
+ * the permission.
+ */
+export const OWN_FIELD_FRESH_MS = 300;
+
 export interface Timeouts {
   /** The limit on a request written to the warm host. */
   hostMs: number;
@@ -159,8 +167,17 @@ export async function runHosted(
   return oneShot(oneShotScript, timeouts.oneShotMs, signal);
 }
 
-/** Decides at the last moment what to send: the script, or false to send nothing. */
-export type Prepare = () => string | false | Promise<string | false>;
+/** The same limit for the host and for a one-shot process: for reads, which are never slow. */
+export function readTimeouts(ms: number): Timeouts {
+  return { hostMs: ms, oneShotMs: ms };
+}
+
+/**
+ * Decides at the last moment what to send: the script, or false to send nothing. `oneShot`
+ * tells it the script will run in a cold process, which starts far too slowly to rely on
+ * anything it checked just now.
+ */
+export type Prepare = (context: { oneShot: boolean }) => string | false | Promise<string | false>;
 
 /**
  * Like `runHosted` for a script that is decided at the last moment. `prepare` runs when the
@@ -177,7 +194,7 @@ export async function runPrepared(
 ): Promise<string> {
   if (host && !host.isUnavailable) {
     try {
-      return await host.run('', { timeoutMs: timeouts.hostMs, signal, prepare });
+      return await host.run('', { timeoutMs: timeouts.hostMs, signal, prepare: () => prepare({ oneShot: false }) });
     } catch (error) {
       if (!(error instanceof PowerShellHostError) || error.sent || error.kind === 'aborted') throw error;
       // Never written: fall through to a one-shot process, after preparing again.
@@ -186,7 +203,7 @@ export async function runPrepared(
   if (signal?.aborted) throw new PowerShellHostError('aborted', 'aborted before it was sent', false);
   let script: string | false;
   try {
-    script = await prepare();
+    script = await prepare({ oneShot: true });
   } catch {
     script = false;
   }
@@ -223,13 +240,23 @@ export interface SendRequest {
 export async function sendPasteKeystroke(deps: SendDeps, request: SendRequest): Promise<KeystrokeResult> {
   if (request.signal?.aborted) return 'blocked';
   const hash = clipboardHash(request.text);
-  const build = (authorization: Authorization): string | false =>
-    authorization === false
-      ? false
-      : pasteScriptBody({ ownPid: request.ownPid, allowOwnWindow: authorization.allowOwnWindow, clipboardHash: hash });
-  const prepare: Prepare = () => {
+  const build = (authorization: Authorization, oneShot: boolean): string | false => {
+    if (authorization === false) return false;
+    // The own-process guard is lifted only for a text-field check that is still fresh, and
+    // never for a cold process, which cannot send before the check has gone stale. The script
+    // itself re-checks the foreground pid and the clipboard just before SendKeys.
+    const fresh = authorization.checkedAt !== undefined && Date.now() - authorization.checkedAt <= OWN_FIELD_FRESH_MS;
+    return pasteScriptBody({
+      ownPid: request.ownPid,
+      allowOwnWindow: authorization.allowOwnWindow && fresh && !oneShot,
+      clipboardHash: hash,
+    });
+  };
+  const prepare: Prepare = ({ oneShot }) => {
     const authorization = request.authorize();
-    return authorization instanceof Promise ? authorization.then(build) : build(authorization);
+    return authorization instanceof Promise
+      ? authorization.then((answer) => build(answer, oneShot))
+      : build(authorization, oneShot);
   };
   try {
     const stdout = await runPrepared(deps.host, deps.oneShot, deps.oneShotPrelude, prepare, deps.timeouts, request.signal);

@@ -143,7 +143,9 @@ describe('provider keys', () => {
     expect(store.hasKeyFor('anthropic')).toBe(false);
     expect(store.revealKey('anthropic')).toBeNull();
     expect(store.hasStoredKey).toBe(true);
-    expect(store.saveError?.message).toContain('Anthropic');
+    // Not a save problem: no "dictations aren't being saved" banner for a key that can't be read.
+    expect(store.saveError).toBeNull();
+    expect(store.unreadableKeys()).toEqual(['Anthropic']);
     store.update({ appearance: 'dark' });
     await store.save();
     expect((await read(dir)).providerKeys.anthropic).toEqual(original);

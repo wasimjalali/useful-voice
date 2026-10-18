@@ -29,7 +29,7 @@ import { isSendableKey, keyCheckFailure } from '../core/firstRun/keyCheck.js';
 import { transcribe as transcribeRequest } from '../core/transcription/deepgramProvider.js';
 import { FormatterError, formatWithModel } from '../core/formatting/aiFormatter.js';
 import { checkProviderKey } from '../core/models/providerKeyCheck.js';
-import { KEY_PROVIDERS, isKeyProvider, languageModelById, type KeyProvider } from '../core/models/catalog.js';
+import { KEY_PROVIDERS, isKeyProvider, languageModelById, voiceModelById, type KeyProvider } from '../core/models/catalog.js';
 import { PARAKEET_CHANNELS, PARAKEET_VERSIONS, parakeetVersionFromCatalogId, type ParakeetVersion } from '../core/models/parakeet.js';
 import { ParakeetModels } from './parakeet.js';
 import { createTranscriber, currentVoiceModel, missingKeyMessage, voiceCredential } from './transcriberRouter.js';
@@ -1622,19 +1622,25 @@ class UsefulVoiceApp {
     ipcMain.handle('settings:clear-api-key', () => this.settings.clearApiKey());
     ipcMain.handle('settings:test-api-key', async () => this.testApiKey());
     // The other providers' keys. The renderer only ever learns whether one is saved.
-    ipcMain.handle('models:set-key', (_event, provider: unknown, key: unknown) => {
+    ipcMain.handle('models:set-key', async (_event, provider: unknown, key: unknown) => {
       if (!isKeyProvider(provider)) return { ok: false, error: 'Unknown provider.' };
       if (typeof key !== 'string' || key.trim().length === 0) return { ok: false, error: 'The API key is empty.' };
       if (!isSendableKey(key.trim())) return { ok: false, error: "That isn't a valid API key." };
-      return this.settings.setKey(provider, key);
+      const result = this.settings.setKey(provider, key);
+      if (!result.ok) return result;
+      // The answer is the real outcome of the write, not a promise that one was started.
+      const saved = await this.settings.save();
+      return saved.ok ? { ok: true } : { ok: false, error: saved.message ?? "Couldn't save the key. Try again." };
     });
-    ipcMain.handle('models:clear-key', (_event, provider: unknown) => {
-      if (!isKeyProvider(provider)) return;
+    ipcMain.handle('models:clear-key', async (_event, provider: unknown): Promise<{ ok: boolean; error?: string }> => {
+      if (!isKeyProvider(provider)) return { ok: false, error: 'Unknown provider.' };
       this.settings.clearKey(provider);
       // The formatter can't run without its key: turn AI formatting off rather than leave it quietly failing.
       // A voice model keeps its selection, and the dictation says which key to add.
       const formatter = languageModelById(this.settings.all.formatterId);
       if (formatter && formatter.provider === provider) this.settings.update({ formatterId: null });
+      const saved = await this.settings.save();
+      return saved.ok ? { ok: true } : { ok: false, error: saved.message ?? "Couldn't remove the key. Try again." };
     });
     ipcMain.handle('models:test-key', async (_event, provider: unknown) => {
       if (!isKeyProvider(provider)) return { ok: false, message: 'Unknown provider.' };
@@ -1738,8 +1744,12 @@ class UsefulVoiceApp {
       return { ok: true };
     });
     // Continue on the engine step: apply exactly the model the page showed.
-    ipcMain.handle('firstrun:apply-engine', () => {
-      const target = this.setupEngineId();
+    ipcMain.handle('firstrun:apply-engine', async (_event, id: unknown) => {
+      // The renderer says which model its card showed; main only accepts a Deepgram model the catalog offers.
+      if (typeof id !== 'string' || voiceModelById(id)?.provider !== 'deepgram') {
+        throw new Error("That voice model isn't available in setup.");
+      }
+      const target = id;
       if (this.firstRun.sandbox) {
         this.firstRun.voiceModelId = target;
         return;
@@ -1747,6 +1757,8 @@ class UsefulVoiceApp {
       if (this.settings.all.voiceModelId !== target) {
         this.settings.update({ voiceModelId: target });
         this.syncParakeet(false);
+        const saved = await this.settings.save();
+        if (!saved.ok) throw new Error(saved.message ?? "Couldn't save the voice model. Try again.");
         this.broadcast('settings:changed');
       }
     });

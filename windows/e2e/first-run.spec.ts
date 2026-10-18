@@ -152,8 +152,9 @@ test('fresh install: every step, a bad key blocks, a good key advances, then nev
     await expect(fr(win).getByText('No card needed.')).toBeVisible();
     await expect(fr(win).getByText(/one year|12 months|1 year/i)).toHaveCount(0);
     await expect(win.locator('.fr-local-row')).toHaveCount(2);
-    for (const row of await win.locator('.fr-local-row').all()) await expect(row).toBeDisabled();
-    await expect(fr(win).getByText('Coming to Windows')).toHaveCount(2);
+    for (const row of await win.locator('.fr-local-row').all()) await expect(row).toBeEnabled();
+    await expect(fr(win).getByText('Set up in Settings')).toHaveCount(2);
+    await expect(fr(win).getByText('Coming to Windows')).toHaveCount(0);
     const key = fr(win).getByLabel('Deepgram API key');
     await expect(key).toBeFocused();
 
@@ -975,6 +976,27 @@ test('a forced setup applies the engine for its own dictations and leaves the sa
     // The saved choice is what Settings reports, and the file is byte for byte what it was.
     expect((await win.evaluate(() => window.usefulVoice.getSettings())).voiceModelId).toBe('elevenlabs:scribe_v2');
     expect((await fs.readFile(path.join(userData, 'settings.json'))).equals(before)).toBe(true);
+  } finally {
+    await run.stop();
+    await remove(userData);
+  }
+});
+
+test('choosing Parakeet in setup ends it and opens Settings > Models', async () => {
+  const userData = await freshDir();
+  const run = await launch('engine-parakeet', userData);
+  try {
+    const { win } = run;
+    await fr(win).getByRole('button', { name: 'Get started' }).click();
+    await expect(page(win, 'engine')).toBeVisible();
+    await expect(fr(win).getByText('With Deepgram, your audio goes to Deepgram to be transcribed. A local model keeps it on this PC.')).toBeVisible();
+    // Main only applies a Deepgram model it knows: anything else is refused, not swallowed.
+    const refused = await win.evaluate(() => window.usefulVoice.firstRunApplyEngine('elevenlabs:scribe_v2').then(() => 'applied', (e: Error) => e.message));
+    expect(refused).toContain("isn't available in setup");
+    await win.locator('.fr-local-row', { hasText: 'Parakeet Multilingual' }).click();
+    await expect(win.locator('.fr')).toHaveCount(0);
+    await expect(win.locator('#settings-models')).toBeVisible();
+    expect((await settingsWhere(userData, (s) => s?.firstRunCompleted === true))?.firstRunCompleted).toBe(true);
   } finally {
     await run.stop();
     await remove(userData);

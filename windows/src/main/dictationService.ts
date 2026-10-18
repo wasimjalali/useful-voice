@@ -14,6 +14,7 @@ import { selectKeyterms } from '../core/memory/biasBuilder.js';
 import { RecordingClock, SilenceWatchdog } from '../core/audio/silenceWatchdog.js';
 import { LEVEL_METER_GAIN, MINIMUM_AUDIO_BYTES } from '../core/audio/wav.js';
 import { ProviderError, type Transcript } from '../core/transcription/deepgramProvider.js';
+import { KEY_PROVIDER_INFO, languageModelById, type KeyProvider } from '../core/models/catalog.js';
 import { FormatterError } from '../core/formatting/aiFormatter.js';
 import { worthFormatting } from '../core/formatting/formatterGuard.js';
 import { detectionStayedOnNova3, resolveDetectedLanguage } from '../core/transcription/languages.js';
@@ -750,9 +751,11 @@ export class DictationService {
       } catch (error) {
         // Only the reason is logged: never the key or the dictation text.
         if (current() && !(error instanceof FormatterError && error.kind === 'cancelled')) {
+          const model = languageModelById(settings.formatterId);
+          const who = model ? `${KEY_PROVIDER_INFO[model.provider as KeyProvider]?.name ?? model.provider} (${model.apiModel})` : 'formatter';
           this.deps.onDiagnostic?.(
             'formatter',
-            error instanceof FormatterError ? `skipped (${error.kind}): ${error.message}` : 'skipped (unexpected error)',
+            `${who} skipped: ${error instanceof FormatterError ? error.kind : 'unexpected error'}`,
           );
         }
       }
@@ -998,6 +1001,11 @@ export function describeRecordingFailure(error: unknown): string {
 
 /** Turn a transcription failure into a typed error with the fix the UI should offer. */
 export function classifyTranscriptionFailure(error: unknown): DictationError {
+  const classified = classifyKind(error);
+  return error instanceof ProviderError ? { ...classified, provider: error.provider } : classified;
+}
+
+function classifyKind(error: unknown): DictationError {
   const message = transcriptionFailureMessage(error);
   if (error instanceof ProviderError) {
     switch (error.kind) {

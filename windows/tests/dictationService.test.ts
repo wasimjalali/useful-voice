@@ -451,7 +451,7 @@ describe('AI formatter integration', () => {
     expect(ctx.service.currentState).toBe('idle');
     const lines = ctx.diagnostics.filter((entry) => entry.category === 'formatter');
     expect(lines).toHaveLength(1);
-    expect(lines[0]?.message).toContain('timeout');
+    expect(lines[0]?.message).toBe('Gemini (gemini-3.8-flash) skipped: timeout');
     expect(lines[0]?.message).not.toContain('secret');
   });
 

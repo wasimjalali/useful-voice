@@ -62,6 +62,27 @@ function harness() {
 
 const offline: DictationError = { kind: 'offline', message: 'Could not reach Deepgram. Check your internet connection.', fix: 'retry' };
 
+describe('HUD errors name the provider that failed', () => {
+  it('names Gemini, ElevenLabs and Anthropic, never Deepgram, for their key and credit errors', () => {
+    for (const provider of ['Gemini', 'ElevenLabs', 'Anthropic']) {
+      expect(errorTitle({ kind: 'keyRejected', message: 'm', provider })).toBe(`${provider} key rejected`);
+      expect(errorTitle({ kind: 'outOfCredits', message: 'm', provider })).toBe(`${provider} out of credits`);
+    }
+    expect(errorTitle({ kind: 'keyRejected', message: 'm' })).toBe('Deepgram key rejected');
+  });
+  it('shows a missing key or model message as it is', () => {
+    expect(errorTitle({ kind: 'noProvider', message: 'Add your Gemini key in Settings.' })).toBe('Add your Gemini key in Settings.');
+    expect(errorTitle({ kind: 'noProvider', message: 'Parakeet is not downloaded. Download it in Settings to use it.' })).toBe(
+      'Parakeet is not downloaded. Download it in Settings to use it.',
+    );
+  });
+  it('says Parakeet failed for a local failure and Timed out for a timeout', () => {
+    expect(errorTitle({ kind: 'providerFailed', message: 'm', provider: 'Parakeet' })).toBe('Parakeet failed');
+    expect(errorTitle({ kind: 'providerFailed', message: 'm', provider: 'Gemini' })).toBe('Transcription failed');
+    expect(errorTitle({ kind: 'timedOut', message: 'm', provider: 'ElevenLabs' })).toBe('Timed out');
+  });
+});
+
 describe('statuses', () => {
   it('maps each dictation state to its view', () => {
     const { model } = harness();

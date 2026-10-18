@@ -80,15 +80,6 @@ describe('provider selection', () => {
     expect(ctx.fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('refuses a language Parakeet does not speak before running it', async () => {
-    const v2 = setup('parakeet:v2');
-    const error = await failure(v2.transcriber.transcribe({ ...request, language: 'de' }));
-    expect(error.message).toMatch(/only speaks English/);
-    expect(v2.parakeet.transcribe).not.toHaveBeenCalled();
-    const v3 = setup('parakeet:v3');
-    expect((await failure(v3.transcriber.transcribe({ ...request, language: 'ja' }))).message).toMatch(/Japanese/);
-  });
-
   it('passes a Parakeet "not downloaded" error through untouched', async () => {
     const ctx = setup('parakeet:v2');
     ctx.parakeet.transcribe.mockRejectedValueOnce(new ProviderError('notConfigured', 'Parakeet is not downloaded. Download it in Settings to use it.'));

@@ -9,7 +9,7 @@ export type GuardResult = { ok: true; text: string } | { ok: false; reason: stri
 
 const PREAMBLE = /^(here is|here['\u2019]s|sure|certainly|i['\u2019]ve|i have|of course)(?![\p{L}\p{N}])/iu;
 /** Leading fillers a dictation may start with before the words that look like a preamble. */
-const LEADING_FILLER = /^(?:(?:um+|uh+|er+m?|erm|hmm+)\b[\s,.]*)+/i;
+const LEADING_FILLER = /^(?:(?:umm?|uhh?|erm?|hmm)\b[\s,]*)+/i;
 
 /** Words in a dictation at or under this count are not sent to a model at all. */
 export const MIN_FORMATTER_WORDS = 3;
@@ -53,6 +53,7 @@ export function guardFormatted(input: string, output: string): GuardResult {
 function wordsOf(text: string): string[] {
   return text
     .toLowerCase()
+    .replace(/\u2019/g, "'")
     .replace(/[^\p{L}\p{N}\s]/gu, '')
     .split(/\s+/)
     .filter((word) => word.length > 0);

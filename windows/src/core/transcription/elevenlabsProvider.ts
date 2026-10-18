@@ -104,15 +104,32 @@ export function parseResponse(payload: unknown): Transcript {
   };
 }
 
+/** `detail.status` of an ElevenLabs error body ("quota_exceeded", "invalid_api_key"), or null. */
+function detailStatus(body: string): string | null {
+  try {
+    const status = (JSON.parse(body) as { detail?: { status?: unknown } }).detail?.status;
+    return typeof status === 'string' ? status : null;
+  } catch {
+    return null;
+  }
+}
+
 export function classifyHttpError(status: number, body: string, apiKey?: string): ProviderError {
   const detail = describeErrorBody(body, apiKey);
   const suffix = detail.length > 0 ? `: ${detail}` : '';
   const options = { status, provider: PROVIDER };
   if (status === 401 || status === 403) {
-    return new ProviderError('unauthorized', `The ElevenLabs API key was rejected${suffix}`, options);
+    if (detailStatus(body) === 'quota_exceeded') {
+      return new ProviderError('outOfCredits', 'Your ElevenLabs account is out of credits.', options);
+    }
+    return new ProviderError(
+      'unauthorized',
+      'ElevenLabs rejected your API key. Check the key and its speech-to-text permission.',
+      options,
+    );
   }
   if (status === 402) {
-    return new ProviderError('outOfCredits', `Your ElevenLabs account is out of credits (HTTP 402)${suffix}`, options);
+    return new ProviderError('outOfCredits', 'Your ElevenLabs account is out of credits.', options);
   }
   if (status === 429) return new ProviderError('rateLimited', `ElevenLabs rate limit reached${suffix}`, options);
   if (status >= 500) return new ProviderError('serverError', `ElevenLabs is having trouble (HTTP ${status})${suffix}`, options);

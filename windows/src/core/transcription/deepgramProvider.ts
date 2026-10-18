@@ -59,7 +59,9 @@ export type ProviderErrorKind =
   | 'timedOut'
   | 'transport'
   | 'cancelled'
-  | 'malformedResponse';
+  | 'malformedResponse'
+  /** The chosen engine can't run yet: a missing key or a local model not downloaded. */
+  | 'notConfigured';
 
 export class ProviderError extends Error {
   readonly kind: ProviderErrorKind;

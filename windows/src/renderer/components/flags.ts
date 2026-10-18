@@ -6,11 +6,8 @@ import { api } from '../api.js';
  *
  * `previewFeatures` is the `--preview-features` command-line flag: it reveals controls
  * whose backend does not exist yet (saved recordings, Reprocess).
- *
- * `cleanupModel` is the hidden S1-mini flag (`--cleanup-model`): it only decides whether
- * Settings credits the model.
  */
-let flags = { previewFeatures: false, cleanupModel: false };
+let flags = { previewFeatures: false };
 
 export async function loadFlags(): Promise<void> {
   flags = await api.getFlags();
@@ -18,8 +15,4 @@ export async function loadFlags(): Promise<void> {
 
 export function previewFeatures(): boolean {
   return flags.previewFeatures;
-}
-
-export function cleanupModelOn(): boolean {
-  return flags.cleanupModel;
 }

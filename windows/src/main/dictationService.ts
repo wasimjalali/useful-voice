@@ -9,7 +9,7 @@ import type {
   MemoryLanguage,
 } from '../core/models.js';
 import { applyMemory } from '../core/memory/memoryPostProcessor.js';
-import { defaultStyle, type AppCategory, type AutoSendKey } from '../core/apps/appCategory.js';
+import type { AppCategory, AutoSendKey } from '../core/apps/appCategory.js';
 import {
   autoSendKeyFor,
   formatForApp,
@@ -166,27 +166,12 @@ export interface DictationServiceDeps {
   onDiagnostic?: (category: string, message: string) => void;
   /** Optional post-transcription formatting (the formatter). */
   formatter?: FormatterPort;
-  /**
-   * The hidden local-model cleanup (S1-mini). Present only when its flag is on; it replaces
-   * the cleanup rules step with rules plus the model, and it never rejects and never takes
-   * longer than its own deadline. Absent: the cleanup rules alone, exactly as before.
-   */
-  cleanup?: CleanupPort;
   idFactory?: () => string;
   now?: () => number;
   /** Bounded wait for delivery, so a lost callback cannot wedge the app. */
   deliveryTimeoutMs?: number;
   /** How often the silence and max-length limits are checked. */
   tickMs?: number;
-}
-
-export interface CleanupPort {
-  run(input: {
-    raw: string;
-    language: string | null;
-    category: string | null;
-    style: string | null;
-  }): Promise<{ text: string }>;
 }
 
 export interface StartOptions {
@@ -798,20 +783,7 @@ export class DictationService {
     let formattingChangedText = false;
     if (!rawMode && press.formattingEnabled) {
       try {
-        const cleaned = this.deps.cleanup
-          ? (
-              await this.deps.cleanup.run({
-                raw: rawText,
-                language: storedLanguage,
-                // Like the macOS app: a dictation made in our own window has no app to fit.
-                category: session.noCategory ? null : context.category,
-                // A pick that equals the category's default is no pick (macOS stores nil then),
-                // so the model gets the default semi-formal.
-                style: session.noCategory ? null : pickedStyle(press.categoryStyles[context.category], context.category),
-              })
-            ).text
-          : applyCleanupRules(rawText, storedLanguage);
-        if (!current()) return;
+        const cleaned = applyCleanupRules(rawText, storedLanguage);
         // Nothing left (a dictation that was only "um"): keep the transcript as it came.
         if (cleaned.trim().length > 0) preparedText = cleaned;
       } catch {
@@ -1189,9 +1161,4 @@ function transcriptionFailureMessage(error: unknown): string {
 function describe(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
-}
-
-/** The style the person picked for a category, or null when none or when it is the category's default. */
-function pickedStyle(style: string | undefined, category: AppCategory): string | null {
-  return style === undefined || style === defaultStyle(category) ? null : style;
 }

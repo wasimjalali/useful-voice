@@ -48,11 +48,7 @@
     "files": [
       "dist/**/*",
       "package.json",
-      "!**/*.map",
-      "!node_modules/@node-llama-cpp/*/bins/**/*",
-      "node_modules/@node-llama-cpp/win-x64/bins/**/*",
-      "!node_modules/node-llama-cpp/llama/localBuilds/**/*",
-      "!node_modules/node-llama-cpp/llama/gitRelease.bundle"
+      "!**/*.map"
     ],
     "extraResources": [
       {
@@ -116,14 +112,9 @@
     },
     "portable": {
       "artifactName": "${productName}-${version}-portable.${ext}"
-    },
-    "asarUnpack": [
-      "node_modules/node-llama-cpp/bins/**/*",
-      "node_modules/@node-llama-cpp/*/bins/**/*"
-    ]
+    }
   },
   "dependencies": {
-    "electron-updater": "6.8.10",
-    "node-llama-cpp": "3.22.1"
+    "electron-updater": "6.8.10"
   }
 }

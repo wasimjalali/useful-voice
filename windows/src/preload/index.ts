@@ -263,7 +263,7 @@ const api = {
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('app:open-external', url),
   getDiagnostics: (): Promise<{ version: string; platform: string; logPath: string; recentErrors: string[] }> =>
     ipcRenderer.invoke('app:diagnostics'),
-  getFlags: (): Promise<{ previewFeatures: boolean; cleanupModel: boolean }> => ipcRenderer.invoke('app:flags'),
+  getFlags: (): Promise<{ previewFeatures: boolean }> => ipcRenderer.invoke('app:flags'),
   showDiagnosticsLog: (): Promise<void> => ipcRenderer.invoke('app:show-log'),
   getSaveStatus: (): Promise<{ ok: boolean; message?: string }> => ipcRenderer.invoke('app:save-status'),
   onSaveStatus: (handler: (status: { ok: boolean; message?: string }) => void): (() => void) => {

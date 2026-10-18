@@ -2216,7 +2216,8 @@ export async function runSelfTest(): Promise<SelfTestResult> {
       languagePin: 'en', formattingEnabled: true, silenceTimeoutSeconds: 30,
       maxRecordingSeconds: 600, recordingsToKeep: 5, soundEffectsEnabled: true,
       launchAtLogin: false, hotkey: { accelerator: 'Control+Alt+Space', pushToTalk: false },
-      dictionaryBiasBudget: 100, hasApiKey: true,
+      dictionaryBiasBudget: 100, hasApiKey: true, voiceModelId: 'deepgram:nova-3', formatterId: null,
+      keys: { deepgram: true, elevenlabs: false, gemini: false, anthropic: false },
     },
     'memory:get': {
       terms: [], replacements: [], snippets: [], suggestions: [],

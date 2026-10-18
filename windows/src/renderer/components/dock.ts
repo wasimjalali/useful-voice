@@ -5,6 +5,7 @@
  * change never rebuilds the timeline.
  */
 
+import { voiceStatus } from '../../core/models/selection.js';
 import { api } from '../api.js';
 import type { DictationError, DictationOutcomeEvent, DictationTelemetry, SettingsDTO } from '../../preload/types.js';
 import { el, icon } from './dom.js';
@@ -132,16 +133,17 @@ export function createDock(options: DockOptions): DockHandle {
   }
 
   function engineChip(): HTMLElement {
+    const model = voiceStatus(options.getSettings()?.voiceModelId ?? '', { deepgram: true, elevenlabs: true, gemini: true, anthropic: true }).model;
     return el(
       'button',
       {
         class: 'dock-chip',
         type: 'button',
-        title: 'Open engine settings',
-        onclick: () => options.openSettings('engine'),
+        title: 'Open model settings',
+        onclick: () => options.openSettings('models'),
       },
       icon(STREAM_ICONS.cloud, 16),
-      el('span', {}, 'Deepgram Nova-3'),
+      el('span', {}, model.provider === 'deepgram' ? `Deepgram ${model.name}` : model.name),
     );
   }
 
@@ -345,7 +347,7 @@ export function createDock(options: DockOptions): DockHandle {
     if (fix === 'openMicrophoneSettings') {
       action = actionButton('Open settings', () => void api.openExternal('ms-settings:privacy-microphone'));
     } else if (fix === 'openEngineSettings') {
-      action = actionButton('Open settings', () => options.openSettings('engine'));
+      action = actionButton('Open settings', () => options.openSettings('models'));
     } else if (fix === 'retry') {
       action = actionButton('Retry last recording', () => void api.retryLast());
     }

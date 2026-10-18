@@ -1,0 +1,162 @@
+/* ==========================================================================
+   Settings > Models: the voice model and AI formatting lists.
+   One row per model: radio dot, monogram tile, name and badge, two 5-segment meters,
+   and a right column (Cloud, Add key, Download, progress, Delete). Wide rows share
+   columns, so the Speed and Accuracy header sits over both lists. Below 560 px the
+   meters drop under the name.
+   ========================================================================== */
+
+.m-lists {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  container-type: inline-size;
+}
+
+.m-title { margin: 0 0 8px; font-size: var(--fs-body); font-weight: 600; letter-spacing: -0.005em; }
+
+/* The grid every row and the header share. */
+.m-columns,
+.m-row {
+  --m-cols: 16px 28px minmax(0, 1fr) 84px 84px minmax(150px, max-content);
+  display: grid;
+  grid-template-columns: var(--m-cols);
+  column-gap: 12px;
+  align-items: center;
+}
+
+.m-columns {
+  min-height: 34px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-muted);
+}
+/* Speed and Accuracy sit over their meters: columns 4 and 5. */
+.m-columns > :nth-child(1) { grid-column: 1 / 4; }
+.m-columns > :nth-child(2) { grid-column: 4; }
+.m-columns > :nth-child(3) { grid-column: 5; }
+.m-columns > :nth-child(4) { grid-column: 6; }
+
+.m-list .m-row { padding: 0 16px; min-height: 52px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.m-list .m-row:last-child { border-bottom: 0; }
+.m-list .m-row:hover { background: color-mix(in srgb, var(--sunken) 55%, transparent); }
+.m-list .m-row.is-selected { background: var(--sunken); }
+
+/* The focusable radio: it spans the left five columns and borrows their tracks. */
+.m-pick {
+  grid-column: 1 / 6;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+  min-height: 52px;
+  outline: none;
+}
+.m-pick:focus-visible { box-shadow: inset 0 0 0 2px var(--ink); border-radius: var(--r-xs); }
+.m-pick[aria-disabled="true"] .m-name-text { color: var(--ink-muted); }
+.m-pick[aria-disabled="true"] .m-tile { opacity: 0.6; }
+.m-pick[aria-disabled="true"] .m-meter { opacity: 0.55; }
+
+.m-dot {
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--control-edge);
+  border-radius: 50%;
+  background: var(--surface);
+  transition: border-color var(--dur-hover) var(--ease-out), background var(--dur-hover) var(--ease-out);
+}
+.is-selected .m-dot { border-color: var(--ink); background: radial-gradient(circle, var(--ink) 0 4px, var(--surface) 4.5px); }
+
+/* A monogram, not a vendor logo. */
+.m-tile {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-xs);
+  background: var(--sunken);
+  border: 1px solid var(--line-strong);
+  color: var(--ink);
+  font-size: var(--fs-label);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.is-selected .m-tile { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+
+.m-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.m-name-text { font-size: var(--fs-body); font-weight: 550; color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
+.m-badge {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+}
+
+/* display: contents keeps the two meters in the grid's columns 4 and 5. */
+.m-meters { display: contents; }
+.m-meter { display: inline-flex; gap: 2px; }
+.m-meter i {
+  width: 12px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+.m-meter i.on { background: var(--ink); }
+
+.m-side {
+  grid-column: 6;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 0;
+  font-size: var(--fs-meta);
+  color: var(--ink-muted);
+}
+.m-where { white-space: nowrap; }
+.m-bad { color: var(--danger); }
+
+.m-progress { display: block; width: 72px; height: 4px; border-radius: 2px; background: var(--line-strong); overflow: hidden; }
+.m-progress i { display: block; height: 100%; width: 0; background: var(--ink); transition: width var(--dur-hover) linear; }
+.m-progress.is-unknown i { width: 40%; animation: m-slide 1.1s var(--ease-out) infinite alternate; }
+@keyframes m-slide { from { transform: translateX(0); } to { transform: translateX(150%); } }
+@media (prefers-reduced-motion: reduce) {
+  .m-progress.is-unknown i { animation: none; width: 100%; opacity: 0.5; }
+}
+
+/* The Setup row sits under the keys with the same gap as between groups' rows. */
+.s-setup { margin-top: 12px; }
+
+/* Narrow: the right column moves to the end of the first line, the meters drop under the name. */
+@container (max-width: 560px) {
+  .m-columns { display: none; }
+  .m-list .m-row { --m-cols: minmax(0, 1fr) auto; padding: 8px 14px; min-height: 0; row-gap: 2px; }
+  .m-pick {
+    grid-column: 1;
+    grid-template-columns: 16px 28px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    min-height: 44px;
+    row-gap: 4px;
+  }
+  .m-pick > .m-dot,
+  .m-pick > .m-tile { grid-row: 1; }
+  .m-pick > .m-name { grid-column: 3; grid-row: 1; }
+  .m-pick > .m-meters {
+    display: flex;
+    grid-column: 3;
+    grid-row: 2;
+    gap: 14px;
+    align-items: center;
+  }
+  .m-meter::before { content: attr(data-label); margin-right: 6px; font-size: var(--fs-label); color: var(--ink-muted); }
+  .m-meter { align-items: center; }
+  .m-side { grid-column: 2; grid-row: 1; flex-wrap: wrap; justify-content: flex-end; padding: 0; }
+  .m-progress { width: 48px; }
+}

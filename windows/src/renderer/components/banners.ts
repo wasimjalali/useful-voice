@@ -27,14 +27,14 @@ export function pickBanner(input: HealthInput, goToEngine: () => void): Spec | n
     };
   }
   if (!input.hasApiKey) {
-    return { tone: 'warn', lead: 'No Deepgram key.', rest: ' Add one to start dictating.', action: { label: 'Add key', run: goToEngine } };
+    return { tone: 'warn', lead: `No ${input.provider ?? 'Deepgram'} key.`, rest: ' Add one to start dictating.', action: { label: 'Add key', run: goToEngine } };
   }
   if (kind === 'keyRejected') {
     return {
       tone: 'bad',
-      lead: 'Deepgram rejected your key.',
+      lead: `${input.provider ?? 'Deepgram'} rejected your key.`,
       rest: ' Check it and try again.',
-      action: { label: 'Open Engine settings', run: goToEngine },
+      action: { label: 'Open Models settings', run: goToEngine },
     };
   }
   if (kind === 'offline') {

@@ -1677,6 +1677,9 @@ class UsefulVoiceApp {
       }
       const result = this.settings.setApiKey(key);
       if (!result.ok) return result;
+      // The setup's engine step offers Deepgram Nova-3, so finishing it makes that the voice model.
+      this.settings.update({ voiceModelId: 'deepgram:nova-3' });
+      this.syncParakeet(false);
       const saved = await this.settings.save();
       if (!saved.ok) return { ok: false, error: saved.message ?? "Couldn't save the key. Try again." };
       this.broadcast('settings:changed');

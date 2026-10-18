@@ -119,7 +119,8 @@ final class SwitchingProvider: TranscriptionProvider, @unchecked Sendable {
     private func makeController(providers: [TranscriptionProvider],
                                 recordingsToKeep: Int = 10,
                                 now: @escaping () -> Date = { Date() },
-                                isSecureInputActive: @escaping () -> Bool = { false })
+                                isSecureInputActive: @escaping () -> Bool = { false },
+                                isOwnFieldFocused: @escaping () -> Bool = { true })
         -> DictationController {
         let controller = DictationController(
             recorder: recorder,
@@ -135,6 +136,7 @@ final class SwitchingProvider: TranscriptionProvider, @unchecked Sendable {
             diagnostics: diagnostics,
             now: now,
             isSecureInputActive: isSecureInputActive,
+            isOwnFieldFocused: isOwnFieldFocused,
             frontmostApp: { [weak self] in
                 self?.frontmostLookups += 1
                 return self?.frontmostApp
@@ -1698,6 +1700,53 @@ final class SwitchingProvider: TranscriptionProvider, @unchecked Sendable {
         await controller.awaitProcessing()
         #expect(deliveredModes == [.paste])
         #expect(outcomes.last == .delivered(words: 2, mode: .pasted, appName: "Useful Voice"))
+    }
+
+    /// Started and delivered in Useful Voice, but no text field of ours has focus (a
+    /// settings page, a button): a paste would land nowhere, so it is copied and the
+    /// notice says so rather than reporting "Inserted".
+    @Test func testUsefulVoiceInFrontWithNoEditableFieldCopies() async throws {
+        frontmostApp = FrontmostApp(id: "ai.useful.voice", name: "Useful Voice")
+        let controller = makeController(providers: [okProvider()], isOwnFieldFocused: { false })
+        controller.toggle()
+        controller.toggle()
+        await controller.awaitProcessing()
+        #expect(deliveredModes == [.copy])
+        #expect(outcomes.last == .delivered(words: 2, mode: .copiedAppChanged, appName: "Useful Voice"))
+    }
+
+    @Test func testOwnFieldIsOnlyAskedWhenUsefulVoiceIsInFront() async throws {
+        var asked = 0
+        let controller = makeController(providers: [okProvider()], isOwnFieldFocused: { asked += 1; return false })
+        controller.toggle()                          // Slack, before and after
+        controller.toggle()
+        await controller.awaitProcessing()
+        #expect(deliveredModes == [.paste])
+        #expect(asked == 0)
+    }
+
+    @Test func testOwnAppIDMatchesTheBundleIdentifier() throws {
+        let plist = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("bundle/Info.plist")
+        let info = try #require(NSDictionary(contentsOf: plist) as? [String: Any])
+        #expect(info["CFBundleIdentifier"] as? String == DictationController.ownAppID)
+    }
+
+    /// Retry when the retained file has vanished says so, instead of doing nothing.
+    @Test func testRetryWithTheAudioGoneSaysSoAndForgetsIt() async throws {
+        let controller = makeController(providers: [failingProvider(.http(500, "boom"))])
+        controller.toggle()
+        await controller.toggleAndWait()
+        try FileManager.default.removeItem(at: try #require(recorder.startedURL))
+        controller.retryLast()
+        guard case .error(let error) = controller.state else {
+            Issue.record("expected an error state"); return
+        }
+        #expect(error.message == "The recording for this dictation is gone, so it can't be retried.")
+        #expect(error.fix == nil)
+        #expect(!controller.canRetry)
+        #expect(delivered.isEmpty)
     }
 
     @Test func testSameAppAtDeliveryStillPastes() async throws {

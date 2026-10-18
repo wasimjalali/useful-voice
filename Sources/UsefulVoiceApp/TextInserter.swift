@@ -417,14 +417,41 @@ enum PasteKeyCode {
     private static let lock = NSLock()
     private static var cache: [String: CGKeyCode] = [:]
 
-    static func current() -> CGKeyCode {
-        guard let source = layoutSource() else { return ansiV }
+    static func current(diagnostics: Diagnostics = .shared) -> CGKeyCode {
+        guard let source = layoutSource() else {
+            lock.lock(); defer { lock.unlock() }
+            warn(id: "no layout", diagnostics: diagnostics)
+            return ansiV
+        }
         let id = property(source, kTISPropertyInputSourceID) as? String ?? "?"
+        return keyCode(forLayout: id, diagnostics: diagnostics) { resolve(source) }
+    }
+
+    /// The cached key for a layout id; on a miss runs `resolve`, and when that finds
+    /// nothing falls back to the ANSI V key and logs one warning for that layout id.
+    static func keyCode(forLayout id: String, diagnostics: Diagnostics,
+                        resolve: () -> CGKeyCode?) -> CGKeyCode {
         lock.lock(); defer { lock.unlock() }
         if let cached = cache[id] { return cached }
-        let resolved = resolve(source) ?? ansiV
-        cache[id] = resolved
-        return resolved
+        let resolved = resolve()
+        if resolved == nil { warn(id: id, diagnostics: diagnostics) }
+        let code = resolved ?? ansiV
+        cache[id] = code
+        return code
+    }
+
+    private static var warnedIDs: Set<String> = []
+
+    /// Caller holds the lock.
+    private static func warn(id: String, diagnostics: Diagnostics) {
+        guard warnedIDs.insert(id).inserted else { return }
+        diagnostics.warning("delivery", "no key types v in the keyboard layout \(id); pasting with the ANSI V key")
+    }
+
+    /// Test seam: forget what was cached and warned.
+    static func resetForTesting() {
+        lock.lock(); defer { lock.unlock() }
+        cache.removeAll(); warnedIDs.removeAll()
     }
 
     private static func layoutSource() -> TISInputSource? {

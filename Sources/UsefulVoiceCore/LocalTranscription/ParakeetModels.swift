@@ -139,24 +139,76 @@ let fluidAudioDownloader: ParakeetDownloader = { version, root, progress in
     }
 }
 
-/// Holds one version's loaded models. Loads on first use, keeps them for the next dictation and
-/// lets go of them after `idleSeconds` without one (the models take a few hundred MB of memory).
+/// One loaded model. The real one wraps FluidAudio's `AsrManager`; tests use a counting fake.
+protocol ParakeetSession: Sendable {
+    func transcribe(samples: [Float], language: String?) async throws -> String
+    func cleanup() async
+}
+
+typealias ParakeetSessionLoader = @Sendable (ParakeetVersion, URL) async throws -> ParakeetSession
+
+private struct FluidAudioSession: ParakeetSession {
+    let asr: AsrManager
+    let version: ParakeetVersion
+
+    func transcribe(samples: [Float], language: String?) async throws -> String {
+        var state = TdtDecoderState.make(decoderLayers: await asr.decoderLayerCount)
+        let hint = version == .v3 ? language.flatMap { Language(rawValue: $0) } : nil
+        return try await asr.transcribe(samples, decoderState: &state, language: hint).text
+    }
+
+    func cleanup() async { await asr.cleanup() }
+}
+
+let fluidAudioSessionLoader: ParakeetSessionLoader = { version, directory in
+    let models = try AsrModels.loadLocal(from: directory, version: ParakeetStorage.asrVersion(version))
+    let asr = AsrManager(config: .default)
+    try await asr.loadModels(models)
+    return FluidAudioSession(asr: asr, version: version)
+}
+
+/// Holds one version's loaded models. Loads on first use (or on `preload`), keeps them for the next
+/// dictation and lets go of them after `idleSeconds` without one (they take a few hundred MB), unless
+/// the version is pinned as the selected voice model.
 actor ParakeetEngine {
     private let version: ParakeetVersion
     private let modelsDirectory: URL
     private let idleSeconds: Double
-    private var manager: AsrManager?
-    private var loading: Task<AsrManager, Error>?
+    private let loader: ParakeetSessionLoader
+    private var session: ParakeetSession?
+    private var loading: Task<ParakeetSession, Error>?
     private var idleTask: Task<Void, Never>?
     private var useCount = 0
+    private var pinned = false
 
-    init(version: ParakeetVersion, modelsDirectory: URL, idleSeconds: Double) {
+    init(version: ParakeetVersion, modelsDirectory: URL, idleSeconds: Double,
+         loader: @escaping ParakeetSessionLoader = fluidAudioSessionLoader) {
         self.version = version
         self.modelsDirectory = modelsDirectory
         self.idleSeconds = idleSeconds
+        self.loader = loader
     }
 
-    var isLoaded: Bool { manager != nil }
+    var isLoaded: Bool { session != nil }
+
+    func setPinned(_ value: Bool) {
+        pinned = value
+        if value { idleTask?.cancel(); idleTask = nil } else { scheduleIdleUnload() }
+    }
+
+    /// Loads the models and runs one second of silence through them, so the Neural Engine compile
+    /// happens now and not in the first dictation. Does nothing when already loaded or loading.
+    func preload() async throws {
+        guard session == nil, loading == nil else { return }
+        idleTask?.cancel()
+        useCount += 1
+        defer {
+            useCount -= 1
+            scheduleIdleUnload()
+        }
+        let loaded = try await loadedSession(warmUp: true)
+        _ = loaded
+    }
 
     func transcribe(samples: [Float], language: String?) async throws -> String {
         idleTask?.cancel()
@@ -165,13 +217,11 @@ actor ParakeetEngine {
             useCount -= 1
             scheduleIdleUnload()
         }
-        let asr = try await loadedManager()
+        let loaded = try await loadedSession(warmUp: false)
         try Task.checkCancellation()
-        var state = TdtDecoderState.make(decoderLayers: await asr.decoderLayerCount)
-        let hint = version == .v3 ? language.flatMap { Language(rawValue: $0) } : nil
-        let result = try await asr.transcribe(samples, decoderState: &state, language: hint)
+        let text = try await loaded.transcribe(samples: samples, language: language)
         try Task.checkCancellation()
-        return result.text
+        return text
     }
 
     func unload() {
@@ -179,32 +229,35 @@ actor ParakeetEngine {
         idleTask = nil
         loading?.cancel()
         loading = nil
-        if let asr = manager { Task { await asr.cleanup() } }
-        manager = nil
+        if let old = session { Task { await old.cleanup() } }
+        session = nil
     }
 
-    private func loadedManager() async throws -> AsrManager {
-        if let manager { return manager }
-        let task: Task<AsrManager, Error>
+    private func loadedSession(warmUp: Bool) async throws -> ParakeetSession {
+        if let session { return session }
+        let task: Task<ParakeetSession, Error>
         if let loading {
             task = loading
         } else {
             let directory = modelsDirectory
-            let asrVersion = ParakeetStorage.asrVersion(version)
+            let version = self.version
+            let loader = self.loader
             // Unstructured on purpose: one caller giving up must not abort the load another waits on.
             task = Task.detached(priority: .userInitiated) {
-                let models = try AsrModels.loadLocal(from: directory, version: asrVersion)
-                let asr = AsrManager(config: .default)
-                try await asr.loadModels(models)
-                return asr
+                let loaded = try await loader(version, directory)
+                if warmUp {
+                    _ = try? await loaded.transcribe(
+                        samples: [Float](repeating: 0, count: WavReader.requiredSampleRate), language: nil)
+                }
+                return loaded
             }
             loading = task
         }
         do {
-            let asr = try await task.value
+            let loaded = try await task.value
             loading = nil
-            manager = asr
-            return asr
+            session = loaded
+            return loaded
         } catch {
             loading = nil
             throw error
@@ -212,7 +265,7 @@ actor ParakeetEngine {
     }
 
     private func scheduleIdleUnload() {
-        guard useCount == 0, manager != nil else { return }
+        guard useCount == 0, session != nil, !pinned else { return }
         idleTask?.cancel()
         let seconds = idleSeconds
         idleTask = Task { [weak self] in
@@ -223,10 +276,11 @@ actor ParakeetEngine {
     }
 
     private func unloadIfIdle() {
-        guard useCount == 0 else { return }
+        guard useCount == 0, !pinned else { return }
         unload()
     }
 }
+
 
 /// A Parakeet model as a transcription provider. The check for downloaded files runs on every call,
 /// so a model deleted after the provider was made fails with the Settings message.
@@ -287,9 +341,22 @@ struct ParakeetProvider: TranscriptionProvider {
 public final class ParakeetModelManager: ObservableObject {
     @Published public private(set) var states: [ParakeetVersion: ParakeetModelState]
 
+    /// The Parakeet version selected as the voice model, nil when another model is selected. The app
+    /// sets it. A pinned version stays loaded: it is never unloaded for being idle.
+    public var pinned: ParakeetVersion? {
+        didSet {
+            for (version, engine) in engines {
+                let isPinned = version == pinned
+                Task { await engine.setPinned(isPinned) }
+            }
+        }
+    }
+
     private let root: URL
     private let downloader: ParakeetDownloader
     private let idleSeconds: Double
+    private let loader: ParakeetSessionLoader
+    private let diagnostics: Diagnostics
     private var tasks: [ParakeetVersion: (token: UUID, task: Task<Void, Never>)] = [:]
     private var engines: [ParakeetVersion: ParakeetEngine] = [:]
 
@@ -299,10 +366,14 @@ public final class ParakeetModelManager: ObservableObject {
 
     init(directory: URL,
          downloader: @escaping ParakeetDownloader = fluidAudioDownloader,
-         idleSeconds: Double = 300) {
+         idleSeconds: Double = 300,
+         loader: @escaping ParakeetSessionLoader = fluidAudioSessionLoader,
+         diagnostics: Diagnostics = .shared) {
         self.root = directory
         self.downloader = downloader
         self.idleSeconds = idleSeconds
+        self.loader = loader
+        self.diagnostics = diagnostics
         states = [:]
         for version in ParakeetVersion.allCases { states[version] = diskState(of: version) }
     }
@@ -357,6 +428,8 @@ public final class ParakeetModelManager: ObservableObject {
             states[version] = diskState(of: version)
             if case .notDownloaded = states[version] {
                 states[version] = .failed("The download finished but the model files are incomplete. Try again.")
+            } else {
+                preload(version)
             }
             return
         }
@@ -411,17 +484,36 @@ public final class ParakeetModelManager: ObservableObject {
     /// A provider for `version`. When the model isn't ready its `transcribe` throws
     /// `ProviderError.notConfigured` with a message that says to download it in Settings.
     public func provider(for version: ParakeetVersion) -> TranscriptionProvider {
-        let engine: ParakeetEngine
-        if let existing = engines[version] {
-            engine = existing
-        } else {
-            engine = ParakeetEngine(
-                version: version,
-                modelsDirectory: ParakeetStorage.modelsDirectory(version, in: root),
-                idleSeconds: idleSeconds)
-            engines[version] = engine
+        ParakeetProvider(version: version, root: root, engine: engine(for: version))
+    }
+
+    private func engine(for version: ParakeetVersion) -> ParakeetEngine {
+        if let existing = engines[version] { return existing }
+        let engine = ParakeetEngine(
+            version: version,
+            modelsDirectory: ParakeetStorage.modelsDirectory(version, in: root),
+            idleSeconds: idleSeconds,
+            loader: loader)
+        engines[version] = engine
+        if version == pinned { Task { await engine.setPinned(true) } }
+        return engine
+    }
+
+    /// Loads a downloaded model in the background and runs a second of silence through it, so the
+    /// slow first load (a Neural Engine compile) happens now and not in the first dictation. Does
+    /// nothing when the model isn't downloaded or is already loaded or loading. Never throws; a
+    /// failure goes to Diagnostics and the next dictation loads the model as usual.
+    public func preload(_ version: ParakeetVersion) {
+        guard ParakeetStorage.isReady(version, in: root) else { return }
+        let engine = self.engine(for: version)
+        let diagnostics = self.diagnostics
+        Task.detached(priority: .utility) {
+            do {
+                try await engine.preload()
+            } catch {
+                diagnostics.failure("parakeet", error, context: "preloading \(version.displayName)")
+            }
         }
-        return ParakeetProvider(version: version, root: root, engine: engine)
     }
 
     /// Whether `version`'s models are in memory right now.

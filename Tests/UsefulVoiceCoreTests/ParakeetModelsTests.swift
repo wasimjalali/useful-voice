@@ -217,7 +217,9 @@ struct ParakeetManagerTests {
         let root = ParakeetFixtures.makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let fake = FakeDownload(.succeed)
-        let manager = ParakeetModelManager(directory: root, downloader: fake.downloader)
+        let manager = ParakeetModelManager(
+            directory: root, downloader: fake.downloader,
+            loader: { _, _ in throw URLError(.cancelled) }, diagnostics: Diagnostics(directory: nil))
         manager.download(.v2)
         #expect(manager.state(of: .v2) == .downloading(progress: nil))
         let end = await waitForState(manager, .v2) { if case .ready = $0 { return true } else { return false } }
@@ -373,6 +375,15 @@ struct ParakeetE2ETests {
         guard case .ready = ParakeetModelManager(directory: root).state(of: .v2) else {
             Issue.record("a fresh manager should see v2 ready"); return
         }
+
+        // The finished download started a preload; time it, then the first dictation after it.
+        let preloadStart = Date()
+        let loadDeadline = Date().addingTimeInterval(120)
+        while !(await manager.isLoaded(.v2)) && Date() < loadDeadline {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        print("PARAKEET_E2E preload seconds=\(Date().timeIntervalSince(preloadStart)) loaded=\(await manager.isLoaded(.v2))")
+        #expect(await manager.isLoaded(.v2))
 
         let provider = manager.provider(for: .v2)
         let hint = ParakeetFixtures.hint("en")

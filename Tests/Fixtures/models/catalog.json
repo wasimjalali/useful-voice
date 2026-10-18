@@ -1,0 +1,21 @@
+{
+  "_comment": "The model catalog both platforms show. Each platform hard-codes its catalog and a test checks it against this file, so macOS and Windows can't drift. Speed and accuracy are relative 1-5 ratings for dictation, not benchmarks. platforms lists where a model is offered.",
+  "voice": [
+    { "id": "deepgram:nova-3", "name": "Nova-3", "provider": "deepgram", "apiModel": "nova-3", "kind": "cloud", "badge": null, "speed": 5, "accuracy": 4, "platforms": ["macos", "windows"] },
+    { "id": "deepgram:nova-3-medical", "name": "Nova-3 Medical", "provider": "deepgram", "apiModel": "nova-3-medical", "kind": "cloud", "badge": "EN", "speed": 5, "accuracy": 4, "platforms": ["macos", "windows"] },
+    { "id": "elevenlabs:scribe_v2", "name": "Scribe v2", "provider": "elevenlabs", "apiModel": "scribe_v2", "kind": "cloud", "badge": null, "speed": 3, "accuracy": 5, "platforms": ["macos", "windows"] },
+    { "id": "parakeet:v2", "name": "Parakeet", "provider": "nvidia", "apiModel": "parakeet-tdt-0.6b-v2", "kind": "local", "badge": "EN", "speed": 5, "accuracy": 4, "platforms": ["macos", "windows"] },
+    { "id": "parakeet:v3", "name": "Parakeet Multilingual", "provider": "nvidia", "apiModel": "parakeet-tdt-0.6b-v3", "kind": "local", "badge": null, "speed": 5, "accuracy": 4, "platforms": ["macos", "windows"] },
+    { "id": "whisper:large-v3-turbo", "name": "Whisper Large v3 Turbo", "provider": "openai", "apiModel": "large-v3-turbo", "kind": "local", "badge": null, "speed": 3, "accuracy": 4, "platforms": ["macos"] },
+    { "id": "whisper:large-v3", "name": "Whisper Large v3", "provider": "openai", "apiModel": "large-v3", "kind": "local", "badge": null, "speed": 2, "accuracy": 4, "platforms": ["macos"] }
+  ],
+  "language": [
+    { "id": "gemini:gemini-3.8-flash", "name": "Gemini 3.8 Flash", "provider": "gemini", "apiModel": "gemini-3.8-flash", "kind": "cloud", "badge": "NEW", "speed": 4, "accuracy": 5, "platforms": ["macos", "windows"] },
+    { "id": "gemini:gemini-3.6-flash", "name": "Gemini 3.6 Flash", "provider": "gemini", "apiModel": "gemini-3.6-flash", "kind": "cloud", "badge": null, "speed": 4, "accuracy": 4, "platforms": ["macos", "windows"] },
+    { "id": "gemini:gemini-3.5-flash-lite", "name": "Gemini 3.5 Flash-Lite", "provider": "gemini", "apiModel": "gemini-3.5-flash-lite", "kind": "cloud", "badge": null, "speed": 5, "accuracy": 3, "platforms": ["macos", "windows"] },
+    { "id": "anthropic:claude-haiku-5-5", "name": "Claude Haiku 5.5", "provider": "anthropic", "apiModel": "claude-haiku-5-5", "kind": "cloud", "badge": "NEW", "speed": 4, "accuracy": 5, "platforms": ["macos", "windows"] },
+    { "id": "anthropic:claude-haiku-4-5", "name": "Claude Haiku 4.5", "provider": "anthropic", "apiModel": "claude-haiku-4-5", "kind": "cloud", "badge": null, "speed": 4, "accuracy": 4, "platforms": ["macos", "windows"] },
+    { "id": "anthropic:claude-sonnet-4-6", "name": "Claude Sonnet 4.6", "provider": "anthropic", "apiModel": "claude-sonnet-4-6", "kind": "cloud", "badge": null, "speed": 3, "accuracy": 5, "platforms": ["macos", "windows"] }
+  ],
+  "defaults": { "voice": "deepgram:nova-3", "language": null }
+}

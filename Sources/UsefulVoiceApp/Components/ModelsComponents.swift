@@ -99,7 +99,7 @@ struct ModelListHeader: View {
 /// actions (Add key, Download, Delete), which are separate buttons.
 struct ModelRow: View {
     static let meterColumn: CGFloat = 70
-    static let trailingColumn: CGFloat = 168
+    static let trailingColumn: CGFloat = 212
 
     let entry: ModelEntry
     let selected: Bool
@@ -375,7 +375,7 @@ struct ApiKeyRow: View {
             Button("Change") { open() }
                 .buttonStyle(.brandSecondary).disabled(saving)
         } else {
-            Text("No key").font(.uv(.meta)).foregroundStyle(Theme.inkMuted)
+            Text("No key").font(.uv(.meta)).foregroundStyle(Theme.inkMuted).frame(height: 30)
             Button("Add key") { open() }.buttonStyle(.brandPrimary)
             Button("Get a key") { NSWorkspace.shared.open(provider.getKeyURL) }
                 .buttonStyle(.brandSecondary)
@@ -430,7 +430,7 @@ struct ModelsLists: View {
             Color.clear.preference(key: ModelListWidthKey.self, value: proxy.size.width)
         })
         .onPreferenceChange(ModelListWidthKey.self) { width in
-            let next = width < 560
+            let next = width < 560 || SettingsSnapshot.state == "modelsCompact"
             if next != compact { compact = next }
         }
     }

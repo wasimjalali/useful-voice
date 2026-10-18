@@ -208,6 +208,8 @@ public struct AIFormatter: Sendable {
             return .failed("cancelled")
         } catch let error as FormatterError {
             return log(.failed(error.reason))
+        } catch let failure as HTTPFailure {
+            return log(.failed("HTTP \(failure.status)"))
         } catch let urlError as URLError {
             return log(.failed(urlError.code == .cancelled ? "cancelled"
                                : urlError.code == .timedOut ? "timed out" : "network error \(urlError.code.rawValue)"))

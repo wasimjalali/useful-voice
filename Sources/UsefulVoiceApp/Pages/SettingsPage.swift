@@ -64,7 +64,7 @@ struct SettingsPage: View {
         switch SettingsSnapshot.state {
         case "noKey":
             modelsVM.applyPreview(.noKeys)
-        case "modelsSample":
+        case "modelsSample", "modelsCompact":
             modelsVM.applyPreview(.sample)
         case "invalidKey":
             modelsVM.applyPreview(.rejectedKey)

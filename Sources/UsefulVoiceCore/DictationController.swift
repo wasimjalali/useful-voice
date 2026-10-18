@@ -416,7 +416,7 @@ public final class DictationController {
 
         // The Nova-3 fallback check is Deepgram-specific: a local engine's
         // codes (whisper's "yue") are not Deepgram detections.
-        if usedProvider == DeepgramProvider.providerName {
+        if !Self.reportsOtherLanguageCodes(provider: usedProvider ?? "") {
             recordDetectedLanguageCheck(rawDetected)
         }
 
@@ -513,6 +513,15 @@ public final class DictationController {
     ///
     /// Deliberately a log line rather than an alert: it may be a single unusual
     /// utterance, and interrupting dictation to say so would be worse than the problem.
+    /// Providers whose language codes are not Deepgram detections (whisper's "yue",
+    /// ElevenLabs' ISO 639-3), so the Nova-3 check below doesn't apply to them.
+    static func reportsOtherLanguageCodes(provider: String) -> Bool {
+        provider == LocalWhisperProvider.providerName
+            || provider == ElevenLabsProvider.providerName
+            || provider == GeminiTranscriptionProvider.providerName
+            || provider.hasPrefix("Parakeet")
+    }
+
     private func recordDetectedLanguageCheck(_ detected: String?) {
         guard let detected, !detected.isEmpty else { return }
         guard !DeepgramLanguageCatalog.detectionStayedOnNova3(detected) else { return }

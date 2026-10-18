@@ -12,7 +12,9 @@ Cross-platform dictation app. macOS: Swift (`Sources/UsefulVoiceCore`,
   Electron self-test)
 - macOS pause-media live E2E: `scripts/media-pause-e2e/run.sh` builds a silent test player and drives the real
   `Sources/UsefulVoiceCore/Media` policy against it (log in `verify/pause-media/`). It exits 3 without sending anything
-  while another app is outputting audio, since the commands go to the Now Playing app.
+  while another app is outputting audio, since the commands go to the Now Playing app. Pause media uses only the
+  MediaRemote Pause and Play commands (never the Play/Pause key, which toggles); Core Audio's process list says what is
+  playing and whether a command worked. Its scenarios include a silent background stream and a user pressing play mid-dictation.
 - Packaging smoke: `cd windows && npx electron-builder --win --dir`
 - Windows E2E: `cd windows && env -u ELECTRON_RUN_AS_NODE npm run e2e` (Playwright drives the
   built app with `--e2e --uv-data-dir=<scratch>`: hidden windows, fixture data, no tray or

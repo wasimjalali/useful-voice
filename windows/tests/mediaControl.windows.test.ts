@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest';
 import {
   MEDIA_PRELUDE,
   listPlayingScript,
-  parsePausedOutput,
+  parsePauseOutput,
+  parseResumeOutput,
   parsePlayingOutput,
   pauseScript,
   resumeScript,
@@ -71,7 +72,7 @@ describe.skipIf(!onWindows)('the media scripts on real Windows', () => {
       MEDIA_PRELUDE,
       MEDIA_PRELUDE + listPlayingScript(),
       MEDIA_PRELUDE + pauseScript(['Spotify.exe', "it's"]),
-      MEDIA_PRELUDE + resumeScript([{ id: 'Spotify.exe', settled: { position: 5, updated: 6 } }, { id: "it's" }]),
+      MEDIA_PRELUDE + resumeScript([{ id: 'Spotify.exe', confirmed: true, requestedAt: 7, settled: { position: 5, updated: 6 } }, { id: "it's", confirmed: false, requestedAt: 7 }]),
     ];
     for (const script of scripts) {
       const encoded = Buffer.from(script, 'utf8').toString('base64');
@@ -96,7 +97,7 @@ Write-Output ('UVCOUNT:' + $sessions.Count)
   });
 
   it('resumes nothing for an id no session has', () => {
-    expect(powershell(MEDIA_PRELUDE + resumeScript([{ id: 'no-such-app-id-for-this-test' }]))).toContain('UVRESUMED:0');
+    expect(powershell(MEDIA_PRELUDE + resumeScript([{ id: 'no-such-app-id-for-this-test', confirmed: true, requestedAt: Date.now() }]))).toContain('UVRESUMED:0');
   });
 
   it('lists, pauses and resumes a real session: Playing, then Paused, then Playing', async (context) => {
@@ -151,20 +152,29 @@ $p.Dispose()
       // Playing: list-playing sees it, with a timeline.
       expect(during.get(id)).toMatchObject({ id });
 
-      // Paused: pause answers with the timeline after the pause, and the session leaves the list.
-      const paused = parsePausedOutput(powershell(MEDIA_PRELUDE + pauseScript([id])));
-      expect(paused.map((s) => s.id)).toEqual([id]);
+      // Paused: pause confirms it, with a timeline, and the session leaves the list.
+      const requestedAt = Date.now();
+      const paused = parsePauseOutput(powershell(MEDIA_PRELUDE + pauseScript([id])));
+      expect(paused.refused).toEqual([]);
+      expect(paused.confirmed.map((s) => s.id)).toEqual([id]);
       const afterPause = await until(playing, (now) => !now.has(id), 10_000);
       expect(afterPause.has(id)).toBe(false);
+      const settled = paused.confirmed[0] ? { position: paused.confirmed[0].position, updated: paused.confirmed[0].updated } : undefined;
 
-      // Playing again: resume plays it, as it is still Paused and untouched.
-      const settled = paused[0] ? { position: paused[0].position, updated: paused[0].updated } : undefined;
-      expect(powershell(MEDIA_PRELUDE + resumeScript([{ id, settled }]))).toContain('UVRESUMED:1');
+      // A pause that was never confirmed, and whose timeline cannot show it was ours (a
+      // request time far in the past), is left paused and reported.
+      const unproven = powershell(MEDIA_PRELUDE + resumeScript([{ id, confirmed: false, requestedAt: 1 }]));
+      expect(parseResumeOutput(unproven).unconfirmed).toEqual([id]);
+      expect(unproven).toContain('UVRESUMED:0');
+      expect((await until(playing, (now) => now.has(id), 1500)).has(id)).toBe(false);
+
+      // Playing again: a confirmed, untouched session is played.
+      expect(powershell(MEDIA_PRELUDE + resumeScript([{ id, confirmed: true, requestedAt, settled }]))).toContain('UVRESUMED:1');
       const afterResume = await until(playing, (now) => now.has(id), 10_000);
       expect(afterResume.has(id)).toBe(true);
 
       // A session that is already Playing is left alone by a second resume.
-      expect(powershell(MEDIA_PRELUDE + resumeScript([{ id, settled }]))).toContain('UVRESUMED:0');
+      expect(powershell(MEDIA_PRELUDE + resumeScript([{ id, confirmed: true, requestedAt, settled }]))).toContain('UVRESUMED:0');
     } finally {
       try {
         child.stdin.write('quit\n');

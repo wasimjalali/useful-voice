@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   MediaPausePolicy,
   TOUCH_TOLERANCE_MS,
+  resumeVerdict,
   touchedSince,
   type HeldSession,
   type MediaEffects,
   type MediaSession,
+  type PauseResult,
+  type ResumeResult,
 } from '../src/core/media/mediaPausePolicy.js';
 
 type Status = 'Playing' | 'Paused';
@@ -21,7 +24,21 @@ function fakeMedia(initial: Record<string, Status>) {
   for (const [id, status] of Object.entries(initial)) sessions[id] = { status, position: 10_000, updated: 1_000_000 };
   const calls: string[] = [];
   const gates: Array<() => void> = [];
-  const state = { hold: false, failList: false, failPause: false, pauseLandsButThrows: false, failResume: false };
+  const state = {
+    hold: false,
+    failList: false,
+    failPause: false,
+    pauseLandsButThrows: false,
+    failResume: false,
+    refusePause: false,
+    refuseResume: false,
+    /** The pause answer leaves this id out, as if the session had been paused by the person first. */
+    omitFromAnswer: '',
+    /** Whether the app publishes a timeline update when it pauses (many browsers publish none). */
+    publishesTimeline: true,
+  };
+  const clock = { now: 5_000_000 };
+  const quits: string[] = [];
   const waitForGate = async (): Promise<void> => {
     if (!state.hold) return;
     await new Promise<void>((resolve) => gates.push(resolve));
@@ -39,26 +56,41 @@ function fakeMedia(initial: Record<string, Status>) {
       calls.push(`pause:${ids.join(',')}`);
       await waitForGate();
       if (state.failPause) throw new Error('pause failed');
-      const done: MediaSession[] = [];
+      const result: PauseResult = { confirmed: [], refused: [] };
       for (const id of ids) {
         const s = sessions[id];
         if (!s || s.status !== 'Playing') continue;
+        if (state.refusePause) {
+          result.refused.push(id);
+          continue;
+        }
         s.status = 'Paused';
-        done.push({ id, position: s.position, updated: s.updated });
+        if (state.publishesTimeline) s.updated = clock.now;
+        if (id !== state.omitFromAnswer) result.confirmed.push({ id, position: s.position, updated: s.updated });
       }
       // The pause landed, but the answer never arrives (a timeout, a slow await).
       if (state.pauseLandsButThrows) throw new Error('timed out after the pause landed');
-      return done;
+      return result;
     },
     async resume(held: HeldSession[]) {
       calls.push(`resume:${held.map((h) => h.id).join(',')}`);
       await waitForGate();
       if (state.failResume) throw new Error('resume failed');
-      // What the real script does: play only what is Paused and not touched since the pause.
+      // What the real script does: play only what is Paused and passes the verdict.
+      const result: ResumeResult = { refused: [], touched: [], unconfirmed: [] };
       for (const h of held) {
         const s = sessions[h.id];
-        if (s && s.status === 'Paused' && !touchedSince(h.settled, s)) s.status = 'Playing';
+        if (!s || s.status !== 'Paused') continue;
+        const verdict = resumeVerdict(h, s);
+        if (verdict === 'touched') result.touched.push(h.id);
+        else if (verdict === 'unconfirmed') result.unconfirmed.push(h.id);
+        else if (state.refuseResume) result.refused.push(h.id);
+        else s.status = 'Playing';
       }
+      return result;
+    },
+    beginQuit() {
+      quits.push('quit');
     },
   };
   const status = (): Record<string, Status> => Object.fromEntries(Object.entries(sessions).map(([id, s]) => [id, s.status]));
@@ -74,9 +106,17 @@ function fakeMedia(initial: Record<string, Status>) {
       state.hold = false;
       gates.splice(0).forEach((open) => open());
     },
-    fail: (what: 'failList' | 'failPause' | 'pauseLandsButThrows' | 'failResume') => {
+    fail: (what: 'failList' | 'failPause' | 'pauseLandsButThrows' | 'failResume' | 'refusePause' | 'refuseResume') => {
       state[what] = true;
     },
+    omitFromAnswer: (id: string) => {
+      state.omitFromAnswer = id;
+    },
+    noTimeline: () => {
+      state.publishesTimeline = false;
+    },
+    clock,
+    quits,
   };
 }
 
@@ -90,6 +130,7 @@ function setup(initial: Record<string, Status>, enabled = true) {
     log: (message) => logs.push(message),
     // Short but real, so a press "inside the grace" is a real race against a real timer.
     graceMs: 30,
+    now: () => media.clock.now,
   });
   return { media, logs, flags, policy };
 }
@@ -379,5 +420,133 @@ describe('failures and quit', () => {
     expect(() => policy.recordingStarted()).not.toThrow();
     await policy.settled();
     expect(logs[0]).toContain('settings broke');
+  });
+});
+
+describe('only a pause that was confirmed is undone', () => {
+  it('leaves alone and logs a session Windows refused to pause, and never tries to play it', async () => {
+    const { media, logs, policy } = setup({ spotify: 'Playing' });
+    media.fail('refusePause');
+    policy.recordingStarted();
+    await policy.settled();
+    policy.recordingEnded();
+    await policy.settled();
+    expect(logs).toEqual(['Could not pause spotify: Windows refused the request']);
+    expect(resumes(media.calls)).toEqual([]);
+    expect(media.status().spotify).toBe('Playing');
+  });
+
+  it('leaves alone a session the answer does not confirm (the person paused it first), and logs it', async () => {
+    const { media, logs, policy } = setup({ spotify: 'Playing', edge: 'Playing' });
+    media.omitFromAnswer('edge');
+    policy.recordingStarted();
+    await policy.settled();
+    policy.recordingEnded();
+    await policy.settled();
+    expect(resumes(media.calls)).toEqual(['resume:spotify']);
+    expect(logs).toEqual(['Left edge alone: its pause was not confirmed']);
+  });
+
+  it('counts a lost answer as ours when the app updated its timeline just after our request', async () => {
+    const { media, logs, policy } = setup({ spotify: 'Playing' });
+    media.fail('pauseLandsButThrows');
+    policy.recordingStarted();
+    await policy.settled();
+    media.clock.now += 400;
+    policy.recordingEnded();
+    await policy.settled();
+    expect(media.status().spotify).toBe('Playing');
+    expect(logs).toEqual(['could not pause: timed out after the pause landed']);
+  });
+
+  it('leaves a lost-answer session paused when its timeline cannot show the pause was ours, and logs it', async () => {
+    const { media, logs, policy } = setup({ spotify: 'Playing' });
+    media.noTimeline();
+    media.fail('pauseLandsButThrows');
+    policy.recordingStarted();
+    await policy.settled();
+    policy.recordingEnded();
+    await policy.settled();
+    expect(media.status().spotify).toBe('Paused');
+    expect(logs).toEqual(['could not pause: timed out after the pause landed', 'Left spotify paused: its pause was never confirmed']);
+  });
+
+  it('does not take as ours a timeline update that came long after the request', async () => {
+    const { media, policy } = setup({ spotify: 'Playing' });
+    media.fail('pauseLandsButThrows');
+    media.noTimeline();
+    policy.recordingStarted();
+    await policy.settled();
+    media.sessions.spotify!.updated = media.clock.now + TOUCH_TOLERANCE_MS + 1;
+    policy.recordingEnded();
+    await policy.settled();
+    expect(media.status().spotify).toBe('Paused');
+  });
+
+  it('logs a play that Windows refused', async () => {
+    const { media, logs, policy } = setup({ spotify: 'Playing' });
+    policy.recordingStarted();
+    await policy.settled();
+    media.fail('refuseResume');
+    policy.recordingEnded();
+    await policy.settled();
+    expect(logs).toEqual(['Could not resume spotify: Windows refused the request']);
+  });
+
+  it('logs a session left paused because the person moved it', async () => {
+    const { media, logs, policy } = setup({ spotify: 'Playing' });
+    policy.recordingStarted();
+    await policy.settled();
+    media.sessions.spotify!.position += 60_000;
+    policy.recordingEnded();
+    await policy.settled();
+    expect(logs).toEqual(['Left spotify paused: it was moved after the pause']);
+  });
+});
+
+describe('resumeVerdict', () => {
+  const now = { position: 10_000, updated: 5_000_100 };
+  it('plays a confirmed session with no reading to compare (quit cut the settle short)', () => {
+    expect(resumeVerdict({ id: 'a', confirmed: true, requestedAt: 5_000_000 }, now)).toBe('play');
+  });
+  it('calls an unconfirmed session ours only when updated at or after the request, within the tolerance', () => {
+    const held = { id: 'a', confirmed: false, requestedAt: 5_000_000 };
+    expect(resumeVerdict(held, { position: 0, updated: 5_000_000 })).toBe('play');
+    expect(resumeVerdict(held, { position: 0, updated: 5_000_000 + TOUCH_TOLERANCE_MS })).toBe('play');
+    expect(resumeVerdict(held, { position: 0, updated: 4_999_999 })).toBe('unconfirmed');
+    expect(resumeVerdict(held, { position: 0, updated: 5_000_000 + TOUCH_TOLERANCE_MS + 1 })).toBe('unconfirmed');
+  });
+});
+
+describe('quit', () => {
+  it('tells the effects once, so they can cut their waits short', async () => {
+    const { media, policy } = setup({ spotify: 'Playing' });
+    policy.recordingStarted();
+    await policy.settled();
+    await policy.shutdown();
+    await policy.shutdown();
+    expect(media.quits).toEqual(['quit']);
+  });
+
+  it('is idempotent: a second shutdown shares the first and resumes nothing twice', async () => {
+    const { media, policy } = setup({ spotify: 'Playing' });
+    policy.recordingStarted();
+    await policy.settled();
+    const [first, second] = await Promise.all([policy.shutdown(), policy.shutdown()]);
+    expect(first).toBe(true);
+    expect(second).toBe(true);
+    expect(resumes(media.calls)).toEqual(['resume:spotify']);
+  });
+
+  it('starts no pause once the quit began, even if the list was still coming back', async () => {
+    const { media, policy } = setup({ spotify: 'Playing' });
+    media.hold();
+    policy.recordingStarted();
+    await tick();
+    const quitting = policy.shutdown(500);
+    media.release();
+    expect(await quitting).toBe(true);
+    expect(pauses(media.calls)).toEqual([]);
+    expect(media.status().spotify).toBe('Playing');
   });
 });

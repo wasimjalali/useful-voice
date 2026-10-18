@@ -19,7 +19,18 @@ import {
   type OneShotRunner,
 } from './keystroke.js';
 import { PowerShellHost, PowerShellHostError, hostArguments } from './powershellHost.js';
-import { MEDIA_PRELUDE, listPlayingScript, parsePausedOutput, parsePlayingOutput, pauseScript, resumeScript } from './mediaScripts.js';
+import {
+  MEDIA_PRELUDE,
+  listPlayingScript,
+  parsePauseOutput,
+  parsePlayingOutput,
+  parseResumeOutput,
+  parseTimelineOutput,
+  pauseScript,
+  resumeScript,
+  timelineScript,
+} from './mediaScripts.js';
+import { createMediaRunner } from './mediaRunner.js';
 import type { MediaEffects } from '../core/media/mediaPausePolicy.js';
 // The delivery policy's view of a window: the same identity (process + handle) with
 // the title the UI needs on top, so window info can be handed straight to the policy.
@@ -472,9 +483,17 @@ function mediaScriptHost(log?: (message: string) => void): PowerShellHost {
   return mediaHost;
 }
 
+/** Apps publish their timeline a moment after a pause lands; the reading is taken after this. */
+const PAUSE_SETTLE_MS = 200;
+
 /**
  * The Windows side of "Pause media while dictating". Off Windows it does nothing. `warm`
- * starts the media host ahead of the first dictation; `dispose` stops it.
+ * starts the media host ahead of the first dictation.
+ *
+ * Quitting: `beginQuit` ends the settle wait at once and gives later pause scripts the
+ * tighter WinRT cap. `dispose` stops the host and drops every media request still waiting:
+ * a request the host rejects as unavailable is NOT rerouted to a one-shot process once
+ * disposed (see `mediaRunner.ts`), because a queued pause must never run after the app has resumed and left.
  */
 export function createMediaEffects(
   appUserModelId: string,
@@ -482,25 +501,57 @@ export function createMediaEffects(
 ): MediaEffects & { warm(): void; dispose(): void } {
   const available = process.platform === 'win32';
   const timeouts = { hostMs: MEDIA_HOST_TIMEOUT_MS, oneShotMs: MEDIA_ONE_SHOT_TIMEOUT_MS };
-  const run = (body: string): Promise<string> =>
-    runHostedWith(mediaScriptHost(log), runOneShot, body, MEDIA_PRELUDE + body, timeouts);
+  const runner = createMediaRunner({ host: () => mediaScriptHost(log), oneShot: runOneShot, timeouts });
+  let quitting = false;
+  let endSettle: (() => void) | null = null;
+  const run = (body: string): Promise<string> => runner.run(body, MEDIA_PRELUDE + body);
+  /** Waits for the settle, or less when the app starts quitting. */
+  const settle = (): Promise<void> =>
+    new Promise((resolve) => {
+      if (quitting) return resolve();
+      const timer = setTimeout(resolve, PAUSE_SETTLE_MS);
+      timer.unref?.();
+      endSettle = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
   return {
     async listPlaying() {
       if (!available) return [];
       return parsePlayingOutput(await run(listPlayingScript(appUserModelId)));
     },
     async pause(ids) {
-      if (!available || ids.length === 0) return [];
-      return parsePausedOutput(await run(pauseScript(ids)));
+      if (!available || ids.length === 0) return { confirmed: [], refused: [] };
+      const result = parsePauseOutput(await run(pauseScript(ids, { quitting })));
+      if (result.confirmed.length === 0 || quitting) return result;
+      // The reading taken at once may be from before the app published the pause. Read again
+      // after a settle; if that fails or the app is quitting, the first reading stands (the
+      // touch tolerance covers the difference).
+      await settle();
+      if (quitting) return result;
+      try {
+        const later = new Map(
+          parseTimelineOutput(await run(timelineScript(result.confirmed.map((session) => session.id)))).map((session) => [session.id, session]),
+        );
+        return { ...result, confirmed: result.confirmed.map((session) => later.get(session.id) ?? session) };
+      } catch {
+        return result;
+      }
     },
     async resume(sessions) {
-      if (!available || sessions.length === 0) return;
-      await run(resumeScript(sessions));
+      if (!available || sessions.length === 0) return { refused: [], touched: [], unconfirmed: [] };
+      return parseResumeOutput(await run(resumeScript(sessions)));
+    },
+    beginQuit() {
+      quitting = true;
+      endSettle?.();
     },
     warm() {
-      if (available) void mediaScriptHost(log).start();
+      if (available && !runner.disposed) void mediaScriptHost(log).start();
     },
     dispose() {
+      runner.dispose();
       mediaHost?.dispose();
       mediaHost = null;
     },

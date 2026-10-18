@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS } from '../src/core/models.js';
+import { DEFAULT_SETTINGS, type AppSettings } from '../src/core/models.js';
 import { normaliseSettings } from '../src/core/settings/settingsBounds.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -26,9 +26,26 @@ describe('the pauseMediaWhileDictating setting', () => {
   });
 
   it('is on for a settings file written before the setting existed', () => {
-    const { pauseMediaWhileDictating: _omitted, ...older } = DEFAULT_SETTINGS;
-    // The store merges the file over the defaults, so a missing key keeps the default.
-    expect(normaliseSettings({ ...DEFAULT_SETTINGS, ...older }).pauseMediaWhileDictating).toBe(true);
+    // What an older build wrote: every field except this one. Built from the defaults by
+    // removing the key, so the object really has no such property (a spread of the defaults
+    // would put it back and the test could never fail).
+    const olderFile: Record<string, unknown> = { ...DEFAULT_SETTINGS, soundEffectsEnabled: false };
+    delete olderFile.pauseMediaWhileDictating;
+    expect('pauseMediaWhileDictating' in olderFile).toBe(false);
+
+    // Straight through normalisation: a missing key must come out as the default, not undefined.
+    expect(normaliseSettings(olderFile as unknown as AppSettings).pauseMediaWhileDictating).toBe(true);
+
+    // And through the store's load: the file's settings over the defaults, then normalised.
+    const loaded = normaliseSettings({ ...DEFAULT_SETTINGS, ...olderFile } as AppSettings);
+    expect(loaded.pauseMediaWhileDictating).toBe(true);
+    // Other values from that file survive: only the missing key was filled in.
+    expect(loaded.soundEffectsEnabled).toBe(false);
+  });
+
+  it('keeps an explicit off from a file that has the key', () => {
+    const file = { ...DEFAULT_SETTINGS, pauseMediaWhileDictating: false };
+    expect(normaliseSettings({ ...DEFAULT_SETTINGS, ...file }).pauseMediaWhileDictating).toBe(false);
   });
 });
 
@@ -53,5 +70,27 @@ describe('the plumbing for the setting', () => {
 
   it('is read by the media policy from the live settings', () => {
     expect(source('src/main/index.ts')).toContain('enabled: () => this.settings.all.pauseMediaWhileDictating');
+  });
+});
+
+describe('quit wiring for the media', () => {
+  const main = source('src/main/index.ts');
+
+  it('routes an OS-initiated quit through the one orderly quit', () => {
+    expect(main).toMatch(/app\.on\('before-quit', \(event\) => \{\s*if \(this\.quitting\) return;\s*event\.preventDefault\(\);\s*void this\.quit\(\);/);
+  });
+
+  it('plays the media again on a session end (logoff or shutdown) within a second', () => {
+    expect(main).toMatch(/window\.on\('session-end', \(\) => \{\s*void this\.media\?\.shutdown\(1000\);/);
+  });
+
+  it('gives the quit a 2.5 s budget and logs a miss before the diagnostics are flushed', () => {
+    const quit = main.slice(main.indexOf('private async runQuit'));
+    const shutdown = quit.indexOf('this.media.shutdown(2500)');
+    const miss = quit.indexOf('may stay paused');
+    const flush = quit.indexOf('await this.diagnostics.flush()');
+    expect(shutdown).toBeGreaterThan(-1);
+    expect(miss).toBeGreaterThan(shutdown);
+    expect(flush).toBeGreaterThan(miss);
   });
 });

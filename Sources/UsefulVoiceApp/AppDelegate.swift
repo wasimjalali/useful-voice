@@ -134,7 +134,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Before the status item, whose menu shows the update item only when the
         // updater runs. Not in a render or forced first-run preview, which save nothing.
         if migrationAllowed { AppUpdater.shared.start() }
-        if !isSnapshot { setUpStatusItem() }
+        if !isSnapshot {
+            setUpStatusItem()
+            FocusTracker.shared.startBrowserAccessibility()
+        }
         setUpFirstRun()
         // `UV_SNAPSHOT=<png path>@<width>x<height>` renders the page named by
         // `UV_START_SECTION` to a PNG and quits, with no window and no focus change.

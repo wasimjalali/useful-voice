@@ -32,6 +32,59 @@ final class FocusTracker {
     /// apps that can be switched to typing. In memory only.
     private(set) var recentApps: [AppChoice] = []
 
+    /// Chromium browsers (Chrome, Arc, Dia, Edge, Brave, Vivaldi and others) build their
+    /// web accessibility tree only once an assistive app asks for it, so until then their
+    /// page address cannot be read and a Gmail tab formats as Other. Chromium's switch for
+    /// that is the `AXManualAccessibility` attribute; Safari and Firefox reject it, which is
+    /// fine. It is set once per browser process, when the browser comes to the front, so the
+    /// tree is ready by the hotkey press. Measured on Dia: the address is readable about
+    /// 80 to 95 ms after the switch.
+    private var browserAccessibilityOn: Set<pid_t> = []
+    private var browserObservers: [NSObjectProtocol] = []
+
+    /// Starts switching browsers on as they come to the front. Not for snapshot renders,
+    /// which must not touch other apps.
+    func startBrowserAccessibility() {
+        guard browserObservers.isEmpty else { return }
+        let center = NSWorkspace.shared.notificationCenter
+        browserObservers.append(center.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            let pid = app?.processIdentifier
+            let bundleID = app?.bundleIdentifier
+            MainActor.assumeIsolated {
+                guard let pid else { return }
+                FocusTracker.shared.enableBrowserAccessibility(pid: pid, bundleID: bundleID)
+            }
+        })
+        browserObservers.append(center.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
+        ) { note in
+            let pid = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?
+                .processIdentifier
+            MainActor.assumeIsolated {
+                guard let pid else { return }
+                FocusTracker.shared.browserAccessibilityOn.remove(pid)
+            }
+        })
+        if let app = NSWorkspace.shared.frontmostApplication {
+            enableBrowserAccessibility(pid: app.processIdentifier, bundleID: app.bundleIdentifier)
+        }
+    }
+
+    private func enableBrowserAccessibility(pid: pid_t, bundleID: String?) {
+        guard AXIsProcessTrusted(), KnownBrowsers.isBrowser(bundleID: bundleID),
+              !browserAccessibilityOn.contains(pid) else { return }
+        let axApp = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(axApp, Self.messagingTimeout)
+        let result = AXUIElementSetAttributeValue(axApp, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        // A busy browser (timeout) is asked again next time; a definite answer is final.
+        if result == .success || result == .attributeUnsupported || result == .actionUnsupported {
+            browserAccessibilityOn.insert(pid)
+        }
+    }
+
     /// What has focus now. Nil only when no app is frontmost.
     ///
     /// `includePage` false skips the window title and the page address (the
@@ -40,6 +93,9 @@ final class FocusTracker {
         guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
         let pid = app.processIdentifier
         let bundleID = app.bundleIdentifier
+        // A browser already in front when the app started has not been switched on yet.
+        // This press may still miss its address (the tree takes about 90 ms); later ones won't.
+        if includePage { enableBrowserAccessibility(pid: pid, bundleID: bundleID) }
         var windowID: String?
         var windowTitle: String?
         var elementID: String?

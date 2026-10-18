@@ -8,29 +8,26 @@
  * cannot silently fall below the worst case again.
  */
 
-/** Reading which window is in front. */
+/** Reading which window is in front (the HUD label and the language picker; not delivery). */
 export const FOREGROUND_QUERY_TIMEOUT_MS = 2500;
 
-/** Sending the Ctrl+V keystroke. */
+/** Sending the Ctrl+V keystroke, per attempt. */
 export const PASTE_KEYSTROKE_TIMEOUT_MS = 2500;
 
-/** How long the target gets to handle the keystroke before the clipboard is restored. */
-export const CLIPBOARD_RESTORE_DELAY_MS = 700;
-
-/** Snapshotting, writing and restoring the clipboard: synchronous, but not free. */
+/** Snapshotting and writing the clipboard: synchronous, but not free. */
 const CLIPBOARD_WORK_MS = 500;
 
 /**
- * The slowest a delivery can run when every step uses its whole budget: the window is
- * read before pasting and again afterwards, with the keystroke and the settle delay
- * between.
+ * The slowest a delivery can run when every step uses its whole budget. The keystroke is
+ * the only awaited step. A host attempt can time out without ever being written (it
+ * waited behind a hung request), and the same step then reruns in a one-shot process, so
+ * the keystroke budget counts twice.
  */
-export const WORST_CASE_DELIVERY_MS =
-  2 * FOREGROUND_QUERY_TIMEOUT_MS + PASTE_KEYSTROKE_TIMEOUT_MS + CLIPBOARD_RESTORE_DELAY_MS + CLIPBOARD_WORK_MS;
+export const WORST_CASE_DELIVERY_MS = 2 * PASTE_KEYSTROKE_TIMEOUT_MS + CLIPBOARD_WORK_MS;
 
 /**
- * The service gives up on a delivery after this long. Comfortably above the worst case,
- * so the timeout is a safety net for a lost callback and never races a working sink.
+ * The service gives up on a delivery after this long. Well above the worst case, so the
+ * timeout is a safety net for a lost callback and never races a working sink.
  */
 export const DELIVERY_TIMEOUT_MS = 15_000;
 

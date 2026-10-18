@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { ClipboardContents, PasteTarget, RestoreOutcome } from '../src/core/delivery/clipboardRestore.js';
-import { deliverText, type PasteFlowPorts, type PasteFlowRequest } from '../src/core/delivery/pasteFlow.js';
+import type { ClipboardContents, RestoreOutcome } from '../src/core/delivery/clipboardRestore.js';
+import { deliverText, type KeystrokeResult, type PasteFlowPorts, type PasteFlowRequest } from '../src/core/delivery/pasteFlow.js';
 import {
-  CLIPBOARD_RESTORE_DELAY_MS,
   DELIVERY_TIMED_OUT,
   DELIVERY_TIMEOUT_MS,
-  FOREGROUND_QUERY_TIMEOUT_MS,
   PASTE_KEYSTROKE_TIMEOUT_MS,
   WORST_CASE_DELIVERY_MS,
 } from '../src/core/delivery/timing.js';
@@ -17,55 +15,46 @@ import {
  *  2. a cancel does the same
  *  3. a timeout that stopped the sink before the paste leaves the person's OLD clipboard
  *     in place although the service told them "copied to your clipboard"
- *  4. a restore that runs although the delivery was already abandoned
+ *  4. the old clipboard is put back after a sent paste: a target that stalls then pastes
+ *     it, and the dictation is lost
+ *  5. a cancel puts the old clipboard over a newer copy the person made meanwhile
+ *  6. Useful Voice comes to the front while the keystroke waits in the queue, and the
+ *     paste lands in our own window
  */
 
-const notepad: PasteTarget = { processName: 'notepad.exe', handle: 0x1234 };
-const terminal: PasteTarget = { processName: 'WindowsTerminal.exe', handle: 0x99 };
 const original: ClipboardContents = { text: 'the old clipboard', html: '', rtf: '', incomplete: false };
 
 class Harness {
   clipboardText = 'the old clipboard';
   events: string[] = [];
   keystrokes = 0;
-  foreground: Array<PasteTarget | null> = [notepad, notepad];
-  foregroundCalls = 0;
+  snapshot: ClipboardContents = { ...original };
   ownInFront = false;
-  pasteResult = true;
-  /** Run when the Nth await (by name) is reached, to simulate a signal firing mid-flight. */
-  onAwait: Record<string, () => void> = {};
+  keystrokeResult: 'sent' | 'failed' = 'sent';
+  /** Run when the keystroke port is reached, to simulate the world changing while it queued. */
+  beforeKeystroke: () => void = () => undefined;
 
   readonly ports: PasteFlowPorts<ClipboardContents> = {
     writeText: (text) => {
       this.clipboardText = text;
       this.events.push(`write:${text}`);
     },
-    snapshot: () => ({ ...original }),
+    snapshot: () => this.snapshot,
     restore: (snapshot): RestoreOutcome => {
       this.clipboardText = snapshot.text;
       this.events.push('restore');
       return 'restored';
     },
     holdsText: (text) => this.clipboardText === text,
-    foregroundWindow: async () => {
-      const index = this.foregroundCalls++;
-      this.events.push(`foreground:${index}`);
-      this.onAwait[`foreground:${index}`]?.();
-      return this.foreground[index] ?? null;
-    },
-    pasteKeystroke: async (signal) => {
-      this.onAwait.paste?.();
-      // The real port checks the signal at the moment it writes the keystroke.
-      if (signal?.aborted) return false;
+    pasteKeystroke: async (signal, canSend): Promise<KeystrokeResult> => {
+      this.beforeKeystroke();
+      // The real port checks both at the moment it writes the keystroke.
+      if (signal?.aborted || !canSend()) return 'blocked';
       this.keystrokes += 1;
       this.events.push('keystroke');
-      return this.pasteResult;
+      return this.keystrokeResult;
     },
     ownWindowInFront: () => this.ownInFront,
-    delay: async () => {
-      this.events.push('delay');
-      this.onAwait.delay?.();
-    },
     log: (category, message) => this.events.push(`log:${category}:${message}`),
   };
 }
@@ -75,23 +64,13 @@ function request(overrides: Partial<PasteFlowRequest> = {}): PasteFlowRequest {
 }
 
 describe('deliverText: abort', () => {
-  it('never sends the keystroke when the timeout fires during the first window read', async () => {
-    const harness = new Harness();
-    const controller = new AbortController();
-    harness.onAwait['foreground:0'] = () => controller.abort(DELIVERY_TIMED_OUT);
-    const result = await deliverText(request({ signal: controller.signal }), harness.ports);
-    expect(harness.keystrokes).toBe(0);
-    // The service said "copied": the dictation has to be there.
-    expect(harness.clipboardText).toBe('hello world');
-    expect(result).toEqual({ delivered: false, clipboardFallback: true });
-  });
-
   it('never sends the keystroke when the timeout fires just before it', async () => {
     const harness = new Harness();
     const controller = new AbortController();
-    harness.onAwait.paste = () => controller.abort(DELIVERY_TIMED_OUT);
+    harness.beforeKeystroke = () => controller.abort(DELIVERY_TIMED_OUT);
     const result = await deliverText(request({ signal: controller.signal }), harness.ports);
     expect(harness.keystrokes).toBe(0);
+    // The service said "copied": the dictation has to be there.
     expect(harness.clipboardText).toBe('hello world');
     expect(result).toEqual({ delivered: false, clipboardFallback: true });
     expect(harness.events).not.toContain('restore');
@@ -100,11 +79,43 @@ describe('deliverText: abort', () => {
   it('puts the old clipboard back and reports cancelled when a cancel arrives before the keystroke', async () => {
     const harness = new Harness();
     const controller = new AbortController();
-    harness.onAwait.paste = () => controller.abort();
+    harness.beforeKeystroke = () => controller.abort();
     const result = await deliverText(request({ signal: controller.signal }), harness.ports);
     expect(harness.keystrokes).toBe(0);
     expect(harness.clipboardText).toBe('the old clipboard');
     expect(result).toEqual({ delivered: false, clipboardFallback: false, cancelled: true });
+  });
+
+  it('does not overwrite a newer copy when a cancel arrives before the keystroke', async () => {
+    const harness = new Harness();
+    const controller = new AbortController();
+    harness.beforeKeystroke = () => {
+      harness.clipboardText = 'something newer';
+      controller.abort();
+    };
+    const result = await deliverText(request({ signal: controller.signal }), harness.ports);
+    expect(harness.keystrokes).toBe(0);
+    expect(harness.clipboardText).toBe('something newer');
+    expect(result.cancelled).toBe(true);
+  });
+
+  it('leaves an image-bearing clipboard alone on a cancel instead of restoring its text part', async () => {
+    const harness = new Harness();
+    harness.snapshot = { ...original, incomplete: true };
+    const controller = new AbortController();
+    harness.beforeKeystroke = () => controller.abort();
+    await deliverText(request({ signal: controller.signal }), harness.ports);
+    expect(harness.events).not.toContain('restore');
+    expect(harness.clipboardText).toBe('hello world');
+  });
+
+  it('leaves the clipboard alone on a cancel when it held nothing worth restoring', async () => {
+    const harness = new Harness();
+    harness.snapshot = { ...original, text: '' };
+    const controller = new AbortController();
+    harness.beforeKeystroke = () => controller.abort();
+    await deliverText(request({ signal: controller.signal }), harness.ports);
+    expect(harness.events).not.toContain('restore');
   });
 
   it('stops at once when already aborted, touching nothing', async () => {
@@ -112,26 +123,6 @@ describe('deliverText: abort', () => {
     const result = await deliverText(request({ signal: AbortSignal.abort() }), harness.ports);
     expect(harness.events).toEqual([]);
     expect(result.cancelled).toBe(true);
-  });
-
-  it('leaves the dictation on the clipboard when the timeout fires after the keystroke', async () => {
-    const harness = new Harness();
-    const controller = new AbortController();
-    harness.onAwait.delay = () => controller.abort(DELIVERY_TIMED_OUT);
-    const result = await deliverText(request({ signal: controller.signal }), harness.ports);
-    expect(harness.keystrokes).toBe(1);
-    expect(harness.events).not.toContain('restore');
-    expect(harness.clipboardText).toBe('hello world');
-    expect(result.delivered).toBe(true);
-  });
-
-  it('skips the restore when aborted during the second window read', async () => {
-    const harness = new Harness();
-    const controller = new AbortController();
-    harness.onAwait['foreground:1'] = () => controller.abort(DELIVERY_TIMED_OUT);
-    await deliverText(request({ signal: controller.signal }), harness.ports);
-    expect(harness.events).not.toContain('restore');
-    expect(harness.clipboardText).toBe('hello world');
   });
 
   it('copy mode stops on a pre-aborted signal without writing', async () => {
@@ -143,59 +134,43 @@ describe('deliverText: abort', () => {
 });
 
 describe('deliverText: paste', () => {
-  it('pastes, says pasted and restores the old clipboard for a verifiable app', async () => {
+  it('says pasted and leaves the dictation on the clipboard, never restoring the old one', async () => {
     const harness = new Harness();
     const result = await deliverText(request(), harness.ports);
     expect(result).toEqual({ delivered: true, clipboardFallback: false });
     expect(harness.keystrokes).toBe(1);
-    expect(harness.clipboardText).toBe('the old clipboard');
-    // The settle delay sits between the keystroke and the restore.
-    const order = harness.events.filter((e) => ['keystroke', 'delay', 'restore'].includes(e));
-    expect(order).toEqual(['keystroke', 'delay', 'restore']);
-  });
-
-  it('says pasted and keeps the dictation on the clipboard for a terminal', async () => {
-    const harness = new Harness();
-    harness.foreground = [terminal, terminal];
-    const result = await deliverText(request(), harness.ports);
-    expect(result).toEqual({ delivered: true, clipboardFallback: false });
+    // A target that stalls would paste whatever is on the clipboard when it gets to it.
     expect(harness.clipboardText).toBe('hello world');
-    expect(harness.events).not.toContain('delay');
-  });
-
-  it('does not overwrite a newer copy the person made while the paste settled', async () => {
-    const harness = new Harness();
-    harness.onAwait.delay = () => {
-      harness.clipboardText = 'something newer';
-    };
-    const result = await deliverText(request(), harness.ports);
-    expect(result.delivered).toBe(true);
-    expect(harness.clipboardText).toBe('something newer');
-  });
-
-  it('keeps the dictation on the clipboard when focus moved while pasting', async () => {
-    const harness = new Harness();
-    harness.foreground = [notepad, { processName: 'explorer.exe', handle: 0x777 }];
-    const result = await deliverText(request(), harness.ports);
-    expect(result.delivered).toBe(true);
-    expect(harness.clipboardText).toBe('hello world');
+    expect(harness.events).not.toContain('restore');
   });
 
   it('reports a keystroke that failed as copied, with the dictation on the clipboard', async () => {
     const harness = new Harness();
-    harness.pasteResult = false;
+    harness.keystrokeResult = 'failed';
     const result = await deliverText(request(), harness.ports);
     expect(result).toEqual({ delivered: false, clipboardFallback: true });
     expect(harness.clipboardText).toBe('hello world');
   });
 
-  it('copies instead when our window came to the front after starting elsewhere', async () => {
+  it('copies instead when our window is in front after starting elsewhere', async () => {
     const harness = new Harness();
     harness.ownInFront = true;
     const result = await deliverText(request({ startedInOwnWindow: false }), harness.ports);
     expect(harness.keystrokes).toBe(0);
     expect(result).toEqual({ delivered: false, clipboardFallback: true });
     expect(harness.clipboardText).toBe('hello world');
+  });
+
+  it('copies instead when our window comes to the front while the keystroke is queued', async () => {
+    const harness = new Harness();
+    harness.beforeKeystroke = () => {
+      harness.ownInFront = true;
+    };
+    const result = await deliverText(request({ startedInOwnWindow: false }), harness.ports);
+    expect(harness.keystrokes).toBe(0);
+    expect(result).toEqual({ delivered: false, clipboardFallback: true });
+    expect(harness.clipboardText).toBe('hello world');
+    expect(harness.events.some((event) => event.includes('Useful Voice is in front'))).toBe(true);
   });
 
   it('pastes into our own window when the dictation started there', async () => {
@@ -215,10 +190,9 @@ describe('deliverText: paste', () => {
 });
 
 describe('delivery timing', () => {
-  it('keeps the service timeout comfortably above the sink worst case', () => {
-    expect(WORST_CASE_DELIVERY_MS).toBe(
-      2 * FOREGROUND_QUERY_TIMEOUT_MS + PASTE_KEYSTROKE_TIMEOUT_MS + CLIPBOARD_RESTORE_DELAY_MS + 500,
-    );
+  it('keeps the service timeout well above the worst case, one-shot rerun included', () => {
+    // The host attempt can time out unsent and the same step then reruns in a one-shot process.
+    expect(WORST_CASE_DELIVERY_MS).toBeGreaterThanOrEqual(2 * PASTE_KEYSTROKE_TIMEOUT_MS);
     expect(DELIVERY_TIMEOUT_MS).toBeGreaterThanOrEqual(WORST_CASE_DELIVERY_MS * 1.5);
   });
 });

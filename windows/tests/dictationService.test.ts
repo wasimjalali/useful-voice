@@ -2210,3 +2210,34 @@ describe('the target app arrives after recording started', () => {
     expect(ctx.sink.requests[1]?.targetApp).toBeUndefined();
   });
 });
+
+describe('the dictation sequence', () => {
+  // Failure case: a window lookup that finishes after its dictation was cancelled labels
+  // the next dictation, a window one that never pastes anywhere.
+  it('changes on every start and every cancel, and not on a stop', async () => {
+    const ctx = setup();
+    const seen = [ctx.service.sequence];
+    await ctx.service.toggle({ source: 'hotkey' });
+    seen.push(ctx.service.sequence);
+    await ctx.service.cancel();
+    seen.push(ctx.service.sequence);
+    await ctx.service.toggle({ source: 'window' });
+    seen.push(ctx.service.sequence);
+    const atStart = ctx.service.sequence;
+    await ctx.service.toggle({ source: 'window' });
+    expect(ctx.service.sequence).toBe(atStart);
+    expect(new Set(seen).size).toBe(seen.length);
+  });
+
+  it('changes when a start is cancelled before the recorder is up', async () => {
+    const ctx = setup();
+    const start = gate();
+    ctx.recorder.startGate = start.promise;
+    const first = ctx.service.toggle({ source: 'hotkey' });
+    const before = ctx.service.sequence;
+    await ctx.service.cancel();
+    expect(ctx.service.sequence).not.toBe(before);
+    start.open();
+    await first;
+  });
+});

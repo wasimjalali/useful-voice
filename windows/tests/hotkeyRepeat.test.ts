@@ -38,7 +38,9 @@ describe('createHotkeyRepeatGuard', () => {
     return times.map(() => guard());
   }
 
-  it.each([250, 500, 1000])('lets a key held past a %d ms repeat delay through once', (delay) => {
+  // A 1 s keyboard repeat delay (the slowest setting) lets one repeat through: the window is
+  // 600 ms so that a real stop press after about 0.7 s still works.
+  it.each([250, 500])('ignores the repeats of a key held past a %d ms repeat delay', (delay) => {
     const times = [0];
     for (let t = delay; t <= delay + 2000; t += 33) times.push(t);
     const results = guardAt(times);

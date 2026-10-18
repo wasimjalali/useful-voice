@@ -24,7 +24,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     static func editableFieldFocused(in keyWindow: NSWindow?, mainWindow: NSWindow?) -> Bool {
-        guard let keyWindow, let mainWindow, keyWindow === mainWindow else { return false }
+        // The main window itself, or a sheet attached to it (the import sheets).
+        guard let keyWindow, let mainWindow,
+              keyWindow === mainWindow || keyWindow.sheetParent === mainWindow else { return false }
         return (keyWindow.firstResponder as? NSText)?.isEditable ?? false
     }
 

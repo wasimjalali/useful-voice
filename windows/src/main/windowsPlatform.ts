@@ -6,7 +6,12 @@ import os from 'node:os';
 import path from 'node:path';
 // The delivery policy's view of a window: the same identity (process + handle) with
 // the title the UI needs on top, so window info can be handed straight to the policy.
-import type { PasteTarget } from '../core/delivery/clipboardRestore.js';
+import {
+  hasUnrestorableFormat,
+  restoreSnapshotTo,
+  type PasteTarget,
+  type RestoreOutcome,
+} from '../core/delivery/clipboardRestore.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -247,8 +252,6 @@ function buildCue(kind: 'start' | 'stop' | 'error'): Buffer {
 /** Snapshot the clipboard so it can be put back after delivery. */
 export interface ClipboardSnapshot {
   formats: string[];
-  /** Only the formats that can be read eagerly and restored faithfully. */
-  data: Record<string, Buffer>;
   text: string;
   html: string;
   rtf: string;
@@ -259,71 +262,38 @@ export interface ClipboardSnapshot {
 /**
  * Copy the clipboard's contents.
  *
- * Only formats that can be read synchronously and written back faithfully are
- * captured. Anything else marks the snapshot `incomplete`, and an incomplete
- * snapshot is never restored: replacing the user's clipboard with something less
- * than it held would destroy data.
+ * Only plain text, HTML and RTF are captured, because those are the only formats the
+ * restore writes back. Any other format on the clipboard (an image, a file list, a
+ * proprietary type) marks the snapshot `incomplete`, and an incomplete snapshot is
+ * never restored: replacing the user's clipboard with something less than it held
+ * would destroy data.
  */
 export function snapshotClipboard(): ClipboardSnapshot {
   const formats = clipboard.availableFormats();
-  const data: Record<string, Buffer> = {};
-  let incomplete = false;
-
-  const readable = ['text/plain', 'text/html', 'text/rtf', 'image/png', 'image/bmp'];
-  for (const format of formats) {
-    const normalised = format.toLowerCase();
-    const known = readable.find((candidate) => normalised === candidate || normalised.startsWith(candidate));
-    if (!known) {
-      // A format we cannot faithfully restore (a file list, a proprietary type).
-      incomplete = true;
-      continue;
-    }
-    try {
-      const value = clipboard.readBuffer(format);
-      if (value.length > 0) data[format] = value;
-    } catch {
-      incomplete = true;
-    }
+  let incomplete = hasUnrestorableFormat(formats);
+  let text = '';
+  let html = '';
+  let rtf = '';
+  try {
+    text = clipboard.readText();
+    html = clipboard.readHTML();
+    rtf = clipboard.readRTF();
+  } catch {
+    incomplete = true;
   }
-
-  return {
-    formats,
-    data,
-    text: clipboard.readText(),
-    html: clipboard.readHTML(),
-    rtf: clipboard.readRTF(),
-    incomplete,
-  };
+  return { formats, text, html, rtf, incomplete };
 }
 
 /**
- * Put a snapshot back. Returns whether the clipboard now holds what we restored.
+ * Put a snapshot back. Returns what ended up on the clipboard.
  *
  * Verifying is not paranoia: `clipboard.clear()` invalidates the previous owner
  * immediately and is not atomic with the write that follows, so an unchecked write
  * could leave the clipboard EMPTY, losing both the user's data and the dictation.
+ * When the restore fails the dictation text is put back instead.
  */
-export function restoreClipboard(snapshot: ClipboardSnapshot): boolean {
-  const parts: Array<{ text?: string; html?: string; rtf?: string }> = [];
-  const entry: { text?: string; html?: string; rtf?: string } = {};
-  if (snapshot.text.length > 0) entry.text = snapshot.text;
-  if (snapshot.html.length > 0) entry.html = snapshot.html;
-  if (snapshot.rtf.length > 0) entry.rtf = snapshot.rtf;
-
-  if (Object.keys(entry).length === 0) {
-    // Nothing restorable (an image-only or unreadable clipboard). Do not clear.
-    return false;
-  }
-  parts.push(entry);
-
-  clipboard.clear();
-  clipboard.write(parts[0] as { text?: string; html?: string; rtf?: string });
-
-  // Read back to confirm.
-  if (snapshot.text.length > 0) return clipboard.readText() === snapshot.text;
-  if (snapshot.html.length > 0) return clipboard.readHTML().length > 0;
-  if (snapshot.rtf.length > 0) return clipboard.readRTF().length > 0;
-  return false;
+export function restoreClipboard(snapshot: ClipboardSnapshot, dictationText: string): RestoreOutcome {
+  return restoreSnapshotTo(clipboard, snapshot, dictationText);
 }
 
 /** Whether the clipboard still holds exactly what we put there. */

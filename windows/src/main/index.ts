@@ -1325,8 +1325,9 @@ class UsefulVoiceApp {
    * The contract: the text is ALWAYS available afterwards, either pasted or on the
    * clipboard. The macOS version restored the previous clipboard contents on a
    * timer that could fire before the paste landed, destroying the dictation — so
-   * the restore here is gated on proof that the paste actually arrived, and an
-   * unverifiable target keeps the text on the clipboard instead.
+   * the restore here is gated (see `decideClipboardRestore`): the keystroke went out,
+   * focus stayed, and the clipboard still holds our text. Otherwise the text stays on
+   * the clipboard.
    *
    * This method only observes; every rule about what may then happen to the
    * clipboard lives in `decideClipboardRestore`, so the contract is testable without
@@ -1360,23 +1361,24 @@ class UsefulVoiceApp {
     // The last point at which a cancel can still stop the paste. After this line the
     // keystroke is sent and the dictation is delivered whatever the user does next.
     if (request.signal?.aborted) {
-      this.restoreSnapshot(snapshot);
+      this.restoreSnapshot(snapshot, text);
       return cancelled;
     }
     const pasteSent = await pasteClipboard();
 
-    // Confirmation is limited to observing that focus did not move and that the
-    // clipboard was consumed: reading the target's text is not possible without a
-    // UI-automation dependency. Both reads are skipped when they could not mean
-    // anything — an unverifiable target, or a paste that never ran.
+    // The restore needs proof that the paste can be attributed: focus must have stayed on
+    // the target, and the clipboard must still hold our text so a newer copy by the person
+    // is never overwritten. Ctrl+V does not clear the clipboard, so these reads say
+    // nothing about whether the paste landed: they only gate the restore. Both are skipped
+    // when they could not allow one — an unverifiable target, or a paste that never ran.
     let focusAfter = null as Awaited<ReturnType<typeof foregroundWindow>>;
-    let stillOurs = false;
+    let holdsOurText = false;
     if (pasteSent && isProbablyVerifiable(target)) {
-      // The target needs a moment to handle the keystroke; reading the clipboard
-      // sooner would see our own text and call a landed paste a failure.
+      // The target needs a moment to handle the keystroke; restoring sooner would hand it
+      // the previous clipboard instead of the dictation.
       await delay(CLIPBOARD_RESTORE_DELAY_MS);
       focusAfter = await foregroundWindow();
-      stillOurs = clipboardHoldsText(text);
+      holdsOurText = clipboardHoldsText(text);
     }
 
     const decision = decideClipboardRestore({
@@ -1384,13 +1386,15 @@ class UsefulVoiceApp {
       target,
       pasteSent,
       focusAfter,
-      clipboardStillHoldsText: stillOurs,
+      clipboardHoldsOurText: holdsOurText,
     });
 
     if (decision.restore) {
-      this.restoreSnapshot(snapshot);
+      this.restoreSnapshot(snapshot, text);
     } else if (decision.reason === 'snapshot-incomplete') {
       this.diagnostics.log('clipboard', 'not restoring: original could not be captured fully');
+    } else if (decision.reason === 'clipboard-changed') {
+      this.diagnostics.log('clipboard', 'not restoring: the clipboard changed while pasting');
     } else if (decision.reason === 'unverifiable-target') {
       const name = target?.processName ?? targetApp ?? 'the target app';
       this.diagnostics.log('delivery', `unverifiable target (${name}); left on clipboard`);
@@ -1411,10 +1415,12 @@ class UsefulVoiceApp {
    *
    * Whether it may be put back at all has already been decided: this only writes.
    */
-  private restoreSnapshot(snapshot: ReturnType<typeof snapshotClipboard>): void {
-    const restored = restoreClipboard(snapshot);
-    if (!restored) {
-      this.diagnostics.log('clipboard', 'restore did not verify; dictation left in place');
+  private restoreSnapshot(snapshot: ReturnType<typeof snapshotClipboard>, dictationText: string): void {
+    const outcome = restoreClipboard(snapshot, dictationText);
+    if (outcome === 'failed-kept-dictation') {
+      this.diagnostics.log('clipboard', 'restore did not verify; dictation put back on the clipboard');
+    } else if (outcome === 'failed-lost') {
+      this.diagnostics.log('clipboard', 'restore did not verify and the dictation could not be put back');
     }
   }
 

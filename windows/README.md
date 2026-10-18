@@ -156,11 +156,12 @@ machine.
 ## Design decisions worth knowing
 
 **Delivery never loses your text.** After a dictation the text is either pasted
-into your app or left on the clipboard, never neither. The previous clipboard is
-only restored once the paste has been shown to have landed, and if the clipboard
-held something that cannot be reproduced exactly (a file list, say), it is left
-alone and the transcript stays instead. Losing a dictation is worse than losing a
-clipboard.
+into your app or left on the clipboard, never neither. Once the Ctrl+V keystroke
+has gone out the dictation counts as pasted. Your previous clipboard is put back
+only when the app in front is one whose paste can be attributed, focus stayed on it,
+nothing newer has been copied meanwhile, and the old clipboard was captured exactly
+(text, HTML or RTF; an image or a file list is not). Otherwise the transcript stays
+on the clipboard. Losing a dictation is worse than losing a clipboard.
 
 **A silent recording is rejected.** A silent clip can make a speech model echo its
 own prompt bias (your dictionary) back as a fake transcript. Clips whose peak
@@ -209,8 +210,9 @@ shows the path so you can remove it yourself.
 - **Geist is not bundled.** The UI asks for Geist and falls back to Segoe UI, the
   same allowance the macOS build makes with SF Pro. Bundling the font files would
   remove the difference.
-- **Paste confirmation is indirect.** Whether text landed is inferred from the
-  clipboard being consumed plus focus not moving. Reading the target's text needs a
-  UI-automation dependency, which was avoided so the app ships no native module. For
-  apps where this cannot be inferred the text is left on the clipboard and the app
-  says so.
+- **Paste confirmation is indirect.** Ctrl+V never clears the clipboard, so the app
+  cannot see whether the target took the text: it reports "pasted" when the keystroke
+  went out. Reading the target's text needs a UI-automation dependency, which was
+  avoided so the app ships no native module. Your previous clipboard is restored only
+  when the target is a verifiable app and focus stayed on it; otherwise the
+  dictation stays on the clipboard so a second Ctrl+V works.

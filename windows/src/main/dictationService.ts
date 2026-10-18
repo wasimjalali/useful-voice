@@ -8,22 +8,8 @@ import type {
   LanguageMemorySnapshot,
   MemoryLanguage,
 } from '../core/models.js';
+import { DELIVERY_ABORT_GRACE_MS, DELIVERY_TIMED_OUT, DELIVERY_TIMEOUT_MS } from '../core/delivery/timing.js';
 import { applyMemory } from '../core/memory/memoryPostProcessor.js';
-import { defaultStyle, type AppCategory, type AutoSendKey } from '../core/apps/appCategory.js';
-import {
-  autoSendKeyFor,
-  formatForApp,
-  NO_TARGET_CONTEXT,
-  snapshotPress,
-  type ContextCapture,
-  type DictationContext,
-  type PressSettings,
-} from '../core/apps/appAwareness.js';
-import { applyCleanupRules } from '../core/formatting/cleanupRules.js';
-import { languageMatches } from '../core/dictionary/termMatcher.js';
-import type { DeliveryTarget } from '../core/delivery/deliveryTarget.js';
-import { DELIVERY_TIMEOUT } from '../core/delivery/deliveryFlow.js';
-import { LINE_BREAKS, PARTLY_TYPED } from '../core/hudModel.js';
 import { selectKeyterms } from '../core/memory/biasBuilder.js';
 import { RecordingClock, SilenceWatchdog } from '../core/audio/silenceWatchdog.js';
 import { LEVEL_METER_GAIN, MINIMUM_AUDIO_BYTES } from '../core/audio/wav.js';
@@ -84,51 +70,33 @@ export interface DeliveryRequest {
   /** Which app was focused when a hotkey dictation started. Absent in copy mode. */
   targetApp?: string;
   /**
-   * The window that was in front when it started. If another window is in front at
-   * delivery, the sink copies instead of pasting.
+   * The dictation started in one of our own windows (a note), where a paste is wanted.
+   * Otherwise, if one of our windows is in front at delivery, the sink copies instead.
    */
-  targetHandle?: number;
+  startedInOwnWindow?: boolean;
   /**
-   * The full target captured at the hotkey press (app, process, window, focused child,
-   * browser address). Delivery pastes only into it. Absent in copy mode.
-   */
-  target?: DeliveryTarget;
-  /**
-   * The key to press after the text has landed (`off` or absent for none). Paste mode only:
-   * the sink presses it after a pasted or fully typed delivery, only while the target
-   * captured at the press is still in front, and never after a copy or a failure.
-   */
-  autoSend?: AutoSendKey;
-  /**
-   * Aborted when the user cancels. The sink must check it right before it pastes and
-   * stop there; once the paste is sent it finishes and reports `delivered`. Aborted
-   * with the reason `DELIVERY_TIMEOUT` when the service stopped waiting: the sink must
-   * then send no keystroke at all, and leave the text on the clipboard.
+   * Aborted when the user cancels, or when the delivery timeout wins (then
+   * `signal.reason` is `DELIVERY_TIMED_OUT`). The sink must check it after every await
+   * and right before it pastes, and stop there: the keystroke is never sent after an
+   * abort. Once the paste is sent it finishes and reports `delivered`.
    */
   signal?: AbortSignal;
-  /**
-   * How long the sink has, from the moment it is called. It plans its steps (and caps
-   * typing) to finish within it, ahead of the service's own timeout.
-   */
-  timeBudgetMs?: number;
 }
 
 export interface DeliveryResult {
-  /**
-   * Whether the text went in: proven, or a keystroke sent that can't be proven (the
-   * text then stays on the clipboard, and the notice is still "Inserted").
-   */
+  /** Whether the text provably reached the target. */
   delivered: boolean;
   /** Whether the dictation is still on the clipboard as a fallback. */
   clipboardFallback: boolean;
   /** The sink stopped before pasting because the signal aborted. Nothing was sent. */
   cancelled?: boolean;
-  /** Typing stopped part way: some of the text went in, all of it is on the clipboard. */
-  partlyTyped?: boolean;
-  /** An app that types, and the text has a line break: copied only, nothing sent. */
-  lineBreaks?: boolean;
-  /** The paste script failed: Windows refused the keystroke (an elevated target). */
-  pasteFailed?: boolean;
+  /**
+   * Nothing was sent because the clipboard no longer held the dictation (the person copied
+   * something else meanwhile). Neither pasted nor copied, and the newer copy is untouched.
+   */
+  clipboardChanged?: boolean;
+  /** Nothing was sent because the clipboard could not be read: another app has it open. */
+  clipboardUnreadable?: boolean;
 }
 
 export interface TextSinkPort {
@@ -166,27 +134,14 @@ export interface DictationServiceDeps {
   onDiagnostic?: (category: string, message: string) => void;
   /** Optional post-transcription formatting (the formatter). */
   formatter?: FormatterPort;
-  /**
-   * The hidden local-model cleanup (S1-mini). Present only when its flag is on; it replaces
-   * the cleanup rules step with rules plus the model, and it never rejects and never takes
-   * longer than its own deadline. Absent: the cleanup rules alone, exactly as before.
-   */
-  cleanup?: CleanupPort;
   idFactory?: () => string;
   now?: () => number;
   /** Bounded wait for delivery, so a lost callback cannot wedge the app. */
   deliveryTimeoutMs?: number;
+  /** After the timeout aborts the sink, how long to wait for its own verdict before giving up on it. */
+  deliveryGraceMs?: number;
   /** How often the silence and max-length limits are checked. */
   tickMs?: number;
-}
-
-export interface CleanupPort {
-  run(input: {
-    raw: string;
-    language: string | null;
-    category: string | null;
-    style: string | null;
-  }): Promise<{ text: string }>;
 }
 
 export interface StartOptions {
@@ -195,25 +150,8 @@ export interface StartOptions {
   rawMode?: boolean;
   /** The app that was frontmost. Only a hotkey dictation uses it. */
   targetApp?: string;
-  /** Its window handle, so delivery can tell the user has since moved elsewhere. */
-  targetHandle?: number;
-  /** The full target captured at the hotkey press. Only a hotkey dictation uses it. */
-  target?: DeliveryTarget;
-  /**
-   * The category and the text before the cursor, captured with the target at the press.
-   * Only a hotkey dictation has one.
-   */
-  context?: ContextCapture;
-  /**
-   * The hotkey was pressed in one of Useful Voice's own fields. Like a window dictation it
-   * has no app to fit the text to, so it gets no category formatting (cleanup rules and the
-   * user's own rules still run).
-   */
-  ownField?: boolean;
-  /**
-   * The settings this dictation uses, copied at the press. Absent means copy them now.
-   */
-  press?: PressSettings;
+  /** One of our own windows had focus at the press, so a paste into one of them is wanted. */
+  startedInOwnWindow?: boolean;
 }
 
 export interface DictationOutcome {
@@ -228,10 +166,6 @@ export interface DictationOutcome {
    */
   language: MemoryLanguage;
   appName: string;
-  /** The app's executable name when the dictation went to a hotkey target; absent otherwise. */
-  appID?: string;
-  /** The category of that app. Present only with an `appID`. */
-  category?: AppCategory;
   durationSeconds: number;
   mode: 'raw' | 'formatted';
   createdAt: string;
@@ -241,24 +175,10 @@ export interface DictationOutcome {
 }
 
 /**
- * How long a dictation waits, after the transcript is back, for the page address and the
- * text before the cursor read at the press. Past it the category from the app alone is used.
+ * How long delivery may take before the state is released anyway. Derived from the
+ * sink's own step budgets (see `core/delivery/timing.ts`) so it stays above them.
  */
-export const CONTEXT_WAIT_MS = 1500;
-
-/**
- * How long delivery may take before the state is released anyway. Room for the target
- * lock (reading the foreground, bringing the target back once, reading it again) and for
- * typing a long dictation out.
- */
-export const DEFAULT_DELIVERY_TIMEOUT_MS = 10_000;
-
-/**
- * The part of the delivery timeout the sink does not get (at most half of it): room for
- * it to notice its deadline, stop and put the text on the clipboard before the service
- * gives up.
- */
-export const DELIVERY_TIMEOUT_MARGIN_MS = 1500;
+export const DEFAULT_DELIVERY_TIMEOUT_MS = DELIVERY_TIMEOUT_MS;
 
 /** How often the silence and max-length limits are checked, independent of audio frames. */
 export const DEFAULT_TICK_MS = 250;
@@ -277,20 +197,9 @@ export const COUNTDOWN_SECONDS = 5;
 interface Session {
   /** Where it started. Never changes. */
   readonly source: DictationSource;
-  readonly targetApp?: string;
-  readonly targetHandle?: number;
-  readonly target?: DeliveryTarget;
-  /** Dropped with the session: the text before the cursor is never kept past the dictation. */
-  readonly context?: ContextCapture;
-  /** The settings at the press. Fixed for the dictation and for its retry. */
-  readonly press: PressSettings;
-  /**
-   * No app to fit the text to (a window dictation or one into our own field): no category
-   * formatting. Set at the start and kept for a retry; never inferred from a missing context.
-   */
-  readonly noCategory: boolean;
-  /** The context once its late reads landed, for a retry. Never holds the text before the cursor. */
-  knownContext?: DictationContext;
+  /** Filled in late when the lookup runs beside the recorder start (`setTargetApp`). */
+  targetApp?: string;
+  readonly startedInOwnWindow?: boolean;
   readonly rawMode: boolean;
   /** The text reached the clipboard or the target, so a later failure is not a failed dictation. */
   delivered: boolean;
@@ -315,19 +224,16 @@ export class DictationService {
   private state: DictationState = 'idle';
   private clock: RecordingClock;
   private abortController: AbortController | null = null;
-  private deliveryTimer: NodeJS.Timeout | null = null;
-  private lastFailed: {
-    audio: CapturedAudio;
-    language: MemoryLanguage;
-    press: PressSettings;
-    noCategory: boolean;
-    /** The press-time app and category, without the text before the cursor. */
-    context: DictationContext | null;
-  } | null = null;
+  private lastFailed: { audio: CapturedAudio; language: MemoryLanguage } | null = null;
   /** The dictation in flight. Null between dictations and after a cancel. */
   private session: Session | null = null;
   /** True while `recorder.start()` is pending, so a second press cannot start another. */
   private starting = false;
+  private sequenceNumber = 0;
+  /** A stop arrived while the recorder was still starting: apply it as soon as recording begins. */
+  private stopWhenStarted = false;
+  /** The target app learned while the recorder was still starting. */
+  private pendingTargetApp: string | undefined;
   /** Bumped by a cancel during start, so the start that is still pending knows it was abandoned. */
   private startToken = 0;
   /** The pipeline after recording stops, so a cancel during delivery can wait for its verdict. */
@@ -343,6 +249,15 @@ export class DictationService {
 
   get currentState(): DictationState {
     return this.state;
+  }
+
+  /**
+   * Changes on every start and every cancel, never on a stop. An answer that arrives late
+   * (the window lookup for the "dictating into" label) compares it with the value it was
+   * asked under, so it can never label a different dictation.
+   */
+  get sequence(): number {
+    return this.sequenceNumber;
   }
 
   /** The recorder is still starting: nothing records yet, but a start is in flight. */
@@ -371,6 +286,13 @@ export class DictationService {
    * dictation keeps the source it started with.
    */
   async toggle(options: StartOptions): Promise<void> {
+    if (this.starting) {
+      // A second press while the recorder is still starting is a stop. Dropping it left
+      // the dictation running with nobody holding the button; it is applied the moment
+      // recording begins.
+      this.stopWhenStarted = true;
+      return;
+    }
     if (this.state === 'idle' || this.state === 'error') {
       await this.startRecording(options);
       return;
@@ -384,42 +306,30 @@ export class DictationService {
     if (this.isBusy || this.session !== null || this.starting) {
       return;
     }
+    this.sequenceNumber += 1;
     const settings = this.deps.settings();
     this.clock = new RecordingClock(settings.maxRecordingSeconds, this.nowFn());
     const session: Session = {
       source: options.source,
       // A window dictation never pastes, so it has no target to record.
       targetApp: options.source === 'hotkey' ? options.targetApp : undefined,
-      targetHandle: options.source === 'hotkey' ? options.targetHandle : undefined,
-      target: options.source === 'hotkey' ? options.target : undefined,
-      context: options.source === 'hotkey' ? options.context : undefined,
-      press: options.press ?? snapshotPress(settings),
-      noCategory: options.source === 'window' || options.ownField === true,
+      startedInOwnWindow: options.source === 'hotkey' ? options.startedInOwnWindow : undefined,
       rawMode: options.rawMode === true,
       delivered: false,
       stopping: false,
       settled: false,
     };
 
-    // The page and the text read at the press land late: keep the page's category (never the
-    // text) so a retry of a failed dictation is formatted for the same app.
-    const late = session.context;
-    if (late) {
-      void late.settled.then(
-        (context) => {
-          session.knownContext = { ...context, textBeforeCursor: null };
-        },
-        () => undefined,
-      );
-    }
-
     this.starting = true;
+    this.stopWhenStarted = false;
+    this.pendingTargetApp = options.targetApp;
     const token = this.startToken;
     try {
       await this.deps.recorder.start();
     } catch (error) {
       // Cancelled while starting: nobody is waiting for this recording, or its failure.
       if (token !== this.startToken) return;
+      this.stopWhenStarted = false;
       // A missing/blocked microphone must produce an actionable message, not a
       // bare "error 4" the way the unlocalized Swift enum did.
       this.setState('error', classifyRecordingFailure(error));
@@ -435,10 +345,34 @@ export class DictationService {
       if (!this.starting && this.session === null) await this.deps.recorder.cancel().catch(() => undefined);
       return;
     }
+    // The lookup that finished while the recorder was starting.
+    if (session.source === 'hotkey' && this.pendingTargetApp !== undefined) session.targetApp = this.pendingTargetApp;
+    this.pendingTargetApp = undefined;
     this.session = session;
     this.clock.start();
     this.startMonitoring(settings.silenceTimeoutSeconds);
     this.setState('recording', undefined, session.targetApp);
+    if (this.stopWhenStarted) {
+      this.stopWhenStarted = false;
+      await this.stopAndProcess();
+    }
+  }
+
+  /**
+   * Record which app a hotkey dictation will be pasted into, once the lookup is done.
+   *
+   * The lookup runs beside the recorder start so the first words are not lost waiting
+   * for it, which means it can finish before or after the session exists. No status is
+   * re-sent: the label is read by whoever asks.
+   */
+  setTargetApp(targetApp: string | undefined): void {
+    if (targetApp === undefined) return;
+    const session = this.session;
+    if (!session) {
+      if (this.starting) this.pendingTargetApp = targetApp;
+      return;
+    }
+    if (session.source === 'hotkey' && !session.settled) session.targetApp = targetApp;
   }
 
   async stopAndProcess(): Promise<void> {
@@ -491,11 +425,14 @@ export class DictationService {
    * the user had no way to abort a hung upload at all.
    */
   async cancel(): Promise<void> {
+    this.sequenceNumber += 1;
     // The recorder is still starting: nothing is recording yet to stop, so abandon the start.
     if (this.starting) {
       this.startToken += 1;
       // Released now so the next press is not ignored while a hung recorder start times out.
       this.starting = false;
+      this.stopWhenStarted = false;
+      this.pendingTargetApp = undefined;
       void this.deps.recorder.cancel().catch(() => undefined);
       // A start from the error state: the person moved on, so the old error goes too.
       if (this.state === 'error') this.setState('idle');
@@ -520,7 +457,6 @@ export class DictationService {
     this.stopMonitoring();
     this.abortController?.abort();
     this.abortController = null;
-    this.clearDeliveryTimer();
     if (wasRecording) {
       this.clock.stop();
       await this.deps.recorder.cancel().catch(() => undefined);
@@ -536,19 +472,7 @@ export class DictationService {
     if (this.isBusy || this.session !== null || this.starting) return;
     this.lastFailed = null;
     // The window it came from may be long gone, so a retry always saves and copies.
-    // It keeps the app, the category and the settings of the dictation that failed (never
-    // the text before the cursor), so the retry is formatted for the app it was meant for.
-    const known = failed.context;
-    const session: Session = {
-      source: 'window',
-      ...(known ? { context: { initial: known, settled: Promise.resolve(known) } } : {}),
-      press: failed.press,
-      noCategory: failed.noCategory,
-      rawMode: false,
-      delivered: false,
-      stopping: true,
-      settled: false,
-    };
+    const session: Session = { source: 'window', rawMode: false, delivered: false, stopping: true, settled: false };
     this.session = session;
     await this.run(session, () => this.process(session, failed.audio, failed.language));
   }
@@ -707,7 +631,7 @@ export class DictationService {
     const apiKey = await this.deps.apiKey();
     if (!current()) return;
     if (!apiKey) {
-      this.retain(session, captured, language);
+      this.retain(captured, language);
       this.fail(session, {
         kind: 'noProvider',
         message: 'No Deepgram API key is set. Add one in Settings to start dictating.',
@@ -744,7 +668,7 @@ export class DictationService {
       // A cancelled upload ends here without a word: the cancel already reported it.
       if (!current()) return;
       // Keep the audio so Retry does not make the user dictate again.
-      this.retain(session, captured, language);
+      this.retain(captured, language);
       this.fail(session, classifyTranscriptionFailure(error));
       return;
     }
@@ -785,51 +709,10 @@ export class DictationService {
 
     // Deterministic memory pass: never skipped, even in raw mode. Raw mode means
     // "do not run the formatter", not "do not apply the user's dictionary".
-    // The formatted path, in this order: cleanup rules (fillers and stutters), then the
-    // text is fitted to the app the dictation was made for, then the user's dictionary
-    // fixes, replacement rules and snippets inside `applyMemory`, so a rule of theirs always
-    // has the last word. Raw mode and "Auto-format transcript" off skip the first two. The
-    // category and the settings are the ones captured at the press, never what is in front
-    // or set now.
-    const press = session.press;
-    const context = await this.contextFor(session);
-    if (!current()) return;
-    let preparedText = rawText;
-    let formattingChangedText = false;
-    if (!rawMode && press.formattingEnabled) {
-      try {
-        const cleaned = this.deps.cleanup
-          ? (
-              await this.deps.cleanup.run({
-                raw: rawText,
-                language: storedLanguage,
-                // Like the macOS app: a dictation made in our own window has no app to fit.
-                category: session.noCategory ? null : context.category,
-                // A pick that equals the category's default is no pick (macOS stores nil then),
-                // so the model gets the default semi-formal.
-                style: session.noCategory ? null : pickedStyle(press.categoryStyles[context.category], context.category),
-              })
-            ).text
-          : applyCleanupRules(rawText, storedLanguage);
-        if (!current()) return;
-        // Nothing left (a dictation that was only "um"): keep the transcript as it came.
-        if (cleaned.trim().length > 0) preparedText = cleaned;
-      } catch {
-        // Cleanup never costs a dictation: the transcript goes on as it was.
-      }
-      if (press.appAwareFormatting && !session.noCategory) {
-        const words = snapshot.terms
-          .filter((term) => languageMatches(term.language, effectiveLanguage))
-          .map((term) => term.phrase);
-        const result = formatForApp(preparedText, context, press, words);
-        if (result.applied) preparedText = result.text;
-      }
-      formattingChangedText = preparedText !== rawText;
-    }
-    let memoryResult = applyMemory(preparedText, snapshot, effectiveLanguage);
+    const memoryResult = applyMemory(rawText, snapshot, effectiveLanguage);
 
     let finalText = memoryResult.text;
-    let mode: 'raw' | 'formatted' = formattingChangedText ? 'formatted' : 'raw';
+    let mode: 'raw' | 'formatted' = 'raw';
     if (!rawMode && settings.formattingEnabled && this.deps.formatter) {
       try {
         const formatted = await this.deps.formatter(memoryResult.text, effectiveLanguage);
@@ -839,11 +722,8 @@ export class DictationService {
           mode = 'formatted';
         }
       } catch {
-        // A formatter failure must never lose the dictation: deliver the transcript as it came
-        // (the user's own dictionary, rules and snippets still apply), without the cleanup and
-        // the category formatting, as raw.
-        memoryResult = applyMemory(rawText, snapshot, effectiveLanguage);
-        finalText = memoryResult.text;
+        // A formatter failure must never lose the dictation: fall back to the
+        // unformatted text, which is already correct.
         mode = 'raw';
       }
       if (!current()) return;
@@ -858,9 +738,7 @@ export class DictationService {
     // window dictation, any retry) is saved and copied only.
     const deliveryMode = session.source === 'hotkey' ? 'paste' : 'copy';
     this.setState('delivering', undefined, session.targetApp);
-    // No app, no send key: our own window (a field of ours) and an unknown app never get one.
-    const autoSend = context.appID === null ? 'off' : autoSendKeyFor(press.autoSend, context.category);
-    const delivered = await this.deliver(finalText, deliveryMode, session, autoSend);
+    const delivered = await this.deliver(finalText, deliveryMode, session);
     if (!current()) return;
     session.delivered = !delivered.cancelled && (delivered.delivered || delivered.clipboardFallback);
     if (delivered.cancelled) {
@@ -880,7 +758,6 @@ export class DictationService {
       intermediateText: memoryResult.text,
       language: storedLanguage,
       appName: deliveryMode === 'paste' ? (session.targetApp ?? 'Unknown') : '',
-      ...(context.appID !== null ? { appID: context.appID, category: context.category } : {}),
       durationSeconds: transcript.durationSeconds ?? captured.durationSeconds,
       mode,
       createdAt: new Date(this.nowFn()()).toISOString(),
@@ -905,29 +782,28 @@ export class DictationService {
       this.finish(session, finalText, 'copied');
       return;
     }
+    if (delivered.clipboardChanged) {
+      // Nothing was sent and the person's newer copy was left alone. The dictation is in
+      // the history, so say exactly that: not pasted, not copied.
+      this.fail(session, {
+        kind: 'deliveryFailed',
+        message: "Not pasted because the clipboard changed. It's saved in Useful Voice.",
+      });
+      return;
+    }
+    if (delivered.clipboardUnreadable) {
+      this.fail(session, {
+        kind: 'deliveryFailed',
+        message: "Not pasted because another app is using the clipboard. It's saved in Useful Voice.",
+      });
+      return;
+    }
     if (delivered.delivered) {
       this.finish(session, finalText, 'pasted', session.targetApp);
       return;
     }
-    if (delivered.clipboardFallback && delivered.partlyTyped) {
-      // Some of it went in before typing stopped: say so, or the user pastes a second copy
-      // blind. The whole text is on the clipboard.
-      this.finish(session, finalText, 'copiedNotPasted', session.targetApp, PARTLY_TYPED, 'partlyTyped');
-      return;
-    }
-    if (delivered.clipboardFallback && delivered.lineBreaks) {
-      this.finish(session, finalText, 'copiedNotPasted', session.targetApp, LINE_BREAKS, 'lineBreaks');
-      return;
-    }
     if (delivered.clipboardFallback) {
-      this.finish(
-        session,
-        finalText,
-        'copiedNotPasted',
-        session.targetApp,
-        'Copied to your clipboard. Press Ctrl+V to paste it.',
-        delivered.pasteFailed ? 'pasteBlocked' : undefined,
-      );
+      this.finish(session, finalText, 'copiedNotPasted', session.targetApp, 'Copied to your clipboard. Press Ctrl+V to paste it.');
       return;
     }
     // Neither pasted nor on the clipboard: only a broken sink reports this.
@@ -944,11 +820,9 @@ export class DictationService {
     result: DictationDelivery,
     appName?: string,
     idleMessage?: string,
-    notice?: 'partlyTyped' | 'lineBreaks' | 'pasteBlocked',
   ): void {
     const event: DictationOutcomeEvent = { kind: 'delivered', words: countWords(text), result };
     if (appName !== undefined) event.appName = appName;
-    if (notice) event[notice] = true;
     this.emitOutcome(session, event);
     this.session = null;
     this.setState('idle', idleMessage);
@@ -982,88 +856,53 @@ export class DictationService {
    * state is always released, and the dictation is left on the clipboard either
    * way.
    */
-  private async deliver(
-    text: string,
-    mode: 'paste' | 'copy',
-    session: Session,
-    autoSend: AutoSendKey,
-  ): Promise<DeliveryResult> {
+  private async deliver(text: string, mode: 'paste' | 'copy', session: Session): Promise<DeliveryResult> {
     const timeoutMs = this.deps.deliveryTimeoutMs ?? DEFAULT_DELIVERY_TIMEOUT_MS;
-    let timer: NodeJS.Timeout | null = null;
-    // This delivery's own signal: a cancel passes through to it, and a timeout aborts it
-    // with `DELIVERY_TIMEOUT` so the sink stops for good instead of pasting late.
+    const graceMs = this.deps.deliveryGraceMs ?? DELIVERY_ABORT_GRACE_MS;
+    // The sink gets its own signal, so the timeout can stop it as well as the user's cancel.
     const delivery = new AbortController();
-    const cancel = this.abortController?.signal;
-    const onCancel = (): void => delivery.abort(cancel?.reason);
-    if (cancel?.aborted) onCancel();
-    else cancel?.addEventListener('abort', onCancel, { once: true });
+    const sessionSignal = this.abortController?.signal;
+    const onSessionAbort = (): void => delivery.abort(sessionSignal?.reason);
+    if (sessionSignal?.aborted) onSessionAbort();
+    else sessionSignal?.addEventListener('abort', onSessionAbort, { once: true });
+    let timer: NodeJS.Timeout | null = null;
+    let graceTimer: NodeJS.Timeout | null = null;
     try {
-      // Whole milliseconds: the platform scripts take an integer deadline.
-      const timeBudgetMs = Math.floor(Math.max(timeoutMs / 2, timeoutMs - DELIVERY_TIMEOUT_MARGIN_MS));
       const request: DeliveryRequest =
         mode === 'paste'
           ? {
               text,
               mode,
               targetApp: session.targetApp,
-              targetHandle: session.targetHandle,
-              target: session.target,
-              ...(autoSend !== 'off' ? { autoSend } : {}),
+              startedInOwnWindow: session.startedInOwnWindow,
               signal: delivery.signal,
-              timeBudgetMs,
             }
-          : { text, mode, signal: delivery.signal, timeBudgetMs };
-      const result = await Promise.race([
-        this.deps.sink.deliver(request),
-        new Promise<DeliveryResult>((resolve) => {
-          timer = setTimeout(() => {
-            delivery.abort(DELIVERY_TIMEOUT);
-            this.deps.onDiagnostic?.('delivery', 'timed out; stopped the sink');
-            resolve({ delivered: false, clipboardFallback: true });
-          }, timeoutMs);
-          timer.unref?.();
-        }),
-      ]);
-      return result;
-    } catch {
-      // The sink itself failed. The text is on the clipboard, so nothing is lost.
-      return { delivered: false, clipboardFallback: true };
+          : { text, mode, signal: delivery.signal };
+      // The copy that is left when the sink cannot be heard from at all.
+      const lost: DeliveryResult = { delivered: false, clipboardFallback: true };
+      return await new Promise<DeliveryResult>((resolve) => {
+        // The timeout ABORTS the sink; it does not overrule it. A request still waiting is
+        // dropped by the abort and the sink says so. A request that was already written may
+        // have pasted, and only the sink knows: so its verdict is awaited, for a bounded
+        // grace, and a sink that says nothing in that time is treated as lost.
+        timer = setTimeout(() => {
+          delivery.abort(DELIVERY_TIMED_OUT);
+          graceTimer = setTimeout(() => resolve(lost), graceMs);
+          graceTimer.unref?.();
+        }, timeoutMs);
+        timer.unref?.();
+        // The sink itself failing is a copy too: the text is on the clipboard.
+        this.deps.sink.deliver(request).then(resolve, () => resolve(lost));
+      });
     } finally {
       if (timer) clearTimeout(timer);
-      cancel?.removeEventListener('abort', onCancel);
-      this.clearDeliveryTimer();
+      if (graceTimer) clearTimeout(graceTimer);
+      sessionSignal?.removeEventListener('abort', onSessionAbort);
     }
   }
 
-  /**
-   * The context captured at the press, waiting a short while for the page and the text
-   * before the cursor. Late or missing, the category from the app alone is used; a window
-   * dictation has none and is Other.
-   */
-  private async contextFor(session: Session): Promise<DictationContext> {
-    const capture = session.context;
-    if (!capture) return NO_TARGET_CONTEXT;
-    let timer: NodeJS.Timeout | null = null;
-    const late = new Promise<DictationContext>((resolve) => {
-      timer = setTimeout(() => resolve(capture.initial), CONTEXT_WAIT_MS);
-      timer.unref?.();
-    });
-    try {
-      return await Promise.race([capture.settled, late]);
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
-  }
-
-  private retain(session: Session, captured: CapturedAudio, language: MemoryLanguage): void {
-    const known = session.knownContext ?? session.context?.initial ?? null;
-    this.lastFailed = {
-      audio: captured,
-      language,
-      press: session.press,
-      noCategory: session.noCategory,
-      context: known ? { ...known, textBeforeCursor: null } : null,
-    };
+  private retain(captured: CapturedAudio, language: MemoryLanguage): void {
+    this.lastFailed = { audio: captured, language };
   }
 
   private setState(state: DictationState, error?: DictationError | string, targetApp?: string): void {
@@ -1079,13 +918,6 @@ export class DictationService {
     if (this.session) status.delivery = this.session.source === 'hotkey' ? 'paste' : 'copy';
     if (state === 'recording') status.elapsedSeconds = this.clock.elapsedSeconds();
     this.deps.onStatus(status);
-  }
-
-  private clearDeliveryTimer(): void {
-    if (this.deliveryTimer) {
-      clearTimeout(this.deliveryTimer);
-      this.deliveryTimer = null;
-    }
   }
 
   private nowFn(): () => number {
@@ -1189,9 +1021,4 @@ function transcriptionFailureMessage(error: unknown): string {
 function describe(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
-}
-
-/** The style the person picked for a category, or null when none or when it is the category's default. */
-function pickedStyle(style: string | undefined, category: AppCategory): string | null {
-  return style === undefined || style === defaultStyle(category) ? null : style;
 }

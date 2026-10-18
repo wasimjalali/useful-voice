@@ -19,7 +19,7 @@
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "node scripts/build-renderer.mjs",
     "build:icon": "node scripts/make-icon.mjs",
-    "test": "vitest run && vitest run --config vitest.desktop.config.ts",
+    "test": "vitest run",
     "test:watch": "vitest",
     "start": "npm run build && electron .",
     "self-test": "npm run build && electron . --self-test --report=self-test-report.txt",
@@ -48,24 +48,12 @@
     "files": [
       "dist/**/*",
       "package.json",
-      "!**/*.map",
-      "!node_modules/@node-llama-cpp/*/bins/**/*",
-      "node_modules/@node-llama-cpp/win-x64/bins/**/*",
-      "!node_modules/node-llama-cpp/llama/localBuilds/**/*",
-      "!node_modules/node-llama-cpp/llama/gitRelease.bundle"
+      "!**/*.map"
     ],
     "extraResources": [
       {
         "from": "build/tray",
         "to": "tray"
-      },
-      {
-        "from": "licenses",
-        "to": "licenses"
-      },
-      {
-        "from": "THIRD_PARTY_NOTICES.md",
-        "to": "THIRD_PARTY_NOTICES.md"
       }
     ],
     "publish": [
@@ -116,14 +104,9 @@
     },
     "portable": {
       "artifactName": "${productName}-${version}-portable.${ext}"
-    },
-    "asarUnpack": [
-      "node_modules/node-llama-cpp/bins/**/*",
-      "node_modules/@node-llama-cpp/*/bins/**/*"
-    ]
+    }
   },
   "dependencies": {
-    "electron-updater": "6.8.10",
-    "node-llama-cpp": "3.22.1"
+    "electron-updater": "6.8.10"
   }
 }

@@ -85,8 +85,6 @@ test:
 # framework. The app bundle must embed it under Contents/Frameworks, with an
 # rpath so @rpath/whisper.framework resolves there.
 FRAMEWORK = whisper.framework
-# llama.cpp (the hidden S1-mini cleanup) is linked too, so it ships the same way.
-LLAMA_FRAMEWORK = llama.framework
 
 # The license notices ship inside the app (before signing, so the seal covers them).
 define copy_notices
@@ -103,7 +101,6 @@ bundle: build
 	cp assets/branding/useful-voice-mark-dark.png $(APP)/Contents/Resources/UsefulVoiceLogo.png
 	$(call copy_notices)
 	cp -R .build/release/$(FRAMEWORK) $(APP)/Contents/Frameworks/
-	cp -R .build/release/$(LLAMA_FRAMEWORK) $(APP)/Contents/Frameworks/
 	$(call embed_sparkle)
 	@# The binary's own rpaths point at SPM's build/artifact dirs; inside the
 	@# bundle the framework lives at ../Frameworks relative to the executable.
@@ -119,7 +116,6 @@ bundle: build
 	@# Sparkle keeps its authors' signature: without the hardened runtime there is
 	@# no library validation, so the app loads it as signed.
 	codesign --force --sign "$(SIGN_IDENTITY)" $(APP)/Contents/Frameworks/$(FRAMEWORK)
-	codesign --force --sign "$(SIGN_IDENTITY)" $(APP)/Contents/Frameworks/$(LLAMA_FRAMEWORK)
 	codesign --force --sign "$(SIGN_IDENTITY)" $(APP)
 	@codesign -dv $(APP) 2>&1 | sed -n 's/^/    /p'
 
@@ -163,7 +159,6 @@ endif
 	cp assets/branding/useful-voice-mark-dark.png $(APP)/Contents/Resources/UsefulVoiceLogo.png
 	$(call copy_notices)
 	cp -R .build/release/$(FRAMEWORK) $(APP)/Contents/Frameworks/
-	cp -R .build/release/$(LLAMA_FRAMEWORK) $(APP)/Contents/Frameworks/
 	$(call embed_sparkle)
 	install_name_tool -add_rpath "@executable_path/../Frameworks" \
 		$(APP)/Contents/MacOS/UsefulVoice 2>/dev/null || true
@@ -183,9 +178,6 @@ endif
 	codesign -f -s "$(DEVID_IDENTITY)" -o runtime --timestamp $(APP)/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate
 	codesign -f -s "$(DEVID_IDENTITY)" -o runtime --timestamp $(APP)/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app
 	codesign -f -s "$(DEVID_IDENTITY)" -o runtime --timestamp $(APP)/Contents/Frameworks/Sparkle.framework
-	codesign --force --options runtime --timestamp \
-		--sign "$(DEVID_IDENTITY)" \
-		$(APP)/Contents/Frameworks/$(LLAMA_FRAMEWORK)
 	codesign --force --options runtime --timestamp \
 		--entitlements $(ENTITLEMENTS) \
 		--sign "$(DEVID_IDENTITY)" $(APP)

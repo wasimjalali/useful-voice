@@ -59,41 +59,4 @@ import Foundation
         #expect(LanguagePin.auto.quickToggled == .en)
         #expect(LanguagePin.auto.quickToggled.quickToggled == .de)
     }
-
-    // MARK: - Delivery settings (B1)
-
-    @Test func testDeliveryDefaultsMatchTheOldBehaviour() {
-        // An install that never saved these: restore after a proven paste, paste everywhere.
-        #expect(settings.restorePreviousClipboard == true)
-        #expect(settings.typeOutAppIDs == [])
-    }
-
-    @Test func testRestoreClipboardRoundTripsAndSurvivesANewInstance() {
-        settings.restorePreviousClipboard = false
-        #expect(AppSettings(defaults: defaults).restorePreviousClipboard == false)
-        settings.restorePreviousClipboard = true
-        #expect(AppSettings(defaults: defaults).restorePreviousClipboard == true)
-    }
-
-    @Test func testAWrongTypeStoredForADeliverySettingFallsBackToTheDefault() {
-        defaults.set("yes", forKey: "restorePreviousClipboard")
-        defaults.set("com.apple.Terminal", forKey: "typeOutAppIDs")
-        #expect(settings.restorePreviousClipboard == true)
-        #expect(settings.typeOutAppIDs == [])
-    }
-
-    @Test func testTypeOutAppsToggleOnePerAppWithoutDuplicates() {
-        settings.setTypeOut(true, forAppID: "com.apple.Terminal")
-        settings.setTypeOut(true, forAppID: "com.googlecode.iterm2")
-        settings.setTypeOut(true, forAppID: "com.apple.terminal")   // same app, other case
-        #expect(settings.typeOutAppIDs == ["com.googlecode.iterm2", "com.apple.terminal"])
-        settings.setTypeOut(false, forAppID: "com.apple.Terminal")
-        #expect(settings.typeOutAppIDs == ["com.googlecode.iterm2"])
-        #expect(AppSettings(defaults: defaults).typeOutAppIDs == ["com.googlecode.iterm2"])
-    }
-
-    @Test func testTypeOutListDropsBlanksAndDuplicatesOnSave() {
-        settings.typeOutAppIDs = [" com.apple.Terminal ", "", "com.apple.Terminal", "  "]
-        #expect(settings.typeOutAppIDs == ["com.apple.Terminal"])
-    }
 }

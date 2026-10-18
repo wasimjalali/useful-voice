@@ -7,7 +7,6 @@
  */
 
 import { DEEPGRAM_LANGUAGES, normaliseLanguageCode } from './transcription/languages.js';
-import type { AppCategory, AutoSendKey, FormattingStyle } from './apps/appCategory.js';
 
 /**
  * The language a setting, term or replacement is scoped to.
@@ -196,21 +195,7 @@ export type DictationDelivery = 'pasted' | 'copiedNotPasted' | 'copied';
 
 /** Sent once per dictation, before the idle status. */
 export type DictationOutcomeEvent =
-  | {
-      kind: 'delivered';
-      words: number;
-      result: DictationDelivery;
-      appName?: string;
-      /** With `copiedNotPasted`: typing stopped part way, the full text is on the clipboard. */
-      partlyTyped?: boolean;
-      /** With `copiedNotPasted`: the text has a line break, so an app that types got nothing. */
-      lineBreaks?: boolean;
-      /**
-       * With `copiedNotPasted`: Windows refused the paste keystroke (the target runs as
-       * administrator). The only outcome that may show the "blocked" banner.
-       */
-      pasteBlocked?: boolean;
-    }
+  | { kind: 'delivered'; words: number; result: DictationDelivery; appName?: string }
   | { kind: 'cancelled' };
 
 /**
@@ -241,14 +226,6 @@ export interface DictationRecord {
    */
   language: MemoryLanguage;
   appName: string;
-  /**
-   * The app the dictation was captured for (its executable name, e.g. `slack.exe`). Absent
-   * on a window dictation and on history written before app-aware formatting, so an old
-   * file decodes unchanged. `category` is the category of that app, and is stored only with
-   * an `appID`; it is kept whether or not formatting was on, because it feeds the app list.
-   */
-  appID?: string;
-  category?: AppCategory;
   durationSeconds: number;
   mode: 'raw' | 'formatted';
   createdAt: string;
@@ -298,28 +275,6 @@ export interface AppSettings {
   appearance: Appearance;
   /** Words per day the Insights page measures progress against. No UI sets it yet. */
   dailyWordGoal: number;
-  /**
-   * After a paste that provably landed, put the previous clipboard back. Off leaves the
-   * dictation on the clipboard. On by default: the behaviour before the setting existed,
-   * so a settings file written by an older build is unchanged.
-   */
-  restorePreviousClipboard: boolean;
-  /**
-   * Apps (lowercased executable names without `.exe`) that get the dictation typed out as
-   * Unicode keystrokes instead of pasted: terminals and apps that block paste. Empty by
-   * default, so every app pastes until the user turns typing on for it.
-   */
-  typeOutApps: string[];
-  /** Format each dictation for the app it goes into. On by default. */
-  appAwareFormatting: boolean;
-  /** The writing style the user picked per category. A category without one uses its default. */
-  categoryStyles: Partial<Record<AppCategory, FormattingStyle>>;
-  /** Used for email sign-offs only. Empty means no name is added. */
-  userName: string;
-  /** The key pressed after a delivery that landed, per category. Absent means off, and Email and Docs and notes never have one. */
-  autoSend: Partial<Record<AppCategory, AutoSendKey>>;
-  /** The user's per-app category choices, keyed by executable name (`slack.exe`). */
-  appCategories: Record<string, AppCategory>;
 }
 
 export type Appearance = 'system' | 'light' | 'dark';
@@ -353,11 +308,4 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dictionaryBiasBudget: 100,
   appearance: 'system',
   dailyWordGoal: 2500,
-  restorePreviousClipboard: true,
-  typeOutApps: [],
-  appAwareFormatting: true,
-  categoryStyles: {},
-  userName: '',
-  autoSend: {},
-  appCategories: {},
 };

@@ -92,17 +92,35 @@ public final class LocalModelStore: @unchecked Sendable {
         return (attrs?[.size] as? Int64) ?? 0
     }
 
-    /// Total bytes used by the Whisper models in the directory. The hidden cleanup model
-    /// (S1-mini) shares the directory but is not a Whisper model, so it and its `.partial` and
-    /// `.resume` files are left out of the "N of M models downloaded, X on disk" summary.
+    /// The cleanup model of the removed hidden flag (S1-mini). Builds that had the flag
+    /// on left its weights, and any partial or resume file, in this folder.
+    private static let legacyCleanupModelFileName = "s1-mini-q4_k_m.gguf"
+
+    private static func isLegacyCleanupFile(_ name: String) -> Bool {
+        name.hasPrefix(legacyCleanupModelFileName)
+    }
+
+    /// Deletes the leftover cleanup model files (the weights, `.partial` and `.resume`)
+    /// and returns the names removed, so the caller can log them. Safe on every launch.
+    @discardableResult
+    public func removeLegacyCleanupModel() -> [String] {
+        guard let names = try? fileManager.contentsOfDirectory(atPath: directory.path) else { return [] }
+        var removed: [String] = []
+        for name in names where Self.isLegacyCleanupFile(name) {
+            if (try? fileManager.removeItem(at: directory.appendingPathComponent(name))) != nil {
+                removed.append(name)
+            }
+        }
+        return removed
+    }
+
+    /// Total bytes used by the Whisper weights in the model directory. A leftover
+    /// cleanup model is not counted: it is not one of the app's models any more.
     public func totalBytesOnDisk() -> Int64 {
         guard let contents = try? fileManager.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
-        let hidden = S1MiniModel.model.fileName
         var total: Int64 = 0
-        for url in contents {
-            let name = url.lastPathComponent
-            if name == hidden || name.hasPrefix(hidden + ".") { continue }
+        for url in contents where !Self.isLegacyCleanupFile(url.lastPathComponent) {
             let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
             total += Int64(size)
         }

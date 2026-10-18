@@ -73,9 +73,9 @@ const { SettingsStore } = await import('../src/main/settingsStore.js');
 const { removeStaleTempFiles, writeJsonAtomic } = await import('../src/core/settings/jsonStore.js');
 const { DataStore } = await import('../src/core/settings/dataStore.js');
 
-async function storeWith(typeOutApps: string[]): Promise<{ dir: string; store: InstanceType<typeof SettingsStore> }> {
+async function storeWith(appearance: 'system' | 'light' | 'dark'): Promise<{ dir: string; store: InstanceType<typeof SettingsStore> }> {
   const dir = await realFs.mkdtemp(path.join(os.tmpdir(), 'uv-settings-locked-'));
-  await realFs.writeFile(path.join(dir, 'settings.json'), JSON.stringify({ version: 1, settings: { typeOutApps, languagePin: 'de' } }));
+  await realFs.writeFile(path.join(dir, 'settings.json'), JSON.stringify({ version: 1, settings: { appearance, languagePin: 'de' } }));
   const store = new SettingsStore(dir);
   await store.load();
   return { dir, store };
@@ -102,70 +102,70 @@ describe('a settings save while settings.json is held open', () => {
     writes.most = 0;
   });
 
-  it.each(['EPERM', 'EACCES', 'EBUSY'])('two quick typing switches both land when the second write meets %s once', async (code) => {
-    const { dir, store } = await storeWith(['putty', 'windowsterminal']);
+  it.each(['EPERM', 'EACCES', 'EBUSY'])('two quick appearance switches both land when the second write meets %s once', async (code) => {
+    const { dir, store } = await storeWith('dark');
     // What the two switch saves send main: each built from the list the previous save returned.
     const first = nextWrite(store);
-    store.update({ typeOutApps: ['putty'] });
+    store.update({ appearance: 'light' });
     expect((await first).ok).toBe(true);
     failures.push(code);
     const second = nextWrite(store);
-    store.update({ typeOutApps: [] });
+    store.update({ appearance: 'system' });
     const status = await second;
-    expect((await saved(dir)).typeOutApps).toEqual([]);
+    expect((await saved(dir)).appearance).toBe('system');
     expect(status.ok).toBe(true);
     expect((await saved(dir)).languagePin).toBe('de');
     expect(await temps(dir)).toEqual([]);
   });
 
   it('a newer change made while the older write waits out a lock wins on disk', async () => {
-    const { dir, store } = await storeWith(['putty', 'windowsterminal']);
+    const { dir, store } = await storeWith('dark');
     const statuses: boolean[] = [];
     store.onSaveStatus((status) => statuses.push(status.ok));
     failures.push('EPERM', 'EPERM');
     const hold = holdNextRename();
-    store.update({ typeOutApps: ['putty'] });
+    store.update({ appearance: 'light' });
     // The first write has reached its rename and is held there while the second change is made.
     await hold.entered;
-    store.update({ typeOutApps: [] });
+    store.update({ appearance: 'system' });
     hold.release();
     await vi.waitFor(() => expect(statuses).toHaveLength(2), { timeout: 3000 });
     expect(statuses).toEqual([true, true]);
-    expect((await saved(dir)).typeOutApps).toEqual([]);
+    expect((await saved(dir)).appearance).toBe('system');
     expect(writes.most).toBe(1);
     expect(await temps(dir)).toEqual([]);
   });
 
   it.each(['EPERM', 'EBUSY'])('a temp file held open with %s is retried and the save lands', async (code) => {
-    const { dir, store } = await storeWith(['putty']);
+    const { dir, store } = await storeWith('dark');
     writeFailures.push(code, code);
     const write = nextWrite(store);
-    store.update({ typeOutApps: [] });
+    store.update({ appearance: 'system' });
     expect((await write).ok).toBe(true);
-    expect((await saved(dir)).typeOutApps).toEqual([]);
+    expect((await saved(dir)).appearance).toBe('system');
     expect(await temps(dir)).toEqual([]);
   });
 
   it('a temp file held for good still fails, says so and leaves the old file', async () => {
-    const { dir, store } = await storeWith(['putty']);
+    const { dir, store } = await storeWith('dark');
     writeFailures.push(...Array<string>(50).fill('EBUSY'));
     const write = nextWrite(store);
-    store.update({ typeOutApps: [] });
+    store.update({ appearance: 'system' });
     expect((await write).ok).toBe(false);
     expect(store.saveError?.message).toContain('EBUSY');
-    expect((await saved(dir)).typeOutApps).toEqual(['putty']);
+    expect((await saved(dir)).appearance).toBe('dark');
     expect(await temps(dir)).toEqual([]);
   });
 
   it('a file held for good still fails, says so and leaves no temp file', async () => {
-    const { dir, store } = await storeWith(['putty']);
+    const { dir, store } = await storeWith('dark');
     failures.push(...Array<string>(50).fill('EPERM'));
     const write = nextWrite(store);
-    store.update({ typeOutApps: [] });
+    store.update({ appearance: 'system' });
     const status = await write;
     expect(status.ok).toBe(false);
     expect(store.saveError?.message).toContain('EPERM');
-    expect((await saved(dir)).typeOutApps).toEqual(['putty']);
+    expect((await saved(dir)).appearance).toBe('dark');
     expect(await temps(dir)).toEqual([]);
   });
 

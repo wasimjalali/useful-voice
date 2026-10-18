@@ -2,27 +2,21 @@
  * The clipboard half of the delivery contract, as pure logic.
  *
  * Delivery must never lose a dictation: after every attempt the text is either
- * pasted into the user's app or still on the clipboard. Putting the user's previous
- * clipboard back is therefore a *decision*, not a cleanup step — and getting that
- * decision wrong is what lost transcripts on macOS, where the restore ran on a timer
- * that could fire before the paste had landed.
+ * pasted into the user's app or still on the clipboard. Whether the previous clipboard
+ * may be put back is therefore a *decision*, and the rules are deliberately strict:
  *
- * The rules, in the order they are applied:
+ *   After a SENT paste the previous clipboard is never put back. No API tells us that
+ *   the target consumed Ctrl+V (it never clears the clipboard, and an app that stalls
+ *   past any delay we pick would then paste the OLD clipboard, losing the dictation).
+ *   The dictation stays on the clipboard and the paste is reported as delivered. If
+ *   the keystroke could not be sent, it stays too and the person is told to paste.
  *
- *   1. no paste was sent                 -> keep the text on the clipboard
- *   2. the target cannot be verified     -> keep (never claim an unprovable success)
- *   3. focus moved while pasting         -> keep (the paste cannot be attributed)
- *   4. the clipboard still holds our text -> keep (nothing consumed it, so it very
- *      likely never landed)
- *   5. the paste landed but the original could not be captured exactly (a file
- *      list, say) or held nothing worth restoring -> keep (a partial restore would
- *      destroy user data, and restoring whitespace would destroy the dictation)
- *   6. the user turned "restore clipboard after paste" off -> keep
- *   7. otherwise                         -> restore the original clipboard
+ *   Before the paste (a cancel arrived first) the previous clipboard goes back only
+ *   when the clipboard still holds exactly our text, so a newer copy is never
+ *   overwritten, and the snapshot is complete and has something worth restoring.
  *
- * This module is deliberately pure: the observations (which window had focus, what
- * the clipboard holds) arrive as data, so the policy is testable without Electron
- * on any platform. The observers and the clipboard write itself live in
+ * This module is deliberately pure: the observations arrive as data, so the policy is
+ * testable without Electron on any platform. The clipboard access itself lives in
  * `src/main/windowsPlatform.ts`.
  */
 
@@ -59,49 +53,6 @@ export interface ClipboardContents {
 }
 
 /**
- * Apps whose edit controls do not expose text, where a paste can never be verified
- * by reading content.
- *
- * For these the app keeps the dictation on the clipboard, because claiming success
- * it cannot prove is what caused the original clipboard-loss bug on macOS. Terminals
- * and Electron-based editors are the usual suspects: their text lives in a canvas or
- * a private buffer that no clipboard or window-title check can confirm.
- */
-export const UNVERIFIABLE_PROCESSES = new Set([
-  'windowsterminal',
-  'conhost',
-  'mintty',
-  'alacritty',
-  'wezterm',
-  'kitty',
-  'powershell',
-  'pwsh',
-  'cmd',
-  'code',            // VS Code: Electron, though its AX tree is usually present
-  'brave',
-  'chrome',
-  'firefox',
-  'msedge',
-  'slack',
-  'discord',
-  'notion',
-]);
-
-/**
- * Whether a paste into this window could ever be confirmed.
- *
- * A null target means the foreground window could not be read, which is treated the
- * same as an unverifiable app: unconfirmed delivery keeps the text on the clipboard
- * rather than claiming it landed.
- */
-export function isProbablyVerifiable(target: PasteTarget | null): boolean {
-  if (!target) return false;
-  const name = target.processName.replace(/\.exe$/i, '').toLowerCase();
-  if (name.length === 0) return false;
-  return !UNVERIFIABLE_PROCESSES.has(name);
-}
-
-/**
  * Whether the captured clipboard is worth putting back.
  *
  * Whitespace-only text counts as nothing: a clipboard holding a few spaces carries
@@ -113,138 +64,98 @@ export function hasRestorableContent(contents: ClipboardContents): boolean {
 }
 
 /**
- * Why the clipboard was or was not put back, for the diagnostics log.
+ * Whether a cancel that arrived before the keystroke may put the previous clipboard back.
  *
- * Kept as a union rather than free text so the caller can react to a reason (the
- * incomplete-snapshot warning is worth telling the user about) instead of matching
- * on a message string.
+ * `clipboardHoldsOurText` is read right before the restore. False means the person (or
+ * another app) copied something after we wrote the dictation, and that newer copy is
+ * theirs to keep.
  */
-export type RestoreReason =
-  /** The paste automation itself failed, so nothing was consumed. */
-  | 'paste-failed'
-  /** The target hides its text; success cannot be proven. */
-  | 'unverifiable-target'
-  /** Focus moved before the paste settled, so it cannot be attributed. */
-  | 'focus-moved'
-  /** The clipboard still holds our text, so nothing ate the paste. */
-  | 'paste-not-consumed'
-  /** The paste landed, but the original clipboard could not be captured exactly. */
-  | 'snapshot-incomplete'
-  /** The paste landed, and the original clipboard held nothing worth keeping. */
+export function mayRestoreAfterCancel(snapshot: ClipboardContents, clipboardHoldsOurText: boolean): boolean {
+  return clipboardHoldsOurText && !snapshot.incomplete && hasRestorableContent(snapshot);
+}
+
+/**
+ * Whether the clipboard text is the text we wrote. Line endings are compared as LF on both
+ * sides: Windows may hand back CRLF for text that was written as LF, and that is not a
+ * change by the person.
+ */
+export function sameClipboardText(onClipboard: string, written: string): boolean {
+  return onClipboard.replace(/\r\n/g, '\n') === written.replace(/\r\n/g, '\n');
+}
+
+/** The clipboard formats a snapshot can put back faithfully: plain text, HTML and RTF. */
+export const RESTORABLE_FORMATS: readonly string[] = ['text/plain', 'text/html', 'text/rtf'];
+
+/**
+ * Whether the clipboard held anything the restore cannot reproduce.
+ *
+ * An image, a file list or a proprietary type is written back by nobody, so a snapshot
+ * of a clipboard that holds one is incomplete however faithful its text part is.
+ * Claiming otherwise replaced a copied image with its caption.
+ */
+export function hasUnrestorableFormat(formats: readonly string[]): boolean {
+  return formats.some((format) => {
+    const normalised = format.toLowerCase();
+    return !RESTORABLE_FORMATS.some((known) => normalised === known || normalised.startsWith(`${known};`));
+  });
+}
+
+/** The few clipboard operations the restore needs, so it runs against a fake in tests. */
+export interface ClipboardPort {
+  clear(): void;
+  write(entry: { text?: string; html?: string; rtf?: string }): void;
+  readText(): string;
+  readHTML(): string;
+  readRTF(): string;
+}
+
+export type RestoreOutcome =
+  /** The clipboard holds the original again. */
+  | 'restored'
+  /** Nothing restorable was captured; the clipboard was not touched. */
   | 'nothing-to-restore'
-  /**
-   * Typed out (type-out mode) to the end. Counted as delivered, but a
-   * keystroke never consumes the clipboard, so there is no proof to restore on: the
-   * dictation stays on the clipboard.
-   */
-  | 'typed'
-  /** The paste landed, and the user chose to keep the dictation on the clipboard. */
-  | 'restore-disabled'
-  /** The paste landed and the original clipboard is back. */
-  | 'restored';
+  /** The restore failed, and the dictation was put back so it is not lost. */
+  | 'failed-kept-dictation'
+  /** The restore failed and the dictation could not be put back either. */
+  | 'failed-lost';
 
 /**
- * `delivered` and `restore` are separate on purpose.
+ * Put a snapshot back, and never leave the clipboard worse than the dictation.
  *
- * A paste can be proven to have landed while the restore is still refused (an
- * incomplete snapshot), and the caller needs both facts: one decides whether the app
- * may say "pasted", the other whether it may overwrite the clipboard.
+ * `clear()` is not atomic with the write that follows, so a failed write would leave
+ * the clipboard empty and lose both the user's data and the dictation. When the write
+ * fails or reads back wrong, the dictation text is written back instead.
  */
-export interface RestoreDecision {
-  /** True only when the paste was proven to arrive in the window it was aimed at. */
-  delivered: boolean;
-  /** True when the previous clipboard may be written back. Implies `delivered`. */
-  restore: boolean;
-  reason: RestoreReason;
-}
+export function restoreSnapshotTo(
+  port: ClipboardPort,
+  snapshot: ClipboardContents,
+  dictationText: string,
+): RestoreOutcome {
+  const entry: { text?: string; html?: string; rtf?: string } = {};
+  if (snapshot.text.length > 0) entry.text = snapshot.text;
+  if (snapshot.html.length > 0) entry.html = snapshot.html;
+  if (snapshot.rtf.length > 0) entry.rtf = snapshot.rtf;
+  if (Object.keys(entry).length === 0) return 'nothing-to-restore';
 
-/** What the main process observed around one paste attempt. */
-export interface PasteObservation {
-  /** The clipboard as it was before the transcript was copied onto it. */
-  clipboard: ClipboardContents;
-  /** The window that had focus when dictation started, null if it could not be read. */
-  target: PasteTarget | null;
-  /** Whether the paste automation ran without error. */
-  pasteSent: boolean;
-  /**
-   * The window that had focus once the paste was given time to settle, null if it
-   * could not be read.
-   */
-  focusAfter: PasteTarget | null;
-  /**
-   * Whether the clipboard still holds exactly the transcript we copied.
-   *
-   * Only consulted for a verifiable target that kept focus: it is the one observable
-   * that distinguishes "the target consumed the paste" from "nothing happened".
-   */
-  clipboardStillHoldsText: boolean;
-  /**
-   * The user's "restore clipboard after paste" setting. Absent means on, the behaviour
-   * before the setting existed. Off keeps the dictation even after a proven paste.
-   */
-  restorePreviousClipboard?: boolean;
-  /**
-   * How the text went in. `typeOut` sent keystrokes instead of Ctrl+V: `pasteSent` then
-   * means every keystroke went out, each with the target in front, and neither the
-   * focus nor the clipboard-consumed proof applies.
-   */
-  method?: 'paste' | 'typeOut';
-}
-
-/**
- * Decide what may happen to the clipboard after a paste attempt.
- *
- * Never throws and never touches Electron, so it can run (and be tested) anywhere.
- */
-export function decideClipboardRestore(observation: PasteObservation): RestoreDecision {
-  const { clipboard, target, pasteSent, focusAfter, clipboardStillHoldsText } = observation;
-
-  if (!pasteSent) {
-    // The automation failed before it could reach any window, so the text has to
-    // stay on the clipboard and the caller says so rather than pretending it landed.
-    return { delivered: false, restore: false, reason: 'paste-failed' };
+  try {
+    port.clear();
+    port.write(entry);
+    const verified =
+      snapshot.text.length > 0
+        ? port.readText() === snapshot.text
+        : snapshot.html.length > 0
+          ? port.readHTML().length > 0
+          : port.readRTF().length > 0;
+    if (verified) return 'restored';
+  } catch {
+    // Fall through: the clipboard may be empty or half written.
   }
 
-  if (observation.method === 'typeOut') {
-    // Typing is the user's own choice for this app (usually a terminal, which is
-    // unverifiable by design), so the unverifiable list does not apply. Every batch
-    // went out with the target in front (the script checks before each one), so a
-    // focus read afterwards proves nothing either way: it is typed.
-    return { delivered: true, restore: false, reason: 'typed' };
+  try {
+    port.clear();
+    port.write({ text: dictationText });
+    return 'failed-kept-dictation';
+  } catch {
+    return 'failed-lost';
   }
-
-  if (target === null || !isProbablyVerifiable(target)) {
-    return { delivered: false, restore: false, reason: 'unverifiable-target' };
-  }
-
-  if (focusAfter === null || focusAfter.handle !== target.handle) {
-    // Focus moved while we were pasting, so the paste cannot be attributed to the
-    // window we aimed at: it may have landed somewhere the user never intended.
-    return { delivered: false, restore: false, reason: 'focus-moved' };
-  }
-
-  if (clipboardStillHoldsText) {
-    // Nothing consumed the clipboard, so the paste very likely did not land — for
-    // example the target's edit control was not focused at all. Restoring here would
-    // throw the transcript away, which is precisely the macOS bug.
-    return { delivered: false, restore: false, reason: 'paste-not-consumed' };
-  }
-
-  // The paste is proven: the same window kept focus and something consumed the text.
-  if (clipboard.incomplete) {
-    // The clipboard held something we cannot reproduce exactly, so replacing it with
-    // a partial copy would be data loss. The transcript stays instead.
-    return { delivered: true, restore: false, reason: 'snapshot-incomplete' };
-  }
-
-  if (!hasRestorableContent(clipboard)) {
-    // Nothing worth putting back (an empty clipboard, or only whitespace).
-    return { delivered: true, restore: false, reason: 'nothing-to-restore' };
-  }
-
-  if (observation.restorePreviousClipboard === false) {
-    return { delivered: true, restore: false, reason: 'restore-disabled' };
-  }
-
-  return { delivered: true, restore: true, reason: 'restored' };
 }

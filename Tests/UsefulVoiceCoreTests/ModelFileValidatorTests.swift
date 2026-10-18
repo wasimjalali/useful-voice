@@ -134,18 +134,4 @@ struct ModelFileValidatorTests {
         let store = LocalModelStore(directory: try tempDir())
         try store.delete(smallModel(size: 1_000))
     }
-
-    @Test func theHiddenCleanupModelIsNotCountedInTheBytesOnDisk() throws {
-        let dir = try tempDir()
-        let store = LocalModelStore(directory: dir)
-        try Data(count: 1_000).write(to: dir.appendingPathComponent("ggml-test.bin"))
-        try Data(count: 300).write(to: dir.appendingPathComponent("ggml-test.bin.partial"))
-        #expect(store.totalBytesOnDisk() == 1_300)
-
-        let hidden = store.fileURL(for: S1MiniModel.model)
-        try Data(count: 5_000).write(to: hidden)
-        try Data(count: 700).write(to: store.partialURL(for: S1MiniModel.model))
-        try Data(count: 90).write(to: store.resumeDataURL(for: S1MiniModel.model))
-        #expect(store.totalBytesOnDisk() == 1_300)
-    }
 }

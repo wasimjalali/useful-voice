@@ -124,18 +124,3 @@ test('the recording pill draws a moving waveform that fits the window', async ()
 
   await hud.screenshot({ path: path.join(shots, 'hud-recording-waveform.png') });
 });
-
-test('the longest copied notice (line breaks) fits the window whole', async () => {
-  const hud = (app.windows().find((page) => page.url().includes('view=hud'))) ?? (await hudPage());
-  await fs.mkdir(shots, { recursive: true });
-  await send('hud:view', { kind: 'copied', lineBreaks: true, seq: 2 });
-  const capsule = hud.locator('.hud-capsule');
-  await expect(capsule).toContainText("Copied. It has line breaks, so it wasn't typed. Press Ctrl+V.");
-  await hud.waitForTimeout(400); // the previous view's cross-fade
-  const box = await capsule.boundingBox();
-  expect(box).not.toBeNull();
-  expect(box!.x).toBeGreaterThan(0);
-  expect(box!.x + box!.width).toBeLessThan(520);
-  expect(await capsule.evaluate((node) => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(0);
-  await hud.screenshot({ path: path.join(shots, 'hud-copied-line-breaks.png') });
-});

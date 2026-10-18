@@ -30,14 +30,6 @@ struct SettingsPage: View {
     @State private var silenceTimeout = 60.0
     @State private var recordingsToKeep = 10
     @State private var soundEffectsEnabled = true
-    @State private var restoreClipboard = true
-    @State private var typeOutAppIDs: [String] = []
-    /// Apps listed under "Type instead of paste" on this visit: the ones switched on,
-    /// plus any added or switched off here, so a row does not vanish under the pointer.
-    @State private var typeOutRows: [String] = []
-    /// App-aware formatting, and the apps seen in History that can be given a category.
-    @State private var appFormatting = AppFormattingSettings.standard
-    @State private var seenApps: [String] = []
     @State private var appearance: AppearanceChoice = .system
     @State private var dailyGoal = AppSettings.defaultDailyWordGoal
     @State private var isTesting = false
@@ -72,11 +64,6 @@ struct SettingsPage: View {
         _silenceTimeout = State(initialValue: settings.silenceTimeout)
         _recordingsToKeep = State(initialValue: settings.recordingsToKeep)
         _soundEffectsEnabled = State(initialValue: settings.soundEffectsEnabled)
-        _restoreClipboard = State(initialValue: settings.restorePreviousClipboard)
-        _typeOutAppIDs = State(initialValue: settings.typeOutAppIDs)
-        _typeOutRows = State(initialValue: settings.typeOutAppIDs)
-        _appFormatting = State(initialValue: settings.appFormatting)
-        _seenApps = State(initialValue: SeenApps.ids(in: viewModel.historyStore.all()))
         _appearance = State(initialValue: settings.appearance)
         _dailyGoal = State(initialValue: settings.dailyWordGoal)
         _system = StateObject(wrappedValue: SettingsSystemState(history: viewModel.historyStore))
@@ -99,7 +86,7 @@ struct SettingsPage: View {
 
     static let groups: [(id: String, title: String)] = [
         ("general", "General"), ("engine", "Engine"), ("formatting", "Formatting"),
-        ("apps", "Apps"), ("pasting", "Pasting"), ("hotkeys", "Hotkeys"), ("appearance", "Appearance"), ("data", "Data"),
+        ("hotkeys", "Hotkeys"), ("appearance", "Appearance"), ("data", "Data"),
         ("importExport", "Import and export"), ("diagnostics", "Diagnostics"), ("about", "About"),
     ]
 
@@ -163,8 +150,6 @@ struct SettingsPage: View {
                     generalGroup
                     engineGroup
                     formattingGroup
-                    appsGroup
-                    pastingGroup
                     hotkeysGroup
                     appearanceGroup
                     dataGroup
@@ -498,15 +483,6 @@ struct SettingsPage: View {
                         detail: "English only. Say period, comma or new line.") {
                 Toggle("", isOn: spokenPunctuationBinding).labelsHidden().accessibilityLabel("Speak punctuation")
             }
-            // The hidden S1-mini cleanup's credit (its license requires it): one line, only
-            // while the hidden flag is on.
-            if CleanupModelFlag.isOn {
-                SettingsBlock {
-                    Text("AI cleanup: \(S1MiniModel.credit)")
-                        .font(.uv(.ui, .medium))
-                        .foregroundStyle(Theme.ink)
-                }
-            }
         } footer: {
             if engine == .deepgram {
                 // Disclosed because it is charged and was previously invisible: the app sends
@@ -522,207 +498,6 @@ struct SettingsPage: View {
                                  + "and fixes mistakes afterwards.")
             }
         }
-    }
-
-    // MARK: - Apps
-
-    private var appsGroup: some View {
-        SettingsGroup(id: "apps", title: "Apps") {
-            SettingsRow(title: "Format for the app") {
-                Toggle("", isOn: appFormattingEnabledBinding).labelsHidden()
-                    .accessibilityLabel("Format for the app")
-            }
-            SettingsRow(title: "Your name") {
-                TextField("Name", text: appNameBinding)
-                    .premiumInputChrome()
-                    .frame(width: 200)
-                    .onSubmit { saved() }
-                    .accessibilityLabel("Your name")
-            }
-            ForEach(AppCategory.allCases, id: \.self) { category in
-                SettingsRow(title: category.displayName) {
-                    // Coding has no style: its rules ignore it.
-                    if category != .coding {
-                        BrandedMenuPicker(
-                            title: "Style", selection: styleBinding(for: category),
-                            options: category.allowedStyles.map { (label: $0.displayName, value: $0) })
-                        .frame(width: 130)
-                        .disabled(!appFormatting.enabled)
-                        .accessibilityLabel("\(category.displayName) style")
-                    }
-                    if AppFormattingSettings.offersAutoSend(category) {
-                        BrandedMenuPicker(
-                            title: "Auto-send", selection: autoSendBinding(for: category),
-                            options: Self.autoSendOptions)
-                        .frame(width: 200)
-                        .accessibilityLabel("\(category.displayName) send key")
-                    }
-                }
-            }
-            if !appCategoryRows.isEmpty {
-                SettingsRow(title: "App categories") {
-                    if !appFormatting.overrides.byApp.isEmpty {
-                        Button("Reset") { resetAppCategories() }.buttonStyle(.brandSecondary)
-                    }
-                }
-                ForEach(appCategoryRows, id: \.self) { id in
-                    SettingsRow(title: Self.appName(for: id)) {
-                        BrandedMenuPicker(
-                            title: "Category", selection: appCategoryBinding(for: id),
-                            options: AppCategory.allCases.map { (label: $0.displayName, value: $0) })
-                        .frame(width: 170)
-                        .accessibilityLabel("\(Self.appName(for: id)) category")
-                    }
-                }
-            }
-        }
-    }
-
-    private static let autoSendOptions: [(label: String, value: AutoSendKey)] = [
-        (label: "No send key", value: .off),
-        (label: "Send with Return", value: .return),
-        (label: "Send with Shift+Return", value: .shiftReturn),
-        (label: "Send with \u{2318}Return", value: .modReturn),
-    ]
-
-    /// The apps listed for a category: the ones seen in History, then any with a saved
-    /// choice that History no longer shows.
-    private var appCategoryRows: [String] {
-        var seen = Set(seenApps.map { AppCategoryRegistry.normalizeAppID($0) })
-        var rows = seenApps
-        for key in appFormatting.overrides.byApp.keys.sorted()
-        where seen.insert(AppCategoryRegistry.normalizeAppID(key)).inserted {
-            rows.append(key)
-        }
-        return rows
-    }
-
-    private func saveAppFormatting(_ change: (inout AppFormattingSettings) -> Void, toast: Bool = true) {
-        change(&appFormatting)
-        settings.appFormatting = appFormatting
-        if toast { saved() }
-    }
-
-    private var appFormattingEnabledBinding: Binding<Bool> {
-        Binding(get: { appFormatting.enabled },
-                set: { value in saveAppFormatting { $0.enabled = value } })
-    }
-
-    private var appNameBinding: Binding<String> {
-        Binding(get: { appFormatting.userName },
-                set: { value in
-                    saveAppFormatting({ $0.userName = String(value.prefix(AppFormattingSettings.maxNameLength)) },
-                                      toast: false)
-                })
-    }
-
-    private func styleBinding(for category: AppCategory) -> Binding<FormattingStyle> {
-        Binding(get: { appFormatting.style(for: category) },
-                set: { value in saveAppFormatting { $0.setStyle(value, for: category) } })
-    }
-
-    private func autoSendBinding(for category: AppCategory) -> Binding<AutoSendKey> {
-        Binding(get: { appFormatting.autoSendKey(for: category) },
-                set: { value in saveAppFormatting { $0.setAutoSend(value, for: category) } })
-    }
-
-    private func appCategoryBinding(for id: String) -> Binding<AppCategory> {
-        Binding(get: { appFormatting.category(forAppID: id, url: nil) },
-                set: { value in saveAppFormatting { $0.setCategory(value, forAppID: id) } })
-    }
-
-    private func resetAppCategories() {
-        saveAppFormatting { $0.resetOverrides() }
-    }
-
-    // MARK: - Pasting
-
-    private var pastingGroup: some View {
-        SettingsGroup(id: "pasting", title: "Pasting") {
-            SettingsRow(title: "Restore clipboard after paste",
-                        detail: restoreClipboard ? nil : "Your dictation stays on the clipboard.") {
-                Toggle("", isOn: restoreClipboardBinding).labelsHidden()
-                    .accessibilityLabel("Restore clipboard after paste")
-            }
-            SettingsRow(title: "Type instead of paste") {
-                addTypeOutAppMenu
-            }
-            ForEach(typeOutRows, id: \.self) { id in
-                SettingsRow(title: Self.appName(for: id)) {
-                    Toggle("", isOn: typeOutBinding(for: id)).labelsHidden()
-                        .accessibilityLabel("Type into \(Self.appName(for: id))")
-                }
-            }
-        }
-    }
-
-    /// Apps to switch to typing: the ones dictated into this session first, then the
-    /// apps that are open. Useful Voice itself and apps already listed are left out.
-    private var addTypeOutAppMenu: some View {
-        let listed = Set(typeOutRows.map { $0.lowercased() })
-        let own = Bundle.main.bundleIdentifier?.lowercased()
-        let recent = FocusTracker.shared.recentApps
-            .filter { !listed.contains($0.id.lowercased()) && $0.id.lowercased() != own }
-        let recentIDs = Set(recent.map { $0.id.lowercased() })
-        let running = NSWorkspace.shared.runningApplications
-            .filter { $0.activationPolicy == .regular }
-            .compactMap { app -> AppChoice? in
-                guard let id = app.bundleIdentifier else { return nil }
-                return AppChoice(id: id, name: app.localizedName ?? id)
-            }
-            .filter { !listed.contains($0.id.lowercased()) && !recentIDs.contains($0.id.lowercased())
-                && $0.id.lowercased() != own }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        return Menu {
-            if !recent.isEmpty {
-                Section("Recent") {
-                    ForEach(recent) { app in
-                        Button(app.name) { addTypeOutApp(app.id) }
-                    }
-                }
-            }
-            Section("Open apps") {
-                ForEach(running) { app in
-                    Button(app.name) { addTypeOutApp(app.id) }
-                }
-            }
-        } label: {
-            Label("Add app", systemImage: "plus").font(.uv(.ui, .medium))
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .accessibilityLabel("Add an app to type into")
-    }
-
-    private func addTypeOutApp(_ id: String) {
-        if !typeOutRows.contains(where: { $0.lowercased() == id.lowercased() }) {
-            typeOutRows.append(id)
-        }
-        setTypeOut(true, for: id)
-    }
-
-    private func setTypeOut(_ enabled: Bool, for id: String) {
-        settings.setTypeOut(enabled, forAppID: id)
-        typeOutAppIDs = settings.typeOutAppIDs
-        saved()
-    }
-
-    private func typeOutBinding(for id: String) -> Binding<Bool> {
-        Binding(get: { typeOutAppIDs.contains { $0.lowercased() == id.lowercased() } },
-                set: { setTypeOut($0, for: id) })
-    }
-
-    /// The app's display name from its bundle id, or the id when it is not installed.
-    private static func appName(for id: String) -> String {
-        if let running = NSRunningApplication.runningApplications(withBundleIdentifier: id).first,
-           let name = running.localizedName {
-            return name
-        }
-        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
-            return FileManager.default.displayName(atPath: url.path)
-                .replacingOccurrences(of: ".app", with: "")
-        }
-        return id
     }
 
     // MARK: - Hotkeys
@@ -1119,11 +894,6 @@ struct SettingsPage: View {
                 set: { spokenPunctuationEnabled = $0; settings.spokenPunctuationEnabled = $0; saved() })
     }
 
-    private var restoreClipboardBinding: Binding<Bool> {
-        Binding(get: { restoreClipboard },
-                set: { restoreClipboard = $0; settings.restorePreviousClipboard = $0; saved() })
-    }
-
     private var soundBinding: Binding<Bool> {
         Binding(get: { soundEffectsEnabled },
                 set: { soundEffectsEnabled = $0; settings.soundEffectsEnabled = $0; saved() })
@@ -1172,13 +942,6 @@ struct SettingsPage: View {
         silenceTimeout = settings.silenceTimeout
         recordingsToKeep = settings.recordingsToKeep
         soundEffectsEnabled = settings.soundEffectsEnabled
-        restoreClipboard = settings.restorePreviousClipboard
-        appFormatting = settings.appFormatting
-        seenApps = SeenApps.ids(in: viewModel.historyStore.all())
-        typeOutAppIDs = settings.typeOutAppIDs
-        typeOutRows = typeOutRows + typeOutAppIDs.filter { id in
-            !typeOutRows.contains { $0.lowercased() == id.lowercased() }
-        }
         appearance = settings.appearance
         dailyGoal = settings.dailyWordGoal
         system.refresh()

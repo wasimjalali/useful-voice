@@ -10,9 +10,6 @@ Cross-platform dictation app. macOS: Swift (`Sources/UsefulVoiceCore`,
 - macOS: `make test` (Swift Testing suite) and `swift build`
 - Windows: `cd windows && npm run verify` (typecheck + vitest + build +
   Electron self-test)
-- Windows real-desktop tests (`tests/browserAddress.test.ts`, a real Edge read with UI Automation) run in a second
-  vitest pass on their own (`vitest.desktop.config.ts`, listed in `DESKTOP_TESTS`); `npm test` runs both passes.
-  Beside the other files their timings measured the C# compiles in `powershellScripts.test.ts`, not the read.
 - Packaging smoke: `cd windows && npx electron-builder --win --dir`
 - Windows E2E: `cd windows && env -u ELECTRON_RUN_AS_NODE npm run e2e` (Playwright drives the
   built app with `--e2e --uv-data-dir=<scratch>`: hidden windows, fixture data, no tray or
@@ -31,7 +28,15 @@ Cross-platform dictation app. macOS: Swift (`Sources/UsefulVoiceCore`,
   silence-limit spec swaps the recorder window's `getUserMedia` for a scripted tone (`useScriptedMicrophone`). The shortest
   limits the app allows are 15 s of silence and 30 s of recording, so those two specs take 20 s and 35 s. Never press the
   hotkey to completion in a spec: it would paste into whatever is in front of the machine.
-- App-aware E2E: `e2e/app-aware.spec.ts` drives whole hotkey dictations through a scripted desktop. `__uv.useFakeDesktop({foreground:{processName,title}, address, textBefore, foregroundAfterPaste, focusMovesBeforeKey})` replaces who is in front, the browser page and the text before the caret; pastes, typed text and send keys are recorded in `__uv.fakeCalls()` and never sent (a send key to a different focused field is recorded as `sendKeyBlocked`). `__uv.fakeDesktop(patch)` changes the scripted state mid-dictation, `__uv.setTranscript(text)` sets what the Deepgram stub returns, `__uv.ownProcess()` gives our own process.
+
+## Delivery
+
+A hotkey dictation pastes wherever the cursor is when the text is ready, on both platforms; only Useful Voice's own
+window in front at delivery (a stop from the dock) copies instead, unless the dictation started there. On Windows the
+paste, the foreground read and the sound cues go through one long-lived PowerShell (`src/main/powershellHost.ts`,
+started at app ready, types compiled once); the delivery order lives in `src/core/delivery/pasteFlow.ts` and the
+clipboard rule in `src/core/delivery/clipboardRestore.ts` (a sent Ctrl+V counts as delivered and the dictation stays on
+the clipboard; the old clipboard is put back only when a cancel arrives before the keystroke and nothing newer was copied).
 
 ## Windows renderer layout
 
@@ -42,18 +47,6 @@ shared pieces live in `components/` and styles in `styles/` (`tokens.css` with t
 build concatenates every file in that order). `hud.ts` draws the HUD and floating language
 picker windows. `--preview-features` shows controls whose backend has not shipped
 (`components/flags.ts`).
-
-App-aware formatting on Windows lives in `src/core/apps/appAwareness.ts` (context capture, formatter wrapper,
-settings normalisers, send key), `src/core/apps/ownField.ts`, `src/core/apps/serialSave.ts`, `src/main/desktop.ts`,
-`src/core/delivery/deliveryFlow.ts` (auto-send step) and `renderer/pages/settings.ts` (the Apps group). On macOS the
-settings are one JSON UserDefaults key, `appFormatting` (`AppFormattingSettings`); the controller scenarios are in
-`Tests/UsefulVoiceCoreTests/AppAwareDictationTests.swift`. The text before the cursor is read at the press (macOS caps
-the read at 150 ms), kept in memory only. On both platforms a dictation into Useful Voice's own window carries no appID,
-category, cursor read or category formatting and never presses a send key; a hotkey press with Useful Voice in front
-pastes only into a focused editable field of ours, otherwise it's copied.
-On macOS every browser in the registry (`AppCategorySeeds.browserBundleIDs`) has its page address read (`KnownBrowsers`).
-Chromium browsers expose it only after `AXManualAccessibility` is set on them, so `FocusTracker.startBrowserAccessibility`
-sets it once per browser process when it comes to the front (Dia measured: readable 80 to 95 ms later).
 
 ## `ELECTRON_RUN_AS_NODE` gotcha
 
@@ -98,8 +91,8 @@ Snapshot-only state hooks (they act only when `UV_SNAPSHOT` is set):
 | `UV_BANNER` | `mic`, `accessibility`, `keyMissing`, `keyInvalid`, `offline`, `modelMissing` |
 | `UV_VOCAB_FILTER` | `all`, `words`, `fixes`, `snippets`, `suggestions` |
 | `UV_INSIGHTS_RANGE`, `UV_INSIGHTS_FIXTURE` | `7d`/`30d`/`all`; `empty`/`firstWeek`/`full` |
-| `UV_SETTINGS_ANCHOR`, `UV_SETTINGS_STATE` | a group id (`apps` opens Settings > Apps); `noKey`, `invalidKey`, `confirmDelete` |
-| `UV_HUD_STATE` | `recording`, `recordingLoud`, `silence`, `transcribing`, `local`, `localFa`, `inserting`, `done`, `doneSaved`, `copied`, `copiedAppChanged`, `lineBreaks`, `cancelled`, `errorNetwork`, `errorMic`, `errorTimedOut`, `errorSecure`, `language`, `picker` (renders the HUD alone; try `480x210`, picker `360x440`) |
+| `UV_SETTINGS_ANCHOR`, `UV_SETTINGS_STATE` | a group id; `noKey`, `invalidKey`, `confirmDelete` |
+| `UV_HUD_STATE` | `recording`, `recordingLoud`, `silence`, `transcribing`, `local`, `localFa`, `inserting`, `done`, `doneSaved`, `copied`, `cancelled`, `errorNetwork`, `errorMic`, `language`, `picker` (renders the HUD alone; try `480x210`, picker `360x440`) |
 | `UV_MENU_HEADER` | `idle`, `recording` (the menu bar header row, `260x76`) |
 
 `UV_PREVIEW_FEATURES=1` shows controls whose backend has not shipped (Correct this one, delete

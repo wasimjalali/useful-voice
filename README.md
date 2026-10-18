@@ -14,10 +14,6 @@ Useful Voice is a fast, personal dictation app for macOS and Windows. Tap a hotk
 
 **Dictate anywhere.** Tap your key (Right Command by default), speak, tap again. The text is inserted at your cursor. If the insert can't be confirmed, the text stays on your clipboard, so a missed insert is one paste away. Esc cancels. Recording stops by itself after 60 seconds of silence.
 
-**It lands where you started.** The app, window and text field you were in when you pressed the key are locked in. If you click elsewhere while it transcribes, Useful Voice brings that field back before it pastes. If it can't (the app quit, say), it pastes nowhere else: the text stays on your clipboard. Settings > Pasting chooses whether your old clipboard comes back after a paste, and which apps get the text typed out as keystrokes instead (for terminals and apps that block paste).
-
-**It writes for the app you're in.** Useful Voice knows which app, or which web page in a browser, you're dictating into and formats for it: an email keeps its greeting and sign-off on their own lines, with your name under a sign-off you dictate, a chat message loses its closing full stop, code stays code. Settings > Apps sets a style per category, your name and an optional send key for chat apps and terminals, and which category an app counts as. With Auto-format on, fillers like "um" and "uh" go too (English only). It never adds words you didn't say.
-
 **Teach it your words.** Add names and specialist spellings to your dictionary. They help recognition and fix casing on your Mac. Add a "sounds like" form and misheard variants are rewritten after transcription. Fix a recurring mistake once and it stays fixed.
 
 **Keep what you said.** Notes are local and searchable, with pins, tags and Markdown copy. Your dictation history keeps every transcript, and Insights shows words, time saved and your streak.
@@ -30,7 +26,7 @@ Useful Voice is a fast, personal dictation app for macOS and Windows. Tap a hotk
 |---|---|
 | Works on | macOS 14 or later on Apple silicon. Windows 10 or later (see [windows/README.md](windows/README.md) for what's verified there) |
 | Engines | Deepgram Nova-3 (cloud). On macOS also local Whisper large-v3-turbo and large-v3. The Windows app uses Deepgram |
-| Stays on your device | Your dictionary, notes, history, settings and, on macOS, the last 10 recordings. Up to 200 characters before your cursor are read to continue your sentence, held in memory for that one dictation and never saved or logged. Your Deepgram key sits in the macOS Keychain (Windows: encrypted with DPAPI). With a local Whisper model, your audio never leaves your Mac |
+| Stays on your device | Your dictionary, notes, history, settings and, on macOS, the last 10 recordings. Your Deepgram key sits in the macOS Keychain (Windows: encrypted with DPAPI). With a local Whisper model, your audio never leaves your Mac |
 | Leaves your device | With Deepgram, each recording's audio goes to Deepgram, plus up to 400 tokens of your dictionary words, fix results and snippet triggers as keyterms. "Sounds like" forms stay on your Mac. Picking a local model downloads its weights from Hugging Face |
 | Tracking | None. No analytics, no crash reports, no ads |
 | Updates | Windows: the installed app asks GitHub for a newer release twice a day, downloads it and installs it when you quit or pick Restart to update in the tray. The Mac app doesn't check yet |
@@ -75,4 +71,4 @@ The design notes and audit reports are in [docs/audit](docs/audit), starting wit
 
 [MIT](LICENSE). Contributions are welcome as pull requests, and there's no CLA to sign.
 
-Third-party code and models are listed in [windows/THIRD_PARTY_NOTICES.md](windows/THIRD_PARTY_NOTICES.md). The optional AI cleanup, hidden and off by default, uses S1-mini by Superwhisper (Apache 2.0).
+Third-party code and models are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -21,70 +21,11 @@ jobs:
       - name: Build (release)
         run: swift build -c release
 
-      # Real weights for the llama.cpp + whisper.cpp coexistence tests
-      # (Tests/UsefulVoiceAppTests/LlamaWhisperCoexistenceTests.swift). Pinned by revision and
-      # SHA-256, cached under a key made of those digests, and checked again after the cache.
-      - name: Cache model weights
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}/uv-models
-          key: uv-models-3b41ebe2-921e4cf8
-
-      - name: Fetch model weights (SHA-256 checked)
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/uv-models"
-          fetch() { # url file sha256
-            if [ ! -f "$RUNNER_TEMP/uv-models/$2" ]; then
-              curl -fsSL --retry 3 -o "$RUNNER_TEMP/uv-models/$2" "$1"
-            fi
-            echo "$3  $RUNNER_TEMP/uv-models/$2" | shasum -a 256 -c -
-          }
-          fetch "https://huggingface.co/superwhisper/s1-mini-GGUF/resolve/34add00a48a2e5d24e5a4ee5405a99620a3a240c/s1-mini-q4_k_m.gguf" \
-            s1-mini-q4_k_m.gguf 3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634
-          fetch "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-tiny.en.bin" \
-            ggml-tiny.en.bin 921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f
-
       - name: Run tests
         # Xcode's toolchain ships Swift Testing, so plain `swift test` works on
         # CI (the Makefile's framework copy is only needed on the Command Line
         # Tools-only dev machine).
         run: swift test
-
-      # llama.cpp's own CLI on the same machine, as the baseline for the in-process numbers
-      # below (prompt processing and generation speed on the CPU, 3 threads).
-      - name: llama-bench baseline (same runner, same weights)
-        run: |
-          set -euo pipefail
-          d="$RUNNER_TEMP/llama-cli"
-          mkdir -p "$d"
-          curl -fsSL --retry 3 -o "$d/llama.tar.gz" https://github.com/ggml-org/llama.cpp/releases/download/b11669/llama-b11669-bin-macos-arm64.tar.gz
-          echo "dbed55493d72bc1ba2babc8770d669c2289b5bc4ee9fb2a4dfc158d45b7d13fd  $d/llama.tar.gz" | shasum -a 256 -c -
-          tar -xzf "$d/llama.tar.gz" -C "$d"
-          bench=$(find "$d" -name llama-bench -type f | head -1)
-          sysctl -n machdep.cpu.brand_string hw.ncpu hw.memsize || true
-          "$bench" -m "$RUNNER_TEMP/uv-models/s1-mini-q4_k_m.gguf" -ngl 0 -t 3 -p 100 -n 16 -r 3 || echo "llama-bench failed"
-          # The same weights on the CPU alone: with -ngl 0 the line above still runs on the GPU
-          # (Metal reads the memory-mapped weights), so this is the one to compare with the CPU rows.
-          "$bench" -m "$RUNNER_TEMP/uv-models/s1-mini-q4_k_m.gguf" -dev none -ngl 0 -t 3 -p 100 -n 16 -r 3 || echo "llama-bench cpu failed"
-          "$bench" -m "$RUNNER_TEMP/uv-models/s1-mini-q4_k_m.gguf" -dev none -ngl 0 -t 1 -p 100 -n 16 -r 2 || echo "llama-bench cpu t1 failed"
-          sysctl -a 2>/dev/null | grep -E "hw.optional.(arm|neon|AdvSIMD|FEAT_(DotProd|I8MM|BF16))" | head -30 || true
-
-      # The real-weights tests run alone: llama.cpp's worker threads spin, and next to the
-      # other 800 tests they starve the timing-based ones (and the model's own latency
-      # numbers). They are skipped in the step above because the paths are not set there.
-      # The latency measurement goes first and by itself so nothing else has touched whisper.cpp.
-      - name: S1-mini latency in a fresh process
-        env:
-          UV_S1_MINI_PATH: ${{ runner.temp }}/uv-models/s1-mini-q4_k_m.gguf
-          UV_WHISPER_TINY_PATH: ${{ runner.temp }}/uv-models/ggml-tiny.en.bin
-        run: swift test --skip-build --filter 'LlamaWhisperCoexistenceTests/measure'
-
-      - name: S1-mini and whisper.cpp in one process (real weights)
-        env:
-          UV_S1_MINI_PATH: ${{ runner.temp }}/uv-models/s1-mini-q4_k_m.gguf
-          UV_WHISPER_TINY_PATH: ${{ runner.temp }}/uv-models/ggml-tiny.en.bin
-        run: swift test --skip-build --filter LlamaWhisper --skip 'LlamaWhisperCoexistenceTests/measure'
 
   windows:
     runs-on: windows-latest
@@ -112,7 +53,7 @@ jobs:
           npx tsc --noEmit -p tsconfig.main.json
 
       - name: Unit tests
-        run: npm test
+        run: npx vitest run
 
       # The icon is a gitignored build artifact, so packaging fails on a fresh clone
       # without this. It also proves the generator still works from nothing.
@@ -149,12 +90,6 @@ jobs:
 
       - name: Package
         run: npx electron-builder --win --publish never
-
-      # The hidden S1-mini cleanup runs node-llama-cpp from inside the packaged app. This
-      # starts it the way the app does (the packaged exe as plain Node, the worker inside
-      # app.asar) with no model, so a missing, mis-unpacked or non-loading binary fails here.
-      - name: Packaged app self-test (S1-mini runtime)
-        run: node scripts/check-packaged-llama.mjs "release/win-unpacked/Useful Voice.exe" release/win-unpacked/resources
 
   # An install made under the old Karko appId must be replaced, not duplicated, by
   # the current installer. electron-builder derives the NSIS uninstall key from

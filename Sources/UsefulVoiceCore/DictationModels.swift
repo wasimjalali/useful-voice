@@ -26,8 +26,10 @@ public enum DeliveryResult: Sendable, Equatable {
     case copiedNotPasted
     /// Copy mode: the text is on the clipboard, as asked.
     case copied
-    /// Paste mode, but the user moved to another app before delivery, so the text
-    /// was copied instead of pasted into the wrong place. Not a permission problem.
+    /// Paste mode, but Useful Voice's own window was in front at delivery (the
+    /// dictation started in another app, or in a window with no editable field
+    /// focused), so the text was copied instead of pasted nowhere. Moving to another
+    /// app does not cause this: that still pastes there. Not a permission problem.
     case copiedAppChanged
     /// Paste mode, but a password field took focus, so nothing was typed into it
     /// and the text was left on the clipboard. Not a permission problem.
@@ -37,13 +39,6 @@ public enum DeliveryResult: Sendable, Equatable {
     /// could not be posted although Accessibility is on. The text is on the
     /// clipboard. Not a permission problem.
     case copiedNotLanded
-    /// Type-out mode, and typing stopped part way (a password field, focus moved,
-    /// a key could not be posted, or it ran out of time). Some of the text went in;
-    /// all of it is on the clipboard.
-    case copiedPartlyTyped
-    /// Type-out mode, and the text has a line break (each one would be an Enter key):
-    /// copied only, nothing typed or pasted.
-    case copiedHasLineBreaks
 }
 
 /// Delivery could not put the text where it was meant to go (the clipboard write
@@ -111,6 +106,8 @@ public struct DictationError: Equatable, Sendable {
         case providerFailed
         /// The local engine failed.
         case engineFailed
+        /// Retry was asked for but the retained recording has been deleted.
+        case retryUnavailable
     }
 
     public let kind: Kind
@@ -194,7 +191,7 @@ public struct DictationError: Equatable, Sendable {
         case .noProvider, .keyRejected, .outOfCredits: return .openEngineSettings
         case .offline, .timedOut, .providerFailed, .engineFailed: return .retry
         case .secureField, .micUnavailable, .diskFull, .recordingFailed, .deliveryFailed,
-             .stopFailed, .noSpeech, .tooShort:
+             .stopFailed, .noSpeech, .tooShort, .retryUnavailable:
             return nil
         }
     }
@@ -223,31 +220,21 @@ public enum DictationIssue: Equatable, Sendable {
     case error(DictationError)
     /// The paste could not be posted: Accessibility is off.
     case copiedNotPasted
-    /// The user switched apps, so the text was copied. Permissions are fine.
+    /// Useful Voice's own window was in front at delivery with nowhere to paste, so
+    /// the text was copied. Permissions are fine.
     case copiedAppChanged
     /// The measured field did not take the paste although Accessibility is on.
     /// Permissions are fine.
     case copiedNotLanded
     /// A password field had focus, so the text was copied instead. No fix.
     case copiedSecureField
-    /// Typing stopped part way; the full text is on the clipboard. No fix.
-    case copiedPartlyTyped
-    /// The text has a line break, so an app that types got nothing. No fix.
-    case copiedHasLineBreaks
 
     public var message: String {
         switch self {
         case .error(let error): return error.message
         case .copiedNotPasted, .copiedAppChanged, .copiedSecureField, .copiedNotLanded: return "Copied. Press \u{2318}V to paste."
-        case .copiedPartlyTyped: return Self.partlyTypedMessage
-        case .copiedHasLineBreaks: return Self.lineBreaksMessage
         }
     }
-
-    /// The notice when typing stopped part way.
-    public static let partlyTypedMessage = "Partly typed. The full text is on your clipboard."
-    /// The notice when text with a line break was copied instead of typed.
-    public static let lineBreaksMessage = "Copied. It has line breaks, so it wasn't typed. Press \u{2318}V."
 
     /// The fix for the issue. A copied-not-pasted notice points at Accessibility,
     /// the usual reason the paste could not be posted; an app change has none.
@@ -255,7 +242,7 @@ public enum DictationIssue: Equatable, Sendable {
         switch self {
         case .error(let error): return error.fix
         case .copiedNotPasted: return .openAccessibilitySettings
-        case .copiedAppChanged, .copiedSecureField, .copiedNotLanded, .copiedPartlyTyped, .copiedHasLineBreaks: return nil
+        case .copiedAppChanged, .copiedSecureField, .copiedNotLanded: return nil
         }
     }
 }
@@ -294,8 +281,6 @@ public struct DictationFeedback: Equatable, Sendable {
             case .copiedAppChanged: issue = .copiedAppChanged
             case .copiedSecureField: issue = .copiedSecureField
             case .copiedNotLanded: issue = .copiedNotLanded
-            case .copiedPartlyTyped: issue = .copiedPartlyTyped
-            case .copiedHasLineBreaks: issue = .copiedHasLineBreaks
             case .pasted, .copied: break
             }
         }

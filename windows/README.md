@@ -63,8 +63,6 @@ Then open **Settings** and paste a Deepgram API key from
 <https://console.deepgram.com/>. The key is required before dictation will work;
 the app says so plainly rather than failing silently.
 
-The text before the cursor is read with UI Automation and the send key is pressed with SendKeys, both only in the window you started in.
-
 ## Building installers
 
 ```bash
@@ -158,11 +156,18 @@ machine.
 ## Design decisions worth knowing
 
 **Delivery never loses your text.** After a dictation the text is either pasted
-into your app or left on the clipboard, never neither. The previous clipboard is
-only restored once the paste has been shown to have landed, and if the clipboard
-held something that cannot be reproduced exactly (a file list, say), it is left
-alone and the transcript stays instead. Losing a dictation is worse than losing a
-clipboard.
+into your app or left on the clipboard, never neither. Once the Ctrl+V keystroke
+has gone out the dictation counts as pasted, and it stays on the clipboard: your
+previous clipboard is not put back, because nothing proves the app has taken the
+text yet and an app that is slow to respond would paste the old clipboard instead.
+If you cancel before the keystroke, your previous clipboard comes back only when
+nothing newer was copied meanwhile and it was captured exactly (text, HTML or RTF;
+an image or a file list is not). Just before it sends the key, the paste checks that
+Useful Voice is not the window in front (unless the dictation began in one of its text
+fields) and that the clipboard still holds the dictation; if you copied something else in
+the meantime, or another app has the clipboard open, nothing is pasted, your copy is left
+alone and the dictation is saved in Useful Voice. A paste that was already on its way when something went wrong counts as
+pasted. Losing a dictation is worse than losing a clipboard.
 
 **A silent recording is rejected.** A silent clip can make a speech model echo its
 own prompt bias (your dictionary) back as a fake transcript. Clips whose peak
@@ -211,8 +216,8 @@ shows the path so you can remove it yourself.
 - **Geist is not bundled.** The UI asks for Geist and falls back to Segoe UI, the
   same allowance the macOS build makes with SF Pro. Bundling the font files would
   remove the difference.
-- **Paste confirmation is indirect.** Whether text landed is inferred from the
-  clipboard being consumed plus focus not moving. Reading the target's text needs a
-  UI-automation dependency, which was avoided so the app ships no native module. When
-  a paste was sent but can't be confirmed, the app still says "Inserted" (asking for
-  Ctrl+V would put it in twice) and leaves the text on the clipboard.
+- **Paste confirmation is indirect.** Ctrl+V never clears the clipboard, so the app
+  cannot see whether the target took the text: it reports "pasted" when the keystroke
+  went out, and leaves the dictation on the clipboard so a second Ctrl+V works.
+  Reading the target's text needs a UI-automation dependency, which was avoided so the
+  app ships no native module.

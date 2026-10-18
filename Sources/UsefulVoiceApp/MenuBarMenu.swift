@@ -177,9 +177,9 @@ final class MenuBarMenu: NSObject, NSMenuDelegate {
             fixItem.isHidden = true
         }
 
-        // Auto-format gates Deepgram's smart formatting, the cleanup rules and the
-        // per-app formatting, so it is offered on every engine.
+        // Smart formatting is a Deepgram option; local models format on their own.
         formattingItem.state = settings.formattingEnabled ? .on : .off
+        formattingItem.isHidden = settings.transcriptionEngine == .whisperLocal
         syncLanguage()
     }
 

@@ -40,17 +40,6 @@ public struct DictationRecord: Codable, Equatable, Identifiable, Sendable {
     /// Retained recording path for history reprocessing. Optional so older
     /// history files still decode, and because retention pruning can remove it.
     public let audioPath: String?
-    /// The app the dictation was made for (bundle id on macOS, executable name on Windows)
-    /// and the category of that app (`AppCategory.rawValue`), stored whenever there is an
-    /// app, also when formatting was off. Both are optional and absent for a dictation made
-    /// in the app's own window, so older history.json
-    /// files still decode. Kept as text so a category this build does not know never
-    /// fails the whole history load.
-    public let appID: String?
-    public let category: String?
-
-    /// The category as a value, or nil when none is stored or this build does not know it.
-    public var appCategory: AppCategory? { category.flatMap { AppCategory(rawValue: $0) } }
 
     public init(id: UUID = UUID(), text: String, createdAt: Date,
                 language: String?, provider: String, durationSeconds: Double?,
@@ -61,9 +50,7 @@ public struct DictationRecord: Codable, Equatable, Identifiable, Sendable {
                 memoryHitIDs: [UUID]? = nil,
                 replacementRuleIDs: [UUID]? = nil,
                 snippetIDs: [UUID]? = nil,
-                audioPath: String? = nil,
-                appID: String? = nil,
-                category: String? = nil) {
+                audioPath: String? = nil) {
         self.id = id
         self.text = text
         self.createdAt = createdAt
@@ -78,7 +65,5 @@ public struct DictationRecord: Codable, Equatable, Identifiable, Sendable {
         self.replacementRuleIDs = replacementRuleIDs
         self.snippetIDs = snippetIDs
         self.audioPath = audioPath
-        self.appID = appID
-        self.category = category
     }
 }

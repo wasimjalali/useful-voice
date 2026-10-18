@@ -28,8 +28,7 @@ export type HudView =
   | { kind: 'saving' }
   /** `saved`: the text was saved and copied (window or retry dictation), not inserted. */
   | { kind: 'done'; words: number; saved: boolean }
-  /** `partlyTyped`: typing stopped part way; the full text is on the clipboard. */
-  | { kind: 'copied'; partlyTyped?: boolean; lineBreaks?: boolean }
+  | { kind: 'copied' }
   | { kind: 'cancelled' }
   | { kind: 'error'; error: DictationError }
   | { kind: 'language'; name: string };
@@ -63,20 +62,6 @@ const REAL_CLOCK: HudClock = {
 const IN_FLIGHT = new Set<HudView['kind']>(['recording', 'transcribing', 'inserting', 'saving', 'error']);
 
 /** Views that wait for the user; a language confirmation must not destroy them. */
-/** The notice when typing stopped part way. */
-export const PARTLY_TYPED = 'Partly typed. The full text is on your clipboard.';
-/**
- * Whether an outcome may raise the "Windows blocked the paste" banner: only a paste
- * Windows refused. A lock failure, a line-break copy or a partly typed stop is not an
- * administrator problem.
- */
-export function isPasteBlocked(event: DictationOutcomeEvent): boolean {
-  return event.kind === 'delivered' && event.result === 'copiedNotPasted' && event.pasteBlocked === true;
-}
-
-/** Text with a line break, for an app that types: copied, not typed. */
-export const LINE_BREAKS = "Copied. It has line breaks, so it wasn't typed. Press Ctrl+V.";
-
 const PERSISTENT = new Set<HudView['kind']>(['error', 'copied']);
 
 export class HudModel {
@@ -130,14 +115,7 @@ export class HudModel {
       return;
     }
     if (event.result === 'copiedNotPasted') {
-      this.show(
-        event.partlyTyped
-          ? { kind: 'copied', partlyTyped: true }
-          : event.lineBreaks
-            ? { kind: 'copied', lineBreaks: true }
-            : { kind: 'copied' },
-        HUD_PERSISTENT_MS,
-      );
+      this.show({ kind: 'copied' }, HUD_PERSISTENT_MS);
       return;
     }
     this.show({ kind: 'done', words: event.words, saved: event.result === 'copied' }, HUD_DONE_MS);
@@ -319,7 +297,7 @@ export function hudLabel(view: HudView): string {
     case 'done':
       return `${view.saved ? 'Saved and copied' : 'Inserted'}, ${formatWords(view.words)}`;
     case 'copied':
-      return view.partlyTyped ? PARTLY_TYPED : view.lineBreaks ? LINE_BREAKS : 'Copied. Press Ctrl+V to paste';
+      return 'Copied. Press Ctrl+V to paste';
     case 'cancelled':
       return 'Cancelled';
     case 'error':

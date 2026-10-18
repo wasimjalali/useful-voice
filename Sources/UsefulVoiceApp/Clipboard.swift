@@ -3,12 +3,15 @@ import UsefulVoiceCore
 
 /// Save and restore the user's clipboard around a synthetic paste or copy.
 ///
-/// Dictation temporarily puts its text on the clipboard to drive Cmd-V.
-/// Good dictation tools never leave the user's
-/// clipboard clobbered, so we snapshot it first and put it back once the paste
-/// has landed. Promised/lazy types (file promises and the like) can't be copied
-/// out and are dropped on restore; the common types (text, RTF, images, URLs)
-/// round-trip fine.
+/// Dictation temporarily puts its text on the clipboard to drive Cmd-V, so we
+/// snapshot the clipboard first and put it back once the paste has landed.
+///
+/// The restore is not lossless. Only the types in `eagerTypes` (plain text, RTF,
+/// RTFD, HTML, tab-separated text, URLs and file URLs, TIFF, PNG and PDF) are copied
+/// and put back. Any other type on an item (an app's private type, a web archive, a
+/// spreadsheet's own format, a file promise) is not restored: a rich copy comes back
+/// with its text, RTF, HTML and image representations only. Paste-once and password
+/// manager items are never touched at all (`sensitiveTypes`).
 enum Clipboard {
     /// Marks pasteboard items Useful Voice itself wrote during delivery. snapshot()
     /// skips them: deep-copying one would force its lazy PasteSentinel promise
@@ -27,6 +30,14 @@ enum Clipboard {
         .tiff, .png, .pdf,
     ]
 
+    /// Types password managers and other apps put on an item they do not want kept
+    /// (nspasteboard.org): a secret, or a value meant to be pasted once. Such an item
+    /// is never copied into our process, and the clipboard is never restored over it.
+    static let sensitiveTypes: Set<String> = [
+        "org.nspasteboard.ConcealedType",
+        "org.nspasteboard.TransientType",
+    ]
+
     /// The outcome of a snapshot, so callers can tell "the clipboard was empty"
     /// apart from "the clipboard holds data we could not copy".
     enum SnapshotResult {
@@ -43,6 +54,12 @@ enum Clipboard {
     /// Deep-copy the current items so they survive a `clearContents()`.
     static func snapshot(_ pasteboard: NSPasteboard = .general) -> SnapshotResult {
         guard let items = pasteboard.pasteboardItems else { return .empty }
+        // Looked at by type name only, before any data is read: a password manager's
+        // entry must not be copied into this process, and putting it back later
+        // would turn a transient copy into a lasting one.
+        if items.contains(where: { $0.types.contains { sensitiveTypes.contains($0.rawValue) } }) {
+            return .incomplete(reason: "the clipboard holds a concealed or transient item")
+        }
         // Both identities' markers: a paste the old build left is still ours.
         let userItems = items.filter { !DeliveryMarker.marks(types: $0.types.map(\.rawValue)) }
         guard !userItems.isEmpty else { return .empty }
@@ -51,9 +68,12 @@ enum Clipboard {
         for item in userItems {
             let copy = NSPasteboardItem()
             for type in item.types where eagerTypes.contains(type) {
-                if let data = item.data(forType: type) {
-                    copy.setData(data, forType: type)
+                // A listed type whose data cannot be read (a failed file promise, an
+                // owner that went away) would be silently missing from the restore.
+                guard let data = item.data(forType: type) else {
+                    return .incomplete(reason: "\(type.rawValue) on the clipboard could not be read")
                 }
+                copy.setData(data, forType: type)
             }
             // An item with no representations means nothing readable was
             // available. Restoring it would clear the clipboard and put back

@@ -1,5 +1,10 @@
 # Cleanup eval
 
+> The cleanup runtime and its CI workflow were removed in PR #63. The harness needs the
+> sources at commit d4d1132 to run again (`core_entry.ts` imports
+> `windows/src/core/formatting/cleanup*.js`, and the macOS pipeline test needs the Swift
+> cleanup sources). Everything under `evals/` is kept as the record.
+
 Decides whether a small local model ships on top of the deterministic cleanup rules. The
 write-up and numbers are in `evals/results/2026-10-16-cleanup.md`.
 
@@ -41,9 +46,9 @@ UV_S1_MINI_PATH=<s1-mini-q4_k_m.gguf> UV_CLEANUP_EVAL_CASES=evals/cleanup/heldou
 ```
 
 `--fetch` downloads the pinned llama.cpp release and both Q4_K_M files and stops on a SHA-256
-mismatch. `--out` never overwrites a file. `.github/workflows/cleanup-eval.yml` (manual dispatch
-only) runs an in-sample subset and the held-out set on `macos-15`, prints the raw JSON to the job
-log and uploads it.
+mismatch. `--out` never overwrites a file. A manual-dispatch workflow, `.github/workflows/cleanup-eval.yml`,
+ran an in-sample subset and the held-out set on `macos-15`, printed the raw JSON to the job log and
+uploaded it. The workflow was removed in PR #63; the file is at commit d4d1132.
 
 Licenses: both models are Apache 2.0. S1-mini adds one term: it must always be credited as
 "S1-mini" by "Superwhisper".

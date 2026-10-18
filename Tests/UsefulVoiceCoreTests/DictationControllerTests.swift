@@ -16,6 +16,8 @@ final class FakeRecorder: AudioRecording {
     var didCaptureSpeech = true
     /// Set to make `stop()` throw, exercising the failed-stop early return.
     var stopError: Error?
+    /// Set to model a capture that ended early (device lost, disk write failed).
+    var captureError: Error?
     var configuredSilenceTimeout: TimeInterval?
     /// Set to make `start()` throw, exercising the failed-start path.
     var startError: Error?
@@ -64,6 +66,17 @@ final class CapturingProvider: TranscriptionProvider {
     }
 }
 
+/// Runs `onTranscribe` on the main actor mid-transcription, e.g. the user switching apps.
+final class SwitchingProvider: TranscriptionProvider, @unchecked Sendable {
+    let name = "switching"
+    private let onTranscribe: @MainActor () -> Void
+    init(onTranscribe: @escaping @MainActor () -> Void) { self.onTranscribe = onTranscribe }
+    func transcribe(audio: URL, hint: TranscriptionHint) async throws -> Transcript {
+        await onTranscribe()
+        return Transcript(text: "hello world", detectedLanguage: nil, durationSeconds: nil)
+    }
+}
+
 @Suite @MainActor final class DictationControllerTests {
     private let dir: URL
     private let store: RecordingStore
@@ -101,23 +114,29 @@ final class CapturingProvider: TranscriptionProvider {
         try? FileManager.default.removeItem(at: dir)
     }
 
+    private let diagnostics = Diagnostics(directory: nil)
+
     private func makeController(providers: [TranscriptionProvider],
+                                recordingsToKeep: Int = 10,
                                 now: @escaping () -> Date = { Date() },
-                                isSecureInputActive: @escaping () -> Bool = { false })
+                                isSecureInputActive: @escaping () -> Bool = { false },
+                                isOwnFieldFocused: @escaping () -> Bool = { true })
         -> DictationController {
         let controller = DictationController(
             recorder: recorder,
             providers: { providers },
             store: store,
             hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
-            recordingsToKeep: 10,
+            recordingsToKeep: recordingsToKeep,
             deliver: { [weak self] text, mode, done in self?.fakeDeliver(text, mode, done) },
             record: { [weak self] record in
                 self?.records.append(record)
                 self?.timeline.append("record")
             },
+            diagnostics: diagnostics,
             now: now,
             isSecureInputActive: isSecureInputActive,
+            isOwnFieldFocused: isOwnFieldFocused,
             frontmostApp: { [weak self] in
                 self?.frontmostLookups += 1
                 return self?.frontmostApp
@@ -655,6 +674,92 @@ final class CapturingProvider: TranscriptionProvider {
         #expect(error.kind == .noProvider)
         #expect(error.fix == .openEngineSettings)
         #expect(error.message.contains("provider"))
+    }
+
+    // MARK: - Never lose a recording
+
+    /// No provider configured: the speech is still on disk, so Retry works once an
+    /// engine is set up. Previously the audio was dropped on this path.
+    @Test func testNoProviderKeepsTheAudioForRetry() async throws {
+        var chain: [TranscriptionProvider] = []
+        let controller = DictationController(
+            recorder: recorder,
+            providers: { chain },
+            store: store,
+            hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
+            recordingsToKeep: 10,
+            deliver: { [weak self] text, mode, done in self?.fakeDeliver(text, mode, done) },
+            diagnostics: diagnostics)
+        wire(controller)
+        controller.toggle()
+        await controller.toggleAndWait()
+        guard case .error(let error) = controller.state else {
+            Issue.record("expected error state"); return
+        }
+        #expect(error.kind == .noProvider)
+        #expect(controller.canRetry)
+        let audio = try #require(recorder.startedURL)
+        #expect(FileManager.default.fileExists(atPath: audio.path))
+
+        chain = [okProvider("kept speech")]   // the user set up an engine
+        await controller.retryLastAndWait()
+        #expect(delivered == ["kept speech"])
+        #expect(deliveredModes == [.copy])
+        #expect(!controller.canRetry)
+    }
+
+    /// A later dictation's prune must not delete the file Retry points at, even when
+    /// the keep count says it is too old.
+    @Test func testPruneNeverDeletesTheRetryAudio() async throws {
+        let controller = makeController(providers: [failingProvider(.http(500, "boom"))],
+                                        recordingsToKeep: 1)
+        controller.toggle()
+        await controller.toggleAndWait()
+        let retryAudio = try #require(recorder.startedURL)
+        #expect(controller.canRetry)
+
+        try await Task.sleep(nanoseconds: 20_000_000)   // the next file name sorts later
+        recorder.didCaptureSpeech = false               // a silent dictation prunes the store
+        controller.toggle()
+        await controller.toggleAndWait()
+
+        #expect(FileManager.default.fileExists(atPath: retryAudio.path))
+        #expect(controller.canRetry)
+    }
+
+    /// If the retained file is gone (deleted by hand, volume unmounted), Retry is not
+    /// offered instead of failing on a missing file.
+    @Test func testCanRetryIsFalseWhenTheAudioFileIsGone() async throws {
+        let controller = makeController(providers: [failingProvider(.http(500, "boom"))])
+        controller.toggle()
+        await controller.toggleAndWait()
+        let audio = try #require(recorder.startedURL)
+        #expect(controller.canRetry)
+        try FileManager.default.removeItem(at: audio)
+        #expect(!controller.canRetry)
+        controller.retryLast()
+        #expect(controller.state != .transcribing)
+        #expect(delivered.isEmpty)
+    }
+
+    /// The capture ended early (microphone unplugged): what was recorded is still
+    /// transcribed and delivered, and the cause is logged.
+    @Test func testCaptureErrorStillTranscribesAndDeliversWhatWasCaptured() async throws {
+        recorder.captureError = AudioRecorderError.inputDeviceLost
+        let controller = makeController(providers: [okProvider("half a sentence")])
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(delivered == ["half a sentence"])
+        let warnings = diagnostics.entries(level: .warning)
+        #expect(warnings.count == 1)
+        #expect(warnings.first?.message.contains("disconnected") == true)
+    }
+
+    @Test func testHealthyCaptureLogsNoWarning() async throws {
+        let controller = makeController(providers: [okProvider()])
+        controller.toggle()
+        await controller.toggleAndWait()
+        #expect(diagnostics.entries(level: .warning).isEmpty)
     }
 
     // MARK: - Detected language
@@ -1406,12 +1511,13 @@ final class CapturingProvider: TranscriptionProvider {
     }
 
     @Test func testErrorsWithoutRetainedAudioNeverOfferRetry() async throws {
-        // Secure field, start failure, stop failure, silence, too short and no
-        // provider all leave nothing to retry, so none may carry .retry.
+        // Secure field, start failure, stop failure, silence and too short leave
+        // nothing to retry. No provider keeps the audio so Retry works after setup
+        // (see testNoProviderKeepsTheAudioForRetry), but its fix is Settings, not .retry.
         var errors: [DictationError] = []
-        func capture(_ controller: DictationController) {
+        func capture(_ controller: DictationController, keepsAudio: Bool = false) {
             if case .error(let error) = controller.state { errors.append(error) }
-            #expect(!controller.canRetry)
+            #expect(controller.canRetry == keepsAudio)
         }
 
         capture({ let c = makeController(providers: [okProvider()], isSecureInputActive: { true })
@@ -1442,7 +1548,7 @@ final class CapturingProvider: TranscriptionProvider {
 
         let none = makeController(providers: [])
         none.toggle(); await none.toggleAndWait()
-        capture(none)
+        capture(none, keepsAudio: true)
 
         let blank = makeController(providers: [okProvider("   ")])
         blank.toggle(); await blank.toggleAndWait()
@@ -1554,15 +1660,26 @@ final class CapturingProvider: TranscriptionProvider {
         #expect(delivered == ["hello world"])
     }
 
-    // Item 7: paste only into the app the dictation started in.
-    @Test func testHotkeyDictationStoppedElsewhereDeliversByCopyAndSaysSo() async throws {
+    // A hotkey dictation pastes wherever the cursor is when the text is ready.
+    @Test func testHotkeyDictationStoppedInAnotherAppPastesThere() async throws {
         let controller = makeController(providers: [okProvider()])
         controller.toggle()                          // started in Slack
         frontmostApp = FrontmostApp(id: "com.apple.mail", name: "Mail")
         controller.toggle()                          // stopped after switching apps
         await controller.awaitProcessing()
-        #expect(deliveredModes == [.copy])
-        #expect(outcomes == [.delivered(words: 2, mode: .copiedAppChanged, appName: "Slack")])
+        #expect(deliveredModes == [.paste])
+        #expect(outcomes == [.delivered(words: 2, mode: .pasted, appName: "Slack")])
+    }
+
+    @Test func testHotkeyDictationWhereTheAppChangesDuringTranscriptionPastesThere() async throws {
+        let switching = SwitchingProvider { [weak self] in
+            self?.frontmostApp = FrontmostApp(id: "com.apple.mail", name: "Mail")
+        }
+        let controller = makeController(providers: [switching])
+        controller.toggle()                          // started in Slack
+        controller.toggle()                          // moves to Mail while transcribing
+        await controller.awaitProcessing()
+        #expect(deliveredModes == [.paste])
     }
 
     @Test func testHotkeyDictationDeliveredWhileUsefulVoiceIsFrontCopies() async throws {
@@ -1583,6 +1700,54 @@ final class CapturingProvider: TranscriptionProvider {
         await controller.awaitProcessing()
         #expect(deliveredModes == [.paste])
         #expect(outcomes.last == .delivered(words: 2, mode: .pasted, appName: "Useful Voice"))
+    }
+
+    /// Started and delivered in Useful Voice, but no text field of ours has focus (a
+    /// settings page, a button): a paste would land nowhere, so it is copied and the
+    /// notice says so rather than reporting "Inserted".
+    @Test func testUsefulVoiceInFrontWithNoEditableFieldCopies() async throws {
+        frontmostApp = FrontmostApp(id: "ai.useful.voice", name: "Useful Voice")
+        let controller = makeController(providers: [okProvider()], isOwnFieldFocused: { false })
+        controller.toggle()
+        controller.toggle()
+        await controller.awaitProcessing()
+        #expect(deliveredModes == [.copy])
+        #expect(outcomes.last == .delivered(words: 2, mode: .copiedAppChanged, appName: "Useful Voice"))
+    }
+
+    @Test func testOwnFieldIsOnlyAskedWhenUsefulVoiceIsInFront() async throws {
+        var asked = 0
+        let controller = makeController(providers: [okProvider()], isOwnFieldFocused: { asked += 1; return false })
+        controller.toggle()                          // Slack, before and after
+        controller.toggle()
+        await controller.awaitProcessing()
+        #expect(deliveredModes == [.paste])
+        #expect(asked == 0)
+    }
+
+    @Test func testOwnAppIDMatchesTheBundleIdentifier() throws {
+        let plist = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("bundle/Info.plist")
+        let info = try #require(NSDictionary(contentsOf: plist) as? [String: Any])
+        #expect(info["CFBundleIdentifier"] as? String == DictationController.ownAppID)
+    }
+
+    /// Retry when the retained file has vanished says so, instead of doing nothing.
+    @Test func testRetryWithTheAudioGoneSaysSoAndForgetsIt() async throws {
+        let controller = makeController(providers: [failingProvider(.http(500, "boom"))])
+        controller.toggle()
+        await controller.toggleAndWait()
+        try FileManager.default.removeItem(at: try #require(recorder.startedURL))
+        controller.retryLast()
+        guard case .error(let error) = controller.state else {
+            Issue.record("expected an error state"); return
+        }
+        #expect(error.kind == .retryUnavailable)
+        #expect(error.message == "The recording for this dictation is gone, so it can't be retried.")
+        #expect(error.fix == nil)
+        #expect(!controller.canRetry)
+        #expect(delivered.isEmpty)
     }
 
     @Test func testSameAppAtDeliveryStillPastes() async throws {
@@ -1685,292 +1850,6 @@ final class CapturingProvider: TranscriptionProvider {
         controller.toggle()
         await controller.awaitProcessing()
         #expect(outcomes == [.delivered(words: 2, mode: .copiedSecureField, appName: "Slack")])
-        #expect(controller.state == .idle)
-    }
-
-    // MARK: - Target lock (B1): the paste goes to the target captured at the press
-
-    /// What the fake system reports as focused, in full, when a test uses
-    /// `focusTarget`. Changed mid-dictation to model the user clicking away.
-    private var focus: DeliveryTarget? = DeliveryTarget(
-        appID: "com.tinyspeck.slackmacgap", appName: "Slack", processID: 501,
-        windowID: "win#1", windowTitle: "general", elementID: "AXTextArea#9")
-    private var targetRunning = true
-    private var reactivations: [DeliveryTarget] = []
-    /// What the fake reactivation does: report success and, optionally, put a
-    /// focus back in front.
-    private var reactivationResult = true
-    private var focusAfterReactivation: DeliveryTarget??
-
-    private var typeOutApps: [String] = []
-
-    private func makeLockController(providers: [TranscriptionProvider]) -> DictationController {
-        let controller = DictationController(
-            recorder: recorder,
-            providers: { providers },
-            store: store,
-            hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
-            recordingsToKeep: 10,
-            deliver: { [weak self] text, mode, done in self?.fakeDeliver(text, mode, done) },
-            diagnostics: .memoryOnly,
-            focusTarget: { [weak self] in self?.focus },
-            isTargetRunning: { [weak self] _ in self?.targetRunning ?? false },
-            reactivate: { [weak self] target in
-                guard let self else { return false }
-                self.reactivations.append(target)
-                // Delivery is still in flight while the app comes forward.
-                #expect(self.controllerStateDuringReactivation() == .delivering)
-                if let next = self.focusAfterReactivation { self.focus = next }
-                return self.reactivationResult
-            },
-            typeOutApps: { [weak self] in self?.typeOutApps ?? [] })
-        wire(controller)
-        lockController = controller
-        return controller
-    }
-
-    private weak var lockController: DictationController?
-    private func controllerStateDuringReactivation() -> DictationState? { lockController?.state }
-
-    private var slackComposer: DeliveryTarget {
-        DeliveryTarget(appID: "com.tinyspeck.slackmacgap", appName: "Slack", processID: 501,
-                       windowID: "win#1", windowTitle: "general", elementID: "AXTextArea#9")
-    }
-
-    private var mailWindow: DeliveryTarget {
-        DeliveryTarget(appID: "com.apple.mail", appName: "Mail", processID: 900,
-                       windowID: "win#5", elementID: "AXTextArea#2")
-    }
-
-    @Test func testTargetStillInFrontPastesWithoutReactivating() async throws {
-        let controller = makeLockController(providers: [okProvider()])
-        controller.toggle()
-        await controller.toggleAndWait()
-        #expect(deliveredModes == [.paste])
-        #expect(outcomes == [.delivered(words: 2, mode: .pasted, appName: "Slack")])
-        #expect(reactivations.isEmpty)
-    }
-
-    @Test func testTheTargetIsCapturedAtThePressNotAtDelivery() async throws {
-        let controller = makeLockController(providers: [okProvider()])
-        controller.toggle()
-        #expect(controller.deliveryTarget == slackComposer)
-        focus = mailWindow                       // clicked into Mail while talking
-        #expect(controller.deliveryTarget == slackComposer)
-        focusAfterReactivation = .some(slackComposer)
-        await controller.toggleAndWait()
-        #expect(reactivations == [slackComposer])
-    }
-
-    @Test func testFocusMovedToAnotherAppReactivatesTheTargetThenPastes() async throws {
-        let controller = makeLockController(providers: [okProvider()])
-        controller.toggle()
-        focus = mailWindow
-        focusAfterReactivation = .some(slackComposer)
-        await controller.toggleAndWait()
-        #expect(reactivations == [slackComposer])
-        #expect(deliveredModes == [.paste])
-        #expect(outcomes == [.delivered(words: 2, mode: .pasted, appName: "Slack")])
-    }
-
-    @Test func testStoppedFromUsefulVoiceReactivatesTheTarget() async throws {
-        let controller = makeLockController(providers: [okProvider()])
-        controller.toggle()
-        focus = DeliveryTarget(appID: "ai.useful.voice", appName: "Useful Voice", processID: 42,
-                               windowID: "win#main", elementID: nil)
-        focusAfterReactivation = .some(slackComposer)
-        controller.toggle(source: .window)       // the dock's stop: still a hotkey dictation
-        await controller.awaitProcessing()
-        #expect(deliveredModes == [.paste])
-        #expect(outcomes == [.delivered(words: 2, mode: .pasted, appName: "Slack")])
-    }
-
-    @Test func testFocusMovedToAnotherComposerInTheSameWindowReactivatesTheElement() async throws {
-        let controller = makeLockController(providers: [okProvider()])
-        controller.toggle()
-        focus = DeliveryTarget(appID: "com.tinyspeck.slackmacgap", appName: "Slack", processID: 501,
-                               windowID: "win#1", elementID: "AXTextField#search")
-        focusAfterReactivation = .some(slackComposer)
-        await controller.toggleAndWait()
-        #expect(reactivations.count == 1)
-        #expect(deliveredModes == [.paste])
-    }
-
-    @Test func testReactivationThatFailsCopiesWithTheAppChangedNotice() async throws {
-        let controller = makeLockController(providers: [okProvider()])
-        controller.toggle()
-        focus = mailWindow
-        reactivationResult = false
-        await controller.toggleAndWait()
-        #expect(reactivations.count == 1)
-        #expect(deliveredModes == [.copy])
-        #expect(outcomes == [.delivered(words: 2, mode: .copiedAppChanged, appName: "Slack")])
-    }
-
-    @Test func testReactivationThatClaimsSuccessButLeavesFocusElsewhereCopies() async throws {
-        let controller = makeLockController(providers: [okProvider()])
-        controller.toggle()
-        focus = mailWindow
-        reactivationResult = true                // the app said yes, focus stayed in Mail
-        await controller.toggleAndWait()
-        #expect(deliveredModes == [.copy])
-        #expect(outcomes == [.delivered(words: 2, mode: .copiedAppChanged, appName: "Slack")])
-    }
-
-    @Test func testReactivationThatBringsBackTheWrongElementCopies() async throws {
-        let controller = makeLockController(providers: [okProvider()])
-        controller.toggle()
-        focus = mailWindow
-        focusAfterReactivation = .some(DeliveryTarget(
-            appID: "com.tinyspeck.slackmacgap", appName: "Slack", processID: 501,
-            windowID: "win#1", elementID: "AXTextArea#recreated"))
-        await controller.toggleAndWait()
-        #expect(deliveredModes == [.copy])
-        #expect(outcomes == [.delivered(words: 2, mode: .copiedAppChanged, appName: "Slack")])
-    }
-
-    @Test func testATargetThatQuitIsNeverReactivatedAndTheTextIsCopied() async throws {
-        let controller = makeLockController(providers: [okProvider()])
-        controller.toggle()
-        focus = mailWindow
-        targetRunning = false
-        await controller.toggleAndWait()
-        #expect(reactivations.isEmpty)
-        #expect(deliveredModes == [.copy])
-        #expect(outcomes == [.delivered(words: 2, mode: .copiedAppChanged, appName: "Slack")])
-    }
-
-    @Test func testAnotherPageInTheTargetTabCopiesWithoutReactivating() async throws {
-        let page = { (url: String) in
-            DeliveryTarget(appID: "com.google.Chrome", appName: "Chrome", processID: 700,
-                           windowID: "win#7", elementID: "AXWebArea#3", browserURL: url)
-        }
-        focus = page("https://mail.example.com/compose#draft")
-        let controller = makeLockController(providers: [okProvider()])
-        controller.toggle()
-        focus = page("https://news.example.com/")   // the tab navigated while talking
-        await controller.toggleAndWait()
-        #expect(reactivations.isEmpty)
-        #expect(deliveredModes == [.copy])
-        #expect(outcomes == [.delivered(words: 2, mode: .copiedAppChanged, appName: "Chrome")])
-    }
-
-    @Test func testAFragmentChangeInTheTargetTabStillPastes() async throws {
-        let page = { (url: String) in
-            DeliveryTarget(appID: "com.google.Chrome", appName: "Chrome", processID: 700,
-                           windowID: "win#7", elementID: "AXWebArea#3", browserURL: url)
-        }
-        focus = page("https://mail.example.com/compose#draft")
-        let controller = makeLockController(providers: [okProvider()])
-        controller.toggle()
-        focus = page("https://mail.example.com/compose#draft-saved")
-        await controller.toggleAndWait()
-        #expect(deliveredModes == [.paste])
-    }
-
-    @Test func testTheTargetIsDroppedOnceTheDictationSettles() async throws {
-        let controller = makeLockController(providers: [okProvider()])
-        controller.toggle()
-        #expect(controller.deliveryTarget?.windowTitle == "general")
-        await controller.toggleAndWait()
-        #expect(controller.state == .idle)
-        #expect(controller.deliveryTarget == nil)
-    }
-
-    @Test func testTheTargetIsDroppedWhenADictationFails() async throws {
-        let controller = makeLockController(providers: [failingProvider(.http(500, "boom"))])
-        controller.toggle()
-        #expect(controller.deliveryTarget != nil)
-        await controller.toggleAndWait()
-        if case .error = controller.state {} else { Issue.record("expected an error state") }
-        #expect(controller.deliveryTarget == nil)
-    }
-
-    @Test func testPartlyTypedReachesTheOutcomeUnchanged() async throws {
-        deliveryResultOverride = .copiedPartlyTyped
-        let controller = makeLockController(providers: [okProvider()])
-        controller.toggle()
-        await controller.toggleAndWait()
-        #expect(outcomes == [.delivered(words: 2, mode: .copiedPartlyTyped, appName: "Slack")])
-    }
-
-    @Test func testNoCapturedTargetCopiesRatherThanPastingAnywhere() async throws {
-        focus = nil
-        let controller = makeLockController(providers: [okProvider()])
-        controller.toggle()
-        #expect(controller.deliveryTarget == nil)
-        focus = mailWindow
-        await controller.toggleAndWait()
-        #expect(reactivations.isEmpty)
-        #expect(deliveredModes == [.copy])
-        #expect(outcomes == [.delivered(words: 2, mode: .copiedAppChanged, appName: nil)])
-    }
-
-    @Test func testWindowDictationHasNoTargetAndNeverReactivates() async throws {
-        let controller = makeLockController(providers: [okProvider()])
-        controller.toggle(source: .window)
-        #expect(controller.deliveryTarget == nil)
-        focus = mailWindow
-        await controller.toggleAndWait()
-        #expect(reactivations.isEmpty)
-        #expect(deliveredModes == [.copy])
-        #expect(outcomes == [.delivered(words: 2, mode: .copied, appName: nil)])
-    }
-
-    @Test func testRetryNeverReactivatesOrPastes() async throws {
-        var attempt = 0
-        let controller = DictationController(
-            recorder: recorder,
-            providers: {
-                attempt += 1
-                return attempt == 1 ? [self.failingProvider(.http(500, "boom"))] : [self.okProvider()]
-            },
-            store: store,
-            hint: { TranscriptionHint(languagePin: .auto, dictionaryWords: []) },
-            recordingsToKeep: 10,
-            deliver: { [weak self] text, mode, done in self?.fakeDeliver(text, mode, done) },
-            focusTarget: { [weak self] in self?.focus },
-            reactivate: { [weak self] target in self?.reactivations.append(target); return true })
-        wire(controller)
-        controller.toggle()
-        await controller.toggleAndWait()
-        focus = mailWindow
-        await controller.retryLastAndWait()
-        #expect(reactivations.isEmpty)
-        #expect(deliveredModes == [.copy])
-    }
-
-    @Test func testLineBreaksForATypeOutAppAreCopiedWithoutTheLockOrAReactivation() async throws {
-        typeOutApps = ["com.tinyspeck.slackmacgap"]
-        let controller = makeLockController(providers: [okProvider("git add .\ngit commit")])
-        controller.toggle()
-        focus = mailWindow                       // moved away: would reactivate
-        reactivationResult = false
-        await controller.toggleAndWait()
-        #expect(reactivations.isEmpty)
-        #expect(deliveredModes == [.copy])
-        #expect(outcomes.count == 1)
-        if case .delivered(_, let mode, _) = outcomes.first { #expect(mode == .copiedHasLineBreaks) }
-    }
-
-    @Test func testLineBreaksForAPasteAppStillLockAndPaste() async throws {
-        typeOutApps = ["com.apple.Terminal"]
-        let controller = makeLockController(providers: [okProvider("one\ntwo")])
-        controller.toggle()
-        await controller.toggleAndWait()
-        #expect(deliveredModes == [.paste])
-    }
-
-    @Test func testCopiedPasteIsReportedOnceAndOnlyOneDeliveryRuns() async throws {
-        // A reactivation that fails must not lead to a paste AND a copy: exactly one
-        // delivery call per dictation.
-        let controller = makeLockController(providers: [okProvider()])
-        controller.toggle()
-        focus = mailWindow
-        reactivationResult = false
-        await controller.toggleAndWait()
-        #expect(delivered.count == 1)
-        #expect(outcomes.count == 1)
         #expect(controller.state == .idle)
     }
 }

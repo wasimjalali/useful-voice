@@ -135,9 +135,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // updater runs. Not in a render or forced first-run preview, which save nothing.
         if migrationAllowed { AppUpdater.shared.start() }
         if !isSnapshot { setUpStatusItem() }
-        // Only a normal launch switches other apps' accessibility on: never a render or a
-        // forced first-run preview, which must not change anything outside the app.
-        if migrationAllowed { FocusTracker.shared.startBrowserAccessibility() }
         setUpFirstRun()
         // `UV_SNAPSHOT=<png path>@<width>x<height>` renders the page named by
         // `UV_START_SECTION` to a PNG and quits, with no window and no focus change.
@@ -400,8 +397,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Keep the bytes of any model download in flight: pause it so URLSession
         // hands back resume data, and give the write a bounded moment to land.
         modelManager?.pauseAllDownloads()
-        HiddenCleanupModel.pauseDownloads()
-        HiddenCleanupModel.shutDown()
     }
 
     /// Frees the loaded whisper context only when it is no longer the active,
@@ -510,6 +505,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Model directory is created and hardened once up front so the
         // Settings page and a first download never race its creation.
         modelStore.prepare()
+        // The hidden S1-mini cleanup model was removed; clear what a Mac that used it left.
+        for name in modelStore.removeLegacyCleanupModel() {
+            Diagnostics.shared.info("models", "removed the leftover cleanup model file \(name)")
+        }
         let modelManager = LocalModelManager(settings: settings, store: modelStore)
         modelManager.onModelsChanged = { [weak self] change in
             self?.unloadLocalEngineIfStale(after: change)
@@ -550,29 +549,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             deliver: { [weak self] text, mode, done in
                 switch mode {
                 case .paste:
-                    guard let self else { return }
-                    // The target locked at the hotkey press: the controller has
-                    // already brought it back if focus moved. Its app picks how the
-                    // text goes in (typed for apps the user chose, else pasted), and
-                    // it is checked once more right before anything is posted (and
-                    // before every typed batch).
-                    let target = self.controller?.deliveryTarget
-                    let request = InsertionRequest(
-                        text: text, appID: target?.appID,
-                        typeOutApps: self.settings.typeOutAppIDs,
-                        restorePreviousClipboard: self.settings.restorePreviousClipboard)
-                    self.inserter.deliver(
-                        request,
-                        onTarget: {
-                            guard let target else { return false }
-                            return TargetLock.matches(target, FocusTracker.shared.snapshot())
-                        },
-                        stillOnTarget: {
-                            // Between typed batches: identity only, no page read.
-                            guard let target else { return false }
-                            return TargetLock.identityMatches(target, FocusTracker.shared.snapshot(includePage: false))
-                        }
-                    ) { outcome in
+                    self?.inserter.deliver(text) { outcome in
                         switch outcome {
                         case .failed:
                             done(.failure(DeliveryFailure()))
@@ -583,16 +560,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             done(.success(AXIsProcessTrusted() ? .copiedNotLanded : .copiedNotPasted))
                         case .secureFieldCopied:
                             done(.success(.copiedSecureField))
-                        case .partlyTyped:
-                            // Some of it went in: say so, or the user pastes a
-                            // second copy blind.
-                            done(.success(.copiedPartlyTyped))
-                        case .copiedHasLineBreaks:
-                            done(.success(.copiedHasLineBreaks))
-                        case .targetLost:
-                            // Focus left the target between the check and the paste:
-                            // the same "copied" notice as any unreachable target.
-                            done(.success(.copiedAppChanged))
                         case .insertedViaAX, .pasted:
                             done(.success(.pasted))
                         }
@@ -640,15 +607,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     language: MemoryLanguage(languagePin: ctx.language)
                 )
             },
-            context: { [weak self, settings, languageMemory] in
+            context: { [settings, languageMemory] in
                 let memory = languageMemory.snapshot()
-                // Format for the app the user dictated into: the target locked at
-                // the hotkey press, not whatever is in front after transcription.
-                // A window dictation has no target and formats for the app in front.
-                let appBundleID = self?.controller?.deliveryTarget?.appID
-                    ?? NSWorkspace.shared.frontmostApplication?.bundleIdentifier
                 return FormattingContext(
-                    appBundleID: appBundleID,
+                    appBundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
                     dictionaryWords: Self.dictionaryBiasWords(
                         from: memory,
                         languagePin: settings.languagePin
@@ -662,25 +624,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.viewModel?.refreshLanguageMemory()
             },
             isSecureInputActive: { IsSecureEventInputEnabled() },
-            focusTarget: { FocusTracker.shared.snapshot() },
-            isTargetRunning: { FocusTracker.shared.isRunning($0) },
-            reactivate: { await FocusTracker.shared.reactivate($0) },
-            typeOutApps: { [settings] in settings.typeOutAppIDs },
-            appFormatting: { [settings] in settings.appFormatting },
-            textBeforeCursor: { target in await FocusTracker.shared.textBeforeCursor(of: target) },
-            sendKey: { chord in TextInserter.postSendKey(chord) },
-            ownAppID: Bundle.main.bundleIdentifier,
-            ownFieldIsEditable: { Self.ownEditableFieldHasFocus() },
-            autoFormat: { [settings] in settings.formattingEnabled },
-            // Nil unless the hidden UV_CLEANUP_MODEL flag is on; with nil the dictation
-            // path is exactly as it was.
-            cleanupModel: HiddenCleanupModel.shared
-        )
-        HiddenCleanupModel.downloadIfNeeded()
-        controller.onStateChange = { [weak self] state in
-            if state == .recording, let target = self?.controller?.deliveryTarget {
-                FocusTracker.shared.noteRecent(target)
+            // An editable text view (a note) is first responder in the main window.
+            isOwnFieldFocused: { [weak self] in self?.mainWindow.hasEditableFieldFocused ?? false },
+            frontmostApp: {
+                let app = NSWorkspace.shared.frontmostApplication
+                return FrontmostApp(id: app?.bundleIdentifier, name: app?.localizedName)
             }
+        )
+        controller.onStateChange = { [weak self] state in
             self?.render(state: state)
             self?.viewModel?.refreshState(state)
             self?.viewModel?.canRetry = self?.controller?.canRetry ?? false
@@ -715,22 +666,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.buildProviders().first
         }
         self.controller = controller
-    }
-
-    /// Whether one of this app's own text fields (a note, the first-run practice pad) has
-    /// focus and accepts typing. A password field does not count. Read from the responder
-    /// chain, not Accessibility: asking AX about our own process from the main thread can
-    /// stall.
-    private static func ownEditableFieldHasFocus() -> Bool {
-        isEditableTextFocus(NSApp.keyWindow?.firstResponder)
-    }
-
-    /// Whether a first responder is a text view that accepts typing and is not the field
-    /// editor of a password field.
-    static func isEditableTextFocus(_ responder: NSResponder?) -> Bool {
-        guard let editor = responder as? NSTextView, editor.isEditable else { return false }
-        if editor.isFieldEditor, editor.delegate is NSSecureTextField { return false }
-        return true
     }
 
     private func reprocessHistory(_ record: DictationRecord) {
@@ -825,9 +760,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             memoryHitIDs: formatted.memoryHitIDs.isEmpty ? nil : formatted.memoryHitIDs,
             replacementRuleIDs: formatted.replacementRuleIDs.isEmpty ? nil : formatted.replacementRuleIDs,
             snippetIDs: formatted.snippetIDs.isEmpty ? nil : formatted.snippetIDs,
-            audioPath: audioURL.path,
-            appID: record.appID,
-            category: record.category
+            audioPath: audioURL.path
         )
         languageMemory.recordUsage(
             termIDs: formatted.memoryHitIDs,
@@ -1129,8 +1062,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .copied: hud.show(.done(.savedAndCopied(words: words)))
             case .copiedNotPasted: hud.show(.copiedNotPasted(fix: .openAccessibilitySettings))
             case .copiedAppChanged, .copiedSecureField, .copiedNotLanded: hud.show(.copiedNotPasted(fix: nil))
-            case .copiedPartlyTyped: hud.show(.partlyTyped)
-            case .copiedHasLineBreaks: hud.show(.lineBreaks)
             }
         }
     }

@@ -10,13 +10,6 @@
  */
 
 import { APPEARANCES, DEFAULT_SETTINGS, normaliseMemoryLanguage, type AppSettings } from '../models.js';
-import { appIdFor } from '../delivery/deliveryTarget.js';
-import {
-  normaliseAppCategories,
-  normaliseAutoSend,
-  normaliseCategoryStyles,
-  normaliseUserName,
-} from '../apps/appAwareness.js';
 
 /**
  * Longest recording the user may choose.
@@ -36,21 +29,6 @@ export const MIN_DAILY_WORD_GOAL = 100;
 export const MAX_DAILY_WORD_GOAL = 100000;
 /** Matches the keyterm selection ceiling, so the two cannot disagree. */
 export const MAX_DICTIONARY_BIAS_BUDGET = 100;
-/** More apps than anyone types into; keeps a hand-edited file from growing without bound. */
-export const MAX_TYPE_OUT_APPS = 50;
-
-/** App ids for the type-out list: normalised, without blanks or duplicates, capped. */
-export function normaliseTypeOutApps(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  const ids: string[] = [];
-  for (const entry of value) {
-    if (typeof entry !== 'string') continue;
-    const id = appIdFor(entry);
-    if (id && !ids.includes(id)) ids.push(id);
-    if (ids.length >= MAX_TYPE_OUT_APPS) break;
-  }
-  return ids;
-}
 
 function clamp(value: number, low: number, high: number): number {
   if (!Number.isFinite(value)) return low;
@@ -94,16 +72,6 @@ export function normaliseSettings(settings: AppSettings): AppSettings {
     // to a weaker model that does not support `keyterm` — silently dropping the
     // dictionary feature on every request.
     languagePin: normaliseMemoryLanguage(settings.languagePin),
-    // Anything but an explicit false keeps the old behaviour (restore after a proven paste).
-    restorePreviousClipboard: settings.restorePreviousClipboard !== false,
-    typeOutApps: normaliseTypeOutApps(settings.typeOutApps),
-    // App-aware formatting is on unless a file says false. The rest are read leniently, so
-    // a file from before they existed, or one with a value this build can't read, loads.
-    appAwareFormatting: settings.appAwareFormatting !== false,
-    categoryStyles: normaliseCategoryStyles(settings.categoryStyles),
-    userName: normaliseUserName(settings.userName),
-    autoSend: normaliseAutoSend(settings.autoSend),
-    appCategories: normaliseAppCategories(settings.appCategories),
     languageSwitchHotkey: settings.languageSwitchHotkey
       ? {
           accelerator: String(settings.languageSwitchHotkey.accelerator ?? ''),

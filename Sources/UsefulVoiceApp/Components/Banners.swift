@@ -71,16 +71,16 @@ struct WindowBanner: Equatable {
     /// short, a password field) stay in the dock and the HUD.
     static func isPersistent(_ kind: DictationError.Kind) -> Bool {
         switch kind {
-        case .outOfCredits, .timedOut, .providerFailed, .engineFailed, .stopFailed, .micUnavailable:
+        case .outOfCredits, .timedOut, .providerFailed, .engineFailed, .stopFailed, .micUnavailable, .retryUnavailable:
             return true
         default:
             return false
         }
     }
 
-    private static func issueBanner(_ error: DictationError) -> WindowBanner? {
+    static func issueBanner(_ error: DictationError) -> WindowBanner? {
         switch error.kind {
-        case .outOfCredits, .timedOut, .providerFailed, .engineFailed, .stopFailed, .micUnavailable:
+        case .outOfCredits, .timedOut, .providerFailed, .engineFailed, .stopFailed, .micUnavailable, .retryUnavailable:
             let verb: String?
             switch error.fix {
             case .retry: verb = "Retry last recording"

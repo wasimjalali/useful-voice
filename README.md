@@ -71,4 +71,4 @@ The design notes and audit reports are in [docs/audit](docs/audit), starting wit
 
 [MIT](LICENSE). Contributions are welcome as pull requests, and there's no CLA to sign.
 
-Third-party code and models are listed in [windows/THIRD_PARTY_NOTICES.md](windows/THIRD_PARTY_NOTICES.md). The optional AI cleanup, hidden and off by default, uses S1-mini by Superwhisper (Apache 2.0).
+Third-party code and models are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

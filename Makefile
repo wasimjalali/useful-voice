@@ -86,6 +86,12 @@ test:
 # rpath so @rpath/whisper.framework resolves there.
 FRAMEWORK = whisper.framework
 
+# The license notices ship inside the app (before signing, so the seal covers them).
+define copy_notices
+	cp THIRD_PARTY_NOTICES.md LICENSE $(APP)/Contents/Resources/
+	cp -R licenses $(APP)/Contents/Resources/licenses
+endef
+
 bundle: build
 	rm -rf $(APP)
 	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources $(APP)/Contents/Frameworks
@@ -93,6 +99,7 @@ bundle: build
 	cp .build/release/UsefulVoiceApp $(APP)/Contents/MacOS/UsefulVoice
 	$(call compile_icon)
 	cp assets/branding/useful-voice-mark-dark.png $(APP)/Contents/Resources/UsefulVoiceLogo.png
+	$(call copy_notices)
 	cp -R .build/release/$(FRAMEWORK) $(APP)/Contents/Frameworks/
 	$(call embed_sparkle)
 	@# The binary's own rpaths point at SPM's build/artifact dirs; inside the
@@ -150,6 +157,7 @@ endif
 	cp .build/release/UsefulVoiceApp $(APP)/Contents/MacOS/UsefulVoice
 	$(call compile_icon)
 	cp assets/branding/useful-voice-mark-dark.png $(APP)/Contents/Resources/UsefulVoiceLogo.png
+	$(call copy_notices)
 	cp -R .build/release/$(FRAMEWORK) $(APP)/Contents/Frameworks/
 	$(call embed_sparkle)
 	install_name_tool -add_rpath "@executable_path/../Frameworks" \

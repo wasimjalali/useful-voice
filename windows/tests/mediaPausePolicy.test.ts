@@ -34,6 +34,8 @@ function fakeMedia(initial: Record<string, Status>) {
     refuseResume: false,
     /** The pause answer leaves this id out, as if the session had been paused by the person first. */
     omitFromAnswer: '',
+    /** The pause lands but the script reports this id as skipped (its await outran the cap). */
+    skipInAnswer: '',
     /** Whether the app publishes a timeline update when it pauses (many browsers publish none). */
     publishesTimeline: true,
   };
@@ -56,7 +58,7 @@ function fakeMedia(initial: Record<string, Status>) {
       calls.push(`pause:${ids.join(',')}`);
       await waitForGate();
       if (state.failPause) throw new Error('pause failed');
-      const result: PauseResult = { confirmed: [], refused: [] };
+      const result: PauseResult = { confirmed: [], refused: [], skipped: [] };
       for (const id of ids) {
         const s = sessions[id];
         if (!s || s.status !== 'Playing') continue;
@@ -66,7 +68,8 @@ function fakeMedia(initial: Record<string, Status>) {
         }
         s.status = 'Paused';
         if (state.publishesTimeline) s.updated = clock.now;
-        if (id !== state.omitFromAnswer) result.confirmed.push({ id, position: s.position, updated: s.updated });
+        if (id === state.skipInAnswer) result.skipped.push(id);
+        else if (id !== state.omitFromAnswer) result.confirmed.push({ id, position: s.position, updated: s.updated });
       }
       // The pause landed, but the answer never arrives (a timeout, a slow await).
       if (state.pauseLandsButThrows) throw new Error('timed out after the pause landed');
@@ -111,6 +114,9 @@ function fakeMedia(initial: Record<string, Status>) {
     },
     omitFromAnswer: (id: string) => {
       state.omitFromAnswer = id;
+    },
+    skipInAnswer: (id: string) => {
+      state.skipInAnswer = id;
     },
     noTimeline: () => {
       state.publishesTimeline = false;
@@ -501,6 +507,35 @@ describe('only a pause that was confirmed is undone', () => {
     policy.recordingEnded();
     await policy.settled();
     expect(logs).toEqual(['Left spotify paused: it was moved after the pause']);
+  });
+});
+
+describe('a session whose pause outran the cap', () => {
+  it('stays held, unconfirmed, and is played when its timeline shows our pause', async () => {
+    const { media, logs, policy } = setup({ spotify: 'Playing', edge: 'Playing' });
+    media.skipInAnswer('edge');
+    policy.recordingStarted();
+    await policy.settled();
+    policy.recordingEnded();
+    await policy.settled();
+    expect(resumes(media.calls)).toEqual(['resume:spotify,edge']);
+    expect(media.status()).toEqual({ spotify: 'Playing', edge: 'Playing' });
+    expect(logs).toEqual(['Could not confirm the pause of edge: it will be checked when playing again']);
+  });
+
+  it('is left paused and logged when its timeline cannot show the pause was ours', async () => {
+    const { media, logs, policy } = setup({ spotify: 'Playing' });
+    media.noTimeline();
+    media.skipInAnswer('spotify');
+    policy.recordingStarted();
+    await policy.settled();
+    policy.recordingEnded();
+    await policy.settled();
+    expect(media.status().spotify).toBe('Paused');
+    expect(logs).toEqual([
+      'Could not confirm the pause of spotify: it will be checked when playing again',
+      'Left spotify paused: its pause was never confirmed',
+    ]);
   });
 });
 

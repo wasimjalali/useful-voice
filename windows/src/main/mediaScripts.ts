@@ -84,7 +84,7 @@ foreach ($s in @(Get-UvMediaSessions)) {
     if ($s.GetPlaybackInfo().PlaybackStatus.ToString() -ne 'Playing') { continue }
     $tl = Get-UvTimeline $s
     Write-Output ('UVPLAYING:' + (Get-UvB64 $id) + ':' + $tl[0] + ':' + $tl[1])
-  } catch { Write-Output 'UVSKIP:session' }
+  } catch { Write-Output 'UVSKIP:-' }
 }
 `;
 }
@@ -119,6 +119,7 @@ export function pauseScript(ids: string[], options: { quitting?: boolean } = {})
 $uvWaitMs = ${wait}
 $uvWanted = @('${encoded}'.Split(',') | ForEach-Object { ConvertTo-UvId $_ })
 foreach ($s in @(Get-UvMediaSessions)) {
+  $id = ''
   try {
     $id = [string]$s.SourceAppUserModelId
     if ($uvWanted -notcontains $id) { continue }
@@ -129,7 +130,11 @@ foreach ($s in @(Get-UvMediaSessions)) {
     } else {
       Write-Output ('UVREFUSED:' + (Get-UvB64 $id))
     }
-  } catch { Write-Output 'UVSKIP:session' }
+  } catch {
+    # The await outran its cap or threw: the pause may still have landed. Name the session,
+    # so the caller keeps it held as unconfirmed instead of forgetting it.
+    if ($id) { Write-Output ('UVSKIP:' + (Get-UvB64 $id)) } else { Write-Output 'UVSKIP:-' }
+  }
 }
 `;
 }
@@ -147,7 +152,7 @@ foreach ($s in @(Get-UvMediaSessions)) {
     if ($uvWanted -notcontains $id) { continue }
     $tl = Get-UvTimeline $s
     Write-Output ('UVTIMELINE:' + (Get-UvB64 $id) + ':' + $tl[0] + ':' + $tl[1])
-  } catch { Write-Output 'UVSKIP:session' }
+  } catch { Write-Output 'UVSKIP:-' }
 }
 `;
 }
@@ -212,7 +217,7 @@ foreach ($s in @(Get-UvMediaSessions)) {
       if ($since -lt 0 -or $since -gt ${TOUCH_TOLERANCE_MS}) { Write-Output ('UVUNCONFIRMED:' + (Get-UvB64 $id)); continue }
     }
     if (Invoke-UvAwait ($s.TryPlayAsync()) ([bool])) { $uvResumed++ } else { Write-Output ('UVREFUSED:' + (Get-UvB64 $id)) }
-  } catch { Write-Output 'UVSKIP:session' }
+  } catch { Write-Output 'UVSKIP:-' }
 }
 Write-Output ('UVRESUMED:' + $uvResumed)
 `;
@@ -237,7 +242,7 @@ function parseSessions(stdout: string, tag: 'UVPLAYING' | 'UVPAUSED' | 'UVTIMELI
 }
 
 /** The ids a `UV<TAG>:<base64 id>` line names, in order, without repeats. */
-function parseIds(stdout: string, tag: 'UVREFUSED' | 'UVTOUCHED' | 'UVUNCONFIRMED'): string[] {
+function parseIds(stdout: string, tag: 'UVREFUSED' | 'UVTOUCHED' | 'UVUNCONFIRMED' | 'UVSKIP'): string[] {
   const ids = new Set<string>();
   for (const raw of stdout.split(/\r?\n/)) {
     const match = new RegExp(`^${tag}:([A-Za-z0-9+/]+={0,2})$`).exec(raw.trim());
@@ -254,7 +259,12 @@ export function parsePlayingOutput(stdout: string): MediaSession[] {
 
 /** What `pauseScript` reported: sessions Windows paused (with a timeline) and ones it refused. */
 export function parsePauseOutput(stdout: string): PauseResult {
-  return { confirmed: parseSessions(stdout, 'UVPAUSED'), refused: parseIds(stdout, 'UVREFUSED') };
+  return {
+    confirmed: parseSessions(stdout, 'UVPAUSED'),
+    refused: parseIds(stdout, 'UVREFUSED'),
+    // `UVSKIP:-` (no id known) is not base64, so it matches nothing here.
+    skipped: parseIds(stdout, 'UVSKIP'),
+  };
 }
 
 /** The timelines `timelineScript` reports. */
@@ -262,8 +272,13 @@ export function parseTimelineOutput(stdout: string): MediaSession[] {
   return parseSessions(stdout, 'UVTIMELINE');
 }
 
-/** What `resumeScript` reported about the sessions it did not play. */
+/**
+ * What `resumeScript` reported about the sessions it did not play. Throws when the closing
+ * `UVRESUMED:<n>` line is missing: without it the script did not run to the end (it failed,
+ * or its output was cut), and "nothing was refused" would be a lie.
+ */
 export function parseResumeOutput(stdout: string): ResumeResult {
+  if (!/^UVRESUMED:\d+$/m.test(stdout.replace(/\r/g, ''))) throw new Error('the resume script did not finish');
   return {
     refused: parseIds(stdout, 'UVREFUSED'),
     touched: parseIds(stdout, 'UVTOUCHED'),

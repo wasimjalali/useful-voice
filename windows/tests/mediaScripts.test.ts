@@ -19,7 +19,7 @@ const b64 = (text: string): string => Buffer.from(text, 'utf8').toString('base64
 
 describe('parsePlayingOutput', () => {
   it('decodes ids and timelines and ignores anything else the script printed', () => {
-    const out = ['noise', `UVPLAYING:${b64('Spotify.exe')}:12000:1700000000000`, 'UVSKIP:session', `UVPLAYING:${b64('MSEdge')}:0:-62135596800000\r`].join('\r\n');
+    const out = ['noise', `UVPLAYING:${b64('Spotify.exe')}:12000:1700000000000`, 'UVSKIP:-', `UVPLAYING:${b64('MSEdge')}:0:-62135596800000\r`].join('\r\n');
     expect(parsePlayingOutput(out)).toEqual([
       { id: 'Spotify.exe', position: 12000, updated: 1700000000000 },
       { id: 'MSEdge', position: 0, updated: -62135596800000 },
@@ -44,12 +44,29 @@ describe('parsePlayingOutput', () => {
 
 describe('parsePauseOutput', () => {
   it('reads confirmed sessions with their timeline and the ones Windows refused', () => {
-    const out = [`UVPLAYING:${b64('x')}:1:1`, `UVPAUSED:${b64('Spotify.exe')}:5000:77`, `UVREFUSED:${b64('Chrome')}`, 'UVSKIP:session'].join('\n');
-    expect(parsePauseOutput(out)).toEqual({ confirmed: [{ id: 'Spotify.exe', position: 5000, updated: 77 }], refused: ['Chrome'] });
+    const out = [`UVPLAYING:${b64('x')}:1:1`, `UVPAUSED:${b64('Spotify.exe')}:5000:77`, `UVREFUSED:${b64('Chrome')}`, 'UVSKIP:-'].join('\n');
+    expect(parsePauseOutput(out)).toEqual({ confirmed: [{ id: 'Spotify.exe', position: 5000, updated: 77 }], refused: ['Chrome'], skipped: [] });
+  });
+
+  it('names a session whose pause could not finish, and ignores a skip with no id', () => {
+    const out = [`UVSKIP:${b64('Edge')}`, 'UVSKIP:-', 'UVSKIP:'].join('\n');
+    expect(parsePauseOutput(out)).toEqual({ confirmed: [], refused: [], skipped: ['Edge'] });
   });
 
   it('reports nothing for an empty answer, which the caller must not mistake for success', () => {
-    expect(parsePauseOutput('')).toEqual({ confirmed: [], refused: [] });
+    expect(parsePauseOutput('')).toEqual({ confirmed: [], refused: [], skipped: [] });
+  });
+});
+
+describe('parseResumeOutput', () => {
+  it('refuses output without the closing UVRESUMED line: the script did not finish', () => {
+    expect(() => parseResumeOutput('')).toThrow('did not finish');
+    expect(() => parseResumeOutput(`UVTOUCHED:${b64('a')}`)).toThrow('did not finish');
+    expect(() => parseResumeOutput('UVERR:something broke')).toThrow('did not finish');
+  });
+
+  it('accepts it with Windows line endings and the sessions it left alone', () => {
+    expect(parseResumeOutput(`UVTOUCHED:${b64('a')}\r\nUVRESUMED:0\r\n`)).toEqual({ refused: [], touched: ['a'], unconfirmed: [] });
   });
 });
 

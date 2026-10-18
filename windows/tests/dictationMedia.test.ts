@@ -43,7 +43,7 @@ function setup() {
         status[id] = 'Paused';
         confirmed.push({ id, position: 0, updated: 0 });
       }
-      return { confirmed, refused: [] };
+      return { confirmed, refused: [], skipped: [] };
     },
     async resume(held) {
       calls.push('resume');

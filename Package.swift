@@ -8,6 +8,8 @@ let package = Package(
         // In-app updates for release builds (see the Makefile's bundle target and
         // scripts/release-mac.mjs). Same pin as Useful Bot.
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
+        // Local Parakeet transcription (CoreML) for the macOS app.
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.17.7"),
     ],
     targets: [
         // whisper.cpp, precompiled by the upstream project (Metal backend
@@ -21,7 +23,10 @@ let package = Package(
         ),
         .target(
             name: "UsefulVoiceCore",
-            dependencies: ["whisper"]
+            dependencies: [
+                "whisper",
+                .product(name: "FluidAudio", package: "FluidAudio"),
+            ]
         ),
         .executableTarget(
             name: "UsefulVoiceApp",

@@ -382,6 +382,9 @@ test('Settings > Models in light and dark, wide and narrow (screenshots)', async
       await openSettings(win);
       await win.locator('#settings-models').scrollIntoViewIfNeeded();
       await shot(win, `models-${appearance}-${label}`);
+      await win.locator('.m-privacy').scrollIntoViewIfNeeded();
+      await expect(win.locator('.m-privacy')).toHaveText("AI formatting sends each transcript to the model's provider.");
+      await shot(win, `format-${appearance}-${label}`);
       await win.locator('#settings-keys').scrollIntoViewIfNeeded();
       await shot(win, `keys-${appearance}-${label}`);
       await win.locator('#settings-about').scrollIntoViewIfNeeded();

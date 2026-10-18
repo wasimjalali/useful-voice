@@ -87,11 +87,11 @@ async function answer(host: StubHost, init: RequestInit | undefined): Promise<Re
     const text = parts.some((part) => part.inlineData !== undefined)
       ? E2E_GEMINI_TRANSCRIPT
       : e2eFormatted(dictationIn(parts.map((part) => part.text ?? '').join('')), 'Gemini');
-    return json({ candidates: [{ content: { role: 'model', parts: [{ text }] } }] });
+    return json({ candidates: [{ finishReason: 'STOP', content: { role: 'model', parts: [{ text }] } }] });
   }
   if (method === 'GET') return json({ data: [] });
   const messages = body.messages as Array<{ content?: string }> | undefined;
-  return json({ content: [{ type: 'text', text: e2eFormatted(dictationIn(messages?.[0]?.content ?? ''), 'Anthropic') }] });
+  return json({ stop_reason: 'end_turn', content: [{ type: 'text', text: e2eFormatted(dictationIn(messages?.[0]?.content ?? ''), 'Anthropic') }] });
 }
 
 /**

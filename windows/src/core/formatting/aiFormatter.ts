@@ -39,7 +39,7 @@ export function deadlineMsFor(model: CatalogModel): number {
 
 /** The user message: the dictionary words (at most 100) and the dictation. */
 export function buildUserMessage(text: string, vocabulary: readonly string[]): string {
-  const words = vocabulary.map((word) => word.trim()).filter((word) => word.length > 0).slice(0, MAX_VOCABULARY_WORDS);
+  const words = vocabulary.map((word) => word.replace(/[<>]/g, '').trim()).filter((word) => word.length > 0).slice(0, MAX_VOCABULARY_WORDS);
   const vocab = words.length > 0 ? `<vocabulary>${words.join(', ')}</vocabulary>\n` : '';
   return `${vocab}<dictation>\n${text}\n</dictation>`;
 }
@@ -124,10 +124,15 @@ export function anthropicStopReason(payload: unknown): string | null {
 }
 
 /** What Gemini says about the answer: blocked prompt, or the finish reason of the first candidate. */
-export function geminiOutcome(payload: unknown): { blocked: boolean; finishReason: string | null } {
+export function geminiOutcome(payload: unknown): { blocked: boolean; hasCandidate: boolean; finishReason: string | null } {
   const body = payload as { promptFeedback?: { blockReason?: unknown }; candidates?: Array<{ finishReason?: unknown }> } | null;
-  const reason = body?.candidates?.[0]?.finishReason;
-  return { blocked: typeof body?.promptFeedback?.blockReason === 'string', finishReason: typeof reason === 'string' ? reason : null };
+  const first = body?.candidates?.[0];
+  const reason = first?.finishReason;
+  return {
+    blocked: typeof body?.promptFeedback?.blockReason === 'string',
+    hasCandidate: first !== undefined && first !== null,
+    finishReason: typeof reason === 'string' ? reason : null,
+  };
 }
 
 /** The joined `text` blocks. */
@@ -207,18 +212,23 @@ export async function formatWithModel(options: FormatOptions): Promise<string> {
   try {
     payload = await response.json();
   } catch {
+    // The deadline covers reading the body too.
+    if (signal?.aborted) throw new FormatterError('cancelled', 'the dictation was cancelled');
+    if (timeout.aborted) throw new FormatterError('timeout', `no answer within ${deadlineMs / 1000} s`);
     throw new FormatterError('malformed', 'the answer was not JSON');
   }
   // A cut or refused answer is not a formatted dictation, however plausible its start.
   if (model.provider === 'gemini') {
     const outcome = geminiOutcome(payload);
     if (outcome.blocked) throw new FormatterError('blocked', 'the prompt was blocked');
-    if (outcome.finishReason !== null && outcome.finishReason !== 'STOP') {
+    if (outcome.finishReason === null) throw new FormatterError('truncated', 'no finish reason');
+    if (outcome.finishReason !== 'STOP') {
       throw new FormatterError(outcome.finishReason === 'MAX_TOKENS' ? 'truncated' : 'blocked', `finish reason ${outcome.finishReason}`);
     }
   } else {
     const stop = anthropicStopReason(payload);
-    if (stop !== null && stop !== 'end_turn') {
+    if (stop === null) throw new FormatterError('truncated', 'no stop reason');
+    if (stop !== 'end_turn') {
       throw new FormatterError(stop === 'max_tokens' ? 'truncated' : 'blocked', `stop reason ${stop}`);
     }
   }

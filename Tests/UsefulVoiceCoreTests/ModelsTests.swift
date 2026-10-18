@@ -1006,3 +1006,60 @@ private final class FormatterStubURLProtocol: URLProtocol {
         #expect(raw(defaults) == "whisperLocal")
     }
 }
+
+// MARK: - Final parity checks
+
+@Suite("Guard tokenizer and scripts") struct GuardParityTests {
+    @Test func apostrophesDontBreakOverlap() {
+        let spoken = "i can't believe we won't ship it before the review"
+        // The model returns curly apostrophes; the words still match the input.
+        #expect(FormatterGuard.accept(input: spoken, output: "I can\u{2019}t believe we won\u{2019}t ship it before the review.") != nil)
+        #expect(FormatterGuard.words(in: "Can't") == FormatterGuard.words(in: "can\u{2019}t"))
+        #expect(FormatterGuard.words(in: "Can't") == ["cant"])
+    }
+
+    @Test func halfwidthKatakanaAndOtherScriptsCountAsUnspaced() {
+        #expect(AIFormatter.shouldFormat("\u{FF71}\u{FF72}\u{FF73}\u{FF74}\u{FF75}\u{FF76}"))      // 6 halfwidth katakana
+        #expect(!AIFormatter.shouldFormat("\u{FF71}\u{FF72}\u{FF73}\u{FF74}\u{FF75}"))
+        #expect(AIFormatter.shouldFormat("\u{31F0}\u{31F1}\u{31F2}\u{31F3}\u{31F4}\u{31F5}"))      // Katakana extensions
+        #expect(AIFormatter.shouldFormat("\u{AA60}\u{AA61}\u{AA62}\u{AA63}\u{AA64}\u{AA65}"))      // Myanmar Extended-A
+        #expect(AIFormatter.shouldFormat("\u{A9E0}\u{A9E1}\u{A9E2}\u{A9E3}\u{A9E4}\u{A9E5}"))      // Myanmar Extended-B
+        #expect(AIFormatter.shouldFormat("\u{19E0}\u{19E1}\u{19E2}\u{19E3}\u{19E4}\u{19E5}"))      // Khmer Symbols
+    }
+}
+
+@Suite("Failure log line") struct FailureLogLineTests {
+    @Test func theLineHasProviderModelAndAFixedReason() {
+        let provider = DeepgramProvider(config: .init(apiKey: "k", model: "nova-3-medical", smartFormat: true))
+        #expect(provider.failureLine(ProviderError.http(429, "my private transcript")) == "Deepgram (nova-3-medical) failed: HTTP 429")
+        let eleven = ElevenLabsProvider(config: .init(apiKey: "k"))
+        #expect(eleven.failureLine(ProviderError.timedOut) == "ElevenLabs (scribe_v2) failed: timeout")
+        let local = FakeProvider(name: "Whisper (local)", result: .failure(ProviderError.badResponse))
+        #expect(local.failureLine(ProviderError.engineFailed("secret")) == "Whisper (local) failed: engine failed")
+    }
+
+    @MainActor @Test func aFailedDictationWritesOneLineWithoutTheBody() async {
+        let diagnostics = Diagnostics(directory: nil)
+        let store = RecordingStore.make(directory: FileManager.default.temporaryDirectory
+            .appendingPathComponent("uv-fail-\(UUID().uuidString)"))
+        let provider = EchoingFailureProvider()
+        let controller = DictationController(
+            recorder: FakeRecorder(), providers: { [provider] }, store: store,
+            hint: { TranscriptionHint(languagePin: .en, dictionaryWords: []) },
+            recordingsToKeep: 0, deliver: { _, _, done in done(.success(.pasted)) },
+            diagnostics: diagnostics)
+        await controller.toggleAndWait()
+        await controller.toggleAndWait()
+        let lines = diagnostics.entries().map(\.message).filter { $0.contains("failed") }
+        #expect(lines.contains("Deepgram (nova-3) failed: HTTP 500"))
+        #expect(!diagnostics.entries().contains { $0.message.contains("echoed transcript") })
+    }
+}
+
+struct EchoingFailureProvider: TranscriptionProvider {
+    let name = "Deepgram"
+    var modelName: String? { "nova-3" }
+    func transcribe(audio: URL, hint: TranscriptionHint) async throws -> Transcript {
+        throw ProviderError.http(500, "echoed transcript text")
+    }
+}

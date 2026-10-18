@@ -356,6 +356,7 @@ public final class DictationController {
         var usedProvider: String?
         var lastError: Error?
         var failedProvider: String?
+        var failureLine: String?
         for provider in chain {
             do {
                 transcript = try await provider.transcribe(audio: audioURL,
@@ -365,6 +366,7 @@ public final class DictationController {
             } catch {
                 lastError = error
                 failedProvider = provider.name
+                failureLine = provider.failureLine(error)
             }
         }
 
@@ -375,6 +377,9 @@ public final class DictationController {
             lastFailedContext = formattingContext
             let detail = (lastError as? ProviderError).map(Self.describe)
                 ?? lastError?.localizedDescription ?? "unknown error"
+            // One log line: provider, model and a fixed reason. The body text above is for
+            // the person, never for the log.
+            if let failureLine { diagnostics.warning("dictation", failureLine) }
             // Retry is offered only where it can help (see DictationError.fix);
             // the audio is retained for every failure, so canRetry stays true.
             let kind = DictationError.kind(forTranscriptionFailure: lastError)

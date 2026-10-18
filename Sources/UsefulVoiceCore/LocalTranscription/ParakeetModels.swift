@@ -571,7 +571,9 @@ public final class ParakeetModelManager: ObservableObject {
     /// nothing when the model isn't downloaded or is already loaded or loading. Never throws; a
     /// failure goes to Diagnostics and the next dictation loads the model as usual.
     public func preload(_ version: ParakeetVersion) {
-        guard ParakeetStorage.isReady(version, in: root) else { return }
+        // The published state only: a hotkey press never reads the disk on the main thread.
+        // The engine itself returns at once when it is already loaded or loading.
+        guard case .ready = state(of: version) else { return }
         let engine = self.engine(for: version)
         let diagnostics = self.diagnostics
         Task.detached(priority: .utility) {

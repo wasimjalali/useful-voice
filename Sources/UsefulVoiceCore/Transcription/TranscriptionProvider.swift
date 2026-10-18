@@ -86,5 +86,19 @@ extension ProviderError {
 
 public protocol TranscriptionProvider: Sendable {
     var name: String { get }
+    /// The model it runs, for log lines. Nil when it has no single model name.
+    var modelName: String? { get }
     func transcribe(audio: URL, hint: TranscriptionHint) async throws -> Transcript
+}
+
+extension TranscriptionProvider {
+    public var modelName: String? { nil }
+
+    /// The one line a failed dictation writes: provider, model and a fixed reason or
+    /// status, never response-body text.
+    public func failureLine(_ error: Error) -> String {
+        let reason = (error as? ProviderError)?.logReason ?? "error"
+        let model = modelName.map { " (\($0))" } ?? ""
+        return "\(name)\(model) failed: \(reason)"
+    }
 }

@@ -70,6 +70,7 @@ public struct ParakeetLanguageGuard: TranscriptionProvider {
     private let inner: TranscriptionProvider
 
     public var name: String { inner.name }
+    public var modelName: String? { inner.modelName }
 
     public init(version: ParakeetVersion, inner: TranscriptionProvider) {
         self.version = version

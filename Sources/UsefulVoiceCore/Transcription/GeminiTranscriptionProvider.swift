@@ -15,6 +15,7 @@ public final class GeminiTranscriptionProvider: TranscriptionProvider, @unchecke
 
     public static let providerName = "Gemini"
     public let name = GeminiTranscriptionProvider.providerName
+    public var modelName: String? { config.model }
     private let config: Config
     private let session: URLSession
 

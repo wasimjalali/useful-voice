@@ -42,11 +42,13 @@ public enum FormatterGuard {
         return text
     }
 
-    /// Lowercase words with punctuation stripped.
+    /// Lowercase words: curly apostrophes made straight, all punctuation (apostrophes
+    /// too) removed, split on whitespace. "can't" and "can\u{2019}t" are both "cant".
     static func words(in text: String) -> [String] {
-        text.lowercased()
+        let strip = CharacterSet.punctuationCharacters.union(.symbols)
+        return normalizeApostrophes(text.lowercased())
             .components(separatedBy: .whitespacesAndNewlines)
-            .map { $0.trimmingCharacters(in: .punctuationCharacters.union(.symbols)) }
+            .map { String($0.unicodeScalars.filter { !strip.contains($0) }.map(Character.init)) }
             .filter { !$0.isEmpty }
     }
 
@@ -58,7 +60,7 @@ public enum FormatterGuard {
         return !(next.isLetter || next.isNumber || next == "'")
     }
 
-    private static func normalizeApostrophes(_ text: String) -> String {
+    static func normalizeApostrophes(_ text: String) -> String {
         text.replacingOccurrences(of: "\u{2019}", with: "'").replacingOccurrences(of: "\u{2018}", with: "'")
     }
 
@@ -282,8 +284,11 @@ public struct AIFormatter: Sendable {
     /// written with spaces, so words apply.
     static func isUnspacedScript(_ scalar: Unicode.Scalar) -> Bool {
         switch scalar.value {
-        case 0x3040...0x30FF, 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF,
-             0x0E00...0x0EFF, 0x1000...0x109F, 0x1780...0x17FF, 0x20000...0x2FA1F:
+        case 0x3040...0x30FF, 0x31F0...0x31FF, 0xFF66...0xFF9F,          // kana, extensions, halfwidth
+             0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF, 0x20000...0x2FA1F, // Han
+             0x0E00...0x0E7F, 0x0E80...0x0EFF,                           // Thai, Lao
+             0x1000...0x109F, 0xA9E0...0xA9FF, 0xAA60...0xAA7F,          // Myanmar, Extended-B, Extended-A
+             0x1780...0x17FF, 0x19E0...0x19FF:                           // Khmer, Khmer Symbols
             return true
         default:
             return false

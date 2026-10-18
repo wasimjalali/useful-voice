@@ -340,6 +340,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// reinstall it can put up an authorization prompt. Doing it here, on a
     /// background thread, keeps both app launch and the event tap responsive.
     private func primeKeyCache() {
+        // The other three keys load on their own threads, so one waiting on a Keychain
+        // prompt never holds up the rest. Each tells Settings when it lands.
+        for provider in [KeyProvider.elevenLabs, .gemini, .anthropic] {
+            DispatchQueue.global(qos: .userInitiated).async {
+                ProviderKeyStore.store(for: provider).load()
+                DispatchQueue.main.async { [weak self] in
+                    self?.viewModel?.modelsModel.keysLoaded()
+                    self?.viewModel?.refreshConfig()
+                }
+            }
+        }
         DispatchQueue.global(qos: .userInitiated).async {
             // The one-time move of the key from the old Keychain service, on the
             // key store's own queue and ahead of its first read. A render or a
@@ -348,9 +359,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DeepgramKeyStore.shared.migrateLegacyKey(with: IdentityMigration.live())
             }
             DeepgramKeyStore.shared.load()
-            for provider in [KeyProvider.elevenLabs, .gemini, .anthropic] {
-                ProviderKeyStore.store(for: provider).load()
-            }
             DispatchQueue.main.async { [weak self] in
                 self?.viewModel?.refreshConfig()
                 // The key state is recorded separately, once it is actually known.
@@ -751,8 +759,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         guard let transcript else {
             // Provider and a fixed reason only: a response body can echo the transcript.
-            let reason = (lastError as? ProviderError)?.logReason ?? "error"
-            Diagnostics.shared.warning("reprocess", "reprocess failed: \(chain.last?.name ?? "provider") \(reason)")
+            let line = lastError.flatMap { error in chain.last.map { $0.failureLine(error) } } ?? "provider failed: error"
+            Diagnostics.shared.warning("reprocess", "reprocess \(line)")
             hud.show(.error(HUDError(message: "Reprocess failed")))
             return
         }

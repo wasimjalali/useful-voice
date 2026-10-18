@@ -64,8 +64,12 @@ export type KeystrokeResult =
   | 'blocked-clipboard'
   | 'blocked-unreadable';
 
-/** `false` refuses; otherwise whether the script may skip its own-process guard. */
-export type Authorization = false | { allowOwnWindow: boolean };
+/**
+ * `false` refuses. Otherwise whether the script may skip its own-process guard, and when
+ * the text-field check that justifies it was made (`Date.now()`): a permission to paste into
+ * our own window goes stale quickly, so the sender drops it if it is older than a moment.
+ */
+export type Authorization = false | { allowOwnWindow: boolean; checkedAt?: number };
 
 export interface KeystrokeRequest {
   text: string;
@@ -193,7 +197,7 @@ export async function deliverText<S extends ClipboardContents>(
       refusal.reason = after === 'changed' ? 'clipboard' : 'unreadable';
       return false;
     }
-    return { allowOwnWindow: ports.ownWindowInFront() };
+    return { allowOwnWindow: ports.ownWindowInFront(), checkedAt: Date.now() };
   };
 
   const keystroke = await ports.pasteKeystroke({ text, signal, authorize });
@@ -213,5 +217,8 @@ export async function deliverText<S extends ClipboardContents>(
   if (keystroke === 'blocked-unreadable' || (keystroke === 'blocked' && refusal.reason === 'unreadable')) {
     return notPasted('unreadable');
   }
-  return copyBecauseOwnWindow('Useful Voice came to the front');
+  if (refusal.reason === 'own') return copyBecauseOwnWindow('Useful Voice came to the front');
+  // Blocked with no reason of ours: the last-moment check did not finish in time (or threw).
+  ports.log('delivery', 'the paste check did not finish; copied instead of pasting');
+  return leaveOnClipboard();
 }

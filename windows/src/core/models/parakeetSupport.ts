@@ -32,12 +32,14 @@ export function checkParakeetLanguage(version: ParakeetVersion, language: string
     throw new ProviderError(
       'badRequest',
       `Parakeet v2 only speaks English. Pick another voice model or switch the language to English.`,
+      { provider: 'Parakeet' },
     );
   }
   if (PARAKEET_V3_LANGUAGES.includes(base)) return pin;
   throw new ProviderError(
     'badRequest',
     `Parakeet v3 doesn't speak ${languageName(pin)}. Pick another voice model or switch the language.`,
+    { provider: 'Parakeet' },
   );
 }
 
@@ -49,7 +51,7 @@ export interface ParsedWav {
 
 /** Read our 16 kHz mono 16-bit PCM WAV into Float32 samples in [-1, 1). */
 export function parseWavToFloat32(bytes: Uint8Array): ParsedWav {
-  const bad = (m: string) => new ProviderError('badRequest', `Can't read the recording: ${m}`);
+  const bad = (m: string) => new ProviderError('badRequest', `Can't read the recording: ${m}`, { provider: 'Parakeet' });
   if (bytes.length < 12) throw bad('the audio is too short to be a WAV file.');
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const tag = (o: number) => String.fromCharCode(bytes[o]!, bytes[o + 1]!, bytes[o + 2]!, bytes[o + 3]!);

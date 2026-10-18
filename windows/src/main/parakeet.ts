@@ -35,6 +35,7 @@ export interface ParakeetDeps {
 }
 
 const MANIFEST = 'parakeet.json';
+const PARAKEET_PROVIDER = { provider: 'Parakeet' } as const;
 const IDLE_MS = 5 * 60_000;
 
 interface Manifest {
@@ -125,6 +126,7 @@ export class ParakeetModels {
   private readonly pending = new Map<number, (response: ParakeetWorkerResponse | Error) => void>();
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
+  private readonly inflight = new Map<number, ParakeetVersion>();
   private preloading: Promise<void> | null = null;
   private pinned: ParakeetVersion | null = null;
   /** The version whose model the running worker last loaded. */
@@ -178,7 +180,9 @@ export class ParakeetModels {
       running.controller.abort();
       await running.promise;
     }
-    this.stopWorker();
+    // Only stop the worker if it holds this model or is working on it; the other version keeps running.
+    const versions = [...this.inflight.values()];
+    if (versions.includes(version) || (this.workerVersion === version && versions.length === 0)) this.stopWorker();
     await fsp.rm(this.modelDir(version), { recursive: true, force: true });
     await fsp.rm(this.partialPath(version), { force: true });
     this.set(version, { status: 'notDownloaded' });
@@ -197,9 +201,9 @@ export class ParakeetModels {
   ): Promise<Transcript> {
     const pin = checkParakeetLanguage(version, language);
     if (this.current[version].status !== 'ready') {
-      throw new ProviderError('notConfigured', 'Parakeet is not downloaded. Download it in Settings to use it.');
+      throw new ProviderError('notConfigured', 'Parakeet is not downloaded. Download it in Settings to use it.', PARAKEET_PROVIDER);
     }
-    if (signal?.aborted) throw new ProviderError('cancelled', 'Transcription was cancelled.');
+    if (signal?.aborted) throw new ProviderError('cancelled', 'Transcription was cancelled.', PARAKEET_PROVIDER);
     const audio = parseWavToFloat32(wav);
     if (audio.samples.length === 0) return { text: '', durationSeconds: 0, detectedLanguage: pin };
 
@@ -207,7 +211,7 @@ export class ParakeetModels {
     if (this.preloading) await this.preloading;
     const response = await this.exchange(version, audio.samples, audio.sampleRate, audio.durationSeconds, signal, false);
     if (!response.ok) {
-      throw new ProviderError('transport', `Parakeet couldn't transcribe: ${response.error}`);
+      throw new ProviderError('transport', `Parakeet couldn't transcribe: ${response.error}`, PARAKEET_PROVIDER);
     }
     return { text: response.text, durationSeconds: audio.durationSeconds, detectedLanguage: pin };
   }
@@ -245,21 +249,23 @@ export class ParakeetModels {
     loadOnly: boolean,
   ): Promise<ParakeetWorkerResponse> {
     const worker = await this.ensureWorker();
-    if (signal?.aborted) throw new ProviderError('cancelled', 'Transcription was cancelled.');
+    if (signal?.aborted) throw new ProviderError('cancelled', 'Transcription was cancelled.', PARAKEET_PROVIDER);
     this.clearIdle();
 
     const id = this.nextId++;
+    this.inflight.set(id, version);
     return new Promise<ParakeetWorkerResponse>((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const finish = () => {
         if (timer) clearTimeout(timer);
         signal?.removeEventListener('abort', onAbort);
         this.pending.delete(id);
+        this.inflight.delete(id);
       };
       // The result of a cancelled request is dropped, the process keeps its loaded model.
       const onAbort = () => {
         finish();
-        reject(new ProviderError('cancelled', 'Transcription was cancelled.'));
+        reject(new ProviderError('cancelled', 'Transcription was cancelled.', PARAKEET_PROVIDER));
       };
       this.pending.set(id, (r) => {
         finish();
@@ -274,13 +280,13 @@ export class ParakeetModels {
         finish();
         // A stuck recognition can't be interrupted, so the process goes and the next request restarts it.
         this.stopWorker();
-        reject(new ProviderError('timedOut', 'Parakeet took too long to transcribe. Try again.'));
+        reject(new ProviderError('timedOut', 'Parakeet took too long. Try again.', PARAKEET_PROVIDER));
       }, this.timeoutFor(seconds));
       try {
         worker.postMessage({ id, modelDir: this.modelDir(version), samples, sampleRate, loadOnly });
       } catch (e) {
         finish();
-        reject(new ProviderError('transport', `Parakeet couldn't start: ${errorMessage(e)}`));
+        reject(new ProviderError('transport', `Parakeet couldn't start: ${errorMessage(e)}`, PARAKEET_PROVIDER));
       }
     }).finally(() => this.armIdle());
   }
@@ -296,7 +302,7 @@ export class ParakeetModels {
   // MARK: worker
 
   private async ensureWorker(): Promise<ParakeetWorkerHandle> {
-    if (this.disposed) throw new ProviderError('cancelled', 'Parakeet is shutting down.');
+    if (this.disposed) throw new ProviderError('cancelled', 'Parakeet is shutting down.', PARAKEET_PROVIDER);
     if (this.worker) return this.worker;
     this.starting ??= this.spawnWorker()
       .then((w) => {
@@ -310,7 +316,7 @@ export class ParakeetModels {
         });
         if (this.disposed) {
           w.kill();
-          throw new ProviderError('cancelled', 'Parakeet is shutting down.');
+          throw new ProviderError('cancelled', 'Parakeet is shutting down.', PARAKEET_PROVIDER);
         }
         this.worker = w;
         return w;
@@ -318,7 +324,7 @@ export class ParakeetModels {
       .catch((e: unknown) => {
         throw e instanceof ProviderError
           ? e
-          : new ProviderError('transport', `Couldn't start the Parakeet engine: ${errorMessage(e)}`);
+          : new ProviderError('transport', `Couldn't start the Parakeet engine: ${errorMessage(e)}`, PARAKEET_PROVIDER);
       })
       .finally(() => {
         this.starting = null;
@@ -327,7 +333,8 @@ export class ParakeetModels {
   }
 
   private failPending(reason: string): void {
-    const error = new ProviderError('transport', `The Parakeet engine stopped unexpectedly (${reason}). Try again.`);
+    console.warn(`Parakeet worker ended: ${reason}`);
+    const error = new ProviderError('transport', 'Parakeet stopped unexpectedly. Try again.', PARAKEET_PROVIDER);
     for (const resolve of [...this.pending.values()]) resolve(error);
   }
 

@@ -977,6 +977,8 @@ export function classifyTranscriptionFailure(error: unknown): DictationError {
       case 'outOfCredits':
         return { kind: 'outOfCredits', message, fix: 'openEngineSettings' };
       case 'transport':
+        // A local engine that stopped is not a network problem.
+        if (error.provider === 'Parakeet') return { kind: 'providerFailed', message, fix: 'retry' };
         return { kind: 'offline', message, fix: 'retry' };
       case 'timedOut':
         return { kind: 'timedOut', message, fix: 'retry' };
@@ -1008,8 +1010,10 @@ function transcriptionFailureMessage(error: unknown): string {
       case 'rateLimited':
         return `${error.provider} is rate limiting requests. Try again in a moment.`;
       case 'timedOut':
+        if (error.provider === 'Parakeet') return error.message;
         return 'Transcription timed out. Check your internet connection and try again.';
       case 'transport':
+        if (error.provider === 'Parakeet') return error.message;
         return `Could not reach ${error.provider}. Check your internet connection.`;
       case 'badRequest':
         // The provider's message is already bounded and has the key redacted.

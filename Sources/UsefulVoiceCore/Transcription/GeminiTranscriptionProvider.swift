@@ -144,8 +144,10 @@ public final class GeminiTranscriptionProvider: TranscriptionProvider, @unchecke
         }
     }
 
-    /// A response with no text (silence) is an empty transcript, which the
-    /// dictation pipeline already reports as "no speech".
+    /// Only a reply that finished (STOP) with no text is an empty transcript, which the
+    /// pipeline reports as "no speech". A blocked prompt, or a candidate that stopped
+    /// for any other reason without text, is a provider failure, so the audio is kept
+    /// for Retry.
     static func parse(_ data: Data) throws -> Transcript {
         struct Response: Decodable {
             struct Candidate: Decodable {
@@ -154,20 +156,22 @@ public final class GeminiTranscriptionProvider: TranscriptionProvider, @unchecke
                     let parts: [Part]?
                 }
                 let content: Content?
+                let finishReason: String?
             }
+            struct Feedback: Decodable { let blockReason: String? }
             let candidates: [Candidate]?
             let promptFeedback: Feedback?
-            struct Feedback: Decodable { let blockReason: String? }
         }
         guard let decoded = try? JSONDecoder().decode(Response.self, from: data) else {
             throw ProviderError.badResponse
         }
-        if decoded.candidates?.isEmpty ?? true, decoded.promptFeedback?.blockReason == nil {
-            throw ProviderError.badResponse
-        }
-        let parts = decoded.candidates?.first?.content?.parts ?? []
+        let failure = ProviderError.engineFailed("Gemini didn't return a transcript.")
+        if decoded.promptFeedback?.blockReason != nil { throw failure }
+        guard let candidate = decoded.candidates?.first else { throw failure }
+        let parts = candidate.content?.parts ?? []
         let text = parts.filter { $0.thought != true }.compactMap(\.text).joined()
-        return Transcript(text: text.trimmingCharacters(in: .whitespacesAndNewlines),
-                          detectedLanguage: nil, durationSeconds: nil)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty, candidate.finishReason != "STOP" { throw failure }
+        return Transcript(text: text, detectedLanguage: nil, durationSeconds: nil)
     }
 }

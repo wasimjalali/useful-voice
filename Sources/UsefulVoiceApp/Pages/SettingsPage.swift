@@ -19,7 +19,7 @@ struct SettingsPage: View {
     @Binding var anchor: String?
     @EnvironmentObject private var toasts: AppToastCenter
 
-    @StateObject private var modelsVM: ModelsViewModel
+    @ObservedObject private var modelsVM: ModelsViewModel
     @State private var formattingEnabled = true
     @State private var spokenPunctuationEnabled = false
     @State private var silenceTimeout = 60.0
@@ -50,9 +50,8 @@ struct SettingsPage: View {
         _models = ObservedObject(wrappedValue: viewModel.models)
         // Read up front as well as in `load()`: a page that is rendered before it appears
         // (an offscreen snapshot) never gets its onAppear.
-        let modelsVM = ModelsViewModel(settings: settings, whisper: viewModel.models,
-                                       parakeet: viewModel.parakeet)
-        _modelsVM = StateObject(wrappedValue: modelsVM)
+        let modelsVM = viewModel.modelsModel
+        _modelsVM = ObservedObject(wrappedValue: modelsVM)
         _formattingEnabled = State(initialValue: settings.formattingEnabled)
         _spokenPunctuationEnabled = State(initialValue: settings.spokenPunctuationEnabled)
         _silenceTimeout = State(initialValue: settings.silenceTimeout)
@@ -111,7 +110,13 @@ struct SettingsPage: View {
         .overlay { dialog }
         // The rail lives outside this page: tell the shell to fence it off too.
         .onChange(of: confirmation != nil) { _, shown in viewModel.modalPresented = shown }
-        .onDisappear { viewModel.modalPresented = false }
+        .onDisappear {
+            viewModel.modalPresented = false
+            // The model state outlives this page: let go of the page's toasts and scrolling.
+            modelsVM.onSaved = nil
+            modelsVM.onKeyError = nil
+            modelsVM.onShowKeys = nil
+        }
         .onAppear(perform: load)
         .onChange(of: viewModel.usageRevision) { _, _ in system.refreshCount() }
         // The setup flow can change the engine and the key: re-read only those, so edits
@@ -239,10 +244,8 @@ struct SettingsPage: View {
     }
 
     private func wireModels() {
-        modelsVM.onChanged = { viewModel.refreshConfig() }
         modelsVM.onSaved = { saved() }
         modelsVM.onKeyError = { message in toasts.show(message, kind: .danger) }
-        modelsVM.languagePin = { viewModel.languagePin }
         modelsVM.onShowKeys = {
             withAnimation(BrandMotion.resolved(BrandMotion.rise)) { topGroup = "keys" }
         }

@@ -122,14 +122,25 @@ public enum ProviderHealthCheck {
         }
     }
 
-    public static func sanitize(_ message: String) -> String {
+    /// Removes secrets from text that may be shown. The stored keys are removed by
+    /// value first (all four providers, whatever shape the key has), then known key
+    /// patterns, and only then is the text cut to length, so a key can't survive by
+    /// straddling the cut.
+    public static func sanitize(_ message: String,
+                                knownKeys: [String] = ProviderKeyStore.currentKeys()) -> String {
         var sanitized = message
+        for key in knownKeys where key.count >= 6 {
+            sanitized = sanitized.replacingOccurrences(of: key, with: "<redacted>")
+        }
         let keyPatterns = [
             #"api-key["']?\s*[:=]\s*["']?[^"',\s]+"#,
             #"Ocp-Apim-Subscription-Key["']?\s*[:=]\s*["']?[^"',\s]+"#,
             #"Bearer\s+[A-Za-z0-9._\-]+"#,
             // Deepgram uses "Authorization: Token <key>".
             #"Token\s+[A-Za-z0-9._\-]+"#,
+            #"sk-ant-[A-Za-z0-9_\-]+"#,
+            #"AIza[0-9A-Za-z_\-]{20,}"#,
+            #"sk_[A-Za-z0-9]{16,}"#,
         ]
         for pattern in keyPatterns {
             sanitized = sanitized.replacingOccurrences(

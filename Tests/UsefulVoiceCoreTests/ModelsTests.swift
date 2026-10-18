@@ -388,16 +388,28 @@ private func queryValue(_ request: URLRequest, _ name: String) -> [String] {
     }
 
     @Test func textIsJoinedFromNonThoughtParts() throws {
-        let json = #"{"candidates":[{"content":{"parts":[{"text":"thinking...","thought":true},{"text":"Hello "},{"text":"world."}]}}]}"#
+        let json = #"{"candidates":[{"content":{"parts":[{"text":"thinking...","thought":true},{"text":"Hello "},{"text":"world."}]},"finishReason":"STOP"}]}"#
         #expect(try GeminiTranscriptionProvider.parse(Data(json.utf8)).text == "Hello world.")
     }
 
     @Test func silenceIsAnEmptyTranscriptAndABlockedPromptToo() throws {
-        let empty = #"{"candidates":[{"content":{"parts":[]}}]}"#
+        let empty = #"{"candidates":[{"content":{"parts":[]},"finishReason":"STOP"}]}"#
         #expect(try GeminiTranscriptionProvider.parse(Data(empty.utf8)).text.isEmpty)
+    }
+
+    @Test func aBlockedOrCutShortReplyWithNoTextIsAProviderFailure() {
         let blocked = #"{"promptFeedback":{"blockReason":"OTHER"}}"#
-        #expect(try GeminiTranscriptionProvider.parse(Data(blocked.utf8)).text.isEmpty)
-        #expect(throws: ProviderError.self) { try GeminiTranscriptionProvider.parse(Data("{}".utf8)) }
+        let safety = #"{"candidates":[{"finishReason":"SAFETY"}]}"#
+        let noFinish = #"{"candidates":[{"content":{"parts":[]}}]}"#
+        for body in [blocked, safety, noFinish, "{}"] {
+            do {
+                _ = try GeminiTranscriptionProvider.parse(Data(body.utf8))
+                Issue.record("expected a failure for \(body)")
+            } catch ProviderError.engineFailed(let message) {
+                #expect(message == "Gemini didn't return a transcript.")
+            } catch { Issue.record("wrong error \(error)") }
+        }
+        #expect(throws: ProviderError.self) { try GeminiTranscriptionProvider.parse(Data("not json".utf8)) }
     }
 
     @Test func invalidKeyStatusesAreKeyProblems() {
@@ -511,9 +523,9 @@ private func queryValue(_ request: URLRequest, _ name: String) -> [String] {
     }
 
     @Test func maxTokensFollowsTheInputLengthWithinBounds() {
-        #expect(FormatterRequest.maxTokens(forInput: "short") == 256)
-        #expect(FormatterRequest.maxTokens(forInput: String(repeating: "a", count: 1000)) == 1000)
-        #expect(FormatterRequest.maxTokens(forInput: String(repeating: "a", count: 9000)) == 4096)
+        #expect(FormatterRequest.maxTokens(forInput: "short") == 512)
+        #expect(FormatterRequest.maxTokens(forInput: String(repeating: "a", count: 1000)) == 2256)
+        #expect(FormatterRequest.maxTokens(forInput: String(repeating: "a", count: 9000)) == 8192)
     }
 
     @Test func deadlinesAreSixSecondsAndTenForSonnet() {
@@ -523,12 +535,24 @@ private func queryValue(_ request: URLRequest, _ name: String) -> [String] {
     }
 
     @Test func responsesAreJoinedFromTheRightBlocks() {
-        let anthropic = #"{"content":[{"type":"thinking","thinking":"hmm"},{"type":"text","text":"One. "},{"type":"text","text":"Two."}]}"#
-        #expect(FormatterRequest.parseAnthropic(Data(anthropic.utf8)) == "One. Two.")
-        let gemini = #"{"candidates":[{"content":{"parts":[{"text":"x","thought":true},{"text":"Answer."}]}}]}"#
-        #expect(FormatterRequest.parseGemini(Data(gemini.utf8)) == "Answer.")
-        #expect(FormatterRequest.parseGemini(Data(#"{"promptFeedback":{"blockReason":"SAFETY"}}"#.utf8)) == nil)
-        #expect(FormatterRequest.parseAnthropic(Data("[]".utf8)) == nil)
+        let anthropic = #"{"content":[{"type":"thinking","thinking":"hmm"},{"type":"text","text":"One. "},{"type":"text","text":"Two."}],"stop_reason":"end_turn"}"#
+        #expect(FormatterRequest.parseAnthropic(Data(anthropic.utf8)) == .text("One. Two."))
+        let gemini = #"{"candidates":[{"content":{"parts":[{"text":"x","thought":true},{"text":"Answer."}]},"finishReason":"STOP"}]}"#
+        #expect(FormatterRequest.parseGemini(Data(gemini.utf8)) == .text("Answer."))
+        #expect(FormatterRequest.parseAnthropic(Data("[]".utf8)) == .failure("unreadable response"))
+    }
+
+    @Test func aReplyThatStoppedEarlyIsAFailureNeverUsableText() {
+        let cut = #"{"content":[{"type":"text","text":"Half a sent"}],"stop_reason":"max_tokens"}"#
+        #expect(FormatterRequest.parseAnthropic(Data(cut.utf8)) == .failure("truncated"))
+        let refused = #"{"content":[{"type":"text","text":"no"}],"stop_reason":"refusal"}"#
+        #expect(FormatterRequest.parseAnthropic(Data(refused.utf8)) == .failure("blocked"))
+        let geminiCut = #"{"candidates":[{"content":{"parts":[{"text":"Half"}]},"finishReason":"MAX_TOKENS"}]}"#
+        #expect(FormatterRequest.parseGemini(Data(geminiCut.utf8)) == .failure("truncated"))
+        let safety = #"{"candidates":[{"finishReason":"SAFETY"}]}"#
+        #expect(FormatterRequest.parseGemini(Data(safety.utf8)) == .failure("blocked"))
+        let block = #"{"promptFeedback":{"blockReason":"SAFETY"}}"#
+        #expect(FormatterRequest.parseGemini(Data(block.utf8)) == .failure("blocked"))
     }
 }
 
@@ -588,7 +612,7 @@ private final class FormatterStubURLProtocol: URLProtocol {
     private func reset() { FormatterStubURLProtocol.calls = []; FormatterStubURLProtocol.handler = nil }
 
     private func anthropicBody(_ text: String) -> Data {
-        Data(#"{"content":[{"type":"text","text":"\#(text)"}]}"#.utf8)
+        Data(#"{"content":[{"type":"text","text":"\#(text)"}],"stop_reason":"end_turn"}"#.utf8)
     }
 
     @Test func aGoodAnswerReplacesTheTranscript() async {
@@ -604,6 +628,33 @@ private final class FormatterStubURLProtocol: URLProtocol {
         let outcome = await formatter("gemini:gemini-3.8-flash").format(spoken, vocabulary: [])
         #expect(outcome.text == nil)
         if case .failed(let reason) = outcome { #expect(reason == "HTTP 500" || reason.contains("500")) }
+    }
+
+    @Test func aTruncatedReplyDeliversThePlainTranscript() async {
+        reset()
+        FormatterStubURLProtocol.handler = { _ in
+            (200, Data(#"{"content":[{"type":"text","text":"I think we should ship it on"}],"stop_reason":"max_tokens"}"#.utf8))
+        }
+        let outcome = await formatter("anthropic:claude-haiku-5-5").format(spoken, vocabulary: [])
+        #expect(outcome == .failed("truncated"))
+    }
+
+    @Test func aTimeoutIsLoggedAsATimeoutNotACancel() async {
+        reset()
+        FormatterStubURLProtocol.handler = { _ in
+            Thread.sleep(forTimeInterval: 8)
+            return (200, self.anthropicBody(self.cleaned))
+        }
+        let diagnostics = Diagnostics(directory: nil)
+        let slow = AIFormatter(model: ModelCatalog.languageModel(id: "anthropic:claude-haiku-5-5")!,
+                               apiKey: { "k" }, session: FormatterStubURLProtocol.session(),
+                               diagnostics: diagnostics)
+        let outcome = await slow.format(spoken, vocabulary: [])
+        #expect(outcome == .failed("timeout"))
+        let lines = await diagnostics.entries().map(\.message)
+        #expect(lines.contains { $0.contains("timeout") })
+        // Provider, model and a fixed reason only: nothing from the dictation or a response.
+        #expect(!lines.contains { $0.contains("ship it") })
     }
 
     @Test func aGuardRejectionFallsBack() async {
@@ -699,5 +750,143 @@ private final class FormatterStubURLProtocol: URLProtocol {
         #expect(ModelCatalog.voiceModel(id: "gemini-audio:gemini-3.8-flash")?.keyProvider == .gemini)
         #expect(ModelCatalog.voiceModel(id: "parakeet:v3")?.keyProvider == nil)
         #expect(ModelCatalog.languageModel(id: "anthropic:claude-haiku-5-5")?.keyProvider == .anthropic)
+    }
+}
+
+// MARK: - Guard additions
+
+@Suite("Formatter guard, extra rules") struct FormatterGuardExtraTests {
+    private let input = "so um i think we should ship it on wednesday after the review"
+
+    @Test func anUnrelatedAnswerIsRejectedByWordOverlap() {
+        let unrelated = "The capital of France is Paris and it has many museums."
+        #expect(FormatterGuard.accept(input: input, output: unrelated) == nil)
+        #expect(FormatterGuard.accept(input: input, output: "I think we should ship it on Wednesday after the review.") != nil)
+    }
+
+    @Test func shortOutputsSkipTheOverlapCheck() {
+        #expect(FormatterGuard.accept(input: "uh send mail", output: "Send email.") != nil)
+    }
+
+    @Test func leakedPromptTagsAreRejected() {
+        #expect(FormatterGuard.accept(input: input, output: "<vocabulary>a</vocabulary> I think we should ship it on Wednesday after the review.") == nil)
+        #expect(FormatterGuard.accept(input: input, output: "I think we should ship it on Wednesday after the review </dictation> ok") == nil)
+    }
+
+    @Test func curlyApostrophePreamblesAreCaught() {
+        #expect(FormatterGuard.accept(input: input, output: "Here\u{2019}s the text: I think we should ship it on Wednesday.") == nil)
+        #expect(FormatterGuard.accept(input: input, output: "I\u{2019}ve cleaned it: we should ship it on Wednesday after the review.") == nil)
+    }
+
+    @Test func aLeadingFillerDoesNotHideARealOpening() {
+        let spoken = "um, sure send it over on wednesday after the review please"
+        #expect(FormatterGuard.accept(input: spoken, output: "Sure, send it over on Wednesday after the review, please.") != nil)
+        let other = "um so send it over on wednesday after the review please"
+        #expect(FormatterGuard.accept(input: other, output: "Sure, send it over on Wednesday after the review, please.") == nil)
+    }
+}
+
+@Suite("Formatter word gate") struct FormatterWordGateTests {
+    @Test func spacedLanguagesNeedThreeWords() {
+        #expect(!AIFormatter.shouldFormat("hello there"))
+        #expect(AIFormatter.shouldFormat("hello there friend"))
+    }
+
+    @Test func unspacedScriptsNeedSixCharacters() {
+        #expect(!AIFormatter.shouldFormat("你好吗"))
+        #expect(AIFormatter.shouldFormat("今天我们去公园玩"))
+        #expect(AIFormatter.shouldFormat("สวัสดีครับทุกคน"))
+        #expect(!AIFormatter.shouldFormat("ありがと"))
+    }
+}
+
+// MARK: - Redaction by value
+
+@Suite("Key redaction") struct KeyRedactionTests {
+    @Test func aStoredKeyIsRemovedByValueWhateverItsShape() {
+        let keys = ["abc123SECRETvalue", "plain-key-1234567890", "zzzz.yyyy.xxxx"]
+        let text = "HTTP 401: invalid key \(keys[0]) and also \(keys[1]) then \(keys[2]) end"
+        let clean = ProviderHealthCheck.sanitize(text, knownKeys: keys)
+        for key in keys { #expect(!clean.contains(key)) }
+        #expect(clean.contains("<redacted>"))
+    }
+
+    @Test func redactionHappensBeforeTruncation() {
+        let key = "K" + String(repeating: "x", count: 40)
+        let padding = String(repeating: "a", count: 215)
+        let clean = ProviderHealthCheck.sanitize(padding + key, knownKeys: [key])
+        #expect(!clean.contains("Kxxxx"))
+    }
+
+    @Test func providerKeyShapesAreCaughtByPatternToo() {
+        let text = "x-goog-api-key: AIzaSyA1234567890abcdefghijk and sk-ant-api03-abcdef_123 and xi-api-key=sk_abcdef0123456789abcd"
+        let clean = ProviderHealthCheck.sanitize(text, knownKeys: [])
+        #expect(!clean.contains("AIzaSy") && !clean.contains("sk-ant-api03") && !clean.contains("sk_abcdef"))
+    }
+}
+
+// MARK: - First-run setup and voice models
+
+@Suite("Setup and voice models") struct SetupVoiceModelTests {
+    @Test func theSetupWritesTheVoiceModelItself() {
+        #expect(FirstRunGate.setupVoiceModelID(engine: .deepgram, whisperModelID: "whisper-large-v3") == "deepgram:nova-3")
+        #expect(FirstRunGate.setupVoiceModelID(engine: .whisperLocal, whisperModelID: "whisper-large-v3") == "whisper:large-v3")
+        #expect(FirstRunGate.setupVoiceModelID(engine: .whisperLocal, whisperModelID: "gone") == "whisper:large-v3-turbo")
+    }
+
+    @Test func runSetupAgainThenClosingKeepsScribeAndParakeet() {
+        for original in ["elevenlabs:scribe_v2", "parakeet:v3", "gemini-audio:gemini-3.8-flash", "deepgram:nova-3-medical"] {
+            let settings = AppSettings(defaults: scratchDefaults())
+            settings.voiceModelID = original
+            let snapshot = FirstRunGate.EngineSelection(
+                engine: settings.transcriptionEngine, modelID: settings.localModelID,
+                voiceModelID: settings.voiceModelID)
+            // The setup chooses Deepgram, which dictates fine with its key...
+            settings.voiceModelID = FirstRunGate.setupVoiceModelID(engine: .deepgram, whisperModelID: settings.localModelID)
+            #expect(settings.voiceModelID == "deepgram:nova-3")
+            // ...and closing the re-run puts the exact earlier model back.
+            settings.voiceModelID = FirstRunGate.selectionAfterClosingRerun(snapshot: snapshot).voiceModelID
+            #expect(settings.voiceModelID == original)
+        }
+    }
+
+    @Test func theSnapshotRemembersTheExactModel() {
+        let selection = FirstRunGate.EngineSelection(engine: .deepgram, modelID: "whisper-large-v3-turbo",
+                                                     voiceModelID: "elevenlabs:scribe_v2")
+        #expect(selection.voiceModelID == "elevenlabs:scribe_v2")
+        #expect(FirstRunGate.EngineSelection(engine: .whisperLocal, modelID: "whisper-large-v3").voiceModelID == "whisper:large-v3")
+        #expect(FirstRunGate.EngineSelection(engine: .deepgram, modelID: "whisper-large-v3").voiceModelID == "deepgram:nova-3")
+    }
+
+    private func configured(_ id: String, keys: Set<KeyProvider> = [], whisper: Bool = false, parakeet: Bool = false) -> Bool {
+        FirstRunGate.voiceModelConfigured(voiceModelID: id, keyStored: { keys.contains($0) },
+                                          whisperUsable: { _ in whisper }, parakeetReady: { _ in parakeet })
+    }
+
+    @Test func everyVoiceModelHasItsOwnConfiguredRule() {
+        #expect(configured("elevenlabs:scribe_v2", keys: [.elevenLabs]))
+        #expect(!configured("elevenlabs:scribe_v2", keys: [.deepgram]))
+        #expect(configured("gemini-audio:gemini-3.8-flash", keys: [.gemini]))
+        #expect(!configured("deepgram:nova-3"))
+        #expect(configured("deepgram:nova-3-medical", keys: [.deepgram]))
+        #expect(configured("parakeet:v2", parakeet: true) && !configured("parakeet:v2", keys: [.deepgram]))
+        #expect(configured("whisper:large-v3", whisper: true) && !configured("whisper:large-v3", keys: [.deepgram]))
+        #expect(!configured("unknown:thing", keys: Set(KeyProvider.allCases), whisper: true, parakeet: true))
+    }
+}
+
+@Suite("Removing a key") struct RemovedKeySettingsTests {
+    @Test func theFormatterThatNeedsAKeyCanBeSetOffWhileAVoiceChoiceStays() {
+        let settings = AppSettings(defaults: scratchDefaults())
+        settings.voiceModelID = "elevenlabs:scribe_v2"
+        settings.formatterModelID = "anthropic:claude-haiku-5-5"
+        // What removeKey(.anthropic) does to settings.
+        if settings.formatterModel?.keyProvider == .anthropic { settings.formatterModelID = nil }
+        #expect(settings.formatterModelID == nil)
+        #expect(settings.voiceModelID == "elevenlabs:scribe_v2")
+        // The selection stays, and dictation says what to do.
+        let plan = VoiceModelSelector.resolve(voiceModelID: settings.voiceModelID, keyAvailable: { _ in false },
+                                              whisperAvailability: { _ in .usable })
+        #expect(VoiceModelSelector.unavailableMessage(for: plan) == "Add your ElevenLabs key in Settings.")
     }
 }

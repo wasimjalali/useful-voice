@@ -171,6 +171,8 @@ final class ModelsViewModel: ObservableObject {
     // MARK: - Choosing
 
     func selectVoice(_ entry: ModelEntry) {
+        // Picking anything drops an earlier "switch when it's downloaded".
+        pendingLocalID = nil
         if needsKey(entry) { requestKey(for: entry, kind: .voice); return }
         if entry.isLocal, let status = status(of: entry), !isReady(status) {
             // Picked before it was here: download now, switch when it lands.

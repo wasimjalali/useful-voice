@@ -171,7 +171,8 @@ final class FirstRunModel: ObservableObject {
         self.offscreen = environment["UV_SNAPSHOT"] != nil
 
         self.snapshot = FirstRunGate.EngineSelection(
-            engine: settings.transcriptionEngine, modelID: settings.localModelID)
+            engine: settings.transcriptionEngine, modelID: settings.localModelID,
+            voiceModelID: settings.voiceModelID)
         let completed = defaults.bool(forKey: FirstRunGate.completedKey)
         // Setup finished under the previous identity: its grants are gone.
         let grantsNeedRecheck = defaults.bool(forKey: FirstRunGate.recheckGrantsKey)
@@ -225,11 +226,11 @@ final class FirstRunModel: ObservableObject {
                                      grantsNeedRecheck: Bool) -> FirstRunGate.Decision {
         FirstRunGate.decide(
             completed: completed,
-            engineConfigured: FirstRunGate.engineConfigured(
-                engine: settings.transcriptionEngine,
-                keyStored: DeepgramKeyStore.keyIsStored(),
-                activeModelUsable: viewModel.models.availability(
-                    of: viewModel.models.activeModel) == .usable),
+            engineConfigured: FirstRunGate.voiceModelConfigured(
+                voiceModelID: settings.voiceModelID,
+                keyStored: { ProviderKeyStore.keyIsStored(for: $0) },
+                whisperUsable: { viewModel.models.availability(of: $0) == .usable },
+                parakeetReady: { if case .ready = viewModel.parakeet.state(of: $0) { return true }; return false }),
             microphoneAuthorized: AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
             accessibilityTrusted: AXIsProcessTrusted(),
             forced: forced,
@@ -331,7 +332,8 @@ final class FirstRunModel: ObservableObject {
         accessibilityGranted = false
         keyConnected = DeepgramKeyStore.keyIsStored()
         snapshot = FirstRunGate.EngineSelection(
-            engine: settings.transcriptionEngine, modelID: settings.localModelID)
+            engine: settings.transcriptionEngine, modelID: settings.localModelID,
+            voiceModelID: settings.voiceModelID)
         pendingLocal = nil
         startedDownloads = []
         startedFromSettings = true
@@ -384,8 +386,25 @@ final class FirstRunModel: ObservableObject {
         clearKeyField()
         cancelDiskTask()
         dropPendingLocal()
+        // Closing "Run setup again" puts back exactly what was chosen before it
+        // opened, even when the setup's own choice would dictate: a Scribe or
+        // Parakeet user stays on theirs.
+        restoreSnapshotExactly()
         startedFromSettings = false
         withAnimation(BrandMotion.easeOut(duration: 0.2)) { active = false }
+    }
+
+    private func restoreSnapshotExactly() {
+        let target = FirstRunGate.selectionAfterClosingRerun(snapshot: snapshot)
+        guard !forced, settings.voiceModelID != target.voiceModelID else { return }
+        if let original = WhisperModelCatalog.model(forID: snapshot.modelID),
+           settings.localModelID != snapshot.modelID {
+            models.activate(original, allowUnusable: true)
+        }
+        settings.voiceModelID = target.voiceModelID
+        models.engineChanged(to: settings.transcriptionEngine)
+        viewModel.refreshConfig()
+        engineRestoreCount += 1
     }
 
     /// The window was closed with the flow still up.
@@ -604,7 +623,10 @@ final class FirstRunModel: ObservableObject {
                 engineRestoreCount += 1
             }
         }
-        settings.transcriptionEngine = engine
+        // The setup's choice writes the voice model itself: Deepgram is Nova-3, and
+        // Whisper is the model that is active.
+        settings.voiceModelID = FirstRunGate.setupVoiceModelID(
+            engine: engine, whisperModelID: settings.localModelID)
         viewModel.models.engineChanged(to: engine)
         viewModel.refreshConfig()
     }
@@ -670,13 +692,11 @@ final class FirstRunModel: ObservableObject {
     }
 
     private func isUsable(_ selection: FirstRunGate.EngineSelection) -> Bool {
-        switch selection.engine {
-        case .deepgram:
-            return DeepgramKeyStore.keyIsStored()
-        case .whisperLocal:
-            return WhisperModelCatalog.model(forID: selection.modelID)
-                .map { models.availability(of: $0) == .usable } ?? false
-        }
+        FirstRunGate.voiceModelConfigured(
+            voiceModelID: selection.voiceModelID,
+            keyStored: { ProviderKeyStore.keyIsStored(for: $0) },
+            whisperUsable: { models.availability(of: $0) == .usable },
+            parakeetReady: { if case .ready = viewModel.parakeet.state(of: $0) { return true }; return false })
     }
 
     /// `requireUsableSnapshot`: leave the committed choice alone when the
@@ -684,7 +704,8 @@ final class FirstRunModel: ObservableObject {
     private func restoreSnapshotIfUnusable(requireUsableSnapshot: Bool = false) {
         guard !forced else { return }
         let current = FirstRunGate.EngineSelection(
-            engine: settings.transcriptionEngine, modelID: settings.localModelID)
+            engine: settings.transcriptionEngine, modelID: settings.localModelID,
+            voiceModelID: settings.voiceModelID)
         let target = FirstRunGate.selectionAfterAbandon(
             snapshot: snapshot, current: current, currentUsable: isUsable(current))
         guard target != current else { return }
@@ -693,9 +714,9 @@ final class FirstRunModel: ObservableObject {
            let model = WhisperModelCatalog.model(forID: target.modelID) {
             models.activate(model, allowUnusable: true)
         }
-        if target.engine != current.engine {
-            settings.transcriptionEngine = target.engine
-            models.engineChanged(to: target.engine)
+        if target.voiceModelID != current.voiceModelID {
+            settings.voiceModelID = target.voiceModelID
+            models.engineChanged(to: settings.transcriptionEngine)
         }
         viewModel.refreshConfig()
         engineRestoreCount += 1

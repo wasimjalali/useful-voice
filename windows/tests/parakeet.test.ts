@@ -617,6 +617,17 @@ describe('worker handling', () => {
     expect(workers[0]!.killed).toBe(true);
   });
 
+  it('outside Electron the default worker fails fast without importing the electron package', async () => {
+    seedReady('v2');
+    const started = Date.now();
+    await expect(new ParakeetModels(dir).transcribe(wav(), 'v2')).rejects.toMatchObject({
+      kind: 'transport',
+      provider: 'Parakeet',
+      message: expect.stringContaining("Couldn't start the Parakeet engine"),
+    });
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
   it('dispose kills the worker and fails what is pending', async () => {
     const { models, workers } = setup(() => undefined);
     const result = models.transcribe(wav(), 'v2');

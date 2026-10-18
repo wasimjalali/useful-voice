@@ -80,6 +80,8 @@ export interface SettingsDTO {
   maxRecordingSeconds: number;
   recordingsToKeep: number;
   soundEffectsEnabled: boolean;
+  /** Pause whatever is playing (Spotify, a video in the browser) while recording, then play it again. */
+  pauseMediaWhileDictating: boolean;
   launchAtLogin: boolean;
   hotkey: { accelerator: string; pushToTalk: boolean };
   /** Opens the language picker. Optional, and empty means disabled. */

@@ -58,4 +58,12 @@ and quantizes the weights. NVIDIA does not endorse Useful Voice.
 
 - [licenses/parakeet/NOTICE](licenses/parakeet/NOTICE)
 
+## mediaremote-adapter (technique only)
+
+Since macOS 15.4, MediaRemote answers third-party processes with "nothing playing". The macOS app reads
+the system's Now Playing state by running a small script of its own under Apple's `/usr/bin/perl`, which
+MediaRemote still answers. The approach comes from
+[ungive/mediaremote-adapter](https://github.com/ungive/mediaremote-adapter) (BSD-3-Clause, Jonas van den
+Berg and contributors). No code from that project is included: `bundle/mediaremote/` is Useful Voice's own.
+
 The Windows app's own runtime notices (sherpa-onnx and the Parakeet models) are in `windows/THIRD_PARTY_NOTICES.md` in the repository.

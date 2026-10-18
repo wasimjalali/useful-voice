@@ -19,6 +19,19 @@ import {
   type OneShotRunner,
 } from './keystroke.js';
 import { PowerShellHost, PowerShellHostError, hostArguments } from './powershellHost.js';
+import {
+  MEDIA_PRELUDE,
+  listPlayingScript,
+  parsePauseOutput,
+  parsePlayingOutput,
+  parseResumeOutput,
+  parseTimelineOutput,
+  pauseScript,
+  resumeScript,
+  timelineScript,
+} from './mediaScripts.js';
+import { createMediaRunner } from './mediaRunner.js';
+import type { MediaEffects } from '../core/media/mediaPausePolicy.js';
 // The delivery policy's view of a window: the same identity (process + handle) with
 // the title the UI needs on top, so window info can be handed straight to the policy.
 import {
@@ -443,4 +456,104 @@ async function runPowerShell(
     { timeout: timeoutMs, windowsHide: true, maxBuffer: 1024 * 1024, signal },
   );
   return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+}
+
+// ---- media ----------------------------------------------------------------
+
+/** Longest a media request may run in the warm host. Above the script's own 3 s wait per call. */
+const MEDIA_HOST_TIMEOUT_MS = 6000;
+/** The same through a cold one-shot process, the fallback. */
+const MEDIA_ONE_SHOT_TIMEOUT_MS = 12_000;
+
+let mediaHost: PowerShellHost | null = null;
+
+/**
+ * The media scripts get a PowerShell host of their own, not a place in the delivery host's
+ * queue. That host runs one request at a time and cannot be interrupted, so a media request
+ * (a few hundred ms warm, longer when an app is slow to answer) queued ahead of a paste
+ * would delay it by that much. A second host costs one idle process and removes the wait.
+ */
+function mediaScriptHost(log?: (message: string) => void): PowerShellHost {
+  mediaHost ??= new PowerShellHost({
+    spawn: () => spawn('powershell.exe', hostArguments(), { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }),
+    setupScript: MEDIA_PRELUDE,
+    startupTimeoutMs: HOST_STARTUP_TIMEOUT_MS,
+    log,
+  });
+  return mediaHost;
+}
+
+/** Apps publish their timeline a moment after a pause lands; the reading is taken after this. */
+const PAUSE_SETTLE_MS = 200;
+
+/**
+ * The Windows side of "Pause media while dictating". Off Windows it does nothing. `warm`
+ * starts the media host ahead of the first dictation.
+ *
+ * Quitting: `beginQuit` ends the settle wait at once and gives later pause scripts the
+ * tighter WinRT cap. `dispose` stops the host and drops every media request still waiting:
+ * a request the host rejects as unavailable is NOT rerouted to a one-shot process once
+ * disposed (see `mediaRunner.ts`), because a queued pause must never run after the app has resumed and left.
+ */
+export function createMediaEffects(
+  appUserModelId: string,
+  log: (message: string) => void,
+): MediaEffects & { warm(): void; dispose(): void } {
+  const available = process.platform === 'win32';
+  const timeouts = { hostMs: MEDIA_HOST_TIMEOUT_MS, oneShotMs: MEDIA_ONE_SHOT_TIMEOUT_MS };
+  const runner = createMediaRunner({ host: () => mediaScriptHost(log), oneShot: runOneShot, timeouts });
+  let quitting = false;
+  let endSettle: (() => void) | null = null;
+  const run = (body: string): Promise<string> => runner.run(body, MEDIA_PRELUDE + body);
+  /** Waits for the settle, or less when the app starts quitting. */
+  const settle = (): Promise<void> =>
+    new Promise((resolve) => {
+      if (quitting) return resolve();
+      const timer = setTimeout(resolve, PAUSE_SETTLE_MS);
+      timer.unref?.();
+      endSettle = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
+  return {
+    async listPlaying() {
+      if (!available) return [];
+      return parsePlayingOutput(await run(listPlayingScript(appUserModelId)));
+    },
+    async pause(ids) {
+      if (!available || ids.length === 0) return { confirmed: [], refused: [], skipped: [] };
+      const result = parsePauseOutput(await run(pauseScript(ids, { quitting })));
+      if (result.confirmed.length === 0 || quitting) return result;
+      // The reading taken at once may be from before the app published the pause. Read again
+      // after a settle; if that fails or the app is quitting, the first reading stands (the
+      // touch tolerance covers the difference).
+      await settle();
+      if (quitting) return result;
+      try {
+        const later = new Map(
+          parseTimelineOutput(await run(timelineScript(result.confirmed.map((session) => session.id)))).map((session) => [session.id, session]),
+        );
+        return { ...result, confirmed: result.confirmed.map((session) => later.get(session.id) ?? session) };
+      } catch {
+        return result;
+      }
+    },
+    async resume(sessions) {
+      if (!available || sessions.length === 0) return { refused: [], touched: [], unconfirmed: [], skipped: [] };
+      return parseResumeOutput(await run(resumeScript(sessions)));
+    },
+    beginQuit() {
+      quitting = true;
+      endSettle?.();
+    },
+    warm() {
+      if (available && !runner.disposed) void mediaScriptHost(log).start();
+    },
+    dispose() {
+      runner.dispose();
+      mediaHost?.dispose();
+      mediaHost = null;
+    },
+  };
 }

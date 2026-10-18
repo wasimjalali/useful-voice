@@ -25,6 +25,7 @@ struct SettingsPage: View {
     @State private var silenceTimeout = 60.0
     @State private var recordingsToKeep = 10
     @State private var soundEffectsEnabled = true
+    @State private var pauseMediaWhileDictating = true
     @State private var appearance: AppearanceChoice = .system
     @State private var dailyGoal = AppSettings.defaultDailyWordGoal
     /// Login item, permissions and the dictation count, read once and refreshed on appear and
@@ -57,6 +58,7 @@ struct SettingsPage: View {
         _silenceTimeout = State(initialValue: settings.silenceTimeout)
         _recordingsToKeep = State(initialValue: settings.recordingsToKeep)
         _soundEffectsEnabled = State(initialValue: settings.soundEffectsEnabled)
+        _pauseMediaWhileDictating = State(initialValue: settings.pauseMediaWhileDictating)
         _appearance = State(initialValue: settings.appearance)
         _dailyGoal = State(initialValue: settings.dailyWordGoal)
         _system = StateObject(wrappedValue: SettingsSystemState(history: viewModel.historyStore))
@@ -207,6 +209,9 @@ struct SettingsPage: View {
             }
             SettingsRow(title: "Sound cues") {
                 Toggle("", isOn: soundBinding).labelsHidden().accessibilityLabel("Sound cues")
+            }
+            SettingsRow(title: "Pause media while dictating") {
+                Toggle("", isOn: pauseMediaBinding).labelsHidden().accessibilityLabel("Pause media while dictating")
             }
             SettingsRow(title: "Microphone") {
                 PremiumStatusBadge(kind: system.microphone.kind, text: system.microphone.text)
@@ -659,6 +664,11 @@ struct SettingsPage: View {
                 set: { soundEffectsEnabled = $0; settings.soundEffectsEnabled = $0; saved() })
     }
 
+    private var pauseMediaBinding: Binding<Bool> {
+        Binding(get: { pauseMediaWhileDictating },
+                set: { pauseMediaWhileDictating = $0; settings.pauseMediaWhileDictating = $0; saved() })
+    }
+
     private var appearanceBinding: Binding<AppearanceChoice> {
         Binding(get: { appearance },
                 set: { appearance = $0; settings.appearance = $0; saved() })
@@ -699,6 +709,7 @@ struct SettingsPage: View {
         silenceTimeout = settings.silenceTimeout
         recordingsToKeep = settings.recordingsToKeep
         soundEffectsEnabled = settings.soundEffectsEnabled
+        pauseMediaWhileDictating = settings.pauseMediaWhileDictating
         appearance = settings.appearance
         dailyGoal = settings.dailyWordGoal
         system.refresh()

@@ -92,6 +92,21 @@ define copy_notices
 	cp -R licenses $(APP)/Contents/Resources/licenses
 endef
 
+# The Now Playing helper for "Pause media while dictating": a perl script and a small library
+# that Apple's /usr/bin/perl loads, because MediaRemote answers third-party processes with
+# "nothing playing" since macOS 15.4 (see Sources/UsefulVoiceCore/Media/NowPlayingReader.swift).
+# The library carries every slice perl can run as: arm64e and arm64e.x1 (Apple silicon), arm64 and x86_64.
+# Older Xcode toolchains (CI's) don't know arm64e.x1, so that slice is added only when clang accepts it.
+MEDIAREMOTE_HELPER = $(APP)/Contents/Resources/MediaRemote
+MEDIAREMOTE_X1_ARCH := $(shell echo 'int x;' | clang -arch arm64e.x1 -x c -c -o /dev/null - >/dev/null 2>&1 && echo -arch arm64e.x1)
+define embed_mediaremote_helper
+	mkdir -p $(MEDIAREMOTE_HELPER)
+	clang -dynamiclib -arch arm64 -arch arm64e $(MEDIAREMOTE_X1_ARCH) -arch x86_64 -mmacosx-version-min=14.0 \
+		-framework CoreFoundation -Wall -Werror \
+		-o $(MEDIAREMOTE_HELPER)/libuvnowplaying.dylib bundle/mediaremote/uv_nowplaying.c
+	cp bundle/mediaremote/uv-nowplaying.pl $(MEDIAREMOTE_HELPER)/
+endef
+
 bundle: build
 	rm -rf $(APP)
 	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources $(APP)/Contents/Frameworks
@@ -100,6 +115,7 @@ bundle: build
 	$(call compile_icon)
 	cp assets/branding/useful-voice-mark-dark.png $(APP)/Contents/Resources/UsefulVoiceLogo.png
 	$(call copy_notices)
+	$(call embed_mediaremote_helper)
 	cp -R .build/release/$(FRAMEWORK) $(APP)/Contents/Frameworks/
 	$(call embed_sparkle)
 	@# The binary's own rpaths point at SPM's build/artifact dirs; inside the
@@ -116,6 +132,7 @@ bundle: build
 	@# Sparkle keeps its authors' signature: without the hardened runtime there is
 	@# no library validation, so the app loads it as signed.
 	codesign --force --sign "$(SIGN_IDENTITY)" $(APP)/Contents/Frameworks/$(FRAMEWORK)
+	codesign --force --sign "$(SIGN_IDENTITY)" $(MEDIAREMOTE_HELPER)/libuvnowplaying.dylib
 	codesign --force --sign "$(SIGN_IDENTITY)" $(APP)
 	@codesign -dv $(APP) 2>&1 | sed -n 's/^/    /p'
 
@@ -158,6 +175,7 @@ endif
 	$(call compile_icon)
 	cp assets/branding/useful-voice-mark-dark.png $(APP)/Contents/Resources/UsefulVoiceLogo.png
 	$(call copy_notices)
+	$(call embed_mediaremote_helper)
 	cp -R .build/release/$(FRAMEWORK) $(APP)/Contents/Frameworks/
 	$(call embed_sparkle)
 	install_name_tool -add_rpath "@executable_path/../Frameworks" \
@@ -170,6 +188,9 @@ endif
 	codesign --force --options runtime --timestamp \
 		--sign "$(DEVID_IDENTITY)" \
 		$(APP)/Contents/Frameworks/$(FRAMEWORK)
+	@# The Now Playing library is loaded by Apple's perl, which has no library validation.
+	codesign --force --options runtime --timestamp \
+		--sign "$(DEVID_IDENTITY)" $(MEDIAREMOTE_HELPER)/libuvnowplaying.dylib
 	@# The hardened runtime's library validation only loads code from the same
 	@# team, so Sparkle is re-signed in the order its docs give
 	@# (sparkle-project.org/documentation/sandboxing).

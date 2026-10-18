@@ -10,6 +10,20 @@ Cross-platform dictation app. macOS: Swift (`Sources/UsefulVoiceCore`,
 - macOS: `make test` (Swift Testing suite) and `swift build`
 - Windows: `cd windows && npm run verify` (typecheck + vitest + build +
   Electron self-test)
+- macOS pause-media live E2E: `scripts/media-pause-e2e/run.sh` builds a silent test player and drives the real
+  `Sources/UsefulVoiceCore/Media` policy against it (log in `verify/pause-media/`; `UV_E2E_AUDIO_ONLY=1 OUT=...` runs the
+  audio fallback alone). It exits 3 without sending anything while another app is outputting audio.
+  Pause media sends only the MediaRemote Pause and Play commands (never the Play/Pause key, which toggles). What plays is
+  read from the system's Now Playing through Apple's `/usr/bin/perl` (MediaRemote answers third-party processes with
+  "nothing playing" since macOS 15.4): `bundle/mediaremote/` (a perl script and a small library, built and signed by `make
+  bundle` into `Contents/Resources/MediaRemote`, read by `NowPlayingReader`). The app resumes only if Now Playing is still
+  the app it paused and nothing played meanwhile; with no Now Playing app Play would launch Music, so it never resumes then.
+  Core Audio's process list is only the fallback when the helper cannot run; there a pause macOS can't observe (a player
+  that stops later than 100 ms, 300 ms for Music/Spotify/WebKit, 10.5 s for Chromium/Electron helpers) isn't remembered, so
+  it isn't resumed: deliberate, never risk playing something unknown.
+  `MediaPausePolicy` takes every wait, window, tick and delay from a `MediaClock`; its tests run on a virtual clock, so they don't
+  depend on machine speed (one real-clock smoke test keeps generous margins). `NowPlayingReader` never raises SIGPIPE, backs off after
+  repeated failures and checks the helper library's signature against the app's before starting perl.
 - Packaging smoke: `cd windows && npx electron-builder --win --dir`
 - Windows E2E: `cd windows && env -u ELECTRON_RUN_AS_NODE npm run e2e` (Playwright drives the
   built app with `--e2e --uv-data-dir=<scratch>`: hidden windows, fixture data, no tray or
@@ -45,6 +59,8 @@ paste, the foreground read and the sound cues go through one long-lived PowerShe
 started at app ready, types compiled once); the delivery order lives in `src/core/delivery/pasteFlow.ts` and the
 clipboard rule in `src/core/delivery/clipboardRestore.ts` (a sent Ctrl+V counts as delivered and the dictation stays on
 the clipboard; the old clipboard is put back only when a cancel arrives before the keystroke and nothing newer was copied).
+
+- Windows pause media (`pauseMediaWhileDictating`, `core/media/mediaPausePolicy.ts`; scripts in `main/mediaScripts.ts`, run in their own PowerShell host so a paste never queues behind them): `e2e/pause-media.spec.ts` uses `__uv.setMedia({id:'Playing'|'Paused'})`, `__uv.mediaState()` and `__uv.mediaCalls()` over a scripted player (`main/e2eMedia.ts`); `tests/mediaControl.windows.test.ts` runs the real scripts on Windows only.
 
 ## Windows renderer layout
 

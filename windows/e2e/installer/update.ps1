@@ -40,8 +40,17 @@ try {
   # Not $old: PowerShell names are case-insensitive, and that is the [string] parameter $Old.
   $oldInstaller = Get-ChildItem $Old -Filter '*-x64.exe' | Select-Object -First 1
   if (-not $oldInstaller) { throw "no old installer in $Old" }
-  $proc = Start-Process -FilePath $oldInstaller.FullName -ArgumentList '/S' -PassThru
-  if (-not $proc.WaitForExit(300000) -or $proc.ExitCode -ne 0) { throw "old installer failed (exit $($proc.ExitCode))" }
+  # The 0.0.9 installer itself sometimes dies on the runner with an access violation
+  # (0xC0000005, exit -1073741819) before this build is involved. Only that exit is retried,
+  # at most twice; any other failure stops the run at once.
+  for ($attempt = 1; $attempt -le 3; $attempt++) {
+    $proc = Start-Process -FilePath $oldInstaller.FullName -ArgumentList '/S' -PassThru
+    if (-not $proc.WaitForExit(300000)) { throw "old installer did not finish in 5 minutes" }
+    if ($proc.ExitCode -eq 0) { break }
+    if ($proc.ExitCode -ne -1073741819 -or $attempt -eq 3) { throw "old installer failed (exit $($proc.ExitCode))" }
+    Say "old installer crashed with an access violation (attempt $attempt); retrying"
+    Start-Sleep -Seconds 5
+  }
   $before = Get-UvEntry
   Say "installed: $($before.Key) $($before.DisplayVersion) at $($before.InstallDir)"
   if ($before.DisplayVersion -ne '0.0.9') { throw "expected 0.0.9 installed, found $($before.DisplayVersion)" }

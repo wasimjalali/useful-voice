@@ -291,6 +291,12 @@ function generalGroup(settings: SettingsDTO): HTMLElement {
       'Sound cues',
       switchControl('Sound cues', settings.soundEffectsEnabled, (value) => save({ soundEffectsEnabled: value })),
     ),
+    row(
+      'Pause media while dictating',
+      switchControl('Pause media while dictating', settings.pauseMediaWhileDictating, (value) =>
+        save({ pauseMediaWhileDictating: value }),
+      ),
+    ),
     goalRow(settings),
   );
 }

@@ -23,6 +23,9 @@ import { HUD_EXIT_MS, HudModel, languageLabel, type HudFrame } from '../core/hud
 import { normaliseLanguageCode } from '../core/transcription/languages.js';
 import { decideFirstRun, firstRunLaunch, shouldOpenAtLaunch, type FirstRunStep } from '../core/firstRun/gate.js';
 import { installProviderStubs, parakeetE2eDeps } from './e2eStub.js';
+import { QuitCoordinator, installerPlan } from './quitCoordinator.js';
+import { FakeMedia, type FakeStatus } from './e2eMedia.js';
+import { MediaPausePolicy, type MediaEffects } from '../core/media/mediaPausePolicy.js';
 import { setSecretSource } from '../core/redaction.js';
 import { sameAccelerator, validateAccelerator } from '../core/settings/accelerator.js';
 import { isSendableKey, keyCheckFailure } from '../core/firstRun/keyCheck.js';
@@ -53,6 +56,7 @@ import {
 import {
   Diagnostics,
   clipboardState,
+  createMediaEffects,
   foregroundWindow,
   restoreForegroundWindow,
   pasteClipboard,
@@ -187,6 +191,11 @@ class UsefulVoiceApp {
   /** The app the current recording will paste into (a hotkey dictation only). */
   private recordingTarget: string | undefined;
   private service!: DictationService;
+  /** Pauses what is playing while a recording runs (`pauseMediaWhileDictating`). */
+  private media!: MediaPausePolicy;
+  private mediaEffects!: MediaEffects & { warm?(): void; dispose?(): void };
+  /** E2E only: the scripted player the media policy talks to instead of Windows. */
+  private fakeMedia: FakeMedia | null = null;
   private diagnostics!: Diagnostics;
 
   /**
@@ -275,8 +284,26 @@ class UsefulVoiceApp {
       },
       releaseStateRequests: () => this.e2eStateRelease?.(),
       stateRequests: () => this.e2eStateRequests,
+      setMedia: (sessions: unknown) => this.fakeMedia?.set(sessions as Record<string, FakeStatus>),
+      mediaState: () => this.fakeMedia?.snapshot(),
+      mediaCalls: () => this.fakeMedia?.calls.slice(),
+      // `app.quit()` from anywhere. (A logoff is driven by emitting `session-end` on a real window.)
+      appQuit: () => app.quit(),
+      scrubMedia: (arg: unknown) => {
+        const { id, byMs } = arg as { id: string; byMs: number };
+        this.fakeMedia?.scrub(id, byMs);
+      },
       mainWindows: () => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().includes('view=main')).length,
     };
+  }
+
+  /** E2E only: a line in <userData>/e2e.log, which outlives the app. */
+  private e2eAppend(line: string): void {
+    try {
+      appendFileSync(path.join(app.getPath('userData'), 'e2e.log'), `${new Date().toISOString()} ${line}\n`);
+    } catch {
+      // Diagnostics only.
+    }
   }
 
   private lastToggleSource: DictationSource | undefined;
@@ -333,6 +360,8 @@ class UsefulVoiceApp {
 
   /** Set once `quit()` starts, so a second Quit or launch during it changes nothing. */
   private quitting: Promise<void> | null = null;
+  /** The quit entry points (before-quit, will-quit, session-end). */
+  private quitHandlers!: QuitCoordinator;
 
   async start(): Promise<void> {
     // A second launch must hand off to the running instance rather than start a
@@ -360,6 +389,21 @@ class UsefulVoiceApp {
     });
 
     app.setAppUserModelId(APP_USER_MODEL_ID);
+
+    // Every way of ending the app reaches the one orderly quit, so the media paused for a
+    // dictation plays again on all of them. What Electron does on a Windows logoff or shutdown,
+    // and why `session-end` has to start a quit, is in `quitCoordinator.ts`.
+    const quits = new QuitCoordinator({
+      quit: () => this.quit(),
+      requestAppQuit: () => app.quit(),
+      shutdownMedia: (budgetMs) => this.media?.shutdown(budgetMs) ?? Promise.resolve(true),
+    });
+    app.on('before-quit', (event) => quits.onBeforeQuit(event));
+    app.on('will-quit', (event) => quits.onWillQuit(event));
+    app.on('browser-window-created', (_event, window) => {
+      window.on('session-end', () => quits.onSessionEnd());
+    });
+    this.quitHandlers = quits;
 
     await app.whenReady();
 
@@ -1060,6 +1104,11 @@ class UsefulVoiceApp {
   private async runQuit(options: { restartToUpdate?: boolean }): Promise<void> {
     try {
       await this.service.cancel();
+      // Whatever was paused for a dictation plays again before the app goes. Bounded, so a
+      // slow player cannot hold the quit: the budget covers a warm media host. Logged before
+      // the diagnostics are flushed below, so a miss is on record.
+      const mediaResumed = await this.media.shutdown(2500);
+      if (!mediaResumed) this.diagnostics.log('media', 'quit: could not confirm the media was played again; it may stay paused');
       await this.saveRendererDrafts();
       // Always give the data a chance to reach disk before exiting: a debounced
       // save that never fires would lose the user's last dictionary edit.
@@ -1072,14 +1121,17 @@ class UsefulVoiceApp {
       this.parakeet?.dispose();
       globalShortcut.unregisterAll();
       stopPowerShellHost();
+      this.mediaEffects.dispose?.();
       this.tray?.destroy();
       // `app.exit` skips the quit events electron-updater listens for, so a downloaded
       // update is handed to its installer here, on every quit.
-      const restart = options.restartToUpdate === true;
+      const sessionEnded = this.quitHandlers?.sessionEnded === true;
+      const plan = installerPlan({ restartToUpdate: options.restartToUpdate === true, sessionEnded });
+      const restart = plan.relaunch;
       const updateReady = this.updater?.ready;
       // The data is flushed, so nothing may start a dictation or an edit while the installer
       // is checked below: close every window (the app has no window-all-closed quit).
-      if (updateReady) for (const window of BrowserWindow.getAllWindows()) window.destroy();
+      if (updateReady && plan.install) for (const window of BrowserWindow.getAllWindows()) window.destroy();
       // Its own file, appended synchronously: diagnostics.log is rewritten by the next
       // launch, which is seconds away on both paths, and nothing async survives `app.exit`.
       // The first line goes in before the restart wait, which the installer can cut short.
@@ -1093,19 +1145,23 @@ class UsefulVoiceApp {
       const describe = (started: boolean): string =>
         `installer for ${updateReady} ${started ? 'started' : `did not start (${this.updater?.lastProblem ?? 'no reason recorded'})`}${restart ? ', restart requested' : ''}`;
       let spawned: boolean | null = null;
-      const installing =
-        (await this.updater?.installOnExit(restart, (started) => {
-          spawned = started;
-          if (updateReady) updateLog(describe(started));
-        })) ?? false;
-      if (updateReady) {
+      // A logoff or shutdown never starts the installer: the update waits for a normal quit.
+      if (!plan.install && updateReady) updateLog(`installer for ${updateReady} not started: the session is ending`);
+      const installing = plan.install
+        ? ((await this.updater?.installOnExit(restart, (started) => {
+            spawned = started;
+            if (updateReady) updateLog(describe(started));
+          })) ?? false)
+        : false;
+      if (updateReady && plan.install) {
         // Refused before any spawn (the file is gone, the call threw), or a spawn failure
         // that arrived during the wait.
         if (spawned === null) updateLog(describe(false));
         else if (spawned && !installing) updateLog(`installer for ${updateReady} failed after starting (${this.updater?.lastProblem ?? 'no reason recorded'})`);
       }
       // The person asked for a restart: come back even if the installer could not start.
-      if (restart && !installing) app.relaunch();
+      if (plan.relaunch && !installing) app.relaunch();
+      if (E2E) this.e2eAppend('quit: exiting');
       app.exit(0);
     }
   }
@@ -1222,6 +1278,21 @@ class UsefulVoiceApp {
             this.diagnostics.log('dictation', `could not end the recording after a recorder error: ${(failure as Error).message}`),
           ),
     });
+    if (E2E) {
+      // Every call is also appended to e2e.log, which a spec reads after the app has exited.
+      this.fakeMedia = new FakeMedia((line) => this.e2eAppend(`media ${line}`));
+      this.mediaEffects = this.fakeMedia;
+    } else {
+      const effects = createMediaEffects(APP_USER_MODEL_ID, (message) => this.diagnostics.log('media', message));
+      this.mediaEffects = effects;
+      // The media host starts now, so the first dictation does not wait for it.
+      if (this.settings.all.pauseMediaWhileDictating) effects.warm();
+    }
+    this.media = new MediaPausePolicy({
+      effects: this.mediaEffects,
+      enabled: () => this.settings.all.pauseMediaWhileDictating,
+      log: (message) => this.diagnostics.log('media', message),
+    });
     return new DictationService({
       recorder: this.recorder,
       // The provider for the chosen voice model, never another one.
@@ -1261,6 +1332,7 @@ class UsefulVoiceApp {
         this.sendToMainAndHud('dictation:telemetry', telemetry);
       },
       onDiagnostic: (category, message) => this.diagnostics.log(category, message),
+      onRecording: (event) => (event === 'start' ? this.media.recordingStarted() : this.media.recordingEnded()),
       onCompleted: (outcome) => {
         // The practice dictation in the setup flow: its text goes to the flow's field.
         if (this.firstRun.open && this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -1608,6 +1680,7 @@ class UsefulVoiceApp {
       if (refusal) throw new Error(refusal);
       const next = this.settings.update(patch);
       if (patch.voiceModelId !== undefined) this.syncParakeet(true);
+      if (patch.pauseMediaWhileDictating === true) this.mediaEffects.warm?.();
       applyAppearance(next.appearance);
       // nativeTheme emits 'updated' on a themeSource change; sync anyway so the
       // window never depends on that event alone.
@@ -2286,7 +2359,7 @@ export async function runSelfTest(): Promise<SelfTestResult> {
   const stubs: Record<string, unknown> = {
     'settings:get': {
       languagePin: 'en', formattingEnabled: true, silenceTimeoutSeconds: 30,
-      maxRecordingSeconds: 600, recordingsToKeep: 5, soundEffectsEnabled: true,
+      maxRecordingSeconds: 600, recordingsToKeep: 5, soundEffectsEnabled: true, pauseMediaWhileDictating: true,
       launchAtLogin: false, hotkey: { accelerator: 'Control+Alt+Space', pushToTalk: false },
       dictionaryBiasBudget: 100, hasApiKey: true, voiceModelId: 'deepgram:nova-3', formatterId: null,
       keys: { deepgram: true, elevenlabs: false, gemini: false, anthropic: false },

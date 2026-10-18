@@ -18,6 +18,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotkeys = HotkeyManager()
     private let hud = HUDPanel()
     private let chimes = ChimePlayer()
+    /// Pauses what is playing while a dictation records and plays it again afterwards.
+    /// Built at launch, once the settings it reads exist.
+    private var mediaPause: MediaPausePolicy?
     private let inserter = TextInserter()
     private let mainWindow = MainWindowController()
     private var viewModel: UsefulVoiceViewModel?
@@ -135,6 +138,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // differently signed copy of the app.
         if ProcessInfo.processInfo.environment["UV_SNAPSHOT"] == nil { primeKeyCache() }
         chimes.isEnabled = { [settings] in settings.soundEffectsEnabled }
+        let mediaEffects = SystemMediaEffects(helperDirectory: SystemMediaEffects.bundledHelperDirectory)
+        mediaPause = MediaPausePolicy(
+            effects: mediaEffects,
+            isEnabled: { [settings] in settings.pauseMediaWhileDictating })
+        // Not in an offscreen render (UV_SNAPSHOT), which never dictates.
+        if !isSnapshot, settings.pauseMediaWhileDictating { mediaEffects.warmUp() }
         setUpController()
         // Before the status item, whose menu shows the update item only when the
         // updater runs. Not in a render or forced first-run preview, which save nothing.
@@ -408,6 +417,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             controller?.cancel()
         }
         hud.hideImmediately()
+        // After the cancel above, so a quit mid-dictation also plays the media again.
+        mediaPause?.shutdown()
         viewModel?.flushPendingEdits()
         firstRun?.appWillTerminate()
         // Keep the bytes of any model download in flight: pause it so URLSession
@@ -1056,6 +1067,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func render(state: DictationState) {
         defer { lastDictationState = state }
+        // Any way out of a recording (stop, auto-stop, cancel, error) lets the media play again.
+        if lastDictationState == .recording, state != .recording { mediaPause?.recordingEnded() }
         // Publish to the tap thread whether Esc belongs to us. Set here rather
         // than read from a closure so the tap thread never touches main-actor
         // state directly.
@@ -1070,6 +1083,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // still on screen is cleared here.
             hud.hideIfProgress()
         case .recording:
+            mediaPause?.recordingStarted()
             chimes.playStart()
             startRecordingTimer()
             setIcon(tint: .systemRed)

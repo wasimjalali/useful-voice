@@ -151,6 +151,13 @@ export interface DictationServiceDeps {
    * key here — the bounded log is something the user can share.
    */
   onDiagnostic?: (category: string, message: string) => void;
+  /**
+   * The recording is starting (`start`, when the press is accepted, before the recorder
+   * answers) or is over for whatever reason (`end`: stop, limit, cancel, recorder error,
+   * start failure). `end` may repeat; it fires before transcription, never after it.
+   * Used to pause and resume media. Must not throw and must not wait.
+   */
+  onRecording?: (event: 'start' | 'end') => void;
   /** Optional post-transcription formatting (the formatter). */
   formatter?: FormatterPort;
   idFactory?: () => string;
@@ -343,12 +350,14 @@ export class DictationService {
     this.stopWhenStarted = false;
     this.pendingTargetApp = options.targetApp;
     const token = this.startToken;
+    this.recordingEvent('start');
     try {
       await this.deps.recorder.start();
     } catch (error) {
       // Cancelled while starting: nobody is waiting for this recording, or its failure.
       if (token !== this.startToken) return;
       this.stopWhenStarted = false;
+      this.recordingEvent('end');
       // A missing/blocked microphone must produce an actionable message, not a
       // bare "error 4" the way the unlocalized Swift enum did.
       this.setState('error', classifyRecordingFailure(error));
@@ -420,6 +429,7 @@ export class DictationService {
     try {
       captured = await this.deps.recorder.stop();
     } catch (error) {
+      this.recordingEvent('end');
       if (this.session !== session) return;
       this.clock.stop();
       if (cancelRecorderOnFailure) {
@@ -429,6 +439,8 @@ export class DictationService {
       this.fail(session, { kind: 'stopFailed', message: failureMessage(error) });
       return;
     }
+    // The microphone is closed: whatever was playing can play again while this is transcribed.
+    this.recordingEvent('end');
     // Cancelled while the recorder was still stopping: the audio is dropped.
     if (this.session !== session) return;
     this.clock.stop();
@@ -445,6 +457,8 @@ export class DictationService {
    */
   async cancel(): Promise<void> {
     this.sequenceNumber += 1;
+    // Harmless when no recording is on (it may already have ended): nothing is resumed twice.
+    this.recordingEvent('end');
     // The recorder is still starting: nothing is recording yet to stop, so abandon the start.
     if (this.starting) {
       this.startToken += 1;
@@ -526,6 +540,7 @@ export class DictationService {
     this.stopMonitoring();
     this.clock.stop();
     await this.deps.recorder.cancel().catch(() => undefined);
+    this.recordingEvent('end');
     this.fail(session, classifyRecordingFailure(error));
   }
 
@@ -941,6 +956,15 @@ export class DictationService {
 
   private retain(captured: CapturedAudio, language: MemoryLanguage): void {
     this.lastFailed = { audio: captured, language };
+  }
+
+  private recordingEvent(event: 'start' | 'end'): void {
+    try {
+      this.deps.onRecording?.(event);
+    } catch (error) {
+      // Media is a courtesy: it must never become a dictation error.
+      this.deps.onDiagnostic?.('media', `recording ${event} hook failed: ${describe(error)}`);
+    }
   }
 
   private setState(state: DictationState, error?: DictationError | string, targetApp?: string): void {

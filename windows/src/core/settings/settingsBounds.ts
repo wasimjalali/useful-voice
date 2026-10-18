@@ -77,6 +77,12 @@ export function normaliseSettings(settings: AppSettings): AppSettings {
     // to the default voice model / no formatter instead of failing every dictation.
     voiceModelId: normaliseVoiceModelId(settings.voiceModelId),
     formatterId: normaliseFormatterId(settings.formatterId),
+    // A stored value that is not a real boolean (a hand-edited file, a string "false") must
+    // not read as truthy: it falls back to the default instead.
+    pauseMediaWhileDictating:
+      typeof settings.pauseMediaWhileDictating === 'boolean'
+        ? settings.pauseMediaWhileDictating
+        : DEFAULT_SETTINGS.pauseMediaWhileDictating,
     languageSwitchHotkey: settings.languageSwitchHotkey
       ? {
           accelerator: String(settings.languageSwitchHotkey.accelerator ?? ''),

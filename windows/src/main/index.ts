@@ -23,6 +23,8 @@ import { HUD_EXIT_MS, HudModel, languageLabel, type HudFrame } from '../core/hud
 import { normaliseLanguageCode } from '../core/transcription/languages.js';
 import { decideFirstRun, firstRunLaunch, shouldOpenAtLaunch, type FirstRunStep } from '../core/firstRun/gate.js';
 import { installProviderStubs, parakeetE2eDeps } from './e2eStub.js';
+import { FakeMedia, type FakeStatus } from './e2eMedia.js';
+import { MediaPausePolicy, type MediaEffects } from '../core/media/mediaPausePolicy.js';
 import { setSecretSource } from '../core/redaction.js';
 import { sameAccelerator, validateAccelerator } from '../core/settings/accelerator.js';
 import { isSendableKey, keyCheckFailure } from '../core/firstRun/keyCheck.js';
@@ -53,6 +55,7 @@ import {
 import {
   Diagnostics,
   clipboardState,
+  createMediaEffects,
   foregroundWindow,
   restoreForegroundWindow,
   pasteClipboard,
@@ -187,6 +190,11 @@ class UsefulVoiceApp {
   /** The app the current recording will paste into (a hotkey dictation only). */
   private recordingTarget: string | undefined;
   private service!: DictationService;
+  /** Pauses what is playing while a recording runs (`pauseMediaWhileDictating`). */
+  private media!: MediaPausePolicy;
+  private mediaEffects!: MediaEffects & { warm?(): void; dispose?(): void };
+  /** E2E only: the scripted player the media policy talks to instead of Windows. */
+  private fakeMedia: FakeMedia | null = null;
   private diagnostics!: Diagnostics;
 
   /**
@@ -275,6 +283,9 @@ class UsefulVoiceApp {
       },
       releaseStateRequests: () => this.e2eStateRelease?.(),
       stateRequests: () => this.e2eStateRequests,
+      setMedia: (sessions: unknown) => this.fakeMedia?.set(sessions as Record<string, FakeStatus>),
+      mediaState: () => this.fakeMedia?.snapshot(),
+      mediaCalls: () => this.fakeMedia?.calls.slice(),
       mainWindows: () => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().includes('view=main')).length,
     };
   }
@@ -1060,6 +1071,15 @@ class UsefulVoiceApp {
   private async runQuit(options: { restartToUpdate?: boolean }): Promise<void> {
     try {
       await this.service.cancel();
+      // Whatever was paused for a dictation plays again before the app goes; bounded, so a
+      // slow player cannot hold the quit.
+      let mediaTimer: NodeJS.Timeout | undefined;
+      await Promise.race([
+        this.media.shutdown(),
+        new Promise<void>((resolve) => {
+          mediaTimer = setTimeout(resolve, 2500);
+        }),
+      ]).finally(() => clearTimeout(mediaTimer));
       await this.saveRendererDrafts();
       // Always give the data a chance to reach disk before exiting: a debounced
       // save that never fires would lose the user's last dictionary edit.
@@ -1072,6 +1092,7 @@ class UsefulVoiceApp {
       this.parakeet?.dispose();
       globalShortcut.unregisterAll();
       stopPowerShellHost();
+      this.mediaEffects.dispose?.();
       this.tray?.destroy();
       // `app.exit` skips the quit events electron-updater listens for, so a downloaded
       // update is handed to its installer here, on every quit.
@@ -1222,6 +1243,20 @@ class UsefulVoiceApp {
             this.diagnostics.log('dictation', `could not end the recording after a recorder error: ${(failure as Error).message}`),
           ),
     });
+    if (E2E) {
+      this.fakeMedia = new FakeMedia();
+      this.mediaEffects = this.fakeMedia;
+    } else {
+      const effects = createMediaEffects(APP_USER_MODEL_ID, (message) => this.diagnostics.log('media', message));
+      this.mediaEffects = effects;
+      // The media host starts now, so the first dictation does not wait for it.
+      if (this.settings.all.pauseMediaWhileDictating) effects.warm();
+    }
+    this.media = new MediaPausePolicy({
+      effects: this.mediaEffects,
+      enabled: () => this.settings.all.pauseMediaWhileDictating,
+      log: (message) => this.diagnostics.log('media', message),
+    });
     return new DictationService({
       recorder: this.recorder,
       // The provider for the chosen voice model, never another one.
@@ -1261,6 +1296,7 @@ class UsefulVoiceApp {
         this.sendToMainAndHud('dictation:telemetry', telemetry);
       },
       onDiagnostic: (category, message) => this.diagnostics.log(category, message),
+      onRecording: (event) => (event === 'start' ? this.media.recordingStarted() : this.media.recordingEnded()),
       onCompleted: (outcome) => {
         // The practice dictation in the setup flow: its text goes to the flow's field.
         if (this.firstRun.open && this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -1608,6 +1644,7 @@ class UsefulVoiceApp {
       if (refusal) throw new Error(refusal);
       const next = this.settings.update(patch);
       if (patch.voiceModelId !== undefined) this.syncParakeet(true);
+      if (patch.pauseMediaWhileDictating === true) this.mediaEffects.warm?.();
       applyAppearance(next.appearance);
       // nativeTheme emits 'updated' on a themeSource change; sync anyway so the
       // window never depends on that event alone.
@@ -2286,7 +2323,7 @@ export async function runSelfTest(): Promise<SelfTestResult> {
   const stubs: Record<string, unknown> = {
     'settings:get': {
       languagePin: 'en', formattingEnabled: true, silenceTimeoutSeconds: 30,
-      maxRecordingSeconds: 600, recordingsToKeep: 5, soundEffectsEnabled: true,
+      maxRecordingSeconds: 600, recordingsToKeep: 5, soundEffectsEnabled: true, pauseMediaWhileDictating: true,
       launchAtLogin: false, hotkey: { accelerator: 'Control+Alt+Space', pushToTalk: false },
       dictionaryBiasBudget: 100, hasApiKey: true, voiceModelId: 'deepgram:nova-3', formatterId: null,
       keys: { deepgram: true, elevenlabs: false, gemini: false, anthropic: false },

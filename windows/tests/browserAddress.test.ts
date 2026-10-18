@@ -1,4 +1,4 @@
-import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -17,10 +17,8 @@ import { browserAddressScript } from '../src/main/powershellScripts.js';
  *
  * Skipped where there is no Edge. When Edge never opens a window it fails on CI (the
  * windows-latest runner has Edge, so a skip there would hide a broken check) and skips
- * elsewhere. A wrong or missing read fails, and so do two or more warm reads slower than
- * a delivery waits for (`DELIVERY_ADDRESS_MS`), which would switch the page check off
- * unseen. It runs alone (`vitest.desktop.config.ts`): beside the other test files, a read
- * timed a C# compile on the same runner.
+ * elsewhere. A wrong or missing read fails, and so does a read slower than a delivery
+ * waits for (`DELIVERY_ADDRESS_MS`), which would switch the page check off unseen.
  */
 const edge = [
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
@@ -29,40 +27,29 @@ const edge = [
 
 const TITLE = 'uv-address-check';
 
-// Edge's first start on a fresh runner profile can take most of a minute on a slow runner,
-// so one PowerShell waits for the window inside its own loop (no new PowerShell per look),
-// and its call gets room for a slow PowerShell start on top. A call that still times out
-// only means "no window yet". The test's own limit is built from the same numbers, so it
-// can't expire before the wait plus the reads.
-const WINDOW_WAIT_MS = 90_000;
-const WINDOW_WAIT_CALL_MS = WINDOW_WAIT_MS + 60_000;
+// A cold PowerShell start can take far longer than a warm one (CI starts it while other
+// tests start theirs: one start took 35 s), so the window poll gives each call room and a
+// call that still times out only means "no window yet". The test's own limit is built from
+// the same numbers, so it can't expire before the poll deadline plus the reads.
+const WINDOW_POLL_DEADLINE_MS = 45_000;
+const WINDOW_POLL_CALL_MS = 90_000;
 const READ_ATTEMPTS = 5;
 const READ_CALL_MS = 30_000;
 const READ_PAUSE_MS = 1500;
-// Warm reads are timed, not killed at the cap: one slow sample on a shared runner is
-// noise, a second one is a read that no longer reliably fits a delivery.
-const WARM_RUNS = 5;
-const WARM_CALL_MS = 10_000;
+const WARM_RUNS = 3;
 const TEST_TIMEOUT_MS =
-  WINDOW_WAIT_CALL_MS + READ_ATTEMPTS * (READ_CALL_MS + READ_PAUSE_MS) + WARM_RUNS * 2 * WARM_CALL_MS + 30_000;
+  WINDOW_POLL_DEADLINE_MS + WINDOW_POLL_CALL_MS + READ_ATTEMPTS * (READ_CALL_MS + READ_PAUSE_MS) + WARM_RUNS * DELIVERY_ADDRESS_MS + 30_000;
 
-/** Whether `error` is `execFile` killing a script that ran past its timeout. */
+/** Whether `error` is `execFileSync` giving up on a spawn that ran past its timeout. */
 function timedOut(error: unknown): boolean {
-  return (error as { killed?: boolean } | undefined)?.killed === true;
+  return (error as NodeJS.ErrnoException | undefined)?.code === 'ETIMEDOUT';
 }
 
-/**
- * Asynchronous on purpose: the page Edge loads is served by this same process, so a
- * synchronous spawn would leave Edge's request unanswered for as long as the script runs.
- */
-function powershell(script: string, timeout = 30_000): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
-      { encoding: 'utf8', timeout, windowsHide: true },
-      (error, stdout) => (error ? reject(error) : resolve(stdout)),
-    );
+function powershell(script: string, timeout = 30_000): string {
+  return execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+    encoding: 'utf8',
+    timeout,
+    windowsHide: true,
   });
 }
 
@@ -114,24 +101,22 @@ describe.skipIf(!edge)('address bar read on a real Edge', () => {
   });
 
   it('returns the page address, not the focused field on the page', async (ctx) => {
-    let out = '';
-    try {
-      out = (
-        await powershell(
-          `$deadline = (Get-Date).AddMilliseconds(${WINDOW_WAIT_MS})
-do {
-  $handle = Get-Process msedge -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -like '*${TITLE}*' } | Select-Object -First 1 -ExpandProperty MainWindowHandle
-  if ($handle) { Write-Output $handle; exit 0 }
-  Start-Sleep -Milliseconds 500
-} while ((Get-Date) -lt $deadline)`,
-          WINDOW_WAIT_CALL_MS,
-        )
-      ).trim();
-    } catch (error) {
-      // A PowerShell that was too slow to start is "no window yet"; anything else is a real failure.
-      if (!timedOut(error)) throw error;
+    let handle = 0;
+    const deadline = Date.now() + WINDOW_POLL_DEADLINE_MS;
+    while (Date.now() < deadline && handle === 0) {
+      let out = '';
+      try {
+        out = powershell(
+          `Get-Process msedge -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -like '*${TITLE}*' } | Select-Object -First 1 -ExpandProperty MainWindowHandle`,
+          WINDOW_POLL_CALL_MS,
+        ).trim();
+      } catch (error) {
+        // A PowerShell that was too slow to start is "no window yet"; anything else is a real failure.
+        if (!timedOut(error)) throw error;
+      }
+      handle = Number(out) || 0;
+      if (handle === 0) await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-    const handle = Number(out) || 0;
     if (handle === 0) {
       if (process.env.CI) expect.fail('Edge never opened a window, so the address bar read was not checked');
       ctx.skip();
@@ -140,7 +125,7 @@ do {
     let value = '';
     // UI Automation on a page that just loaded can need a moment to build its tree.
     for (let attempt = 0; attempt < READ_ATTEMPTS && value === ''; attempt += 1) {
-      const encoded = (await powershell(browserAddressScript(handle, 'chromium'), READ_CALL_MS)).trim().split(/\r?\n/).pop() ?? '';
+      const encoded = powershell(browserAddressScript(handle, 'chromium'), READ_CALL_MS).trim().split(/\r?\n/).pop() ?? '';
       value = encoded ? Buffer.from(encoded, 'base64').toString('utf8').trim() : '';
       if (value === '') await new Promise((resolve) => setTimeout(resolve, READ_PAUSE_MS));
     }
@@ -150,35 +135,14 @@ do {
     const address = /^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `https://${value}`;
     expect(pageKey(address)).toMatch(new RegExp(`^https?://127\\.0\\.0\\.1:${port}/compose\\?draft=1$`));
 
-    // Warm, the whole read (PowerShell start included) fits what a delivery waits for. A bare
-    // PowerShell start is timed beside each read, so the log shows how much of it is the start.
+    // Warm, the whole read (PowerShell start included) fits what a delivery waits for.
     const timings: number[] = [];
-    const starts: number[] = [];
     for (let run = 0; run < WARM_RUNS; run += 1) {
-      let started = Date.now();
-      try {
-        await powershell('exit 0', WARM_CALL_MS);
-        starts.push(Date.now() - started);
-      } catch (error) {
-        if (!timedOut(error)) throw error;
-        starts.push(WARM_CALL_MS);
-      }
-      started = Date.now();
-      try {
-        const encoded = (await powershell(browserAddressScript(handle, 'chromium'), WARM_CALL_MS)).trim().split(/\r?\n/).pop() ?? '';
-        timings.push(Date.now() - started);
-        expect(Buffer.from(encoded, 'base64').toString('utf8')).toContain(`127.0.0.1:${port}/compose?draft=1`);
-      } catch (error) {
-        if (!timedOut(error)) throw error;
-        timings.push(WARM_CALL_MS);
-      }
+      const started = Date.now();
+      const encoded = powershell(browserAddressScript(handle, 'chromium'), DELIVERY_ADDRESS_MS).trim().split(/\r?\n/).pop() ?? '';
+      timings.push(Date.now() - started);
+      expect(Buffer.from(encoded, 'base64').toString('utf8')).toContain(`127.0.0.1:${port}/compose?draft=1`);
     }
-    const median = (values: number[]): number => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)]!;
-    console.log(
-      `address bar read, warm: ${timings.join(', ')} ms (median ${median(timings)}, cap ${DELIVERY_ADDRESS_MS} ms); ` +
-        `PowerShell start alone: ${starts.join(', ')} ms (median ${median(starts)})`,
-    );
-    const over = timings.filter((ms) => ms > DELIVERY_ADDRESS_MS).length;
-    expect(over, `warm reads ${timings.join(', ')} ms, ${over} over the cap`).toBeLessThanOrEqual(1);
+    console.log(`address bar read, warm: ${timings.join(', ')} ms (cap ${DELIVERY_ADDRESS_MS} ms)`);
   }, TEST_TIMEOUT_MS);
 });

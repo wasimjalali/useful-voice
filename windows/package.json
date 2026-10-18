@@ -19,7 +19,7 @@
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "node scripts/build-renderer.mjs",
     "build:icon": "node scripts/make-icon.mjs",
-    "test": "vitest run && vitest run --config vitest.desktop.config.ts",
+    "test": "vitest run",
     "test:watch": "vitest",
     "start": "npm run build && electron .",
     "self-test": "npm run build && electron . --self-test --report=self-test-report.txt",

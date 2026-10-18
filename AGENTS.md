@@ -10,9 +10,6 @@ Cross-platform dictation app. macOS: Swift (`Sources/UsefulVoiceCore`,
 - macOS: `make test` (Swift Testing suite) and `swift build`
 - Windows: `cd windows && npm run verify` (typecheck + vitest + build +
   Electron self-test)
-- Windows real-desktop tests (`tests/browserAddress.test.ts`, a real Edge read with UI Automation) run in a second
-  vitest pass on their own (`vitest.desktop.config.ts`, listed in `DESKTOP_TESTS`); `npm test` runs both passes.
-  Beside the other files their timings measured the C# compiles in `powershellScripts.test.ts`, not the read.
 - Packaging smoke: `cd windows && npx electron-builder --win --dir`
 - Windows E2E: `cd windows && env -u ELECTRON_RUN_AS_NODE npm run e2e` (Playwright drives the
   built app with `--e2e --uv-data-dir=<scratch>`: hidden windows, fixture data, no tray or

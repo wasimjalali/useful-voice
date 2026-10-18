@@ -345,6 +345,79 @@ describe('PowerShellHost', () => {
     expect(children[1]?.written.map((entry) => entry.script)).toEqual([SETUP, 'paste again']);
   });
 
+  it('refuses a request whose prepare outlasts its limit, and the queue moves on', async () => {
+    const { host, children } = makeHost({ prepareTimeoutMs: 1000 });
+    await host.start();
+    const child = children[0] as FakeChild;
+    const stuck = host
+      .run('stuck', { prepare: () => new Promise<string | false>(() => undefined) })
+      .catch((e: unknown) => e);
+    const next = host.run('next');
+    await vi.advanceTimersByTimeAsync(900);
+    expect(child.written).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(await stuck).toMatchObject({ kind: 'aborted', sent: false });
+    expect(await next).toBe('ran:next');
+    expect(child.written.map((entry) => entry.script)).toEqual([SETUP, 'next']);
+  });
+
+  it('releases a request at once when it is aborted during its prepare', async () => {
+    const { host, children } = makeHost();
+    await host.start();
+    const controller = new AbortController();
+    const pending = host
+      .run('paste', { signal: controller.signal, prepare: () => new Promise<string | false>(() => undefined) })
+      .catch((e: unknown) => e);
+    const next = host.run('next');
+    await vi.advanceTimersByTimeAsync(10);
+    controller.abort();
+    // Well inside the prepare limit: the abort released it.
+    await vi.advanceTimersByTimeAsync(10);
+    expect(await pending).toMatchObject({ kind: 'aborted', sent: false });
+    expect(await next).toBe('ran:next');
+    expect(children[0]?.written.map((entry) => entry.script)).toEqual([SETUP, 'next']);
+  });
+
+  it('rejects a request that is in its prepare when the host is disposed', async () => {
+    const { host, children } = makeHost();
+    await host.start();
+    const pending = host
+      .run('paste', { prepare: () => new Promise<string | false>(() => undefined) })
+      .catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(10);
+    host.dispose();
+    expect(await pending).toMatchObject({ kind: 'unavailable', sent: false });
+    expect(children[0]?.written).toHaveLength(1);
+  });
+
+  it('rejects a requeued request as unsent when the host cannot come back, instead of waiting', async () => {
+    const children: FakeChild[] = [];
+    let spawns = 0;
+    const { host } = makeHost({
+      spawn: () => {
+        spawns += 1;
+        if (spawns > 1) throw new Error('ENOENT');
+        const child = new FakeChild();
+        child.onRequest = (request, self) => self.reply(request.id);
+        children.push(child);
+        return child;
+      },
+    });
+    await host.start();
+    let release: (script: string | false) => void = () => undefined;
+    const pending = host
+      .run('paste', { prepare: () => new Promise<string | false>((resolve) => (release = resolve)) })
+      .catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(10);
+    // The host dies during the check and cannot be restarted.
+    (children[0] as FakeChild).emit('exit', 1);
+    await vi.advanceTimersByTimeAsync(10);
+    release('paste');
+    // Rejected at once, unsent, so the caller falls back to a one-shot process; it does not
+    // sit in the queue until its own abort.
+    expect(await pending).toMatchObject({ kind: 'unavailable', sent: false });
+  });
+
   it('treats a broken stdin pipe as a death: fails the request and restarts', async () => {
     const { host, children } = makeHost();
     await host.start();

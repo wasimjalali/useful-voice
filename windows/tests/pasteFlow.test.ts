@@ -415,6 +415,36 @@ describe('deliverText: our own windows', () => {
   });
 });
 
+describe('deliverText: a last-moment check that did not finish', () => {
+  it('copies and says so, without blaming our window, when blocked for no reason of ours', async () => {
+    // The host refused because the check took too long or threw: no refusal was recorded.
+    const harness = new Harness();
+    harness.ports.pasteKeystroke = async () => 'blocked';
+    const result = await deliverText(request(), harness.ports);
+    expect(result).toEqual({ delivered: false, clipboardFallback: true });
+    expect(harness.events.some((event) => event.includes('came to the front'))).toBe(false);
+    expect(harness.events.some((event) => event.includes('did not finish'))).toBe(true);
+  });
+
+  it('stamps the text-field permission with the time of the check', async () => {
+    const harness = new Harness();
+    harness.ownInFront = true;
+    const before = Date.now();
+    let stamp: number | undefined;
+    const original = harness.ports.pasteKeystroke;
+    harness.ports.pasteKeystroke = async (keystroke) => {
+      const wrapped = { ...keystroke, authorize: async () => {
+        const answer = await keystroke.authorize();
+        stamp = answer ? answer.checkedAt : undefined;
+        return answer;
+      } };
+      return original(wrapped);
+    };
+    await deliverText(request({ startedInOwnWindow: true }), harness.ports);
+    expect(stamp).toBeGreaterThanOrEqual(before);
+  });
+});
+
 describe('deliverText: the clipboard changed or cannot be read', () => {
   it('sends nothing and leaves the newer copy alone', async () => {
     const harness = new Harness();

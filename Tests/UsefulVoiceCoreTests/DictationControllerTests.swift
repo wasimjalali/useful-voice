@@ -1743,6 +1743,7 @@ final class SwitchingProvider: TranscriptionProvider, @unchecked Sendable {
         guard case .error(let error) = controller.state else {
             Issue.record("expected an error state"); return
         }
+        #expect(error.kind == .retryUnavailable)
         #expect(error.message == "The recording for this dictation is gone, so it can't be retried.")
         #expect(error.fix == nil)
         #expect(!controller.canRetry)

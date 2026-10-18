@@ -35,6 +35,8 @@ struct DockIssue: Equatable {
                 (lead, rest, icon, tone) = ("The disk is full.", "Free up space, then dictate again.", "exclamationmark.triangle", .danger)
             case .recordingFailed:
                 (lead, rest, icon, tone) = ("Couldn't start recording.", "", "exclamationmark.triangle", .danger)
+            case .retryUnavailable:
+                (lead, rest, icon, tone) = (error.message, "", "exclamationmark.triangle", .danger)
             case .deliveryFailed:
                 (lead, rest, icon, tone) = ("Couldn't copy the text.", "It's saved in Useful Voice.", "exclamationmark.triangle", .danger)
             case .stopFailed:

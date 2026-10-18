@@ -46,9 +46,9 @@ UV_S1_MINI_PATH=<s1-mini-q4_k_m.gguf> UV_CLEANUP_EVAL_CASES=evals/cleanup/heldou
 ```
 
 `--fetch` downloads the pinned llama.cpp release and both Q4_K_M files and stops on a SHA-256
-mismatch. `--out` never overwrites a file. `.github/workflows/cleanup-eval.yml` (manual dispatch
-only) runs an in-sample subset and the held-out set on `macos-15`, prints the raw JSON to the job
-log and uploads it.
+mismatch. `--out` never overwrites a file. A manual-dispatch workflow, `.github/workflows/cleanup-eval.yml`,
+ran an in-sample subset and the held-out set on `macos-15`, printed the raw JSON to the job log and
+uploaded it. The workflow was removed in PR #63; the file is at commit d4d1132.
 
 Licenses: both models are Apache 2.0. S1-mini adds one term: it must always be credited as
 "S1-mini" by "Superwhisper".

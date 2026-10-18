@@ -16,6 +16,18 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     var onClose: (() -> Void)?
     private var appVisibilityObservers: [NSObjectProtocol] = []
 
+    /// Whether an editable text view of the main window has keyboard focus, so a
+    /// dictation paste there lands in a field. Other windows of ours never count: the
+    /// language picker's search field must not receive a dictation.
+    var hasEditableFieldFocused: Bool {
+        Self.editableFieldFocused(in: NSApp.keyWindow, mainWindow: window)
+    }
+
+    static func editableFieldFocused(in keyWindow: NSWindow?, mainWindow: NSWindow?) -> Bool {
+        guard let keyWindow, let mainWindow, keyWindow === mainWindow else { return false }
+        return (keyWindow.firstResponder as? NSText)?.isEditable ?? false
+    }
+
     /// Opens the window, on `section` when given (a Settings anchor can ride along). Works
     /// whether the window is closed, hidden or open: the request goes through the view
     /// model, which RootView consumes.

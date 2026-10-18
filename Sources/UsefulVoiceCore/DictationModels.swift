@@ -106,6 +106,8 @@ public struct DictationError: Equatable, Sendable {
         case providerFailed
         /// The local engine failed.
         case engineFailed
+        /// Retry was asked for but the retained recording has been deleted.
+        case retryUnavailable
     }
 
     public let kind: Kind
@@ -189,7 +191,7 @@ public struct DictationError: Equatable, Sendable {
         case .noProvider, .keyRejected, .outOfCredits: return .openEngineSettings
         case .offline, .timedOut, .providerFailed, .engineFailed: return .retry
         case .secureField, .micUnavailable, .diskFull, .recordingFailed, .deliveryFailed,
-             .stopFailed, .noSpeech, .tooShort:
+             .stopFailed, .noSpeech, .tooShort, .retryUnavailable:
             return nil
         }
     }

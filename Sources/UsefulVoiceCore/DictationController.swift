@@ -181,7 +181,7 @@ public final class DictationController {
             lastFailedAudio = nil
             lastFailedContext = nil
             state = .error(DictationError(
-                kind: .recordingFailed,
+                kind: .retryUnavailable,
                 message: "The recording for this dictation is gone, so it can't be retried."))
             return
         }

@@ -8,6 +8,7 @@ import type {
   LanguageMemorySnapshot,
   MemoryLanguage,
 } from '../core/models.js';
+import { DELIVERY_TIMED_OUT, DELIVERY_TIMEOUT_MS } from '../core/delivery/timing.js';
 import { applyMemory } from '../core/memory/memoryPostProcessor.js';
 import { selectKeyterms } from '../core/memory/biasBuilder.js';
 import { RecordingClock, SilenceWatchdog } from '../core/audio/silenceWatchdog.js';
@@ -69,13 +70,15 @@ export interface DeliveryRequest {
   /** Which app was focused when a hotkey dictation started. Absent in copy mode. */
   targetApp?: string;
   /**
-   * The window that was in front when it started. If another window is in front at
-   * delivery, the sink copies instead of pasting.
+   * The dictation started in one of our own windows (a note), where a paste is wanted.
+   * Otherwise, if one of our windows is in front at delivery, the sink copies instead.
    */
-  targetHandle?: number;
+  startedInOwnWindow?: boolean;
   /**
-   * Aborted when the user cancels. The sink must check it right before it pastes and
-   * stop there; once the paste is sent it finishes and reports `delivered`.
+   * Aborted when the user cancels, or when the delivery timeout wins (then
+   * `signal.reason` is `DELIVERY_TIMED_OUT`). The sink must check it after every await
+   * and right before it pastes, and stop there: the keystroke is never sent after an
+   * abort. Once the paste is sent it finishes and reports `delivered`.
    */
   signal?: AbortSignal;
 }
@@ -138,8 +141,8 @@ export interface StartOptions {
   rawMode?: boolean;
   /** The app that was frontmost. Only a hotkey dictation uses it. */
   targetApp?: string;
-  /** Its window handle, so delivery can tell the user has since moved elsewhere. */
-  targetHandle?: number;
+  /** One of our own windows had focus at the press, so a paste into one of them is wanted. */
+  startedInOwnWindow?: boolean;
 }
 
 export interface DictationOutcome {
@@ -162,8 +165,11 @@ export interface DictationOutcome {
   snippetIds: string[];
 }
 
-/** How long delivery may take before the state is released anyway. */
-export const DEFAULT_DELIVERY_TIMEOUT_MS = 5000;
+/**
+ * How long delivery may take before the state is released anyway. Derived from the
+ * sink's own step budgets (see `core/delivery/timing.ts`) so it stays above them.
+ */
+export const DEFAULT_DELIVERY_TIMEOUT_MS = DELIVERY_TIMEOUT_MS;
 
 /** How often the silence and max-length limits are checked, independent of audio frames. */
 export const DEFAULT_TICK_MS = 250;
@@ -182,8 +188,9 @@ export const COUNTDOWN_SECONDS = 5;
 interface Session {
   /** Where it started. Never changes. */
   readonly source: DictationSource;
-  readonly targetApp?: string;
-  readonly targetHandle?: number;
+  /** Filled in late when the lookup runs beside the recorder start (`setTargetApp`). */
+  targetApp?: string;
+  readonly startedInOwnWindow?: boolean;
   readonly rawMode: boolean;
   /** The text reached the clipboard or the target, so a later failure is not a failed dictation. */
   delivered: boolean;
@@ -208,12 +215,15 @@ export class DictationService {
   private state: DictationState = 'idle';
   private clock: RecordingClock;
   private abortController: AbortController | null = null;
-  private deliveryTimer: NodeJS.Timeout | null = null;
   private lastFailed: { audio: CapturedAudio; language: MemoryLanguage } | null = null;
   /** The dictation in flight. Null between dictations and after a cancel. */
   private session: Session | null = null;
   /** True while `recorder.start()` is pending, so a second press cannot start another. */
   private starting = false;
+  /** A stop arrived while the recorder was still starting: apply it as soon as recording begins. */
+  private stopWhenStarted = false;
+  /** The target app learned while the recorder was still starting. */
+  private pendingTargetApp: string | undefined;
   /** Bumped by a cancel during start, so the start that is still pending knows it was abandoned. */
   private startToken = 0;
   /** The pipeline after recording stops, so a cancel during delivery can wait for its verdict. */
@@ -257,6 +267,13 @@ export class DictationService {
    * dictation keeps the source it started with.
    */
   async toggle(options: StartOptions): Promise<void> {
+    if (this.starting) {
+      // A second press while the recorder is still starting is a stop. Dropping it left
+      // the dictation running with nobody holding the button; it is applied the moment
+      // recording begins.
+      this.stopWhenStarted = true;
+      return;
+    }
     if (this.state === 'idle' || this.state === 'error') {
       await this.startRecording(options);
       return;
@@ -276,7 +293,7 @@ export class DictationService {
       source: options.source,
       // A window dictation never pastes, so it has no target to record.
       targetApp: options.source === 'hotkey' ? options.targetApp : undefined,
-      targetHandle: options.source === 'hotkey' ? options.targetHandle : undefined,
+      startedInOwnWindow: options.source === 'hotkey' ? options.startedInOwnWindow : undefined,
       rawMode: options.rawMode === true,
       delivered: false,
       stopping: false,
@@ -284,12 +301,15 @@ export class DictationService {
     };
 
     this.starting = true;
+    this.stopWhenStarted = false;
+    this.pendingTargetApp = options.targetApp;
     const token = this.startToken;
     try {
       await this.deps.recorder.start();
     } catch (error) {
       // Cancelled while starting: nobody is waiting for this recording, or its failure.
       if (token !== this.startToken) return;
+      this.stopWhenStarted = false;
       // A missing/blocked microphone must produce an actionable message, not a
       // bare "error 4" the way the unlocalized Swift enum did.
       this.setState('error', classifyRecordingFailure(error));
@@ -305,10 +325,34 @@ export class DictationService {
       if (!this.starting && this.session === null) await this.deps.recorder.cancel().catch(() => undefined);
       return;
     }
+    // The lookup that finished while the recorder was starting.
+    if (session.source === 'hotkey' && this.pendingTargetApp !== undefined) session.targetApp = this.pendingTargetApp;
+    this.pendingTargetApp = undefined;
     this.session = session;
     this.clock.start();
     this.startMonitoring(settings.silenceTimeoutSeconds);
     this.setState('recording', undefined, session.targetApp);
+    if (this.stopWhenStarted) {
+      this.stopWhenStarted = false;
+      await this.stopAndProcess();
+    }
+  }
+
+  /**
+   * Record which app a hotkey dictation will be pasted into, once the lookup is done.
+   *
+   * The lookup runs beside the recorder start so the first words are not lost waiting
+   * for it, which means it can finish before or after the session exists. No status is
+   * re-sent: the label is read by whoever asks.
+   */
+  setTargetApp(targetApp: string | undefined): void {
+    if (targetApp === undefined) return;
+    const session = this.session;
+    if (!session) {
+      if (this.starting) this.pendingTargetApp = targetApp;
+      return;
+    }
+    if (session.source === 'hotkey' && !session.settled) session.targetApp = targetApp;
   }
 
   async stopAndProcess(): Promise<void> {
@@ -366,6 +410,8 @@ export class DictationService {
       this.startToken += 1;
       // Released now so the next press is not ignored while a hung recorder start times out.
       this.starting = false;
+      this.stopWhenStarted = false;
+      this.pendingTargetApp = undefined;
       void this.deps.recorder.cancel().catch(() => undefined);
       // A start from the error state: the person moved on, so the old error goes too.
       if (this.state === 'error') this.setState('idle');
@@ -390,7 +436,6 @@ export class DictationService {
     this.stopMonitoring();
     this.abortController?.abort();
     this.abortController = null;
-    this.clearDeliveryTimer();
     if (wasRecording) {
       this.clock.stop();
       await this.deps.recorder.cancel().catch(() => undefined);
@@ -776,6 +821,14 @@ export class DictationService {
    */
   private async deliver(text: string, mode: 'paste' | 'copy', session: Session): Promise<DeliveryResult> {
     const timeoutMs = this.deps.deliveryTimeoutMs ?? DEFAULT_DELIVERY_TIMEOUT_MS;
+    // The sink gets its own signal, so the timeout can stop it as well as the user's
+    // cancel. Without that, a timeout that wins leaves the sink running, and it goes on
+    // to press Ctrl+V after the dictation was reported as only copied.
+    const delivery = new AbortController();
+    const sessionSignal = this.abortController?.signal;
+    const onSessionAbort = (): void => delivery.abort(sessionSignal?.reason);
+    if (sessionSignal?.aborted) onSessionAbort();
+    else sessionSignal?.addEventListener('abort', onSessionAbort, { once: true });
     let timer: NodeJS.Timeout | null = null;
     try {
       const request: DeliveryRequest =
@@ -784,17 +837,17 @@ export class DictationService {
               text,
               mode,
               targetApp: session.targetApp,
-              targetHandle: session.targetHandle,
-              signal: this.abortController?.signal,
+              startedInOwnWindow: session.startedInOwnWindow,
+              signal: delivery.signal,
             }
-          : { text, mode, signal: this.abortController?.signal };
+          : { text, mode, signal: delivery.signal };
       const result = await Promise.race([
         this.deps.sink.deliver(request),
         new Promise<DeliveryResult>((resolve) => {
-          timer = setTimeout(
-            () => resolve({ delivered: false, clipboardFallback: true }),
-            timeoutMs,
-          );
+          timer = setTimeout(() => {
+            delivery.abort(DELIVERY_TIMED_OUT);
+            resolve({ delivered: false, clipboardFallback: true });
+          }, timeoutMs);
           timer.unref?.();
         }),
       ]);
@@ -804,7 +857,7 @@ export class DictationService {
       return { delivered: false, clipboardFallback: true };
     } finally {
       if (timer) clearTimeout(timer);
-      this.clearDeliveryTimer();
+      sessionSignal?.removeEventListener('abort', onSessionAbort);
     }
   }
 
@@ -825,13 +878,6 @@ export class DictationService {
     if (this.session) status.delivery = this.session.source === 'hotkey' ? 'paste' : 'copy';
     if (state === 'recording') status.elapsedSeconds = this.clock.elapsedSeconds();
     this.deps.onStatus(status);
-  }
-
-  private clearDeliveryTimer(): void {
-    if (this.deliveryTimer) {
-      clearTimeout(this.deliveryTimer);
-      this.deliveryTimer = null;
-    }
   }
 
   private nowFn(): () => number {

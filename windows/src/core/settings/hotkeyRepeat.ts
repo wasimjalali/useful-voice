@@ -9,8 +9,8 @@
  *
  * The window must be longer than Windows' default keyboard repeat delay of 500 ms: a shorter
  * one lets the first auto-repeat through as a second toggle. It stays short enough that a
- * real stop press about 0.7 s after the start still works. The slowest repeat delay
- * setting (1 s) lets one repeat through; that is the price of the shorter window.
+ * real stop press about 0.7 s after the start still works. The 750 ms and 1 s repeat-delay
+ * settings let one repeat through; that is the price of the shorter window.
  */
 export const HOTKEY_REPEAT_WINDOW_MS = 600;
 

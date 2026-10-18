@@ -4,8 +4,13 @@ import { promisify } from 'node:util';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { FOREGROUND_QUERY_TIMEOUT_MS, PASTE_KEYSTROKE_TIMEOUT_MS } from '../core/delivery/timing.js';
-import type { KeystrokeResult } from '../core/delivery/pasteFlow.js';
+import {
+  FOREGROUND_QUERY_TIMEOUT_MS,
+  HOST_STARTUP_TIMEOUT_MS,
+  PASTE_KEYSTROKE_TIMEOUT_MS,
+} from '../core/delivery/timing.js';
+import type { KeystrokeRequest, KeystrokeResult } from '../core/delivery/pasteFlow.js';
+import { runHosted as runHostedWith, sendPasteKeystroke, type OneShotRunner } from './keystroke.js';
 import { PowerShellHost, PowerShellHostError, hostArguments } from './powershellHost.js';
 // The delivery policy's view of a window: the same identity (process + handle) with
 // the title the UI needs on top, so window info can be handed straight to the policy.
@@ -39,32 +44,28 @@ export interface ForegroundWindowInfo extends PasteTarget {
 }
 
 /**
- * Send Ctrl+V.
+ * Send Ctrl+V, if it is still right to, and say what is known about it. The logic, and
+ * what each answer means, lives in `keystroke.ts`.
  *
- * `SendKeys` via PowerShell is used rather than a native addon: it needs no
- * compilation step, so the packaged app has no native binary to keep in step with
- * the Electron version. It runs in the long-lived PowerShell host (see
- * `powershellHost.ts`), so the keystroke goes out within a few milliseconds instead of
- * after a process start.
+ * `SendKeys` via PowerShell is used rather than a native addon: it needs no compilation
+ * step, so the packaged app has no native binary to keep in step with the Electron
+ * version. It runs in the long-lived PowerShell host (see `powershellHost.ts`), so the
+ * keystroke goes out within a few milliseconds instead of after a process start.
  *
- * `signal` and `canSend` are checked when the request reaches the front of the host's
- * queue, right before it is written, and again before a one-shot process is started; a
- * one-shot process is also killed if the signal aborts while it starts. A refused or
- * aborted keystroke is `blocked`: nothing was sent.
+ * The script itself checks, immediately before `SendKeys`, that the foreground window's
+ * process is not Useful Voice's own (unless the dictation started in our window) and that
+ * the clipboard still holds the dictation. It is given only our process id and a hash, never
+ * the text.
  */
-export async function pasteClipboard(signal: AbortSignal | undefined, canSend: () => boolean): Promise<KeystrokeResult> {
-  if (signal?.aborted || !canSend()) return 'blocked';
-  try {
-    await runHosted('$uvShell.SendKeys("^v")', PASTE_ONE_SHOT, PASTE_KEYSTROKE_TIMEOUT_MS, { signal, beforeWrite: canSend });
-    return 'sent';
-  } catch (error) {
-    if (signal?.aborted) return 'blocked';
-    if (error instanceof PowerShellHostError && error.kind === 'aborted') return 'blocked';
-    return 'failed';
-  }
+export function pasteClipboard(request: KeystrokeRequest): Promise<KeystrokeResult> {
+  return sendPasteKeystroke(
+    { host, oneShot: runOneShot, oneShotPrelude: ONE_SHOT_PRELUDE(), timeoutMs: PASTE_KEYSTROKE_TIMEOUT_MS },
+    { ...request, ownPid: process.pid },
+  );
 }
 
-const PASTE_ONE_SHOT = '$wshell = New-Object -ComObject WScript.Shell; $wshell.SendKeys("^v")';
+/** What a one-shot process needs before the paste body: the types and the shell object. */
+const ONE_SHOT_PRELUDE = (): string => FOREGROUND_TYPE + '\n$uvShell = New-Object -ComObject WScript.Shell\n';
 
 /** The C# behind `foregroundWindow`, compiled once in the host and per call in a one-shot process. */
 const FOREGROUND_TYPE = `
@@ -97,10 +98,9 @@ Write-Output ("{0}{1}{2}{1}{3}" -f $h.ToInt64(), [char]31, $name, $sb.ToString()
 /**
  * Which window has focus right now.
  *
- * Used for two things: showing the user which app will receive their text, and
- * deciding whether the previous clipboard may be put back after a paste. Comparing
- * these before and after is what lets the restore be attributed to the window the
- * paste was aimed at.
+ * Used for the HUD's "dictating into" label and for handing focus back to the window the
+ * language picker was opened over. Delivery does not use it: the paste script checks the
+ * foreground process itself, right before it sends the key.
  *
  * Returns null when the query fails, which callers treat as "cannot verify".
  */
@@ -377,36 +377,25 @@ export function appVersion(): string {
   return app.getVersion();
 }
 
-/**
- * Run a script in the PowerShell host, or in a one-shot process when there is none.
- *
- * `hostScript` assumes the host's setup has run (types compiled, `$uvShell` defined);
- * `oneShotScript` carries everything it needs itself. The fallback is taken only for a
- * request that never reached the host: a request that was sent and then timed out or
- * died may already have run, and running a paste twice is worse than not at all.
- */
-async function runHosted(
-  hostScript: string,
-  oneShotScript: string,
-  timeoutMs: number,
-  guard: { signal?: AbortSignal; beforeWrite?: () => boolean } = {},
-): Promise<string> {
-  const { signal, beforeWrite } = guard;
-  if (host && !host.isUnavailable) {
-    try {
-      return await host.run(hostScript, { timeoutMs, signal, beforeWrite });
-    } catch (error) {
-      if (!(error instanceof PowerShellHostError) || error.sent || error.kind === 'aborted') throw error;
-      // Never sent (the host would not start, or was given up on): fall through.
-    }
-  }
-  // The same checks as the host makes before it writes: a keystroke script never starts
-  // after an abort or once the caller's condition stopped holding.
-  if (signal?.aborted || (beforeWrite && !beforeWrite())) {
-    throw new PowerShellHostError('aborted', 'aborted before it was sent', false);
-  }
-  return (await runPowerShell(oneShotScript, timeoutMs, signal)).stdout;
+/** Run a script in the PowerShell host, or in a one-shot process when there is none. */
+function runHosted(hostScript: string, oneShotScript: string, timeoutMs: number): Promise<string> {
+  return runHostedWith(host, runOneShot, hostScript, oneShotScript, timeoutMs);
 }
+
+/**
+ * A fresh PowerShell process. Throws a `PowerShellHostError` with `sent: false` when
+ * `powershell.exe` cannot be started at all; any other failure happened after it started.
+ */
+const runOneShot: OneShotRunner = async (script, timeoutMs, signal) => {
+  try {
+    return (await runPowerShell(script, timeoutMs, signal)).stdout;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new PowerShellHostError('unavailable', 'powershell.exe could not be started', false);
+    }
+    throw error;
+  }
+};
 
 let host: PowerShellHost | null = null;
 
@@ -425,6 +414,7 @@ export async function startPowerShellHost(log?: (message: string) => void): Prom
       spawn: () =>
         spawn('powershell.exe', hostArguments(), { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }),
       setupScript: HOST_SETUP,
+      startupTimeoutMs: HOST_STARTUP_TIMEOUT_MS,
       log,
     });
   }

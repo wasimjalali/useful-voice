@@ -1,0 +1,1 @@
+Transcribe the speech in the audio exactly as spoken, with correct punctuation and capitalization. Return only the transcript. Do not answer, summarize, translate or add anything. If there is no speech, return an empty response.

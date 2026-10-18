@@ -272,6 +272,8 @@ public final class AppSettings {
         static let lastExportFolder = "lastExportFolder"
         static let transcriptionEngine = "transcriptionEngine"
         static let localModelID = "localModelID"
+        static let voiceModelID = "voiceModelID"
+        static let formatterModelID = "formatterModelID"
         static let appearance = "appearance"
         static let dailyWordGoal = "dailyWordGoal"
     }
@@ -295,7 +297,7 @@ public final class AppSettings {
                              Keys.languageSwitchKeycode, Keys.formattingEnabled,
                              Keys.spokenPunctuationEnabled, Keys.soundEffectsEnabled,
                              Keys.lastExportFolder, Keys.transcriptionEngine,
-                             Keys.localModelID]
+                             Keys.localModelID, Keys.voiceModelID, Keys.formatterModelID]
             .contains { defaults.object(forKey: $0) != nil }
         let outcome = LanguageDefault.outcome(
             alreadyResolved: defaults.bool(forKey: LanguageDefault.resolvedKey),
@@ -380,28 +382,102 @@ public final class AppSettings {
         set { defaults.set(newValue, forKey: Keys.lastExportFolder) }
     }
 
-    /// The transcription engine: Deepgram's cloud API or an on-device Whisper
-    /// model. Defaults to Deepgram, preserving pre-local behaviour — existing
-    /// users see no change until they pick local themselves.
+    /// The voice model, as a catalog id (`deepgram:nova-3`, `whisper:large-v3-turbo`).
+    ///
+    /// Installs from before the model list have no saved id: they read their old
+    /// engine choice instead (deepgram -> `deepgram:nova-3`, whisperLocal -> the
+    /// whisper model they had active), so nobody's dictation changes on update.
+    /// A saved id this build doesn't know falls back the same way.
+    public var voiceModelID: String {
+        get {
+            if let stored = defaults.string(forKey: Keys.voiceModelID),
+               ModelCatalog.voiceModel(id: stored) != nil {
+                return stored
+            }
+            if defaults.string(forKey: Keys.transcriptionEngine) == TranscriptionEngineChoice.whisperLocal.rawValue {
+                return ModelCatalog.voiceID(forWhisper: storedLocalModel)
+            }
+            return ModelCatalog.defaultVoiceID
+        }
+        set {
+            guard ModelCatalog.voiceModel(id: newValue) != nil else { return }
+            defaults.set(newValue, forKey: Keys.voiceModelID)
+            // Keep the old keys in step so a downgrade, and anything still
+            // reading them, sees the same choice.
+            if let whisper = ModelCatalog.whisperModel(forVoiceID: newValue) {
+                defaults.set(TranscriptionEngineChoice.whisperLocal.rawValue,
+                             forKey: Keys.transcriptionEngine)
+                defaults.set(whisper.id, forKey: Keys.localModelID)
+            } else {
+                defaults.set(TranscriptionEngineChoice.deepgram.rawValue,
+                             forKey: Keys.transcriptionEngine)
+            }
+        }
+    }
+
+    public var voiceModel: ModelEntry {
+        ModelCatalog.voiceModel(id: voiceModelID) ?? ModelCatalog.voice[0]
+    }
+
+    /// The AI formatting model, as a catalog id, or nil for Off (the default).
+    public var formatterModelID: String? {
+        get {
+            guard let stored = defaults.string(forKey: Keys.formatterModelID),
+                  ModelCatalog.languageModel(id: stored) != nil else { return nil }
+            return stored
+        }
+        set {
+            if let newValue, ModelCatalog.languageModel(id: newValue) != nil {
+                defaults.set(newValue, forKey: Keys.formatterModelID)
+            } else {
+                defaults.removeObject(forKey: Keys.formatterModelID)
+            }
+        }
+    }
+
+    public var formatterModel: ModelEntry? {
+        formatterModelID.flatMap { ModelCatalog.languageModel(id: $0) }
+    }
+
+    /// The transcription engine family, derived from the voice model: an
+    /// on-device Whisper model is `.whisperLocal`, anything else `.deepgram`
+    /// (kept for the code that only needs to tell Whisper apart). Setting it
+    /// picks the matching voice model.
     public var transcriptionEngine: TranscriptionEngineChoice {
         get {
-            let raw = defaults.string(forKey: Keys.transcriptionEngine) ?? ""
-            return TranscriptionEngineChoice(rawValue: raw) ?? .deepgram
+            ModelCatalog.whisperModel(forVoiceID: voiceModelID) != nil ? .whisperLocal : .deepgram
         }
-        set { defaults.set(newValue.rawValue, forKey: Keys.transcriptionEngine) }
+        set {
+            switch newValue {
+            case .deepgram:
+                if ModelCatalog.whisperModel(forVoiceID: voiceModelID) != nil
+                    || defaults.string(forKey: Keys.voiceModelID) == nil {
+                    voiceModelID = ModelCatalog.defaultVoiceID
+                } else {
+                    defaults.set(newValue.rawValue, forKey: Keys.transcriptionEngine)
+                }
+            case .whisperLocal:
+                voiceModelID = ModelCatalog.voiceID(forWhisper: storedLocalModel)
+            }
+        }
+    }
+
+    private var storedLocalModel: WhisperModel {
+        let raw = defaults.string(forKey: Keys.localModelID) ?? ""
+        return WhisperModelCatalog.model(forID: raw) ?? WhisperModelCatalog.default
     }
 
     /// Which local model the engine uses. Defaults to the recommended turbo
     /// model; an unrecognised stored value falls back to it rather than naming
-    /// a model this build cannot find.
+    /// a model this build cannot find. While a Whisper model is the voice
+    /// model, changing this moves the voice model with it.
     public var localModelID: String {
-        get {
-            let raw = defaults.string(forKey: Keys.localModelID) ?? ""
-            return WhisperModelCatalog.model(forID: raw)?.id ?? WhisperModelCatalog.default.id
-        }
+        get { storedLocalModel.id }
         set {
             let resolved = WhisperModelCatalog.model(forID: newValue) ?? WhisperModelCatalog.default
+            let whisperIsVoice = ModelCatalog.whisperModel(forVoiceID: voiceModelID) != nil
             defaults.set(resolved.id, forKey: Keys.localModelID)
+            if whisperIsVoice { voiceModelID = ModelCatalog.voiceID(forWhisper: resolved) }
         }
     }
 

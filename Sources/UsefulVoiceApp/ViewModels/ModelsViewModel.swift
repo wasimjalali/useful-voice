@@ -57,6 +57,9 @@ final class ModelsViewModel: ObservableObject {
     /// A key could not be saved or removed.
     var onKeyError: ((String) -> Void)?
     var languagePin: () -> LanguagePin = { .auto }
+    /// Whether the dictation pipeline can read this provider's key right now. It reads the
+    /// same in-memory cache, which fills in off the main thread at launch.
+    var keyReadable: (KeyProvider) -> Bool = { ProviderKeyStore.store(for: $0).current != nil }
 
     init(settings: AppSettings, whisper: LocalModelManager, parakeet: ParakeetModelManager) {
         self.settings = settings
@@ -98,10 +101,19 @@ final class ModelsViewModel: ObservableObject {
         (keyStored[provider] ?? false) && keyProblem[provider] == nil
     }
 
-    /// The formatter in effect: a selected model whose key can't be used is not on.
+    /// The formatter in effect: a selected model whose key can't be used, or isn't loaded
+    /// yet, is not on. Nothing claims formatting is running while the formatter can't
+    /// read its key.
     var effectiveFormatterID: String? {
-        guard let id = formatterID, let entry = ModelCatalog.languageModel(id: id), !needsKey(entry) else { return nil }
+        guard let id = formatterID, let entry = ModelCatalog.languageModel(id: id),
+              let provider = entry.keyProvider, !needsKey(entry), keyReadable(provider) else { return nil }
         return id
+    }
+
+    /// A key finished loading in the background: look again.
+    func keysLoaded() {
+        refreshKeys()
+        objectWillChange.send()
     }
 
     /// A cloud model whose key isn't saved can't be picked; "Add key" takes its place.
@@ -125,11 +137,13 @@ final class ModelsViewModel: ObservableObject {
     func applyPreview(_ preview: Preview) {
         switch preview {
         case .noKeys:
+            keyReadable = { _ in false }
             keyStored = Dictionary(uniqueKeysWithValues: KeyProvider.allCases.map { ($0, false) })
             keyProblem = [:]
             voiceID = ModelCatalog.defaultVoiceID
             formatterID = nil
         case .sample:
+            keyReadable = { [weak self] in self?.keyStored[$0] ?? false }
             keyStored = [.deepgram: true, .gemini: true, .elevenLabs: false, .anthropic: false]
             keyProblem = [:]
             keyTests = [.deepgram: .ok(milliseconds: 412)]

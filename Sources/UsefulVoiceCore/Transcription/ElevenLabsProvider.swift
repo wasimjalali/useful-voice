@@ -16,6 +16,7 @@ public final class ElevenLabsProvider: TranscriptionProvider, @unchecked Sendabl
 
     public static let providerName = "ElevenLabs"
     public let name = ElevenLabsProvider.providerName
+    public var modelName: String? { config.model }
     private let config: Config
     private let session: URLSession
 

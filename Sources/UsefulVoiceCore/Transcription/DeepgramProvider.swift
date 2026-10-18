@@ -32,6 +32,7 @@ public final class DeepgramProvider: TranscriptionProvider, @unchecked Sendable 
 
     public static let providerName = "Deepgram"
     public let name = DeepgramProvider.providerName
+    public var modelName: String? { config.model }
     private let config: Config
     private let session: URLSession
 

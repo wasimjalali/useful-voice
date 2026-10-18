@@ -89,7 +89,6 @@ public protocol MediaEffects: AnyObject, Sendable {
     /// caller checks their effect.
     func sendPause() throws
     func sendPlay() throws
-    func sleep(_ seconds: TimeInterval)
 }
 
 public extension MediaEffects {
@@ -212,6 +211,9 @@ public final class MediaPausePolicy: @unchecked Sendable {
 
     private struct NowPlayingHold {
         var app: NowPlayingState
+        /// Now Playing was seen reporting paused after the command. False when it could not be
+        /// read right after, and the hold is kept anyway.
+        var confirmed = true
         /// Something played, or Now Playing changed app, during the dictation.
         var touched = false
     }
@@ -243,6 +245,7 @@ public final class MediaPausePolicy: @unchecked Sendable {
     private let isEnabled: () -> Bool
     private let diagnostics: Diagnostics
     private let timing: Timing
+    private let clock: MediaClock
     private let queue = DispatchQueue(label: "ai.useful.voice.media-pause", qos: .userInitiated)
 
     // Written from any thread, under the lock: whether a recording is live and which one.
@@ -254,7 +257,7 @@ public final class MediaPausePolicy: @unchecked Sendable {
     // Only touched on the queue.
     private var nowPlayingHold: NowPlayingHold?
     private var hold: Hold?
-    private var watcher: DispatchSourceTimer?
+    private var watcher: MediaClockToken?
     private var disabled = false
     private var audioUnsupported = false
     private var logged: Set<String> = []
@@ -262,11 +265,13 @@ public final class MediaPausePolicy: @unchecked Sendable {
     public init(effects: MediaEffects,
                 isEnabled: @escaping () -> Bool,
                 diagnostics: Diagnostics = .shared,
-                timing: Timing = Timing()) {
+                timing: Timing = Timing(),
+                clock: MediaClock = RealMediaClock()) {
         self.effects = effects
         self.isEnabled = isEnabled
         self.diagnostics = diagnostics
         self.timing = timing
+        self.clock = clock
     }
 
     // MARK: - Entry points (any thread, never block)
@@ -290,7 +295,7 @@ public final class MediaPausePolicy: @unchecked Sendable {
             return epoch
         }
         guard let mine else { return }
-        queue.asyncAfter(deadline: .now() + timing.resumeGrace) { [self] in
+        _ = clock.schedule(after: timing.resumeGrace, on: queue) { [self] in
             resume(afterEpoch: mine)
         }
     }
@@ -314,6 +319,12 @@ public final class MediaPausePolicy: @unchecked Sendable {
     public func flush() {
         queue.sync {}
     }
+
+    /// The clock the policy runs on. For tests, which drive a virtual one.
+    var clockForTesting: MediaClock { clock }
+
+    /// Whether a quit has been requested. For tests that quit while a pause is in flight.
+    var isShuttingDownForTesting: Bool { lock.withLock { shuttingDown } }
 
     /// One watch tick, on demand. For tests, which set `watchInterval` far out.
     func runWatchTickForTesting() {
@@ -342,23 +353,28 @@ public final class MediaPausePolicy: @unchecked Sendable {
         do {
             try effects.sendPause()
             var waited: TimeInterval = 0
-            let began = Date()
+            let began = clock.now()
+            var confirmed = true
             while true {
                 guard let now = effects.nowPlaying() else {
-                    diagnostics.warning("media", "Could not confirm the pause: Now Playing became unreadable")
-                    return
+                    // The pause is out and the app is known from the read before it, so it is
+                    // remembered. The end resumes it by the audio list if Now Playing stays unreadable.
+                    confirmed = false
+                    break
                 }
                 if now.isSameApp(as: state), !now.isPlaying { break }
-                if waited >= timing.nowPlayingStopTimeout || Date().timeIntervalSince(began) >= timing.nowPlayingStopTimeout {
+                if waited >= timing.nowPlayingStopTimeout || clock.now().timeIntervalSince(began) >= timing.nowPlayingStopTimeout {
                     diagnostics.warning("media", "Could not pause \(state): it still reports playing after the pause command")
                     return
                 }
-                effects.sleep(timing.pollInterval)
+                clock.sleep(timing.pollInterval)
                 waited += timing.pollInterval
             }
-            nowPlayingHold = NowPlayingHold(app: state)
+            nowPlayingHold = NowPlayingHold(app: state, confirmed: confirmed)
             startWatching()
-            diagnostics.info("media", "Paused \(state.bundleID ?? "pid \(state.pid)") for the dictation")
+            var message = "Paused \(state.bundleID ?? "pid \(state.pid)") for the dictation"
+            if !confirmed { message += "; Now Playing became unreadable right after, so it is not confirmed paused" }
+            diagnostics.info("media", message)
         } catch {
             handle(error, context: "Pausing media failed")
         }
@@ -373,11 +389,11 @@ public final class MediaPausePolicy: @unchecked Sendable {
             // Already holding something (a back-to-back dictation): only what is new counts.
             let first = known.strangers(in: try effects.outputtingPlayers())
             guard !first.isEmpty else { return }
-            effects.sleep(timing.pressConfirmDelay)
+            clock.sleep(timing.pressConfirmDelay)
             let p0 = first.intersection(known.strangers(in: try effects.outputtingPlayers()))
             guard !p0.isEmpty, isLive(mine) else { return }
 
-            let commanded = Date()
+            let commanded = clock.now()
             try effects.sendPause()
             let result = try waitForStop(of: p0, since: commanded)
             guard !result.stopped.isEmpty || !result.pending.isEmpty else {
@@ -424,7 +440,7 @@ public final class MediaPausePolicy: @unchecked Sendable {
         var waited: TimeInterval = 0
         while true {
             let outputting = Set(try effects.outputtingPlayers())
-            let elapsed = Date().timeIntervalSince(began)
+            let elapsed = clock.now().timeIntervalSince(began)
             let quiet = players.subtracting(outputting)
             let inTime = quiet.filter { elapsed <= stopWindow(for: $0) }
             let pending = browsers.intersection(outputting)
@@ -432,7 +448,7 @@ public final class MediaPausePolicy: @unchecked Sendable {
             // The window is measured on the clock as well as in poll steps, so slow looks cannot
             // stretch it: a late stop is not a stop caused by the command.
             if waited >= shortWindow || elapsed >= shortWindow { return ([], pending) }
-            effects.sleep(timing.pollInterval)
+            clock.sleep(timing.pollInterval)
             waited += timing.pollInterval
         }
     }
@@ -441,11 +457,7 @@ public final class MediaPausePolicy: @unchecked Sendable {
 
     private func startWatching() {
         guard watcher == nil else { return }
-        let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + timing.watchInterval, repeating: timing.watchInterval)
-        timer.setEventHandler { [weak self] in self?.watchTick() }
-        timer.resume()
-        watcher = timer
+        watcher = clock.every(timing.watchInterval, on: queue) { [weak self] in self?.watchTick() }
     }
 
     private func stopWatching() {
@@ -483,7 +495,7 @@ public final class MediaPausePolicy: @unchecked Sendable {
     /// A pending browser helper that went quiet in time is held; one still rendering after its
     /// deadline is simply a background stream.
     private func promotePending(_ current: inout Hold, playing: [MediaPlayerID]) {
-        let now = Date()
+        let now = clock.now()
         for (player, deadline) in current.pending {
             if !playing.contains(where: { $0.pid == player.pid }) {
                 current.pending[player] = nil
@@ -509,7 +521,7 @@ public final class MediaPausePolicy: @unchecked Sendable {
             hold = current
             if current.held.isEmpty, !current.pending.isEmpty, ended != nil {
                 // Wait for the silence tail without holding up the queue.
-                queue.asyncAfter(deadline: .now() + timing.pendingRetryInterval) { [self] in
+                _ = clock.schedule(after: timing.pendingRetryInterval, on: queue) { [self] in
                     resume(afterEpoch: ended)
                 }
                 return
@@ -532,7 +544,11 @@ public final class MediaPausePolicy: @unchecked Sendable {
                 return
             }
             guard let state = effects.nowPlaying() else {
-                diagnostics.info("media", "Not resuming: Now Playing cannot be read")
+                // The pause was sent, so it is not dropped: the audio list decides instead.
+                diagnostics.info("media", "Now Playing cannot be read at the end; resuming \(current.app.bundleID ?? "the player") by the audio process list")
+                var fallback = Hold()
+                fallback.held = [MediaPlayerID(pid: current.app.pid, bundleID: current.app.bundleID)]
+                resumeAudio(fallback)
                 return
             }
             guard state.hasApp, state.isSameApp(as: current.app), !state.isPlaying else {
@@ -546,7 +562,7 @@ public final class MediaPausePolicy: @unchecked Sendable {
             }
             try effects.sendPlay()
             var waited: TimeInterval = 0
-            let began = Date()
+            let began = clock.now()
             while true {
                 guard let now = effects.nowPlaying() else {
                     diagnostics.warning("media", "Could not confirm the resume: Now Playing became unreadable")
@@ -561,11 +577,11 @@ public final class MediaPausePolicy: @unchecked Sendable {
                     }
                     return
                 }
-                if waited >= timing.settleTimeout || Date().timeIntervalSince(began) >= timing.settleTimeout {
+                if waited >= timing.settleTimeout || clock.now().timeIntervalSince(began) >= timing.settleTimeout {
                     diagnostics.warning("media", "Could not resume \(current.app.bundleID ?? "the player")")
                     return
                 }
-                effects.sleep(timing.pollInterval)
+                clock.sleep(timing.pollInterval)
                 waited += timing.pollInterval
             }
         } catch {
@@ -596,7 +612,7 @@ public final class MediaPausePolicy: @unchecked Sendable {
             // A stranger counts only when still there 40 ms later: a ding is not the user.
             let first = current.strangers(in: playingNow)
             if !first.isEmpty {
-                effects.sleep(timing.strangerGap)
+                clock.sleep(timing.strangerGap)
                 let second = current.strangers(in: try effects.outputtingPlayers())
                 let persistent = first.filter { player in second.contains { $0.pid == player.pid } }
                 guard persistent.isEmpty else {
@@ -634,7 +650,7 @@ public final class MediaPausePolicy: @unchecked Sendable {
             }
             let first = strangers(playing)
             if !first.isEmpty {
-                effects.sleep(timing.strangerGap)
+                clock.sleep(timing.strangerGap)
                 waited += timing.strangerGap
                 let again = try effects.outputtingPlayers()
                 if isResumed(again) {
@@ -653,7 +669,7 @@ public final class MediaPausePolicy: @unchecked Sendable {
                 diagnostics.warning("media", "Could not resume \(describe(alive))")
                 return
             }
-            effects.sleep(timing.pollInterval)
+            clock.sleep(timing.pollInterval)
             waited += timing.pollInterval
         }
     }

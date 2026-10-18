@@ -24,13 +24,15 @@ echo "building the test player, the Now Playing helper and the harness..."
 swiftc -O "$ROOT/scripts/media-pause-e2e/player.swift" -o "$WORK/player"
 # The helper exactly as `make bundle` builds it (this machine's slices are enough here).
 mkdir -p "$WORK/MediaRemote"
-clang -dynamiclib -arch arm64 -arch arm64e -arch x86_64 -mmacosx-version-min=14.0 \
+clang -dynamiclib -arch arm64 -arch arm64e -arch arm64e.x1 -arch x86_64 -mmacosx-version-min=14.0 \
   -framework CoreFoundation -Wall -Werror \
   -o "$WORK/MediaRemote/libuvnowplaying.dylib" "$ROOT/bundle/mediaremote/uv_nowplaying.c"
+# Signed as `make bundle` signs it (ad hoc here): the app refuses to start a helper whose signature is invalid.
+codesign --force --sign - "$WORK/MediaRemote/libuvnowplaying.dylib"
 cp "$ROOT/bundle/mediaremote/uv-nowplaying.pl" "$WORK/MediaRemote/"
 swiftc -O -parse-as-library \
   "$ROOT/scripts/media-pause-e2e/harness.swift" \
-  "$MEDIA/MediaPausePolicy.swift" "$MEDIA/SystemMediaEffects.swift" "$MEDIA/NowPlayingReader.swift" \
+  "$MEDIA"/*.swift \
   "$ROOT/Sources/UsefulVoiceCore/Diagnostics/Diagnostics.swift" \
   -o "$WORK/harness"
 

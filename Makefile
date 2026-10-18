@@ -95,11 +95,11 @@ endef
 # The Now Playing helper for "Pause media while dictating": a perl script and a small library
 # that Apple's /usr/bin/perl loads, because MediaRemote answers third-party processes with
 # "nothing playing" since macOS 15.4 (see Sources/UsefulVoiceCore/Media/NowPlayingReader.swift).
-# The library carries every slice perl can run as: arm64e (Apple silicon), arm64 and x86_64.
+# The library carries every slice perl can run as: arm64e and arm64e.x1 (Apple silicon), arm64 and x86_64.
 MEDIAREMOTE_HELPER = $(APP)/Contents/Resources/MediaRemote
 define embed_mediaremote_helper
 	mkdir -p $(MEDIAREMOTE_HELPER)
-	clang -dynamiclib -arch arm64 -arch arm64e -arch x86_64 -mmacosx-version-min=14.0 \
+	clang -dynamiclib -arch arm64 -arch arm64e -arch arm64e.x1 -arch x86_64 -mmacosx-version-min=14.0 \
 		-framework CoreFoundation -Wall -Werror \
 		-o $(MEDIAREMOTE_HELPER)/libuvnowplaying.dylib bundle/mediaremote/uv_nowplaying.c
 	cp bundle/mediaremote/uv-nowplaying.pl $(MEDIAREMOTE_HELPER)/

@@ -1,6 +1,6 @@
 import Foundation
 
-/// A process that is making sound. This is the "player identity" the policy remembers.
+/// A process that is making sound. This is the "player identity" the audio fallback remembers.
 public struct MediaPlayerID: Hashable, Sendable, CustomStringConvertible {
     public let pid: Int32
     public let bundleID: String?
@@ -25,8 +25,34 @@ public struct MediaPlayerID: Hashable, Sendable, CustomStringConvertible {
     }
 }
 
+/// What the system's Now Playing says: the app that owns the media controls and whether it
+/// plays. `pid` 0 means no app.
+public struct NowPlayingState: Equatable, Sendable, CustomStringConvertible {
+    public let isPlaying: Bool
+    public let pid: Int32
+    public let bundleID: String?
+
+    public init(isPlaying: Bool, pid: Int32, bundleID: String?) {
+        self.isPlaying = isPlaying
+        self.pid = pid
+        self.bundleID = bundleID
+    }
+
+    public var hasApp: Bool { pid > 0 }
+
+    /// The same app: pid and bundle id both.
+    func isSameApp(as other: NowPlayingState) -> Bool {
+        pid == other.pid && bundleID == other.bundleID
+    }
+
+    public var description: String {
+        guard hasApp else { return "no Now Playing app" }
+        return "\(bundleID ?? "pid \(pid)") (\(pid), \(isPlaying ? "playing" : "paused"))"
+    }
+}
+
 public enum MediaEffectsError: Error, LocalizedError, Equatable {
-    /// This macOS has no Core Audio process list (before 14.2). The feature turns itself off.
+    /// This macOS has no Core Audio process list (before 14.2): the audio fallback is off.
     case processListUnsupported
     case mediaRemoteUnavailable(String)
     case commandRefused(String)
@@ -35,7 +61,7 @@ public enum MediaEffectsError: Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .processListUnsupported:
-            return "This macOS has no audio process list (needs 14.2), so pausing media is off"
+            return "This macOS has no audio process list (needs 14.2), so audio detection is off"
         case .mediaRemoteUnavailable(let detail): return "MediaRemote is unavailable: \(detail)"
         case .commandRefused(let name): return "The system refused the \(name) command"
         case .coreAudio(let what, let status): return "Core Audio \(what) failed (\(status))"
@@ -49,6 +75,10 @@ public enum MediaEffectsError: Error, LocalizedError, Equatable {
 /// There is deliberately no Play/Pause key: it toggles, and it can start a paused Now
 /// Playing app while another process keeps an output stream open.
 public protocol MediaEffects: AnyObject, Sendable {
+    /// The system's Now Playing state, read through Apple's own perl (MediaRemote answers
+    /// third-party processes with "nothing playing" since macOS 15.4). Nil when it cannot be
+    /// read (no helper, perl missing, a timeout): the policy then uses the audio process list.
+    func nowPlaying() -> NowPlayingState?
     /// Processes that are outputting audio right now, never this app's own or a system
     /// sound service. Throws `processListUnsupported` on a macOS without the process list.
     func outputtingPlayers() throws -> [MediaPlayerID]
@@ -56,15 +86,18 @@ public protocol MediaEffects: AnyObject, Sendable {
     func isAlive(_ player: MediaPlayerID) -> Bool
     /// The system Pause and Play commands (MediaRemote). Pause is idempotent on a player
     /// that is already paused. They go to the app macOS treats as Now Playing, so the
-    /// caller checks their effect in the audio output.
+    /// caller checks their effect.
     func sendPause() throws
     func sendPlay() throws
     func sleep(_ seconds: TimeInterval)
 }
 
-/// Decides which processes count as "media playing". A process that only plays a system
-/// alert, a chime or a voice prompt is not a player: pausing "it" would be pointless and,
-/// worse, the later resume would start whatever was playing before.
+public extension MediaEffects {
+    func nowPlaying() -> NowPlayingState? { nil }
+}
+
+/// Decides which processes count as "media playing" in the audio fallback, and how long each
+/// kind takes to go quiet after a Pause.
 public enum MediaPlayerFilter {
     /// Bundle id prefixes of system services that make short sounds, not media.
     static let systemPrefixes = [
@@ -77,12 +110,28 @@ public enum MediaPlayerFilter {
     ]
     /// This app, in every identity it has shipped under.
     static let ownBundleIDs: Set<String> = ["ai.useful.voice", "ai.karko.sadaa"]
+    /// Players whose output measurably outlasts a Pause by more than 100 ms (a fade, a buffer).
+    static let slowToStop: Set<String> = ["com.apple.Music", "com.spotify.client", "com.apple.WebKit.GPU"]
 
     public static func isMedia(pid: Int32, bundleID: String?, ownPID: Int32) -> Bool {
         if pid == ownPID { return false }
         guard let bundleID, !bundleID.isEmpty else { return true }
         if ownBundleIDs.contains(where: { bundleID == $0 || bundleID.hasPrefix($0 + ".") }) { return false }
         return !systemPrefixes.contains { bundleID.hasPrefix($0) }
+    }
+
+    /// A Chromium or Electron helper process (Chrome, Vivaldi, Edge, Brave, Arc, Electron apps):
+    /// "...helper", "... Helper (Renderer)", "company.thebrowser.*". Chromium's audio mixer
+    /// keeps rendering silence for 10 s after a pause, so the process looks like it plays on.
+    public static func isBrowserHelper(bundleID: String?) -> Bool {
+        guard let bundleID, !bundleID.isEmpty else { return false }
+        return bundleID.lowercased().hasSuffix(".helper") || bundleID.contains("Helper")
+            || bundleID.hasPrefix("company.thebrowser.")
+    }
+
+    public static func isSlowToStop(bundleID: String?) -> Bool {
+        guard let bundleID else { return false }
+        return slowToStop.contains(bundleID)
     }
 }
 
@@ -93,44 +142,64 @@ public enum MediaPlayerFilter {
 /// Nothing here may delay a recording or surface as a dictation error: every call returns
 /// at once and the work runs on one serial queue.
 ///
-/// The rules, in order of how easily they break:
-/// 1. Only MediaRemote Pause and Play are used. Both go to the Now Playing app; Pause is
-///    safe on a paused player, and what they did is always checked in the audio output.
-/// 2. Short sounds are not media. A process counts only if it outputs in two looks 150 ms
-///    apart (P0), and it is held only if it stops within `stopWindow` of the Pause command
-///    (a live player stops in about 50 ms; an alert ends whenever it ends). What stops later
-///    is not held, so it is never resumed. A pause that cannot be observed, such as one
-///    process serving several tabs or a slow player, is not remembered: never risk playing
-///    something unknown.
+/// Two ways of knowing what plays:
+///
+/// **Now Playing (primary).** `effects.nowPlaying()` reads the system's Now Playing app and its
+/// playing state. If it plays, kMRPause goes out and the policy waits for it to report paused;
+/// that app (pid and bundle id) is remembered. At the end it resumes only if Now Playing is still
+/// that app, paused, and the watch (every 500 ms) never saw anything play or Now Playing change
+/// app. A Now Playing that vanished is never resumed: Play with no Now Playing app launches
+/// Music. This is immune to audio tails (Chromium keeps rendering silence for 10 s after a
+/// pause) and to alert sounds, which never become Now Playing.
+///
+/// **Audio process list (fallback, when Now Playing cannot be read).** What plays is what
+/// Core Audio says is outputting. See the rules below.
+///
+/// Audio fallback rules:
+/// 1. Short sounds are not media. A process counts only if it outputs in two looks 150 ms
+///    apart (P0), and it is held only if it stops soon after the Pause command: within 100 ms,
+///    300 ms for Music, Spotify and WebKit's GPU process, and up to 10.5 s for Chromium and
+///    Electron helpers (their mixer renders silence for 10 s). A pause that cannot be observed
+///    is not remembered: never risk playing something unknown.
+/// 2. A browser helper that has not stopped yet is `pending`, not blocking: the watch promotes
+///    it to `held` when it goes quiet, and the end waits for that (without blocking the queue)
+///    until its deadline. Until then its silence tail is never "touched".
 /// 3. `held` is the part of P0 that stopped, `background` the part that kept going (a call
 ///    app, say). Both are matched by pid. A background stream never blocks the resume.
-/// 4. A stranger is a process that is neither held nor background. Strangers count only when
-///    seen twice: on two watch ticks, or in two looks 40 ms apart at the end and after Play.
-/// 5. Resume only when `held` is alive, no held process is outputting (the user did not
-///    press play), no persistent stranger is outputting (the user did not start something
-///    else) and the watch did not see either during the dictation.
+/// 4. A stranger is a process that is neither held, pending nor background. Strangers count
+///    only when seen twice: on two watch ticks, or in two looks 40 ms apart at the end and
+///    after Play.
+/// 5. Resume only when `held` is alive, no held process is outputting (the user did not press
+///    play), no persistent stranger is outputting and the watch saw neither.
 /// 6. After Play, a persistent stranger with no held process outputting means Play reached
 ///    another app: it is paused again. The player just resumed is never paused.
-/// 7. A new recording within the grace after an end keeps the media paused, with no resume
-///    in between. It still pauses strangers that are playing and adds them to the hold.
-/// 8. The setting is read at every start; turning it off mid-dictation does not strand a
-///    paused player.
+///
+/// Both modes: a new recording within the grace after an end keeps the media paused, with no
+/// resume in between; the setting is read at every start; turning it off mid-dictation does
+/// not strand a paused player.
 public final class MediaPausePolicy: @unchecked Sendable {
     public struct Timing: Sendable {
         /// Between the two looks at the press: a process must be outputting in both.
         public var pressConfirmDelay: TimeInterval = 0.15
         /// Between the two looks that make a stranger count, at the end and after Play.
         public var strangerGap: TimeInterval = 0.04
-        /// How long after the Pause command a process may take to stop and still be held.
-        /// Measured on a live player: 40 to 55 ms from the command. A 300 ms alert at the
-        /// press ends about 140 ms after the command, so it is not held.
+        /// How long after the Pause command an ordinary process may take to stop and still be held.
+        /// Measured on a live player: 40 to 55 ms from the command.
         public var stopWindow: TimeInterval = 0.1
+        /// The same for Music, Spotify and WebKit's GPU process.
+        public var slowStopWindow: TimeInterval = 0.3
+        /// The same for Chromium and Electron helpers (audio_renderer_mixer's 10 s pause delay).
+        public var browserStopWindow: TimeInterval = 10.5
+        /// How long to wait for Now Playing to report paused after Pause.
+        public var nowPlayingStopTimeout: TimeInterval = 0.6
         /// How long an end waits before resuming. A new recording inside this window keeps
         /// the media paused (same as Windows).
         public var resumeGrace: TimeInterval = 0.4
-        /// How long to wait for Play to show in the audio output.
+        /// How long to wait for Play to show.
         public var settleTimeout: TimeInterval = 0.6
         public var pollInterval: TimeInterval = 0.01
+        /// How often the end checks whether a pending browser helper has gone quiet.
+        public var pendingRetryInterval: TimeInterval = 0.25
         /// How often to look for the user touching a paused player during a dictation.
         public var watchInterval: TimeInterval = 0.5
         /// The longest a quit waits for the resume.
@@ -139,9 +208,20 @@ public final class MediaPausePolicy: @unchecked Sendable {
         public init() {}
     }
 
+    // MARK: Holds
+
+    private struct NowPlayingHold {
+        var app: NowPlayingState
+        /// Something played, or Now Playing changed app, during the dictation.
+        var touched = false
+    }
+
     private struct Hold {
         var held: Set<MediaPlayerID> = []
         var background: Set<MediaPlayerID> = []
+        /// Browser helpers that had not stopped when the window for others closed, with the
+        /// time after which they count as background instead.
+        var pending: [MediaPlayerID: Date] = [:]
         /// The user played the paused player, or started something else, during the dictation.
         var touched = false
         /// Strangers seen on the previous watch tick (pids).
@@ -149,6 +229,7 @@ public final class MediaPausePolicy: @unchecked Sendable {
 
         func isKnown(_ player: MediaPlayerID) -> Bool {
             held.contains { $0.pid == player.pid } || background.contains { $0.pid == player.pid }
+                || pending.keys.contains { $0.pid == player.pid }
         }
         func strangers(in playing: [MediaPlayerID]) -> Set<MediaPlayerID> {
             Set(playing.filter { !isKnown($0) })
@@ -171,9 +252,11 @@ public final class MediaPausePolicy: @unchecked Sendable {
     private var shuttingDown = false
 
     // Only touched on the queue.
+    private var nowPlayingHold: NowPlayingHold?
     private var hold: Hold?
     private var watcher: DispatchSourceTimer?
-    private var unsupported = false
+    private var disabled = false
+    private var audioUnsupported = false
     private var logged: Set<String> = []
 
     public init(effects: MediaEffects,
@@ -240,8 +323,51 @@ public final class MediaPausePolicy: @unchecked Sendable {
     // MARK: - Pause
 
     private func pauseIfPlaying(epoch mine: Int) {
-        guard !unsupported, isEnabled() else { return }
+        guard !disabled, isEnabled() else { return }
         guard isLive(mine) else { return }
+        if let state = effects.nowPlaying() {
+            pauseNowPlaying(state, epoch: mine)
+        } else {
+            // The reader logs its own failure once; the audio list takes over quietly.
+            pauseByAudio(epoch: mine)
+        }
+    }
+
+    // MARK: Pause by Now Playing
+
+    private func pauseNowPlaying(_ state: NowPlayingState, epoch mine: Int) {
+        // Still paused from the previous dictation of a back-to-back pair: nothing to do.
+        // Something else playing now is the user's new media: pause it too.
+        guard state.isPlaying, state.hasApp, isLive(mine) else { return }
+        do {
+            try effects.sendPause()
+            var waited: TimeInterval = 0
+            let began = Date()
+            while true {
+                guard let now = effects.nowPlaying() else {
+                    diagnostics.warning("media", "Could not confirm the pause: Now Playing became unreadable")
+                    return
+                }
+                if now.isSameApp(as: state), !now.isPlaying { break }
+                if waited >= timing.nowPlayingStopTimeout || Date().timeIntervalSince(began) >= timing.nowPlayingStopTimeout {
+                    diagnostics.warning("media", "Could not pause \(state): it still reports playing after the pause command")
+                    return
+                }
+                effects.sleep(timing.pollInterval)
+                waited += timing.pollInterval
+            }
+            nowPlayingHold = NowPlayingHold(app: state)
+            startWatching()
+            diagnostics.info("media", "Paused \(state.bundleID ?? "pid \(state.pid)") for the dictation")
+        } catch {
+            handle(error, context: "Pausing media failed")
+        }
+    }
+
+    // MARK: Pause by audio (fallback)
+
+    private func pauseByAudio(epoch mine: Int) {
+        guard !audioUnsupported else { return }
         let known = hold ?? Hold()
         do {
             // Already holding something (a back-to-back dictation): only what is new counts.
@@ -251,43 +377,61 @@ public final class MediaPausePolicy: @unchecked Sendable {
             let p0 = first.intersection(known.strangers(in: try effects.outputtingPlayers()))
             guard !p0.isEmpty, isLive(mine) else { return }
 
+            let commanded = Date()
             try effects.sendPause()
-            let stopped = try waitForStop(of: p0)
-            guard !stopped.isEmpty else {
+            let result = try waitForStop(of: p0, since: commanded)
+            guard !result.stopped.isEmpty || !result.pending.isEmpty else {
                 // Nothing stopped in time. One last look: something outside P0 that started
                 // meanwhile (Now Playing moved) is paused too.
                 let late = known.strangers(in: try effects.outputtingPlayers())
                     .filter { player in !p0.contains { $0.pid == player.pid } }
                 if !late.isEmpty { try effects.sendPause() }
-                diagnostics.warning("media", "Could not pause \(describe(p0)): nothing stopped within \(Int(timing.stopWindow * 1000)) ms of the pause command, so it is not remembered")
+                diagnostics.warning("media", "Could not pause \(describe(p0)): nothing stopped soon enough after the pause command, so it is not remembered")
                 return
             }
             var updated = known
-            updated.held.formUnion(stopped)
-            updated.background.formUnion(p0.subtracting(stopped))
+            updated.held.formUnion(result.stopped)
+            let deadline = commanded.addingTimeInterval(timing.browserStopWindow)
+            for player in result.pending { updated.pending[player] = deadline }
+            updated.background.formUnion(p0.subtracting(result.stopped).subtracting(result.pending))
             updated.touched = false
             hold = updated
             startWatching()
-            var message = "Paused \(describe(stopped)) for the dictation"
-            if !p0.subtracting(stopped).isEmpty {
-                message += "; \(describe(p0.subtracting(stopped))) keeps playing and is left alone"
-            }
+            var message = "Paused \(describe(result.stopped.union(result.pending))) for the dictation"
+            if !result.pending.isEmpty { message += " (\(describe(result.pending)) is still rendering silence, waiting for it to go quiet)" }
+            let background = p0.subtracting(result.stopped).subtracting(result.pending)
+            if !background.isEmpty { message += "; \(describe(background)) keeps playing and is left alone" }
             diagnostics.info("media", message)
         } catch {
             handle(error, context: "Pausing media failed")
         }
     }
 
-    /// The part of `players` that stopped within the stop window, as soon as any did.
-    private func waitForStop(of players: Set<MediaPlayerID>) throws -> Set<MediaPlayerID> {
+    /// How long a process may take to go quiet after Pause and still count as paused by it.
+    private func stopWindow(for player: MediaPlayerID) -> TimeInterval {
+        if MediaPlayerFilter.isBrowserHelper(bundleID: player.bundleID) { return timing.browserStopWindow }
+        if MediaPlayerFilter.isSlowToStop(bundleID: player.bundleID) { return timing.slowStopWindow }
+        return timing.stopWindow
+    }
+
+    /// Waits only as long as the non-browser players are allowed. Browser helpers that are still
+    /// outputting then are `pending`: waiting up to 10.5 s here would hold up the end.
+    private func waitForStop(of players: Set<MediaPlayerID>, since began: Date) throws
+        -> (stopped: Set<MediaPlayerID>, pending: Set<MediaPlayerID>) {
+        let browsers = players.filter { MediaPlayerFilter.isBrowserHelper(bundleID: $0.bundleID) }
+        let others = players.subtracting(browsers)
+        let shortWindow = others.map { stopWindow(for: $0) }.max() ?? 0
         var waited: TimeInterval = 0
-        // The window is measured on the clock as well as in poll steps, so slow looks cannot
-        // stretch it: a late stop is not a stop caused by the command.
-        let began = Date()
         while true {
-            let stopped = players.subtracting(Set(try effects.outputtingPlayers()))
-            if !stopped.isEmpty { return stopped }
-            if waited >= timing.stopWindow || Date().timeIntervalSince(began) >= timing.stopWindow { return [] }
+            let outputting = Set(try effects.outputtingPlayers())
+            let elapsed = Date().timeIntervalSince(began)
+            let quiet = players.subtracting(outputting)
+            let inTime = quiet.filter { elapsed <= stopWindow(for: $0) }
+            let pending = browsers.intersection(outputting)
+            if !inTime.isEmpty { return (inTime, pending) }
+            // The window is measured on the clock as well as in poll steps, so slow looks cannot
+            // stretch it: a late stop is not a stop caused by the command.
+            if waited >= shortWindow || elapsed >= shortWindow { return ([], pending) }
             effects.sleep(timing.pollInterval)
             waited += timing.pollInterval
         }
@@ -309,20 +453,46 @@ public final class MediaPausePolicy: @unchecked Sendable {
         watcher = nil
     }
 
-    /// Touched means: a held process outputs (the user pressed play), or a stranger outputs
-    /// on two consecutive ticks (the user started something). One tick of a stranger is a
-    /// ding and is forgotten.
     private func watchTick() {
-        guard var current = hold else { return stopWatching() }
-        guard !current.touched else { return }
+        guard nowPlayingHold != nil || hold != nil else { return stopWatching() }
+        if var current = nowPlayingHold, !current.touched, let state = effects.nowPlaying() {
+            // Anything playing now is the user: the player pressed again, or something else.
+            // Now Playing moving to another app is the user too. No app at all is left to the end.
+            if state.isPlaying || (state.hasApp && !state.isSameApp(as: current.app)) {
+                current.touched = true
+                nowPlayingHold = current
+            }
+        }
+        guard var current = hold else { return }
         // A failed look is not "touched"; the gate at the end looks again.
         guard let playing = try? effects.outputtingPlayers() else { return }
-        let strangers = Set(current.strangers(in: playing).map(\.pid))
-        if current.holdsHeldProcess(in: playing) || !strangers.isDisjoint(with: current.strangersLastTick) {
-            current.touched = true
+        promotePending(&current, playing: playing)
+        if !current.touched {
+            // Touched means: a held process outputs (the user pressed play), or a stranger outputs
+            // on two consecutive ticks (the user started something). One tick of a stranger is a
+            // ding. A pending browser helper's silence tail is neither.
+            let strangers = Set(current.strangers(in: playing).map(\.pid))
+            if current.holdsHeldProcess(in: playing) || !strangers.isDisjoint(with: current.strangersLastTick) {
+                current.touched = true
+            }
+            current.strangersLastTick = strangers
         }
-        current.strangersLastTick = strangers
         hold = current
+    }
+
+    /// A pending browser helper that went quiet in time is held; one still rendering after its
+    /// deadline is simply a background stream.
+    private func promotePending(_ current: inout Hold, playing: [MediaPlayerID]) {
+        let now = Date()
+        for (player, deadline) in current.pending {
+            if !playing.contains(where: { $0.pid == player.pid }) {
+                current.pending[player] = nil
+                if now <= deadline { current.held.insert(player) }
+            } else if now > deadline {
+                current.pending[player] = nil
+                current.background.insert(player)
+            }
+        }
     }
 
     // MARK: - Resume
@@ -333,12 +503,84 @@ public final class MediaPausePolicy: @unchecked Sendable {
             let stillTheEnd = lock.withLock { !recording && epoch == ended }
             guard stillTheEnd else { return }
         }
+        // Audio holds first: a pending browser helper may ask to look again shortly.
+        if var current = hold, !current.pending.isEmpty {
+            if let playing = try? effects.outputtingPlayers() { promotePending(&current, playing: playing) }
+            hold = current
+            if current.held.isEmpty, !current.pending.isEmpty, ended != nil {
+                // Wait for the silence tail without holding up the queue.
+                queue.asyncAfter(deadline: .now() + timing.pendingRetryInterval) { [self] in
+                    resume(afterEpoch: ended)
+                }
+                return
+            }
+            if current.held.isEmpty, current.pending.isEmpty, current.background.isEmpty { hold = nil }
+        }
         stopWatching()
-        guard let current = hold else { return }
+        let nowPlayingCurrent = nowPlayingHold
+        let audioCurrent = hold
+        nowPlayingHold = nil
         hold = nil
+        if let nowPlayingCurrent { resumeNowPlaying(nowPlayingCurrent) }
+        if let audioCurrent { resumeAudio(audioCurrent) }
+    }
+
+    private func resumeNowPlaying(_ current: NowPlayingHold) {
+        do {
+            guard !current.touched else {
+                diagnostics.info("media", "Not resuming: something played or Now Playing changed during the dictation")
+                return
+            }
+            guard let state = effects.nowPlaying() else {
+                diagnostics.info("media", "Not resuming: Now Playing cannot be read")
+                return
+            }
+            guard state.hasApp, state.isSameApp(as: current.app), !state.isPlaying else {
+                // Includes no Now Playing app at all: Play would launch Music.
+                diagnostics.info("media", "Not resuming: Now Playing is \(state), not the paused \(current.app.bundleID ?? "player")")
+                return
+            }
+            guard effects.isAlive(MediaPlayerID(pid: current.app.pid, bundleID: current.app.bundleID)) else {
+                diagnostics.info("media", "Not resuming: \(current.app.bundleID ?? "the player") is gone")
+                return
+            }
+            try effects.sendPlay()
+            var waited: TimeInterval = 0
+            let began = Date()
+            while true {
+                guard let now = effects.nowPlaying() else {
+                    diagnostics.warning("media", "Could not confirm the resume: Now Playing became unreadable")
+                    return
+                }
+                if now.isPlaying {
+                    if now.isSameApp(as: current.app) {
+                        diagnostics.info("media", "Resumed \(current.app.bundleID ?? "the player")")
+                    } else {
+                        try effects.sendPause()
+                        diagnostics.warning("media", "Play reached \(now) instead of \(current.app.bundleID ?? "the player"); paused it again")
+                    }
+                    return
+                }
+                if waited >= timing.settleTimeout || Date().timeIntervalSince(began) >= timing.settleTimeout {
+                    diagnostics.warning("media", "Could not resume \(current.app.bundleID ?? "the player")")
+                    return
+                }
+                effects.sleep(timing.pollInterval)
+                waited += timing.pollInterval
+            }
+        } catch {
+            handle(error, context: "Resuming media failed")
+        }
+    }
+
+    private func resumeAudio(_ current: Hold) {
         do {
             guard !current.touched else {
                 diagnostics.info("media", "Not resuming: the player was used during the dictation")
+                return
+            }
+            guard !current.held.isEmpty else {
+                diagnostics.info("media", "Not resuming: nothing was seen stopping after the pause")
                 return
             }
             let alive = current.held.filter { effects.isAlive($0) }
@@ -422,18 +664,19 @@ public final class MediaPausePolicy: @unchecked Sendable {
         lock.withLock { recording && epoch == mine && !shuttingDown }
     }
 
-    /// A macOS without the process list turns the feature off for good, with one log line.
-    /// Anything else is logged once per kind of failure, so a refusing system does not
-    /// fill the log with one line per dictation.
+    /// A macOS without the audio process list turns the audio fallback off for good, with one
+    /// log line. MediaRemote that cannot load turns the whole feature off. Anything else is
+    /// logged once per kind of failure, so a refusing system does not fill the log with one
+    /// line per dictation.
     private func handle(_ error: Error, context: String) {
         if let media = error as? MediaEffectsError {
             switch media {
             case .processListUnsupported:
-                unsupported = true
+                audioUnsupported = true
                 logOnce("unsupported", error)
                 return
             case .mediaRemoteUnavailable:
-                unsupported = true
+                disabled = true
                 logOnce("mediaremote", error)
                 return
             case .commandRefused(let name):
@@ -447,8 +690,12 @@ public final class MediaPausePolicy: @unchecked Sendable {
     }
 
     private func logOnce(_ key: String, _ error: Error) {
+        logOnce(key, "\(error.localizedDescription). Media is left alone", level: .warning)
+    }
+
+    private func logOnce(_ key: String, _ message: String, level: Diagnostics.Level) {
         guard logged.insert(key).inserted else { return }
-        diagnostics.warning("media", "\(error.localizedDescription). Media is left alone")
+        diagnostics.record(level: level, category: "media", message: message)
     }
 
     private func describe(_ players: Set<MediaPlayerID>) -> String {

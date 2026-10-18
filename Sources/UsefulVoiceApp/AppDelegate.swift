@@ -138,9 +138,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // differently signed copy of the app.
         if ProcessInfo.processInfo.environment["UV_SNAPSHOT"] == nil { primeKeyCache() }
         chimes.isEnabled = { [settings] in settings.soundEffectsEnabled }
+        let mediaEffects = SystemMediaEffects(helperDirectory: SystemMediaEffects.bundledHelperDirectory)
         mediaPause = MediaPausePolicy(
-            effects: SystemMediaEffects(),
+            effects: mediaEffects,
             isEnabled: { [settings] in settings.pauseMediaWhileDictating })
+        // Not in a render or a forced first run, which never dictate.
+        if !isSnapshot, settings.pauseMediaWhileDictating { mediaEffects.warmUp() }
         setUpController()
         // Before the status item, whose menu shows the update item only when the
         // updater runs. Not in a render or forced first-run preview, which save nothing.

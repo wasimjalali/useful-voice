@@ -40,6 +40,12 @@ engine.connect(silence, to: engine.mainMixerNode, format: format)
 
 var playing = false
 let isBackground = arguments.contains("--background")
+// `--tail <ms>`: after a remote Pause the audio output keeps running that long (see setPlaying).
+let tailMilliseconds: Double = {
+    guard let index = arguments.firstIndex(of: "--tail"), arguments.count > index + 1,
+          let value = Double(arguments[index + 1]) else { return 0 }
+    return value
+}()
 
 func publishNowPlaying() {
     guard !isBackground else { return }
@@ -62,8 +68,16 @@ func setPlaying(_ on: Bool, why: String) {
             return
         }
     } else {
-        engine.pause()
         playing = false
+        if tailMilliseconds > 0, why == "remote pause" {
+            // Like Chromium's audio mixer: the app reports paused at once, but the audio
+            // process keeps rendering silence for a while.
+            DispatchQueue.main.asyncAfter(deadline: .now() + tailMilliseconds / 1000) {
+                if !playing { engine.pause(); log("AUDIO tail over") }
+            }
+        } else {
+            engine.pause()
+        }
     }
     publishNowPlaying()
     log("STATE \(playing ? "playing" : "paused") (\(why))")

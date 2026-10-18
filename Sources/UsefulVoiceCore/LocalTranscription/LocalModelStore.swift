@@ -92,17 +92,12 @@ public final class LocalModelStore: @unchecked Sendable {
         return (attrs?[.size] as? Int64) ?? 0
     }
 
-    /// Total bytes used by the Whisper models in the directory. The hidden cleanup model
-    /// (S1-mini) shares the directory but is not a Whisper model, so it and its `.partial` and
-    /// `.resume` files are left out of the "N of M models downloaded, X on disk" summary.
+    /// Total bytes used by everything in the model directory.
     public func totalBytesOnDisk() -> Int64 {
         guard let contents = try? fileManager.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
-        let hidden = S1MiniModel.model.fileName
         var total: Int64 = 0
         for url in contents {
-            let name = url.lastPathComponent
-            if name == hidden || name.hasPrefix(hidden + ".") { continue }
             let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
             total += Int64(size)
         }

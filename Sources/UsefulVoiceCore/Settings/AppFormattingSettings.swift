@@ -101,12 +101,9 @@ public struct AppFormattingSettings: Codable, Equatable, Sendable {
     // MARK: - Style
 
     /// The style the user picked for a category, or nil to use its default. A stored style
-    /// the category does not allow (Very casual outside Personal chat) is ignored, and so is
-    /// one equal to the category default: that is no choice, and the cleanup model should
-    /// keep the card's default for it.
+    /// the category does not allow (Very casual outside Personal chat) is ignored.
     public func requestedStyle(for category: AppCategory) -> FormattingStyle? {
-        guard let style = styles[category.rawValue], category.allowedStyles.contains(style),
-              style != category.defaultStyle else { return nil }
+        guard let style = styles[category.rawValue], category.allowedStyles.contains(style) else { return nil }
         return style
     }
 

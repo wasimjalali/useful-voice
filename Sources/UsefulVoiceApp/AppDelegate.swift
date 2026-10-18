@@ -397,8 +397,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Keep the bytes of any model download in flight: pause it so URLSession
         // hands back resume data, and give the write a bounded moment to land.
         modelManager?.pauseAllDownloads()
-        HiddenCleanupModel.pauseDownloads()
-        HiddenCleanupModel.shutDown()
     }
 
     /// Frees the loaded whisper context only when it is no longer the active,
@@ -668,12 +666,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             sendKey: { chord in TextInserter.postSendKey(chord) },
             ownAppID: Bundle.main.bundleIdentifier,
             ownFieldIsEditable: { Self.ownEditableFieldHasFocus() },
-            autoFormat: { [settings] in settings.formattingEnabled },
-            // Nil unless the hidden UV_CLEANUP_MODEL flag is on; with nil the dictation
-            // path is exactly as it was.
-            cleanupModel: HiddenCleanupModel.shared
+            autoFormat: { [settings] in settings.formattingEnabled }
         )
-        HiddenCleanupModel.downloadIfNeeded()
         controller.onStateChange = { [weak self] state in
             if state == .recording, let target = self?.controller?.deliveryTarget {
                 FocusTracker.shared.noteRecent(target)

@@ -1,0 +1,148 @@
+loadavg before { 5.47 4.34 3.81 }
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "S1-mini next to whisper.cpp (needs the real weights; CI runs it alone)" started.
+◇ Test measure() started.
+MEASURE baseline (resident: 41.0, footprint: 8.610038757324219)
+ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+ggml_metal_library_init: using embedded metal library
+ggml_metal_library_init: loaded in 0.024 sec
+ggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)
+ggml_metal_device_init: GPU name:   MTL0 (Apple M4)
+ggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)
+ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+ggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)
+ggml_metal_device_init: simdgroup reduction   = true
+ggml_metal_device_init: simdgroup matrix mul. = true
+ggml_metal_device_init: has unified memory    = true
+ggml_metal_device_init: has bfloat            = true
+ggml_metal_device_init: has tensor            = false
+ggml_metal_device_init: use residency sets    = true
+ggml_metal_device_init: use shared buffers    = true
+ggml_metal_device_init: recommendedMaxWorkingSetSize  = 12713.12 MB
+MEASURE preferred placement metal
+MEASURE cpuOnly load 547.631791 ms threads 4 cores 10 mem (resident: 891.3125, footprint: 520.34521484375)
+MEASURE cpuOnly run 2877.111542 ms prompt 97 out 10 ctx 512 prefill 2503.282625 ms (context 6.164666 ms, prompt decode 2495.37975 ms, native prompt 2495.158 ms, native generate 371.021 ms) -> "So I need to send the report by Thursday."
+MEASURE cpuOnly run 3197.386917 ms prompt 92 out 15 ctx 512 prefill 2629.6668329999998 ms (context 5.712084 ms, prompt decode 2623.458333 ms, native prompt 2623.446 ms, native generate 564.801 ms) -> "Send it to john.smith@example.com by Friday the 3rd."
+MEASURE cpuOnly run 3102.366625 ms prompt 95 out 16 ctx 512 prefill 2491.3288749999997 ms (context 5.314583000000001 ms, prompt decode 2485.593125 ms, native prompt 2485.578 ms, native generate 608.539 ms) -> "The meeting is at 2:30pm on March 16."
+MEASURE cpuOnly run 3554.54425 ms prompt 99 out 20 ctx 512 prefill 2684.455125 ms (context 5.272833 ms, prompt decode 2678.7316250000003 ms, native prompt 2678.719 ms, native generate 866.284 ms) -> "So the budget is $45,000, and we need to confirm with Sarah."
+MEASURE cpuOnly run 3518.470084 ms prompt 97 out 18 ctx 512 prefill 2701.253083 ms (context 5.143708 ms, prompt decode 2695.606542 ms, native prompt 2695.5950000000003 ms, native generate 813.755 ms) -> "Can you open the file source/app.ts and rename the function get user to fetch user?"
+MEASURE cpuOnly median 3197.386917 ms max 3554.54425 ms mem after (resident: 828.90625, footprint: 484.37646484375)
+whisper_init_from_file_with_params_no_state: loading model from '<scratch>/uv-models/ggml-tiny.en.bin'
+whisper_init_with_params_no_state: use gpu    = 0
+whisper_init_with_params_no_state: flash attn = 1
+whisper_init_with_params_no_state: gpu_device = 0
+whisper_init_with_params_no_state: dtw        = 0
+whisper_init_with_params_no_state: devices    = 3
+whisper_init_with_params_no_state: backends   = 3
+whisper_model_load: loading model
+whisper_model_load: n_vocab       = 51864
+whisper_model_load: n_audio_ctx   = 1500
+whisper_model_load: n_audio_state = 384
+whisper_model_load: n_audio_head  = 6
+whisper_model_load: n_audio_layer = 4
+whisper_model_load: n_text_ctx    = 448
+whisper_model_load: n_text_state  = 384
+whisper_model_load: n_text_head   = 6
+whisper_model_load: n_text_layer  = 4
+whisper_model_load: n_mels        = 80
+whisper_model_load: ftype         = 1
+whisper_model_load: qntvr         = 0
+whisper_model_load: type          = 1 (tiny)
+whisper_model_load: adding 1607 extra tokens
+whisper_model_load: n_langs       = 99
+whisper_model_load:          CPU total size =    77.11 MB
+whisper_model_load: model size    =   77.11 MB
+whisper_backend_init_gpu: no GPU found
+whisper_backend_init: using BLAS backend
+whisper_init_state: kv self size  =    3.15 MB
+whisper_init_state: kv cross size =    9.44 MB
+whisper_init_state: kv pad  size  =    2.36 MB
+whisper_init_state: loading Core ML model from '<scratch>/uv-models/ggml-tiny.en-encoder.mlmodelc'
+whisper_init_state: first run on a device may take a while ...
+whisper_init_state: failed to load Core ML model from '<scratch>/uv-models/ggml-tiny.en-encoder.mlmodelc'
+whisper_init_state: compute buffer (conv)   =   13.21 MB
+whisper_init_state: compute buffer (encode) =   17.72 MB
+whisper_init_state: compute buffer (cross)  =    3.89 MB
+whisper_init_state: compute buffer (decode) =   95.91 MB
+MEASURE cpuOnly with whisper tiny loadable=true in 67.033042 ms mem (resident: 837.640625, footprint: 496.0639877319336)
+MEASURE after cpuOnly unload (resident: 141.0, footprint: 80.62598419189453)
+MEASURE metal load 146.754042 ms threads 4 cores 10 mem (resident: 610.90625, footprint: 94.00132751464844)
+MEASURE metal run 154.199792 ms prompt 97 out 10 ctx 512 prefill 80.19483299999999 ms (context 19.020167 ms, prompt decode 5.107958 ms, native prompt 60.550000000000004 ms, native generate 72.203 ms) -> "So I need to send the report by Thursday."
+MEASURE metal run 153.301417 ms prompt 92 out 15 ctx 512 prefill 56.995334 ms (context 20.056041999999998 ms, prompt decode 1.347208 ms, native prompt 36.465 ms, native generate 94.455 ms) -> "Send it to john.smith@example.com by Friday the 3rd."
+MEASURE metal run 168.281292 ms prompt 95 out 16 ctx 512 prefill 61.096125 ms (context 24.04125 ms, prompt decode 1.408833 ms, native prompt 36.644 ms, native generate 104.78 ms) -> "The meeting is at 2:30pm on March 16."
+MEASURE metal run 196.444125 ms prompt 99 out 20 ctx 512 prefill 67.47525 ms (context 21.283542 ms, prompt decode 1.2365 ms, native prompt 45.819 ms, native generate 126.571 ms) -> "So the budget is $45,000, and we need to confirm with Sarah."
+MEASURE metal run 187.643792 ms prompt 97 out 18 ctx 512 prefill 67.524875 ms (context 21.621416 ms, prompt decode 1.369042 ms, native prompt 45.499 ms, native generate 117.428 ms) -> "Can you open the file source/app.ts and rename the function get user to fetch user?"
+MEASURE metal median 168.281292 ms max 196.444125 ms mem after (resident: 617.28125, footprint: 144.45447540283203)
+whisper_init_from_file_with_params_no_state: loading model from '<scratch>/uv-models/ggml-tiny.en.bin'
+whisper_init_with_params_no_state: use gpu    = 1
+whisper_init_with_params_no_state: flash attn = 1
+whisper_init_with_params_no_state: gpu_device = 0
+whisper_init_with_params_no_state: dtw        = 0
+whisper_init_with_params_no_state: devices    = 3
+whisper_init_with_params_no_state: backends   = 3
+whisper_model_load: loading model
+whisper_model_load: n_vocab       = 51864
+whisper_model_load: n_audio_ctx   = 1500
+whisper_model_load: n_audio_state = 384
+whisper_model_load: n_audio_head  = 6
+whisper_model_load: n_audio_layer = 4
+whisper_model_load: n_text_ctx    = 448
+whisper_model_load: n_text_state  = 384
+whisper_model_load: n_text_head   = 6
+whisper_model_load: n_text_layer  = 4
+whisper_model_load: n_mels        = 80
+whisper_model_load: ftype         = 1
+whisper_model_load: qntvr         = 0
+whisper_model_load: type          = 1 (tiny)
+whisper_model_load: adding 1607 extra tokens
+whisper_model_load: n_langs       = 99
+whisper_model_load:         MTL0 total size =    77.11 MB
+whisper_model_load: model size    =   77.11 MB
+whisper_backend_init_gpu: device 0: MTL0 (type: 1)
+whisper_backend_init_gpu: found GPU device 0: MTL0 (type: 1, cnt: 0)
+whisper_backend_init_gpu: using MTL0 backend
+ggml_metal_init: allocating
+ggml_metal_init: found device: Apple M4
+ggml_metal_init: picking default device: Apple M4
+ggml_metal_init: use fusion         = true
+ggml_metal_init: use concurrency    = true
+ggml_metal_init: use graph optimize = true
+whisper_backend_init: using BLAS backend
+whisper_init_state: kv self size  =    3.15 MB
+whisper_init_state: kv cross size =    9.44 MB
+whisper_init_state: kv pad  size  =    2.36 MB
+whisper_init_state: loading Core ML model from '<scratch>/uv-models/ggml-tiny.en-encoder.mlmodelc'
+whisper_init_state: first run on a device may take a while ...
+whisper_init_state: failed to load Core ML model from '<scratch>/uv-models/ggml-tiny.en-encoder.mlmodelc'
+whisper_init_state: compute buffer (conv)   =   14.17 MB
+whisper_init_state: compute buffer (encode) =   19.93 MB
+whisper_init_state: compute buffer (cross)  =   20.02 MB
+whisper_init_state: compute buffer (decode) =   96.83 MB
+ggml_metal_free: deallocating
+MEASURE metal with whisper tiny loadable=true in 71.996834 ms mem (resident: 659.8125, footprint: 187.8920440673828)
+MEASURE after metal unload (resident: 204.859375, footprint: 187.5479736328125)
+MEASURE probe cpuOnly context 5.994083 ms, prompt 97 tokens
+MEASURE probe cpuOnly prompt decode #0 status 0 2611.0921249999997 ms
+MEASURE probe cpuOnly prompt decode #1 status 0 2861.889 ms
+MEASURE probe cpuOnly prompt decode #2 status 0 2649.279291 ms
+MEASURE probe cpuOnly prompt decode #3 status 0 2731.757625 ms
+MEASURE probe cpuOnly single-token decodes ms 35 38 40 52 40 50 41 35 35 38
+MEASURE probe metal context 17.361917000000002 ms, prompt 97 tokens
+MEASURE probe metal prompt decode #0 status 0 1.697125 ms
+MEASURE probe metal prompt decode #1 status 0 56.469334 ms
+MEASURE probe metal prompt decode #2 status 0 43.744334 ms
+MEASURE probe metal prompt decode #3 status 0 44.032833000000004 ms
+MEASURE probe metal single-token decodes ms 44 6 6 6 7 6 6 6 6 6
+MEASURE metal load 116.803958 ms mem (resident: 665.421875, footprint: 195.2982940673828)
+MEASURE metal run 129.601667 ms (context 16.38125 ms, prompt decode 1.174916 ms, native prompt 45.541000000000004 ms, native generate 65.944 ms, out 10)
+MEASURE metal run 139.908375 ms (context 19.667666 ms, prompt decode 1.328667 ms, native prompt 45.764 ms, native generate 71.238 ms, out 10)
+MEASURE metal run 132.361792 ms (context 21.487583 ms, prompt decode 1.524834 ms, native prompt 45.803000000000004 ms, native generate 63.066 ms, out 10)
+MEASURE metal abort: prompt 888 tokens, first token after 365.945333 ms (native prompt 329.129 ms), whole run 6967.579291 ms; deadline at 91.0 ms -> deadline exceeded after 419.427333 ms
+MEASURE metal abort: prompt 1515 tokens, first token after 645.400041 ms (native prompt 603.832 ms), whole run 18221.772375 ms; deadline at 161.0 ms -> deadline exceeded after 501.195167 ms
+✔ Test measure() passed after 57.093 seconds.
+✔ Suite "S1-mini next to whisper.cpp (needs the real weights; CI runs it alone)" passed after 57.093 seconds.
+✔ Test run with 1 test in 1 suite passed after 57.093 seconds.
+EXIT 0
+loadavg after { 5.66 4.67 3.97 }

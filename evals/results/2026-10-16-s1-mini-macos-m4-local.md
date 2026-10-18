@@ -1,5 +1,7 @@
 # S1-mini on macOS: the same runtime on a real Apple M4 (2026-10-16)
 
+Follow-up: the app now uses Metal on real Apple-silicon Macs, CPU elsewhere (`2026-10-16-s1-mini-macos-metal.md`), and the cleanup eval was re-run through it (`2026-10-16-cleanup-macos-m4-app.md`).
+
 ## Question
 
 The CI runner for the macOS runtime measurements is a virtual M1 with 3 cores

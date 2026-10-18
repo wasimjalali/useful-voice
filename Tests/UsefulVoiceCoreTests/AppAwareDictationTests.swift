@@ -328,14 +328,7 @@ import Foundation
         #expect(delivered == ["We could go"])
     }
 
-    /// The caps that keep a stuck reader from holding a dictation up. The wall-clock behaviour
-    /// is not timed (a stalled runner would fail it); the values are pinned here instead.
-    @Test func theCursorReadCapsArePinned() {
-        #expect(DictationController.cursorReadWait == 0.3)
-    }
-
-    @Test(.timeLimit(.minutes(1)))
-    func aReaderThatNeverAnswersCannotHoldUpTheDictation() async {
+    @Test func aReaderThatNeverAnswersCannotHoldUpTheDictation() async {
         focus = slack
         let c = DictationController(
             recorder: recorder, providers: { [self.provider("We could go.")] }, store: store,
@@ -346,14 +339,14 @@ import Foundation
             appFormatting: { AppFormattingSettings() },
             textBeforeCursor: { _ in await withCheckedContinuation { (_: CheckedContinuation<String?, Never>) in } },
             autoFormat: { true })
+        let started = Date()
         c.toggle()
-        #expect(c.state == .recording)               // the press did not wait for the reader (toggle returns at once)
+        #expect(c.state == .recording)               // the press did not wait for the reader
+        #expect(Date().timeIntervalSince(started) < 1)
         c.toggle()
         await c.awaitProcessing()
-        // Reaching delivery at all is the proof: the reader never answers, so only the controller's
-        // own cap on the read (cursorReadWait) can end the wait. No wall-clock bound: a stalled
-        // runner cannot fail this, a missing cap hangs it until the time limit above.
         #expect(delivered == ["We could go"])        // formatted without the unknown context
+        #expect(Date().timeIntervalSince(started) < 15)   // it only has to end; CI machines are slow under load
     }
 
     // MARK: Auto-format transcript and cleanup rules

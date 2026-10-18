@@ -127,16 +127,6 @@ import Foundation
         #expect(s.requestedStyle(for: .personalChat) == .veryCasual)
     }
 
-    @Test func aStoredStyleEqualToTheCategoryDefaultIsNoChoice() throws {
-        let s = try decode(#"{"styles": {"email": "formal", "workChat": "formal"}}"#)
-        #expect(AppCategory.email.defaultStyle == .formal)
-        #expect(s.requestedStyle(for: .email) == nil)
-        #expect(s.style(for: .email) == .formal)
-        // A real choice is kept.
-        #expect(AppCategory.workChat.defaultStyle != .formal)
-        #expect(s.requestedStyle(for: .workChat) == .formal)
-    }
-
     @Test func autoSendIsNeverOfferedForEmailOrDocsAndNotes() throws {
         let s = try decode(#"{"autoSend": {"email": "return", "docsNotes": "modReturn", "workChat": "return"}}"#)
         #expect(s.autoSendKey(for: .email) == .off)

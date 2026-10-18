@@ -1,7 +1,7 @@
 import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, nativeTheme, shell, screen, Menu } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promises as fs, appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { promises as fs, appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 
@@ -21,13 +21,14 @@ import { selectKeyterms } from '../core/memory/biasBuilder.js';
 import { HUD_EXIT_MS, HudModel, languageLabel, type HudFrame } from '../core/hudModel.js';
 import { normaliseLanguageCode } from '../core/transcription/languages.js';
 import { decideFirstRun, firstRunLaunch, shouldOpenAtLaunch, type FirstRunStep } from '../core/firstRun/gate.js';
-import { installProviderStubs } from './e2eStub.js';
+import { installProviderStubs, parakeetE2eDeps } from './e2eStub.js';
+import { setSecretSource } from '../core/redaction.js';
 import { sameAccelerator, validateAccelerator } from '../core/settings/accelerator.js';
 import { isSendableKey, keyCheckFailure } from '../core/firstRun/keyCheck.js';
 import { transcribe as transcribeRequest } from '../core/transcription/deepgramProvider.js';
 import { FormatterError, formatWithModel } from '../core/formatting/aiFormatter.js';
 import { checkProviderKey } from '../core/models/providerKeyCheck.js';
-import { isKeyProvider, languageModelById, type KeyProvider } from '../core/models/catalog.js';
+import { KEY_PROVIDERS, isKeyProvider, languageModelById, type KeyProvider } from '../core/models/catalog.js';
 import { PARAKEET_CHANNELS, PARAKEET_VERSIONS, parakeetVersionFromCatalogId, type ParakeetVersion } from '../core/models/parakeet.js';
 import { ParakeetModels } from './parakeet.js';
 import { createTranscriber, currentVoiceModel, missingKeyMessage, voiceCredential } from './transcriberRouter.js';
@@ -361,7 +362,10 @@ class UsefulVoiceApp {
 
     this.settings = new SettingsStore(app.getPath('userData'));
     await this.settings.load();
-    this.parakeet = new ParakeetModels(app.getPath('userData'));
+    setSecretSource(() =>
+      KEY_PROVIDERS.map((provider) => this.settings.revealKey(provider)).filter((key): key is string => key !== null),
+    );
+    this.parakeet = new ParakeetModels(app.getPath('userData'), E2E ? parakeetE2eDeps(app.getPath('userData')) : undefined);
     this.parakeet.onChange((states) => this.broadcast(PARAKEET_CHANNELS.changed, states));
     if (this.settings.saveError) {
       this.diagnostics.log('settings', this.settings.saveError.message);
@@ -1569,7 +1573,12 @@ class UsefulVoiceApp {
       return this.settings.setKey(provider, key);
     });
     ipcMain.handle('models:clear-key', (_event, provider: unknown) => {
-      if (isKeyProvider(provider)) this.settings.clearKey(provider);
+      if (!isKeyProvider(provider)) return;
+      this.settings.clearKey(provider);
+      // The formatter can't run without its key: turn AI formatting off rather than leave it quietly failing.
+      // A voice model keeps its selection, and the dictation says which key to add.
+      const formatter = languageModelById(this.settings.all.formatterId);
+      if (formatter && formatter.provider === provider) this.settings.update({ formatterId: null });
     });
     ipcMain.handle('models:test-key', async (_event, provider: unknown) => {
       if (!isKeyProvider(provider)) return { ok: false, message: 'Unknown provider.' };
@@ -1585,6 +1594,20 @@ class UsefulVoiceApp {
       if ((PARAKEET_VERSIONS as readonly unknown[]).includes(value)) return value as ParakeetVersion;
       throw new Error('Unknown Parakeet model.');
     };
+    // The shipped third-party notices: in the install's resources, or the repo file in development.
+    ipcMain.handle('app:open-notices', async (): Promise<{ ok: boolean; message: string }> => {
+      const file = app.isPackaged
+        ? path.join(process.resourcesPath, 'THIRD_PARTY_NOTICES.md')
+        : fileURLToPath(new URL('../../THIRD_PARTY_NOTICES.md', import.meta.url));
+      if (!existsSync(file)) return { ok: false, message: "The notices file wasn't found." };
+      // A test run must not open a program on the person's machine: it records the path instead.
+      if (E2E) {
+        appendFileSync(path.join(app.getPath('userData'), 'e2e.log'), `${new Date().toISOString()} open-notices ${file}\n`);
+        return { ok: true, message: '' };
+      }
+      const failure = await shell.openPath(file);
+      return failure ? { ok: false, message: "The notices file couldn't be opened." } : { ok: true, message: '' };
+    });
     ipcMain.handle('parakeet:states', () => this.parakeet.states());
     ipcMain.handle('parakeet:download', (_event, version: unknown) => this.parakeet.download(parakeetVersion(version)));
     ipcMain.handle('parakeet:cancel', (_event, version: unknown) => this.parakeet.cancel(parakeetVersion(version)));
@@ -2288,14 +2311,14 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     // The count is checked against the documented boundary rather than a vague lower
     // bound: `tests/ipcContract.test.ts` pins this same number to the README, so a
     // channel added or lost anywhere fails one of the two.
-    // 83: the models and their keys (`setProviderKey`, `clearProviderKey`, `testProviderKey`, `parakeetStates`,
+    // 84: the models and their keys (`openNotices`, `setProviderKey`, `clearProviderKey`, `testProviderKey`, `parakeetStates`,
     // `parakeetDownload`, `parakeetCancel`, `parakeetRemove`, `onParakeetChanged`), the first-run setup (`firstRunState`, `firstRunEndPractice`, `firstRunSetOpen`, `firstRunCheckKey`,
     // `firstRunSaveKey`, `firstRunSetLanguage`, `firstRunSetHotkey`, `firstRunFinish`,
     // `onPracticeResult`), the theme (`getTheme`, `onThemeChanged`), `showDiagnosticsLog`, `onOutcome` +
     // `onTelemetry`, `getFlags`, and the floating windows (`onHudView`, `hudPointer`,
     // `hudAction`, `hudDrag`, `onAnnounce`, `pickerChoose`, `pickerClose`, `onSettingsChanged`), and `sendAudioStarted`.
     // Kept in step with the README by the comment below.
-    const EXPECTED_API_METHODS = 83;
+    const EXPECTED_API_METHODS = 84;
     record(
       'preload exposes API',
       preloadProbe.hasApi

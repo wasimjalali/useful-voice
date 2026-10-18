@@ -19,7 +19,7 @@ export const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta
 export const ANTHROPIC_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 export const ANTHROPIC_VERSION = '2023-06-01';
 
-export type FormatterFailureKind = 'noKey' | 'cancelled' | 'timedOut' | 'transport' | 'http' | 'malformed' | 'guard';
+export type FormatterFailureKind = 'noKey' | 'cancelled' | 'timeout' | 'transport' | 'http' | 'malformed' | 'guard' | 'truncated' | 'blocked';
 
 /** Why a format attempt produced nothing. `message` never holds the key or the dictation text. */
 export class FormatterError extends Error {
@@ -67,8 +67,9 @@ export function buildGeminiRequest(model: CatalogModel, apiKey: string, userMess
   };
 }
 
+/** Room for the formatted text (never much longer than the input) plus a margin: 2 x length + 256, from 512 to 8192. */
 export function anthropicMaxTokens(inputLength: number): number {
-  return Math.min(4096, Math.max(256, inputLength));
+  return Math.min(8192, Math.max(512, 2 * inputLength + 256));
 }
 
 /**
@@ -79,11 +80,12 @@ export function buildAnthropicRequest(
   model: CatalogModel,
   apiKey: string,
   userMessage: string,
-  options: { withThinkingField?: boolean } = {},
+  /** `inputLength`: the dictation's UTF-16 length (the dictation only, not the vocabulary). */
+  options: { withThinkingField?: boolean; inputLength?: number } = {},
 ): HttpRequestSpec {
   const body: Record<string, unknown> = {
     model: model.apiModel,
-    max_tokens: anthropicMaxTokens(userMessage.length),
+    max_tokens: anthropicMaxTokens(options.inputLength ?? userMessage.length),
     system: FORMATTER_SYSTEM_PROMPT,
     messages: [{ role: 'user', content: userMessage }],
   };
@@ -115,6 +117,19 @@ interface AnthropicResponse {
   content?: Array<{ type?: unknown; text?: unknown }>;
 }
 
+/** Why Anthropic stopped: `end_turn` is a finished answer, anything else (`max_tokens`) is a cut one. */
+export function anthropicStopReason(payload: unknown): string | null {
+  const reason = (payload as { stop_reason?: unknown } | null)?.stop_reason;
+  return typeof reason === 'string' ? reason : null;
+}
+
+/** What Gemini says about the answer: blocked prompt, or the finish reason of the first candidate. */
+export function geminiOutcome(payload: unknown): { blocked: boolean; finishReason: string | null } {
+  const body = payload as { promptFeedback?: { blockReason?: unknown }; candidates?: Array<{ finishReason?: unknown }> } | null;
+  const reason = body?.candidates?.[0]?.finishReason;
+  return { blocked: typeof body?.promptFeedback?.blockReason === 'string', finishReason: typeof reason === 'string' ? reason : null };
+}
+
 /** The joined `text` blocks. */
 export function parseAnthropicResponse(payload: unknown): string {
   const blocks = (payload as AnthropicResponse | null)?.content;
@@ -136,12 +151,6 @@ export interface FormatOptions {
   fetchImpl?: typeof fetch;
   /** Overrides the model's deadline; tests. */
   deadlineMs?: number;
-}
-
-/** Remove the key from anything that might echo it. */
-export function redact(text: string, apiKey: string): string {
-  const cleaned = apiKey.length > 0 ? text.split(apiKey).join('[redacted]') : text;
-  return cleaned.slice(0, 200).replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -166,8 +175,9 @@ export async function formatWithModel(options: FormatOptions): Promise<string> {
       });
     } catch (error) {
       if (signal?.aborted) throw new FormatterError('cancelled', 'the dictation was cancelled');
-      if (timeout.aborted) throw new FormatterError('timedOut', `no answer within ${deadlineMs / 1000} s`);
-      throw new FormatterError('transport', redact(error instanceof Error ? error.message : String(error), apiKey));
+      if (timeout.aborted) throw new FormatterError('timeout', `no answer within ${deadlineMs / 1000} s`);
+      // Fixed text: an error message can echo the request, which holds the dictation and the key.
+      throw new FormatterError('transport', 'the request failed');
     }
   };
 
@@ -175,14 +185,14 @@ export async function formatWithModel(options: FormatOptions): Promise<string> {
   if (model.provider === 'gemini') {
     response = await send(buildGeminiRequest(model, apiKey, userMessage));
   } else if (model.provider === 'anthropic') {
-    response = await send(buildAnthropicRequest(model, apiKey, userMessage));
+    response = await send(buildAnthropicRequest(model, apiKey, userMessage, { inputLength: text.length }));
     if (response.status === 400) {
       // A model that no longer takes the thinking field says so: try once without it.
       const body = await safeText(response);
       if (/thinking/i.test(body)) {
-        response = await send(buildAnthropicRequest(model, apiKey, userMessage, { withThinkingField: false }));
+        response = await send(buildAnthropicRequest(model, apiKey, userMessage, { withThinkingField: false, inputLength: text.length }));
       } else {
-        throw new FormatterError('http', `HTTP 400 ${redact(body, apiKey)}`.trim(), 400);
+        throw new FormatterError('http', 'HTTP 400', 400);
       }
     }
   } else {
@@ -190,8 +200,7 @@ export async function formatWithModel(options: FormatOptions): Promise<string> {
   }
 
   if (!response.ok) {
-    const body = await safeText(response);
-    throw new FormatterError('http', `HTTP ${response.status} ${redact(body, apiKey)}`.trim(), response.status);
+    throw new FormatterError('http', `HTTP ${response.status}`, response.status);
   }
 
   let payload: unknown;
@@ -199,6 +208,19 @@ export async function formatWithModel(options: FormatOptions): Promise<string> {
     payload = await response.json();
   } catch {
     throw new FormatterError('malformed', 'the answer was not JSON');
+  }
+  // A cut or refused answer is not a formatted dictation, however plausible its start.
+  if (model.provider === 'gemini') {
+    const outcome = geminiOutcome(payload);
+    if (outcome.blocked) throw new FormatterError('blocked', 'the prompt was blocked');
+    if (outcome.finishReason !== null && outcome.finishReason !== 'STOP') {
+      throw new FormatterError(outcome.finishReason === 'MAX_TOKENS' ? 'truncated' : 'blocked', `finish reason ${outcome.finishReason}`);
+    }
+  } else {
+    const stop = anthropicStopReason(payload);
+    if (stop !== null && stop !== 'end_turn') {
+      throw new FormatterError(stop === 'max_tokens' ? 'truncated' : 'blocked', `stop reason ${stop}`);
+    }
   }
   const raw = model.provider === 'gemini' ? parseGeminiResponse(payload) : parseAnthropicResponse(payload);
   const guarded = guardFormatted(text, raw);

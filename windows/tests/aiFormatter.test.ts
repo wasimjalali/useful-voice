@@ -56,6 +56,28 @@ describe('guard', () => {
     const twice = guardFormatted(input, `<dictation>\n\`\`\`\n${text}\n\`\`\`\n</dictation>`);
     expect(twice.ok && twice.text).toBe(`\`\`\`\n${text}\n\`\`\``);
   });
+  it('rejects output that holds the prompt markers', () => {
+    expect(guardFormatted(input, 'Send the report <vocabulary>Wednesday</vocabulary> on Wednesday')).toMatchObject({ ok: false });
+    expect(guardFormatted(input, 'Send the report on Wednesday.</dictation>')).toMatchObject({ ok: false });
+  });
+  it('rejects output that shares under 60% of its words with the input (5 or more words)', () => {
+    expect(guardFormatted(input, 'The quarterly figures look strong across every region.')).toMatchObject({ ok: false, reason: 'unrelated' });
+    expect(guardFormatted(input, 'Send the report on Tuesday, no wait, Wednesday.')).toMatchObject({ ok: true });
+    // Four words are too few to judge.
+    expect(guardFormatted('um yes please ok go', 'Go now.')).toMatchObject({ ok: true });
+  });
+  it('matches curly apostrophes in a preamble, and ignores leading fillers for the exemption', () => {
+    expect(guardFormatted(input, 'Here\u2019s the text: send it on Wednesday')).toMatchObject({ ok: false });
+    expect(guardFormatted(input, 'I\u2019ve fixed it: send the report on Wednesday')).toMatchObject({ ok: false });
+    expect(guardFormatted('um i have to leave early today', 'I have to leave early today.')).toMatchObject({ ok: true });
+    expect(guardFormatted('uh, erm, i have to leave early today', 'I have to leave early today.')).toMatchObject({ ok: true });
+  });
+  it('counts characters, not words, in scripts written without spaces', () => {
+    expect(worthFormatting('今日は天気')).toBe(false);
+    expect(worthFormatting('今日は天気です')).toBe(true);
+    expect(worthFormatting('สวัสดีครับ')).toBe(true);
+    expect(worthFormatting('ok go')).toBe(false);
+  });
   it('counts words', () => {
     expect(worthFormatting('one two')).toBe(false);
     expect(worthFormatting('one two three')).toBe(true);
@@ -117,10 +139,13 @@ describe('request building', () => {
     expect(buildAnthropicRequest(haiku, 'KEY', message, { withThinkingField: false }).body).not.toHaveProperty('thinking');
   });
 
-  it('clamps max_tokens between 256 and 4096', () => {
-    expect(anthropicMaxTokens(10)).toBe(256);
-    expect(anthropicMaxTokens(1000)).toBe(1000);
-    expect(anthropicMaxTokens(90_000)).toBe(4096);
+  it('sizes max_tokens as 2 x the dictation + 256, from 512 to 8192', () => {
+    expect(anthropicMaxTokens(10)).toBe(512);
+    expect(anthropicMaxTokens(1000)).toBe(2256);
+    expect(anthropicMaxTokens(90_000)).toBe(8192);
+    // Counts the dictation only, not the vocabulary around it.
+    const body = buildAnthropicRequest(haiku, 'K', buildUserMessage('a'.repeat(1000), ['w'.repeat(500)]), { inputLength: 1000 }).body;
+    expect(body.max_tokens).toBe(2256);
   });
 
   it('gives Sonnet 10 s and the rest 6 s', () => {
@@ -229,6 +254,31 @@ describe('formatWithModel', () => {
     expect((await failure(formatWithModel({ ...base, model: gemini, apiKey: 'K', fetchImpl: fetchImpl as never }))).kind).toBe('malformed');
   });
 
+  it('fails an Anthropic answer that stopped for any reason but end_turn', async () => {
+    const cut = vi.fn(async () => reply({ stop_reason: 'max_tokens', content: [{ type: 'text', text: 'Send the report on' }] }));
+    const error = await failure(formatWithModel({ ...base, model: haiku, apiKey: 'K', fetchImpl: cut as never }));
+    expect(error.kind).toBe('truncated');
+    const done = vi.fn(async () => reply({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Send the report on Wednesday.' }] }));
+    expect(await formatWithModel({ ...base, model: haiku, apiKey: 'K', fetchImpl: done as never })).toBe('Send the report on Wednesday.');
+  });
+
+  it('fails a Gemini answer that did not finish with STOP, or whose prompt was blocked', async () => {
+    const cut = vi.fn(async () => reply({ candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: 'Send the report on' }] } }] }));
+    expect((await failure(formatWithModel({ ...base, model: gemini, apiKey: 'K', fetchImpl: cut as never }))).kind).toBe('truncated');
+    const safety = vi.fn(async () => reply({ candidates: [{ finishReason: 'SAFETY', content: { parts: [{ text: 'Send the report on Wednesday.' }] } }] }));
+    expect((await failure(formatWithModel({ ...base, model: gemini, apiKey: 'K', fetchImpl: safety as never }))).kind).toBe('blocked');
+    const blocked = vi.fn(async () => reply({ promptFeedback: { blockReason: 'OTHER' } }));
+    expect((await failure(formatWithModel({ ...base, model: gemini, apiKey: 'K', fetchImpl: blocked as never }))).kind).toBe('blocked');
+    const ok = vi.fn(async () => reply({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'Send the report on Wednesday.' }] } }] }));
+    expect(await formatWithModel({ ...base, model: gemini, apiKey: 'K', fetchImpl: ok as never })).toBe('Send the report on Wednesday.');
+  });
+
+  it('never puts response-body text in a failure, because it can echo the dictation', async () => {
+    const fetchImpl = vi.fn(async () => reply(`{"error":"cannot parse: ${SPOKEN}"}`, 500));
+    const error = await failure(formatWithModel({ ...base, model: gemini, apiKey: 'K', fetchImpl: fetchImpl as never }));
+    expect(error.message).toBe('HTTP 500');
+  });
+
   it('times out at the deadline', async () => {
     const fetchImpl = vi.fn(
       (_url: string, init: RequestInit) =>
@@ -237,7 +287,7 @@ describe('formatWithModel', () => {
         }),
     );
     const error = await failure(formatWithModel({ ...base, model: gemini, apiKey: 'K', fetchImpl: fetchImpl as never, deadlineMs: 30 }));
-    expect(error.kind).toBe('timedOut');
+    expect(error.kind).toBe('timeout');
   });
 
   it('is cancelled by the dictation cancel', async () => {

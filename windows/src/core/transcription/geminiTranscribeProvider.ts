@@ -13,7 +13,7 @@ import {
   type Transcript,
   type TranscriptionHint,
 } from './deepgramProvider.js';
-import { GEMINI_ENDPOINT, geminiThinkingLevel, MAX_VOCABULARY_WORDS, parseGeminiResponse } from '../formatting/aiFormatter.js';
+import { GEMINI_ENDPOINT, geminiOutcome, geminiThinkingLevel, MAX_VOCABULARY_WORDS, parseGeminiResponse } from '../formatting/aiFormatter.js';
 
 const PROVIDER = 'Gemini';
 
@@ -80,7 +80,14 @@ export function parseResponse(payload: unknown): Transcript {
   if (typeof payload !== 'object' || payload === null) {
     throw new ProviderError('malformedResponse', 'Gemini returned an unexpected response.', { provider: PROVIDER });
   }
-  return { text: parseGeminiResponse(payload).trim(), durationSeconds: null, detectedLanguage: null };
+  const text = parseGeminiResponse(payload).trim();
+  const outcome = geminiOutcome(payload);
+  // Only a finished answer (STOP) with no text is silence. A blocked prompt or a cut-off answer is
+  // a failure, so the audio is kept and Retry works.
+  if (text.length === 0 && (outcome.blocked || (outcome.finishReason !== null && outcome.finishReason !== 'STOP'))) {
+    throw new ProviderError('malformedResponse', "Gemini didn't return a transcript. Try again.", { provider: PROVIDER });
+  }
+  return { text, durationSeconds: null, detectedLanguage: null };
 }
 
 export function classifyHttpError(status: number, body: string, apiKey?: string): ProviderError {

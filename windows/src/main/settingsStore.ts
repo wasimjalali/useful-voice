@@ -214,6 +214,10 @@ export class SettingsStore {
     if (provider === 'deepgram') return this.setApiKey(key);
     const trimmed = key.trim();
     if (trimmed.length === 0) return { ok: false, error: 'The API key is empty.' };
+    // These keys are never stored as plain text: with no encryption available, nothing is saved.
+    if (!safeStorage.isEncryptionAvailable()) {
+      return { ok: false, error: "This PC can't encrypt keys right now, so the key wasn't saved." };
+    }
     this.extraKeys.set(provider, { key: trimmed, undecrypted: null, onDisk: true });
     void this.save();
     return { ok: true };

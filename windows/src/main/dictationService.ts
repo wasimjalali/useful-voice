@@ -736,7 +736,7 @@ export class DictationService {
         }
       } catch (error) {
         // Only the reason is logged: never the key or the dictation text.
-        if (current()) {
+        if (current() && !(error instanceof FormatterError && error.kind === 'cancelled')) {
           this.deps.onDiagnostic?.(
             'formatter',
             error instanceof FormatterError ? `skipped (${error.kind}): ${error.message}` : 'skipped (unexpected error)',

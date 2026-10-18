@@ -10,6 +10,7 @@ import {
   DETECTION_CODES,
   supportsSpokenPunctuation as supportsSpokenPunctuationCode,
 } from './languages.js';
+import { redactSecrets } from '../redaction.js';
 import { applyTranscriptStyle } from '../formatting/transcriptStyle.js';
 
 export interface DeepgramConfig {
@@ -341,11 +342,8 @@ export function extractRequestId(body: string): string | null {
  * kept, and the API key is redacted if it ever appears.
  */
 export function describeErrorBody(body: string, apiKey?: string): string {
-  let text = body.slice(0, 300).replace(/\s+/g, ' ').trim();
-  if (apiKey && apiKey.length > 0) {
-    text = text.split(apiKey).join('[redacted]');
-  }
-  return text;
+  // Redact the whole body first, then cut: a cut through a key leaves a piece no pattern matches.
+  return redactSecrets(body, [apiKey]).replace(/\s+/g, ' ').trim().slice(0, 300);
 }
 
 /**

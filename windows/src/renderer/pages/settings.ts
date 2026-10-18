@@ -781,7 +781,25 @@ function aboutGroup(info: ReturnType<typeof api.getDiagnostics>): HTMLElement {
   const links = releaseLinks().map((link) =>
     row(link.title, el('button', { class: 'btn btn-secondary', type: 'button', onclick: () => void api.openExternal(link.url) } as never, 'Open')),
   );
-  return surface(row('Version', version), ...links);
+  const notices = row(
+    'Third-party notices',
+    el(
+      'button',
+      {
+        class: 'btn btn-secondary',
+        type: 'button',
+        onclick: () =>
+          void api.openNotices().then(
+            (result) => {
+              if (!result.ok) toast(result.message, 'bad');
+            },
+            (error: unknown) => toast(messageOf(error, "The notices file couldn't be opened."), 'bad'),
+          ),
+      } as never,
+      'Open',
+    ),
+  );
+  return surface(row('Version', version), ...links, notices);
 }
 
 // ---- Controls ----------------------------------------------------------------

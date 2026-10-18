@@ -429,7 +429,7 @@ describe('AI formatter integration', () => {
     const ctx = setup({
       settings: AI_ON,
       formatter: async () => {
-        throw new FormatterError('timedOut', 'no answer within 6 s');
+        throw new FormatterError('timeout', 'no answer within 6 s');
       },
     });
     ctx.transcriber.transcript = { text: 'my secret sentence here', durationSeconds: 1, detectedLanguage: null };
@@ -440,7 +440,7 @@ describe('AI formatter integration', () => {
     expect(ctx.service.currentState).toBe('idle');
     const lines = ctx.diagnostics.filter((entry) => entry.category === 'formatter');
     expect(lines).toHaveLength(1);
-    expect(lines[0]?.message).toContain('timedOut');
+    expect(lines[0]?.message).toContain('timeout');
     expect(lines[0]?.message).not.toContain('secret');
   });
 

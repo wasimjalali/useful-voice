@@ -60,6 +60,19 @@ describe('provider keys', () => {
     expect(again.keyPresence()).toEqual({ deepgram: false, elevenlabs: true, gemini: true, anthropic: true });
   });
 
+  it('refuses to save a provider key, and writes nothing, while encryption is unavailable', async () => {
+    const dir = await folder();
+    const store = new SettingsStore(dir);
+    await store.load();
+    available = false;
+    const result = store.setKey('gemini', 'AIza-secret');
+    expect(result).toEqual({ ok: false, error: "This PC can't encrypt keys right now, so the key wasn't saved." });
+    expect(store.hasKeyFor('gemini')).toBe(false);
+    await store.save();
+    expect(JSON.stringify(await read(dir))).not.toContain('AIza-secret');
+    expect((await read(dir)).providerKeys).toBeUndefined();
+  });
+
   it('refuses an empty key', async () => {
     const store = new SettingsStore(await folder());
     await store.load();

@@ -53,6 +53,7 @@ function handle(request: ParakeetWorkerRequest): ParakeetWorkerResponse {
     const t0 = Date.now();
     const recognizer = recognizerFor(request.modelDir);
     const t1 = Date.now();
+    if (request.loadOnly) return { id: request.id, ok: true, text: '', loadMs: t1 - t0, decodeMs: 0 };
     const stream = recognizer.createStream();
     stream.acceptWaveform({ sampleRate: request.sampleRate, samples: request.samples });
     recognizer.decode(stream);

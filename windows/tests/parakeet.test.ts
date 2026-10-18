@@ -13,9 +13,12 @@ const FILES = ['encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'to
 
 let dir: string;
 beforeEach(() => {
+  // A finished download preloads; without a worker in the test that logs a warning.
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uv-parakeet-'));
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -449,6 +452,90 @@ describe('worker handling', () => {
     expect(workers[0]!.killed).toBe(true);
     await models.transcribe(wav(), 'v2');
     expect(workers).toHaveLength(2);
+  });
+
+  it('preload loads the downloaded model in the background and is a no-op once loaded', async () => {
+    const { models, workers, spawnWorker } = setup(echo);
+    models.preload('v2');
+    await vi.waitFor(() => expect(workers[0]?.requests).toHaveLength(1));
+    expect(workers[0]!.requests[0]).toMatchObject({ loadOnly: true, modelDir: path.join(dir, 'models', 'parakeet-v2') });
+    await vi.waitFor(() => expect(models['workerVersion' as keyof typeof models]).toBe('v2'));
+    models.preload('v2');
+    await models.transcribe(wav(), 'v2');
+    expect(spawnWorker).toHaveBeenCalledTimes(1);
+    expect(workers[0]!.requests.filter((r) => r.loadOnly)).toHaveLength(1);
+  });
+
+  it('preload does nothing for a model that is not downloaded and never throws on failure', async () => {
+    const spawnWorker = vi.fn(async () => {
+      throw new Error('spawn EACCES');
+    });
+    const none = new ParakeetModels(dir, { spawnWorker });
+    none.preload('v3');
+    expect(spawnWorker).not.toHaveBeenCalled();
+
+    seedReady('v2');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const bad = new ParakeetModels(dir, { spawnWorker });
+    expect(() => bad.preload('v2')).not.toThrow();
+    await vi.waitFor(() => expect(warn).toHaveBeenCalled());
+    expect(String(warn.mock.calls[0]![0])).toContain('preload failed');
+    warn.mockRestore();
+  });
+
+  it('a transcribe during a preload waits for it instead of loading twice', async () => {
+    let releaseLoad!: () => void;
+    const { models, workers } = setup((w, r) => {
+      if (r.loadOnly) releaseLoad = () => w.reply({ id: r.id, ok: true, text: '', loadMs: 1, decodeMs: 0 });
+      else echo(w, r);
+    });
+    models.preload('v2');
+    await vi.waitFor(() => expect(workers[0]?.requests).toHaveLength(1));
+    const result = models.transcribe(wav(), 'v2');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(workers[0]!.requests).toHaveLength(1); // transcribe has not been sent yet
+    releaseLoad();
+    expect((await result).text).toBe('hello world');
+    expect(workers).toHaveLength(1);
+    expect(workers[0]!.requests.map((r) => Boolean(r.loadOnly))).toEqual([true, false]);
+  });
+
+  it('the pinned version is never stopped by the idle timer, an unpinned one is', async () => {
+    vi.useFakeTimers();
+    const { models, workers } = setup(echo, { idleMs: 60_000 });
+    models.setPinned('v2');
+    await models.transcribe(wav(), 'v2');
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(workers[0]!.killed).toBe(false);
+    models.setPinned(null);
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(workers[0]!.killed).toBe(true);
+  });
+
+  it('pinning a different version than the loaded one does not protect the worker', async () => {
+    vi.useFakeTimers();
+    const { models, workers } = setup(echo, { idleMs: 60_000 });
+    models.setPinned('v3');
+    await models.transcribe(wav(), 'v2');
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(workers[0]!.killed).toBe(true);
+  });
+
+  it('a finished download preloads the new model', async () => {
+    const workers: FakeWorker[] = [];
+    const spawnWorker = vi.fn(async () => {
+      const w = new FakeWorker(echo);
+      workers.push(w);
+      return w;
+    });
+    const models = new ParakeetModels(dir, {
+      spawnWorker,
+      fetch: fetchOf(new Uint8Array(8)).impl,
+      extract: extractorWith(FILES),
+    });
+    await models.download('v2');
+    await vi.waitFor(() => expect(workers[0]?.requests[0]?.loadOnly).toBe(true));
+    expect(spawnWorker).toHaveBeenCalledTimes(1);
   });
 
   it('dispose kills the worker and fails what is pending', async () => {

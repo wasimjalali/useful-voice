@@ -125,6 +125,10 @@ export class ParakeetModels {
   private readonly pending = new Map<number, (response: ParakeetWorkerResponse | Error) => void>();
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
+  private preloading: Promise<void> | null = null;
+  private pinned: ParakeetVersion | null = null;
+  /** The version whose model the running worker last loaded. */
+  private workerVersion: ParakeetVersion | null = null;
 
   /** `dataDir` is the app's data folder; models live in `<dataDir>/models/parakeet-<version>/`. */
   constructor(
@@ -199,12 +203,53 @@ export class ParakeetModels {
     const audio = parseWavToFloat32(wav);
     if (audio.samples.length === 0) return { text: '', durationSeconds: 0, detectedLanguage: pin };
 
+    // A preload in flight loads the model once; wait for it rather than loading twice.
+    if (this.preloading) await this.preloading;
+    const response = await this.exchange(version, audio.samples, audio.sampleRate, audio.durationSeconds, signal, false);
+    if (!response.ok) {
+      throw new ProviderError('transport', `Parakeet couldn't transcribe: ${response.error}`);
+    }
+    return { text: response.text, durationSeconds: audio.durationSeconds, detectedLanguage: pin };
+  }
+
+  /**
+   * Start the worker and load the model in the background when it is downloaded and not loaded.
+   * A no-op otherwise. Never throws; failures are logged.
+   */
+  preload(version: ParakeetVersion): void {
+    if (this.disposed || this.preloading || this.current[version].status !== 'ready') return;
+    if (this.worker && this.workerVersion === version) return;
+    const task = this.exchange(version, new Float32Array(0), 16000, 0, undefined, true)
+      .then((r) => {
+        if (!r.ok) console.warn(`Parakeet ${version} preload failed: ${r.error}`);
+      })
+      .catch((e: unknown) => console.warn(`Parakeet ${version} preload failed: ${errorMessage(e)}`))
+      .finally(() => {
+        if (this.preloading === task) this.preloading = null;
+      });
+    this.preloading = task;
+  }
+
+  /** The pinned version's worker is never stopped by the idle timer. Null unpins. */
+  setPinned(version: ParakeetVersion | null): void {
+    this.pinned = version;
+    this.armIdle();
+  }
+
+  private async exchange(
+    version: ParakeetVersion,
+    samples: Float32Array,
+    sampleRate: number,
+    seconds: number,
+    signal: AbortSignal | undefined,
+    loadOnly: boolean,
+  ): Promise<ParakeetWorkerResponse> {
     const worker = await this.ensureWorker();
     if (signal?.aborted) throw new ProviderError('cancelled', 'Transcription was cancelled.');
     this.clearIdle();
 
     const id = this.nextId++;
-    const response = await new Promise<ParakeetWorkerResponse>((resolve, reject) => {
+    return new Promise<ParakeetWorkerResponse>((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const finish = () => {
         if (timer) clearTimeout(timer);
@@ -219,7 +264,10 @@ export class ParakeetModels {
       this.pending.set(id, (r) => {
         finish();
         if (r instanceof Error) reject(r);
-        else resolve(r);
+        else {
+          if (r.ok && this.worker === worker) this.workerVersion = version;
+          resolve(r);
+        }
       });
       signal?.addEventListener('abort', onAbort, { once: true });
       timer = setTimeout(() => {
@@ -227,24 +275,14 @@ export class ParakeetModels {
         // A stuck recognition can't be interrupted, so the process goes and the next request restarts it.
         this.stopWorker();
         reject(new ProviderError('timedOut', 'Parakeet took too long to transcribe. Try again.'));
-      }, this.timeoutFor(audio.durationSeconds));
+      }, this.timeoutFor(seconds));
       try {
-        worker.postMessage({
-          id,
-          modelDir: this.modelDir(version),
-          samples: audio.samples,
-          sampleRate: audio.sampleRate,
-        });
+        worker.postMessage({ id, modelDir: this.modelDir(version), samples, sampleRate, loadOnly });
       } catch (e) {
         finish();
         reject(new ProviderError('transport', `Parakeet couldn't start: ${errorMessage(e)}`));
       }
     }).finally(() => this.armIdle());
-
-    if (!response.ok) {
-      throw new ProviderError('transport', `Parakeet couldn't transcribe: ${response.error}`);
-    }
-    return { text: response.text, durationSeconds: audio.durationSeconds, detectedLanguage: pin };
   }
 
   /** Stop any worker process and downloads. Called at quit. */
@@ -266,6 +304,7 @@ export class ParakeetModels {
         w.onExit((reason) => {
           if (this.worker !== w) return;
           this.worker = null;
+          this.workerVersion = null;
           this.clearIdle();
           this.failPending(reason);
         });
@@ -296,6 +335,7 @@ export class ParakeetModels {
     this.clearIdle();
     const worker = this.worker;
     this.worker = null;
+    this.workerVersion = null;
     if (worker) worker.kill();
     if (this.pending.size > 0) this.failPending('stopped');
   }
@@ -303,6 +343,7 @@ export class ParakeetModels {
   private armIdle(): void {
     this.clearIdle();
     if (!this.worker || this.pending.size > 0) return;
+    if (this.pinned !== null && this.pinned === this.workerVersion) return;
     this.idleTimer = setTimeout(() => this.stopWorker(), this.idleMs);
     this.idleTimer.unref?.();
   }
@@ -363,6 +404,7 @@ export class ParakeetModels {
       await fsp.rm(tmp, { recursive: true, force: true });
       await fsp.rm(partial, { force: true });
       this.set(version, readState(final, version));
+      this.preload(version);
     } catch (error) {
       await fsp.rm(tmp, { recursive: true, force: true }).catch(() => undefined);
       if (error instanceof Cancelled || signal.aborted) {

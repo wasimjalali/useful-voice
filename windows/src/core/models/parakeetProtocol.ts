@@ -5,6 +5,8 @@ export interface ParakeetWorkerRequest {
   modelDir: string;
   samples: Float32Array;
   sampleRate: number;
+  /** Load the model and answer with empty text; nothing is decoded. */
+  loadOnly?: boolean;
 }
 
 export type ParakeetWorkerResponse =

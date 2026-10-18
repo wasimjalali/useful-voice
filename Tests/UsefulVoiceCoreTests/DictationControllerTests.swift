@@ -64,6 +64,17 @@ final class CapturingProvider: TranscriptionProvider {
     }
 }
 
+/// Runs `onTranscribe` on the main actor mid-transcription, e.g. the user switching apps.
+final class SwitchingProvider: TranscriptionProvider, @unchecked Sendable {
+    let name = "switching"
+    private let onTranscribe: @MainActor () -> Void
+    init(onTranscribe: @escaping @MainActor () -> Void) { self.onTranscribe = onTranscribe }
+    func transcribe(audio: URL, hint: TranscriptionHint) async throws -> Transcript {
+        await onTranscribe()
+        return Transcript(text: "hello world", detectedLanguage: nil, durationSeconds: nil)
+    }
+}
+
 @Suite @MainActor final class DictationControllerTests {
     private let dir: URL
     private let store: RecordingStore
@@ -1554,15 +1565,26 @@ final class CapturingProvider: TranscriptionProvider {
         #expect(delivered == ["hello world"])
     }
 
-    // Item 7: paste only into the app the dictation started in.
-    @Test func testHotkeyDictationStoppedElsewhereDeliversByCopyAndSaysSo() async throws {
+    // A hotkey dictation pastes wherever the cursor is when the text is ready.
+    @Test func testHotkeyDictationStoppedInAnotherAppPastesThere() async throws {
         let controller = makeController(providers: [okProvider()])
         controller.toggle()                          // started in Slack
         frontmostApp = FrontmostApp(id: "com.apple.mail", name: "Mail")
         controller.toggle()                          // stopped after switching apps
         await controller.awaitProcessing()
-        #expect(deliveredModes == [.copy])
-        #expect(outcomes == [.delivered(words: 2, mode: .copiedAppChanged, appName: "Slack")])
+        #expect(deliveredModes == [.paste])
+        #expect(outcomes == [.delivered(words: 2, mode: .pasted, appName: "Slack")])
+    }
+
+    @Test func testHotkeyDictationWhereTheAppChangesDuringTranscriptionPastesThere() async throws {
+        let switching = SwitchingProvider { [weak self] in
+            self?.frontmostApp = FrontmostApp(id: "com.apple.mail", name: "Mail")
+        }
+        let controller = makeController(providers: [switching])
+        controller.toggle()                          // started in Slack
+        controller.toggle()                          // moves to Mail while transcribing
+        await controller.awaitProcessing()
+        #expect(deliveredModes == [.paste])
     }
 
     @Test func testHotkeyDictationDeliveredWhileUsefulVoiceIsFrontCopies() async throws {

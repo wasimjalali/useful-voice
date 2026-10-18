@@ -9,7 +9,7 @@ import { DataStore } from '../core/settings/dataStore.js';
 import { removeStaleTempFiles, writeJsonAtomic } from '../core/settings/jsonStore.js';
 import { planLoginItem, wasAutoStarted } from '../core/settings/autostart.js';
 import { decideClipboardRestore, isProbablyVerifiable } from '../core/delivery/clipboardRestore.js';
-import { pasteTargetMoved } from '../core/delivery/pasteTarget.js';
+import { pasteLandsInOwnWindow } from '../core/delivery/pasteTarget.js';
 import {
   normaliseMemoryLanguage,
   type AppSettings,
@@ -1346,10 +1346,10 @@ class UsefulVoiceApp {
     }
     const target = await foregroundWindow();
     if (request.signal?.aborted) return cancelled;
-    if (pasteTargetMoved(request.targetHandle, target)) {
-      // The user stopped from somewhere else (the dock, so Useful Voice is in front) or
-      // clicked away: a paste would land in the wrong window. Leave it on the clipboard.
-      this.diagnostics.log('delivery', 'start window is no longer in front; copied instead of pasting');
+    if (pasteLandsInOwnWindow(request.targetHandle, target, this.ownWindowHandles())) {
+      // The user stopped from the dock, so Useful Voice is in front: a paste would land
+      // nowhere useful. Leave it on the clipboard. Any other window gets the paste.
+      this.diagnostics.log('delivery', 'Useful Voice is in front; copied instead of pasting');
       clipboard.writeText(text);
       return { delivered: false, clipboardFallback: true };
     }
@@ -1397,6 +1397,13 @@ class UsefulVoiceApp {
     }
 
     return { delivered: decision.delivered, clipboardFallback: !decision.delivered };
+  }
+
+  /** Native handles of every window Useful Voice has open, as `foregroundWindow` reports them. */
+  private ownWindowHandles(): number[] {
+    return BrowserWindow.getAllWindows()
+      .filter((window) => !window.isDestroyed())
+      .map((window) => window.getNativeWindowHandle().readUInt32LE(0));
   }
 
   /**

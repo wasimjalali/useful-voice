@@ -44,9 +44,12 @@ public final class DictationController {
     private let formatterUnavailable: () -> Void
     private let now: () -> Date
     private let isSecureInputActive: () -> Bool
-    /// The app in front. Read when a hotkey dictation starts (the paste target)
-    /// and again at delivery, so text is pasted only where it was dictated for.
+    /// The app in front. Read when a hotkey dictation starts and again at delivery,
+    /// so a dictation stopped from Useful Voice's own window is copied, not pasted.
     private let frontmostApp: () -> FrontmostApp?
+    /// Useful Voice's own bundle id, the one app a hotkey dictation never pastes into
+    /// unless it also started there.
+    static let ownAppID = Keychain.service
     private var pendingRawMode = false
     /// Where the dictation now in flight was started, and the app it will paste
     /// into. Written once, when recording starts, and never by the stop toggle,
@@ -445,14 +448,16 @@ public final class DictationController {
         deliveryToken += 1
         let token = deliveryToken
         let words = DictationOutcome.wordCount(of: finalText)
-        // A hotkey dictation pastes only into the app it started in. If the user
-        // has since moved (or stopped it from Useful Voice's own window after
-        // starting elsewhere), the paste would land in the wrong place, so deliver
-        // by copy and say so. Started and still in Useful Voice (a note) pastes.
+        // A hotkey dictation pastes wherever the cursor is when the text is ready,
+        // even if the user moved to another field or app while it was transcribing.
+        // The one exception: Useful Voice's own window came to the front after the
+        // dictation started elsewhere (stopped from the dock), where a paste would
+        // land nowhere useful, so it is copied and the HUD says so. Started and still
+        // in Useful Voice (a note) pastes.
         var deliverMode = deliveryMode
         var pasteRedirected = false
         if deliverMode == .paste, let now = frontmostApp(),
-           now.id != startApp?.id {
+           now.id == Self.ownAppID, startApp?.id != Self.ownAppID {
             deliverMode = .copy
             pasteRedirected = true
         }

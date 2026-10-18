@@ -1,18 +1,19 @@
 /**
- * Whether the window a hotkey dictation started in is no longer in front.
+ * Whether a hotkey dictation should be copied instead of pasted.
  *
- * The text is pasted into the window that was frontmost when recording began. If the
- * user stopped from the dock, Useful Voice is in front by the time the text is ready,
- * and a blind paste would land in the wrong place. In that case the text is copied
- * instead and the user pastes it themselves.
+ * The text is pasted wherever the cursor is when it is ready, even if the user moved to
+ * another field or window while it was transcribing. The one exception: one of Useful
+ * Voice's own windows came to the front after the dictation started elsewhere (stopped
+ * from the dock), where a paste would land nowhere useful, so it is copied instead.
+ * A dictation started in our own window (a note) still pastes there.
  *
- * `undefined` means the start window was never known (reading it failed), so there is
- * nothing to compare with and the paste proceeds as it always has.
+ * A foreground window that could not be read (`null`) pastes as it always has.
  */
-export function pasteTargetMoved(
+export function pasteLandsInOwnWindow(
   startHandle: number | undefined,
   foregroundNow: { handle: number } | null,
+  ownHandles: readonly number[],
 ): boolean {
-  if (startHandle === undefined) return false;
-  return foregroundNow === null || foregroundNow.handle !== startHandle;
+  if (foregroundNow === null || !ownHandles.includes(foregroundNow.handle)) return false;
+  return startHandle === undefined || !ownHandles.includes(startHandle);
 }

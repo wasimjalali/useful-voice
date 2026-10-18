@@ -49,7 +49,7 @@ test('what is playing pauses when the recording starts and plays again the momen
   await stopButton(r.win).click();
   await expect.poll(() => media(r), { timeout: 10 * SECOND }).toEqual({ Spotify: 'Playing', Edge: 'Playing', Podcast: 'Paused' });
   // One pause and one resume of exactly the two it paused: never the podcast.
-  expect(await calls(r)).toEqual(['pause', 'resume:Spotify,Edge']);
+  expect(await calls(r)).toEqual(['list', 'pause:Spotify,Edge', 'resume:Spotify,Edge']);
   await expect(r.win.locator('.dock .dock-inner:not(.is-leaving) .dock-status')).toContainText('Saved and copied', { timeout: 20 * SECOND });
 });
 
@@ -60,7 +60,18 @@ test('Esc during the recording plays it again', async () => {
   await expect.poll(() => media(r)).toMatchObject({ Spotify: 'Paused' });
   await hook(r.app, 'cancel');
   await expect.poll(() => media(r), { timeout: 10 * SECOND }).toEqual({ Spotify: 'Playing', Edge: 'Playing', Podcast: 'Paused' });
-  expect(await calls(r)).toEqual(['pause', 'resume:Spotify,Edge']);
+  expect(await calls(r)).toEqual(['list', 'pause:Spotify,Edge', 'resume:Spotify,Edge']);
+});
+
+test('a session the person scrubbed during the dictation is left paused, the other plays', async () => {
+  const r = await start('media-scrub');
+  await startButton(r.win).click();
+  await expect(stopButton(r.win)).toBeVisible({ timeout: 15 * SECOND });
+  await expect.poll(() => media(r)).toMatchObject({ Spotify: 'Paused', Edge: 'Paused' });
+  await hook(r.app, 'scrubMedia', { id: 'Edge', byMs: 60_000 });
+  await r.win.waitForTimeout(1 * SECOND);
+  await stopButton(r.win).click();
+  await expect.poll(() => media(r), { timeout: 10 * SECOND }).toEqual({ Spotify: 'Playing', Edge: 'Paused', Podcast: 'Paused' });
 });
 
 test('a microphone that will not open still leaves the media playing', async () => {

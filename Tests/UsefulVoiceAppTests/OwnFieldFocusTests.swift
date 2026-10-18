@@ -36,6 +36,24 @@ struct OwnFieldFocusTests {
         #expect(!MainWindowController.editableFieldFocused(in: picker, mainWindow: main))
     }
 
+    @Test func aSheetOfTheMainWindowCounts() {
+        let main = window(editable: true)
+        let sheet = window(editable: true)
+        main.beginSheet(sheet)
+        defer { main.endSheet(sheet) }
+        #expect(sheet.sheetParent === main)
+        #expect(MainWindowController.editableFieldFocused(in: sheet, mainWindow: main))
+    }
+
+    @Test func aSheetOfAnotherWindowDoesNotCount() {
+        let main = window(editable: true)
+        let other = window(editable: true, panel: true)
+        let sheet = window(editable: true)
+        other.beginSheet(sheet)
+        defer { other.endSheet(sheet) }
+        #expect(!MainWindowController.editableFieldFocused(in: sheet, mainWindow: main))
+    }
+
     @Test func noKeyWindowOrNoMainWindowDoesNotCount() {
         let main = window(editable: true)
         #expect(!MainWindowController.editableFieldFocused(in: nil, mainWindow: main))

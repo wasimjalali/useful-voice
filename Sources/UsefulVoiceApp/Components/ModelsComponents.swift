@@ -306,8 +306,11 @@ struct ApiKeyRow: View {
                     .foregroundStyle(Theme.ink)
                     .frame(minWidth: 110, alignment: .leading)
                 Spacer(minLength: 8)
-                WrappingHStack(horizontalSpacing: 8, verticalSpacing: 6) { controls }
-                    .frame(maxWidth: 440, alignment: .trailing)
+                // One flush-right line when it fits, wrapping when it doesn't.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) { controls }
+                    WrappingHStack(horizontalSpacing: 8, verticalSpacing: 6) { controls }
+                }
             }
             if let problem = models.keyProblem[provider] {
                 Text("Your saved \(provider.displayName) key could not be read: \(problem). Unlock your login keychain and reopen Settings, or enter the key again to replace it.")

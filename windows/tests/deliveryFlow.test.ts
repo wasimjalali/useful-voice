@@ -36,13 +36,12 @@ interface Script {
   reactivate?: 'ok' | 'gone' | 'refused';
   paste?: InsertAttempt;
   typeOut?: InsertAttempt;
-  sendKey?: InsertAttempt;
   /** Whether the clipboard still holds the text when the proof reads it. */
   stillOurs?: boolean;
   /** Milliseconds each await costs on the fake clock. */
   stepMs?: number;
   /** Runs inside the named effect, after it is recorded. */
-  during?: Partial<Record<'readFocus' | 'reactivate' | 'paste' | 'typeOut' | 'sendKey', () => void>>;
+  during?: Partial<Record<'readFocus' | 'reactivate' | 'paste' | 'typeOut', () => void>>;
 }
 
 function harness(script: Script) {
@@ -50,10 +49,8 @@ function harness(script: Script) {
   let focusCall = 0;
   const calls: string[] = [];
   const typed: number[][][] = [];
-  const sent: string[] = [];
-  const sentTo: DeliveryTarget[] = [];
   let clipboard = 'what the user had copied';
-  const step = async (name: 'readFocus' | 'reactivate' | 'paste' | 'typeOut' | 'sendKey'): Promise<void> => {
+  const step = async (name: 'readFocus' | 'reactivate' | 'paste' | 'typeOut'): Promise<void> => {
     calls.push(name);
     script.during?.[name]?.();
     clock += script.stepMs ?? 10;
@@ -90,18 +87,12 @@ function harness(script: Script) {
       typed.push(batches);
       return script.typeOut ?? { result: 'sent', typedUnits: batches.flat().length };
     },
-    sendKey: async (target, key) => {
-      await step('sendKey');
-      sent.push(key);
-      sentTo.push(target);
-      return script.sendKey ?? { result: 'sent' };
-    },
     wait: async (ms) => {
       clock += ms;
     },
     log: () => undefined,
   };
-  return { fx, calls, typed, sent, sentTo, clipboard: () => clipboard };
+  return { fx, calls, typed, clipboard: () => clipboard };
 }
 
 function input(overrides: Partial<PasteDeliveryInput> = {}): PasteDeliveryInput {
@@ -448,152 +439,4 @@ describe('the notice', () => {
     expect(frames.at(-1)).toMatchObject({ kind: 'copied', lineBreaks: true });
     expect(hudLabel(frames.at(-1)!)).toBe("Copied. It has line breaks, so it wasn't typed. Press Ctrl+V.");
   });
-});
-
-/**
- * The auto-send key. Ways it could go wrong, each pinned here: a key after a copy-only
- * delivery, a line-break copy, a partly typed text or any failed keystroke; a key into a
- * window other than the one captured at the press (another app, another focused field,
- * another page); a key after a cancel or after the service gave up; a key before a pasted
- * text had time to land; the wrong key; a key pressed twice; a failing key script turning
- * a delivered dictation into a failed one.
- */
-describe('auto-send', () => {
-  const chat: DeliveryTarget = { appId: 'slack', processId: 40, windowHandle: 0x400, focusHandle: 0x401 };
-
-  it('presses the key once after a paste, after the text has had time to land', async () => {
-    const h = harness({ focus: [chat] });
-    const result = await deliverToTarget(input({ target: chat, autoSend: 'return' }), h.fx);
-    expect(result).toMatchObject({ delivered: true, method: 'paste', autoSent: true });
-    expect(h.sent).toEqual(['return']);
-    expect(h.calls.indexOf('paste')).toBeLessThan(h.calls.indexOf('sendKey'));
-    // It looked at the foreground again before pressing.
-    expect(h.calls.slice(h.calls.indexOf('paste')).includes('readFocus')).toBe(true);
-  });
-
-  it('hands the key step the field captured at the press, so the script can check it', async () => {
-    const h = harness({ focus: [chat] });
-    await deliverToTarget(input({ target: chat, autoSend: 'return' }), h.fx);
-    expect(h.sentTo).toEqual([chat]);
-    expect(h.sentTo[0]!.focusHandle).toBe(0x401);
-  });
-
-  it('presses it after a type-out that went in to the end', async () => {
-    const h = harness({ focus: [terminal] });
-    const result = await deliverToTarget(input({ target: terminal, autoSend: 'modReturn' }), h.fx);
-    expect(result).toMatchObject({ delivered: true, method: 'typeOut', autoSent: true });
-    expect(h.sent).toEqual(['modReturn']);
-  });
-
-  it('presses it after a paste that could not be proven (the keystroke still went out to the target)', async () => {
-    const h = harness({ focus: [chat] });
-    const result = await deliverToTarget(input({ target: chat, autoSend: 'shiftReturn' }), h.fx);
-    expect(result).toMatchObject({ delivered: true, unproven: true, autoSent: true });
-    expect(h.sent).toEqual(['shiftReturn']);
-  });
-
-  it('sends nothing when the key is off or not given', async () => {
-    for (const autoSend of [undefined, 'off' as const]) {
-      const h = harness({ focus: [chat] });
-      const result = await deliverToTarget(input({ target: chat, ...(autoSend ? { autoSend } : {}) }), h.fx);
-      expect(result.autoSent).toBeUndefined();
-      expect(h.sent).toEqual([]);
-    }
-  });
-
-  it('sends nothing after a copy-only delivery: no target captured, a target that is gone, a changed page', async () => {
-    const none = harness({ focus: [chat] });
-    expect((await deliverToTarget(input({ target: undefined, autoSend: 'return' }), none.fx)).autoSent).toBeUndefined();
-    expect(none.sent).toEqual([]);
-
-    const gone = harness({ focus: [elsewhere], reactivate: 'refused' });
-    const lost = await deliverToTarget(input({ target: chat, autoSend: 'return' }), gone.fx);
-    expect(lost).toMatchObject({ delivered: false, clipboardFallback: true });
-    expect(gone.sent).toEqual([]);
-
-    const tab: DeliveryTarget = { appId: 'chrome', processId: 60, windowHandle: 0x600, browserUrl: 'https://app.slack.com/client/a' };
-    const moved = harness({ focus: [{ ...tab, browserUrl: 'https://mail.google.com/mail' }] });
-    const page = await deliverToTarget(input({ target: tab, autoSend: 'return' }), moved.fx);
-    expect(page).toMatchObject({ delivered: false, reason: 'pageChanged' });
-    expect(moved.sent).toEqual([]);
-  });
-
-  it('sends nothing after a line-break copy for an app that types', async () => {
-    const h = harness({ focus: [terminal] });
-    const result = await deliverToTarget(input({ target: terminal, text: 'one\ntwo', autoSend: 'return' }), h.fx);
-    expect(result).toMatchObject({ delivered: false, lineBreaks: true });
-    expect(h.sent).toEqual([]);
-  });
-
-  for (const stopped of ['moved', 'secure', 'failed', 'timeout'] as const) {
-    it(`sends nothing when the paste script reports ${stopped}`, async () => {
-      const h = harness({ focus: [chat], paste: { result: stopped } });
-      await deliverToTarget(input({ target: chat, autoSend: 'return' }), h.fx);
-      expect(h.sent).toEqual([]);
-    });
-
-    it(`sends nothing when typing stopped part way (${stopped})`, async () => {
-      const h = harness({ focus: [terminal], typeOut: { result: stopped, typedUnits: 3 } });
-      const result = await deliverToTarget(input({ target: terminal, autoSend: 'return' }), h.fx);
-      expect(result.partlyTyped).toBe(true);
-      expect(h.sent).toEqual([]);
-    });
-  }
-
-  it('sends nothing when another app is in front by the time the key would go out', async () => {
-    // First read passes the lock; the second (before the key) finds another window.
-    const h = harness({ focus: [chat, elsewhere] });
-    const result = await deliverToTarget(input({ target: chat, autoSend: 'return' }), h.fx);
-    expect(result).toMatchObject({ delivered: true });
-    expect(result.autoSent).toBeUndefined();
-    expect(h.sent).toEqual([]);
-  });
-
-  it('sends nothing when the focused field changed, or the page did, or focus can not be read', async () => {
-    for (const later of [{ ...chat, focusHandle: 0x999 }, null]) {
-      const h = harness({ focus: [chat, later] });
-      const result = await deliverToTarget(input({ target: chat, autoSend: 'return' }), h.fx);
-      expect(result.autoSent).toBeUndefined();
-      expect(h.sent).toEqual([]);
-    }
-    const tab: DeliveryTarget = { appId: 'chrome', processId: 60, windowHandle: 0x600, browserUrl: 'https://app.slack.com/client/a' };
-    const h = harness({ focus: [tab, { ...tab, browserUrl: 'https://example.com/' }] });
-    const result = await deliverToTarget(input({ target: tab, autoSend: 'return' }), h.fx);
-    expect(result.autoSent).toBeUndefined();
-    expect(h.sent).toEqual([]);
-  });
-
-  it('sends nothing once cancelled, and nothing after the service gave up', async () => {
-    const cancel = new AbortController();
-    const a = harness({ focus: [chat], during: { paste: () => cancel.abort('cancel') } });
-    const cancelled = await deliverToTarget(input({ target: chat, autoSend: 'return', signal: cancel.signal }), a.fx);
-    // The paste had already gone out: the dictation is delivered, only the key is dropped.
-    expect(cancelled).toMatchObject({ delivered: true });
-    expect(a.sent).toEqual([]);
-
-    const timeout = new AbortController();
-    const b = harness({ focus: [chat], during: { paste: () => timeout.abort(DELIVERY_TIMEOUT) } });
-    const late = await deliverToTarget(input({ target: chat, autoSend: 'return', signal: timeout.signal }), b.fx);
-    expect(late.autoSent).toBeUndefined();
-    expect(b.sent).toEqual([]);
-  });
-
-  it('sends nothing when the deadline passes while the key waits to go out', async () => {
-    const h = harness({ focus: [chat], stepMs: 10 });
-    const result = await deliverToTarget(input({ target: chat, autoSend: 'return', deadline: 300, settleMs: 100 }), h.fx);
-    // The paste fits; the settle wait before the key does not.
-    expect(result).toMatchObject({ delivered: true });
-    expect(result.autoSent).toBeUndefined();
-    expect(h.sent).toEqual([]);
-  });
-
-  for (const stopped of ['moved', 'failed', 'timeout', 'secure'] as const) {
-    it(`stays delivered when the key script reports ${stopped}`, async () => {
-      const h = harness({ focus: [chat], sendKey: { result: stopped } });
-      const result = await deliverToTarget(input({ target: chat, autoSend: 'return' }), h.fx);
-      expect(result).toMatchObject({ delivered: true, clipboardFallback: false });
-      expect(result.autoSent).toBeUndefined();
-      expect(h.sent).toEqual(['return']);
-    });
-  }
 });

@@ -9,18 +9,6 @@ import type {
   MemoryLanguage,
 } from '../core/models.js';
 import { applyMemory } from '../core/memory/memoryPostProcessor.js';
-import type { AppCategory, AutoSendKey } from '../core/apps/appCategory.js';
-import {
-  autoSendKeyFor,
-  formatForApp,
-  NO_TARGET_CONTEXT,
-  snapshotPress,
-  type ContextCapture,
-  type DictationContext,
-  type PressSettings,
-} from '../core/apps/appAwareness.js';
-import { applyCleanupRules } from '../core/formatting/cleanupRules.js';
-import { languageMatches } from '../core/dictionary/termMatcher.js';
 import type { DeliveryTarget } from '../core/delivery/deliveryTarget.js';
 import { DELIVERY_TIMEOUT } from '../core/delivery/deliveryFlow.js';
 import { LINE_BREAKS, PARTLY_TYPED } from '../core/hudModel.js';
@@ -93,12 +81,6 @@ export interface DeliveryRequest {
    * browser address). Delivery pastes only into it. Absent in copy mode.
    */
   target?: DeliveryTarget;
-  /**
-   * The key to press after the text has landed (`off` or absent for none). Paste mode only:
-   * the sink presses it after a pasted or fully typed delivery, only while the target
-   * captured at the press is still in front, and never after a copy or a failure.
-   */
-  autoSend?: AutoSendKey;
   /**
    * Aborted when the user cancels. The sink must check it right before it pastes and
    * stop there; once the paste is sent it finishes and reports `delivered`. Aborted
@@ -184,21 +166,6 @@ export interface StartOptions {
   targetHandle?: number;
   /** The full target captured at the hotkey press. Only a hotkey dictation uses it. */
   target?: DeliveryTarget;
-  /**
-   * The category and the text before the cursor, captured with the target at the press.
-   * Only a hotkey dictation has one.
-   */
-  context?: ContextCapture;
-  /**
-   * The hotkey was pressed in one of Useful Voice's own fields. Like a window dictation it
-   * has no app to fit the text to, so it gets no category formatting (cleanup rules and the
-   * user's own rules still run).
-   */
-  ownField?: boolean;
-  /**
-   * The settings this dictation uses, copied at the press. Absent means copy them now.
-   */
-  press?: PressSettings;
 }
 
 export interface DictationOutcome {
@@ -213,10 +180,6 @@ export interface DictationOutcome {
    */
   language: MemoryLanguage;
   appName: string;
-  /** The app's executable name when the dictation went to a hotkey target; absent otherwise. */
-  appID?: string;
-  /** The category of that app. Present only with an `appID`. */
-  category?: AppCategory;
   durationSeconds: number;
   mode: 'raw' | 'formatted';
   createdAt: string;
@@ -224,12 +187,6 @@ export interface DictationOutcome {
   memoryHitIds: string[];
   snippetIds: string[];
 }
-
-/**
- * How long a dictation waits, after the transcript is back, for the page address and the
- * text before the cursor read at the press. Past it the category from the app alone is used.
- */
-export const CONTEXT_WAIT_MS = 1500;
 
 /**
  * How long delivery may take before the state is released anyway. Room for the target
@@ -265,17 +222,6 @@ interface Session {
   readonly targetApp?: string;
   readonly targetHandle?: number;
   readonly target?: DeliveryTarget;
-  /** Dropped with the session: the text before the cursor is never kept past the dictation. */
-  readonly context?: ContextCapture;
-  /** The settings at the press. Fixed for the dictation and for its retry. */
-  readonly press: PressSettings;
-  /**
-   * No app to fit the text to (a window dictation or one into our own field): no category
-   * formatting. Set at the start and kept for a retry; never inferred from a missing context.
-   */
-  readonly noCategory: boolean;
-  /** The context once its late reads landed, for a retry. Never holds the text before the cursor. */
-  knownContext?: DictationContext;
   readonly rawMode: boolean;
   /** The text reached the clipboard or the target, so a later failure is not a failed dictation. */
   delivered: boolean;
@@ -301,14 +247,7 @@ export class DictationService {
   private clock: RecordingClock;
   private abortController: AbortController | null = null;
   private deliveryTimer: NodeJS.Timeout | null = null;
-  private lastFailed: {
-    audio: CapturedAudio;
-    language: MemoryLanguage;
-    press: PressSettings;
-    noCategory: boolean;
-    /** The press-time app and category, without the text before the cursor. */
-    context: DictationContext | null;
-  } | null = null;
+  private lastFailed: { audio: CapturedAudio; language: MemoryLanguage } | null = null;
   /** The dictation in flight. Null between dictations and after a cancel. */
   private session: Session | null = null;
   /** True while `recorder.start()` is pending, so a second press cannot start another. */
@@ -377,26 +316,11 @@ export class DictationService {
       targetApp: options.source === 'hotkey' ? options.targetApp : undefined,
       targetHandle: options.source === 'hotkey' ? options.targetHandle : undefined,
       target: options.source === 'hotkey' ? options.target : undefined,
-      context: options.source === 'hotkey' ? options.context : undefined,
-      press: options.press ?? snapshotPress(settings),
-      noCategory: options.source === 'window' || options.ownField === true,
       rawMode: options.rawMode === true,
       delivered: false,
       stopping: false,
       settled: false,
     };
-
-    // The page and the text read at the press land late: keep the page's category (never the
-    // text) so a retry of a failed dictation is formatted for the same app.
-    const late = session.context;
-    if (late) {
-      void late.settled.then(
-        (context) => {
-          session.knownContext = { ...context, textBeforeCursor: null };
-        },
-        () => undefined,
-      );
-    }
 
     this.starting = true;
     const token = this.startToken;
@@ -521,19 +445,7 @@ export class DictationService {
     if (this.isBusy || this.session !== null || this.starting) return;
     this.lastFailed = null;
     // The window it came from may be long gone, so a retry always saves and copies.
-    // It keeps the app, the category and the settings of the dictation that failed (never
-    // the text before the cursor), so the retry is formatted for the app it was meant for.
-    const known = failed.context;
-    const session: Session = {
-      source: 'window',
-      ...(known ? { context: { initial: known, settled: Promise.resolve(known) } } : {}),
-      press: failed.press,
-      noCategory: failed.noCategory,
-      rawMode: false,
-      delivered: false,
-      stopping: true,
-      settled: false,
-    };
+    const session: Session = { source: 'window', rawMode: false, delivered: false, stopping: true, settled: false };
     this.session = session;
     await this.run(session, () => this.process(session, failed.audio, failed.language));
   }
@@ -692,7 +604,7 @@ export class DictationService {
     const apiKey = await this.deps.apiKey();
     if (!current()) return;
     if (!apiKey) {
-      this.retain(session, captured, language);
+      this.retain(captured, language);
       this.fail(session, {
         kind: 'noProvider',
         message: 'No Deepgram API key is set. Add one in Settings to start dictating.',
@@ -729,7 +641,7 @@ export class DictationService {
       // A cancelled upload ends here without a word: the cancel already reported it.
       if (!current()) return;
       // Keep the audio so Retry does not make the user dictate again.
-      this.retain(session, captured, language);
+      this.retain(captured, language);
       this.fail(session, classifyTranscriptionFailure(error));
       return;
     }
@@ -770,38 +682,10 @@ export class DictationService {
 
     // Deterministic memory pass: never skipped, even in raw mode. Raw mode means
     // "do not run the formatter", not "do not apply the user's dictionary".
-    // The formatted path, in this order: cleanup rules (fillers and stutters), then the
-    // text is fitted to the app the dictation was made for, then the user's dictionary
-    // fixes, replacement rules and snippets inside `applyMemory`, so a rule of theirs always
-    // has the last word. Raw mode and "Auto-format transcript" off skip the first two. The
-    // category and the settings are the ones captured at the press, never what is in front
-    // or set now.
-    const press = session.press;
-    const context = await this.contextFor(session);
-    if (!current()) return;
-    let preparedText = rawText;
-    let formattingChangedText = false;
-    if (!rawMode && press.formattingEnabled) {
-      try {
-        const cleaned = applyCleanupRules(rawText, storedLanguage);
-        // Nothing left (a dictation that was only "um"): keep the transcript as it came.
-        if (cleaned.trim().length > 0) preparedText = cleaned;
-      } catch {
-        // Cleanup never costs a dictation: the transcript goes on as it was.
-      }
-      if (press.appAwareFormatting && !session.noCategory) {
-        const words = snapshot.terms
-          .filter((term) => languageMatches(term.language, effectiveLanguage))
-          .map((term) => term.phrase);
-        const result = formatForApp(preparedText, context, press, words);
-        if (result.applied) preparedText = result.text;
-      }
-      formattingChangedText = preparedText !== rawText;
-    }
-    let memoryResult = applyMemory(preparedText, snapshot, effectiveLanguage);
+    const memoryResult = applyMemory(rawText, snapshot, effectiveLanguage);
 
     let finalText = memoryResult.text;
-    let mode: 'raw' | 'formatted' = formattingChangedText ? 'formatted' : 'raw';
+    let mode: 'raw' | 'formatted' = 'raw';
     if (!rawMode && settings.formattingEnabled && this.deps.formatter) {
       try {
         const formatted = await this.deps.formatter(memoryResult.text, effectiveLanguage);
@@ -811,11 +695,8 @@ export class DictationService {
           mode = 'formatted';
         }
       } catch {
-        // A formatter failure must never lose the dictation: deliver the transcript as it came
-        // (the user's own dictionary, rules and snippets still apply), without the cleanup and
-        // the category formatting, as raw.
-        memoryResult = applyMemory(rawText, snapshot, effectiveLanguage);
-        finalText = memoryResult.text;
+        // A formatter failure must never lose the dictation: fall back to the
+        // unformatted text, which is already correct.
         mode = 'raw';
       }
       if (!current()) return;
@@ -830,9 +711,7 @@ export class DictationService {
     // window dictation, any retry) is saved and copied only.
     const deliveryMode = session.source === 'hotkey' ? 'paste' : 'copy';
     this.setState('delivering', undefined, session.targetApp);
-    // No app, no send key: our own window (a field of ours) and an unknown app never get one.
-    const autoSend = context.appID === null ? 'off' : autoSendKeyFor(press.autoSend, context.category);
-    const delivered = await this.deliver(finalText, deliveryMode, session, autoSend);
+    const delivered = await this.deliver(finalText, deliveryMode, session);
     if (!current()) return;
     session.delivered = !delivered.cancelled && (delivered.delivered || delivered.clipboardFallback);
     if (delivered.cancelled) {
@@ -852,7 +731,6 @@ export class DictationService {
       intermediateText: memoryResult.text,
       language: storedLanguage,
       appName: deliveryMode === 'paste' ? (session.targetApp ?? 'Unknown') : '',
-      ...(context.appID !== null ? { appID: context.appID, category: context.category } : {}),
       durationSeconds: transcript.durationSeconds ?? captured.durationSeconds,
       mode,
       createdAt: new Date(this.nowFn()()).toISOString(),
@@ -954,12 +832,7 @@ export class DictationService {
    * state is always released, and the dictation is left on the clipboard either
    * way.
    */
-  private async deliver(
-    text: string,
-    mode: 'paste' | 'copy',
-    session: Session,
-    autoSend: AutoSendKey,
-  ): Promise<DeliveryResult> {
+  private async deliver(text: string, mode: 'paste' | 'copy', session: Session): Promise<DeliveryResult> {
     const timeoutMs = this.deps.deliveryTimeoutMs ?? DEFAULT_DELIVERY_TIMEOUT_MS;
     let timer: NodeJS.Timeout | null = null;
     // This delivery's own signal: a cancel passes through to it, and a timeout aborts it
@@ -980,7 +853,6 @@ export class DictationService {
               targetApp: session.targetApp,
               targetHandle: session.targetHandle,
               target: session.target,
-              ...(autoSend !== 'off' ? { autoSend } : {}),
               signal: delivery.signal,
               timeBudgetMs,
             }
@@ -1007,35 +879,8 @@ export class DictationService {
     }
   }
 
-  /**
-   * The context captured at the press, waiting a short while for the page and the text
-   * before the cursor. Late or missing, the category from the app alone is used; a window
-   * dictation has none and is Other.
-   */
-  private async contextFor(session: Session): Promise<DictationContext> {
-    const capture = session.context;
-    if (!capture) return NO_TARGET_CONTEXT;
-    let timer: NodeJS.Timeout | null = null;
-    const late = new Promise<DictationContext>((resolve) => {
-      timer = setTimeout(() => resolve(capture.initial), CONTEXT_WAIT_MS);
-      timer.unref?.();
-    });
-    try {
-      return await Promise.race([capture.settled, late]);
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
-  }
-
-  private retain(session: Session, captured: CapturedAudio, language: MemoryLanguage): void {
-    const known = session.knownContext ?? session.context?.initial ?? null;
-    this.lastFailed = {
-      audio: captured,
-      language,
-      press: session.press,
-      noCategory: session.noCategory,
-      context: known ? { ...known, textBeforeCursor: null } : null,
-    };
+  private retain(captured: CapturedAudio, language: MemoryLanguage): void {
+    this.lastFailed = { audio: captured, language };
   }
 
   private setState(state: DictationState, error?: DictationError | string, targetApp?: string): void {

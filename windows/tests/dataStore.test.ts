@@ -453,32 +453,3 @@ describe('jsonStore', () => {
     expect(result.value?.value).toBe('second');
   });
 });
-
-describe('history from before app-aware formatting', () => {
-  const oldRecord = {
-    id: 'old', text: 'Hello.', rawText: 'hello', intermediateText: 'hello', language: 'en', appName: 'Slack',
-    durationSeconds: 2, mode: 'formatted', createdAt: '2026-01-01T00:00:00.000Z',
-    replacementRuleIds: [], memoryHitIds: [], snippetIds: [],
-  };
-
-  it('decodes without appID or category, keeps a new record beside it and writes both back', async () => {
-    await fs.writeFile(storePath, JSON.stringify({ version: 1, payload: { terms: [], replacements: [], snippets: [], suggestions: [], history: [oldRecord], notes: [] } }), 'utf8');
-    const store = new DataStore(storePath);
-    expect((await store.load()).status).toBe('loaded');
-    expect(store.history).toHaveLength(1);
-    expect(store.history[0]).toEqual(oldRecord);
-    expect(store.history[0]?.category).toBeUndefined();
-
-    store.appendHistory({
-      ...oldRecord, id: 'new', appID: 'slack.exe', category: 'workChat', createdAt: '2026-02-01T00:00:00.000Z',
-    } as typeof oldRecord & { appID: string; category: 'workChat'; language: 'en'; mode: 'formatted' });
-    expect(await store.flush()).toBe(true);
-
-    const again = new DataStore(storePath);
-    await again.load();
-    expect(again.history.map((record) => [record.id, record.appID, record.category])).toEqual([
-      ['new', 'slack.exe', 'workChat'],
-      ['old', undefined, undefined],
-    ]);
-  });
-});

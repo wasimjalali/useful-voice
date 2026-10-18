@@ -27,24 +27,6 @@ const edge = [
 
 const TITLE = 'uv-address-check';
 
-// A cold PowerShell start can take far longer than a warm one (CI starts it while other
-// tests start theirs: one start took 35 s), so the window poll gives each call room and a
-// call that still times out only means "no window yet". The test's own limit is built from
-// the same numbers, so it can't expire before the poll deadline plus the reads.
-const WINDOW_POLL_DEADLINE_MS = 45_000;
-const WINDOW_POLL_CALL_MS = 90_000;
-const READ_ATTEMPTS = 5;
-const READ_CALL_MS = 30_000;
-const READ_PAUSE_MS = 1500;
-const WARM_RUNS = 3;
-const TEST_TIMEOUT_MS =
-  WINDOW_POLL_DEADLINE_MS + WINDOW_POLL_CALL_MS + READ_ATTEMPTS * (READ_CALL_MS + READ_PAUSE_MS) + WARM_RUNS * DELIVERY_ADDRESS_MS + 30_000;
-
-/** Whether `error` is `execFileSync` giving up on a spawn that ran past its timeout. */
-function timedOut(error: unknown): boolean {
-  return (error as NodeJS.ErrnoException | undefined)?.code === 'ETIMEDOUT';
-}
-
 function powershell(script: string, timeout = 30_000): string {
   return execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], {
     encoding: 'utf8',
@@ -102,18 +84,11 @@ describe.skipIf(!edge)('address bar read on a real Edge', () => {
 
   it('returns the page address, not the focused field on the page', async (ctx) => {
     let handle = 0;
-    const deadline = Date.now() + WINDOW_POLL_DEADLINE_MS;
+    const deadline = Date.now() + 45_000;
     while (Date.now() < deadline && handle === 0) {
-      let out = '';
-      try {
-        out = powershell(
-          `Get-Process msedge -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -like '*${TITLE}*' } | Select-Object -First 1 -ExpandProperty MainWindowHandle`,
-          WINDOW_POLL_CALL_MS,
-        ).trim();
-      } catch (error) {
-        // A PowerShell that was too slow to start is "no window yet"; anything else is a real failure.
-        if (!timedOut(error)) throw error;
-      }
+      const out = powershell(
+        `Get-Process msedge -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -like '*${TITLE}*' } | Select-Object -First 1 -ExpandProperty MainWindowHandle`,
+      ).trim();
       handle = Number(out) || 0;
       if (handle === 0) await new Promise((resolve) => setTimeout(resolve, 1000));
     }
@@ -124,10 +99,10 @@ describe.skipIf(!edge)('address bar read on a real Edge', () => {
 
     let value = '';
     // UI Automation on a page that just loaded can need a moment to build its tree.
-    for (let attempt = 0; attempt < READ_ATTEMPTS && value === ''; attempt += 1) {
-      const encoded = powershell(browserAddressScript(handle, 'chromium'), READ_CALL_MS).trim().split(/\r?\n/).pop() ?? '';
+    for (let attempt = 0; attempt < 5 && value === ''; attempt += 1) {
+      const encoded = powershell(browserAddressScript(handle, 'chromium')).trim().split(/\r?\n/).pop() ?? '';
       value = encoded ? Buffer.from(encoded, 'base64').toString('utf8').trim() : '';
-      if (value === '') await new Promise((resolve) => setTimeout(resolve, READ_PAUSE_MS));
+      if (value === '') await new Promise((resolve) => setTimeout(resolve, 1500));
     }
     expect(value).toContain(`127.0.0.1:${port}/compose?draft=1`);
     expect(value).not.toContain('decoy.example');
@@ -137,12 +112,12 @@ describe.skipIf(!edge)('address bar read on a real Edge', () => {
 
     // Warm, the whole read (PowerShell start included) fits what a delivery waits for.
     const timings: number[] = [];
-    for (let run = 0; run < WARM_RUNS; run += 1) {
+    for (let run = 0; run < 3; run += 1) {
       const started = Date.now();
       const encoded = powershell(browserAddressScript(handle, 'chromium'), DELIVERY_ADDRESS_MS).trim().split(/\r?\n/).pop() ?? '';
       timings.push(Date.now() - started);
       expect(Buffer.from(encoded, 'base64').toString('utf8')).toContain(`127.0.0.1:${port}/compose?draft=1`);
     }
     console.log(`address bar read, warm: ${timings.join(', ')} ms (cap ${DELIVERY_ADDRESS_MS} ms)`);
-  }, TEST_TIMEOUT_MS);
+  }, 120_000);
 });

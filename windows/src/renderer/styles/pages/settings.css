@@ -101,10 +101,6 @@
   background: var(--surface);
 }
 
-.s-name { width: 220px; flex: none; }
-.s-pair { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
-.s-apps { margin-top: 12px; }
-
 /* The key row stacks its controls under the label when they need the room. */
 .s-row-key { align-items: flex-start; padding-top: 12px; padding-bottom: 12px; }
 .s-row-key > .s-label { padding-top: 6px; flex: 0 1 200px; }

@@ -17,7 +17,7 @@ public final class DictationController {
             // The target (with its window title and page address) is for the dictation
             // in flight only: once it settles, it is dropped.
             switch state {
-            case .idle, .error: activeTarget = nil; activePress = nil
+            case .idle, .error: activeTarget = nil
             case .recording, .transcribing, .delivering: break
             }
             onStateChange?(state)
@@ -69,26 +69,6 @@ public final class DictationController {
     /// break for one of them is copied without locking on (or reactivating) the
     /// target first.
     private let typeOutApps: () -> [String]
-    /// The user's app-aware formatting choices. Read once at the hotkey press, so one
-    /// dictation uses one consistent set even if Settings change while it runs.
-    private let appFormatting: () -> AppFormattingSettings
-    /// The text just before the caret in the target's focused field (at most
-    /// `TextBeforeCursor.limit` characters), nil when it can't be read. Started at the
-    /// press and never awaited there: the press path does not wait for it. The app layer
-    /// caps its own read time.
-    private let textBeforeCursor: (DeliveryTarget) async -> String?
-    /// Presses the send key after a dictation landed. Only called after the controller
-    /// checked the delivery and the target.
-    private let sendKey: (SendKeyChord) -> Void
-    /// This app's own id. A hotkey pressed while it is in front is a window dictation:
-    /// copied, never pasted into our own window.
-    private let ownAppID: String?
-    /// Whether an editable, non-secure text field of this app has focus (a note, the
-    /// first-run practice pad). Read at the press when Useful Voice itself is in front.
-    private let ownFieldIsEditable: () -> Bool
-    /// "Auto-format transcript". Read at the press. Cleanup rules and category formatting
-    /// run only while it is on.
-    private let autoFormat: () -> Bool
     private var pendingRawMode = false
     /// Where the dictation now in flight was started, and the app it will paste
     /// into. Written once, when recording starts, and never by the stop toggle,
@@ -97,10 +77,6 @@ public final class DictationController {
     private var activeSource: DictationSource = .hotkey
     private var activeAppName: String?
     private var activeTarget: DeliveryTarget?
-    /// What was decided at the press of the dictation in flight: the category of the
-    /// target, the settings in force and the (memory only) read of the text before the
-    /// caret. Dropped once the dictation settles.
-    private var activePress: PressCapture?
     /// Identifies the delivery in flight. A completion acts only if it still
     /// holds the current token, so a second call, or a late one from an earlier
     /// dictation, cannot fire an outcome or end the next dictation's delivery.
@@ -114,30 +90,6 @@ public final class DictationController {
     /// format for the app the user dictated into, not for whatever is frontmost
     /// when they click Retry (usually Useful Voice itself).
     private var lastFailedContext: FormattingContext?
-    /// The press capture of that dictation, without the text before the caret (a retry
-    /// is copied, so there is no caret to continue from).
-    private var lastFailedPress: PressCapture?
-
-    /// Everything decided at the hotkey press for app-aware formatting. The category is
-    /// resolved from the captured target, never from what is in front after transcription.
-    private struct PressCapture {
-        let settings: AppFormattingSettings
-        let category: AppCategory
-        /// The target's app id; nil for a window dictation and for a dictation into this
-        /// app's own field.
-        let appID: String?
-        /// "Auto-format transcript" at the press.
-        let autoFormat: Bool
-        /// A dictation into one of this app's own fields, or a window dictation: no app
-        /// context at all (no app, category, caret read or category formatting).
-        let inOwnApp: Bool
-        let cursorRead: Task<String?, Never>?
-
-        func withoutCursorRead() -> PressCapture {
-            PressCapture(settings: settings, category: category, appID: appID,
-                         autoFormat: autoFormat, inOwnApp: inOwnApp, cursorRead: nil)
-        }
-    }
 
     /// True when a failed dictation can be retried on its retained audio.
     public var canRetry: Bool { lastFailedAudio != nil }
@@ -171,13 +123,7 @@ public final class DictationController {
                 focusTarget: (() -> DeliveryTarget?)? = nil,
                 isTargetRunning: @escaping (DeliveryTarget) -> Bool = { _ in true },
                 reactivate: @escaping (DeliveryTarget) async -> Bool = { _ in false },
-                typeOutApps: @escaping () -> [String] = { [] },
-                appFormatting: @escaping () -> AppFormattingSettings = { AppFormattingSettings(enabled: false) },
-                textBeforeCursor: @escaping (DeliveryTarget) async -> String? = { _ in nil },
-                sendKey: @escaping (SendKeyChord) -> Void = { _ in },
-                ownAppID: String? = nil,
-                ownFieldIsEditable: @escaping () -> Bool = { false },
-                autoFormat: @escaping () -> Bool = { false }) {
+                typeOutApps: @escaping () -> [String] = { [] }) {
         self.recorder = recorder
         self.providers = providers
         self.store = store
@@ -198,12 +144,6 @@ public final class DictationController {
         self.isTargetRunning = isTargetRunning
         self.reactivate = reactivate
         self.typeOutApps = typeOutApps
-        self.appFormatting = appFormatting
-        self.textBeforeCursor = textBeforeCursor
-        self.sendKey = sendKey
-        self.ownAppID = ownAppID
-        self.ownFieldIsEditable = ownFieldIsEditable
-        self.autoFormat = autoFormat
         // The recorder calls this on the main thread and only for its live
         // session (see AudioRecording.onAutoStop), so it acts at once: no extra
         // hop in which a stale call could end the NEXT recording. The state check
@@ -231,9 +171,8 @@ public final class DictationController {
             let mode: DeliveryMode = activeSource == .window ? .copy : .paste
             let appName = activeAppName
             let target = activeTarget
-            let press = activePress
             state = .transcribing   // synchronous: a racing toggle now sees .transcribing and is ignored
-            processingTask = Task { await stopAndProcess(mode: mode, appName: appName, target: target, press: press) }
+            processingTask = Task { await stopAndProcess(mode: mode, appName: appName, target: target) }
         case .transcribing, .delivering:
             break // busy; ignore to avoid double-processing
         }
@@ -262,10 +201,9 @@ public final class DictationController {
         }
         state = .transcribing
         let savedContext = lastFailedContext
-        let savedPress = lastFailedPress
         processingTask = Task {
             await process(audioURL: url, measuredDuration: nil,
-                          presetContext: savedContext, mode: .copy, appName: nil, press: savedPress)
+                          presetContext: savedContext, mode: .copy, appName: nil)
         }
     }
 
@@ -292,7 +230,6 @@ public final class DictationController {
         }
         lastFailedAudio = nil
         lastFailedContext = nil
-        lastFailedPress = nil
     }
 
     public func updateRecordingSettings(silenceTimeout: TimeInterval, recordingsToKeep: Int) {
@@ -316,54 +253,18 @@ public final class DictationController {
             // Captured now, for this dictation only. Only a hotkey dictation
             // pastes, so only it needs the target it will paste into: the app,
             // window and element in front at the press, locked until delivery.
-            var target = source == .hotkey ? currentFocus() : nil
-            var effectiveSource = source
-            // The hotkey pressed with Useful Voice itself in front pastes into our own
-            // focused field when it is an editable one (a note, the first-run practice
-            // pad). With none focused it is a window dictation: copied, never pasted into
-            // our own window. A window dictation has no app context, so no category
-            // formatting (cleanup and the user's own rules still run).
-            let inOwnApp = isOwnApp(target)
-            if inOwnApp, !ownFieldIsEditable() {
-                target = nil
-                effectiveSource = .window
-            }
-            activeSource = effectiveSource
+            activeSource = source
+            let target = source == .hotkey ? currentFocus() : nil
             activeTarget = target
             activeAppName = target?.appName
-            activePress = capturePress(for: target, inOwnApp: inOwnApp || effectiveSource == .window)
             state = .recording
         } catch {
             state = .error(DictationError.startFailure(error))
         }
     }
 
-    /// Resolves the category of the target and starts reading the text before the caret.
-    /// Cheap and non-blocking: the read runs as a task and is awaited only when the
-    /// transcript is ready, long after the press.
-    private func capturePress(for target: DeliveryTarget?, inOwnApp: Bool) -> PressCapture {
-        let settings = appFormatting()
-        let autoOn = self.autoFormat()
-        let category: AppCategory = inOwnApp ? .other
-            : settings.category(forAppID: target?.appID, url: target?.browserURL)
-        var read: Task<String?, Never>?
-        // The read is only useful to category formatting, so it runs under the same gate.
-        if settings.enabled, autoOn, !inOwnApp, let target {
-            let reader = textBeforeCursor
-            read = Task { await reader(target) }
-        }
-        return PressCapture(settings: settings, category: category,
-                            appID: inOwnApp ? nil : target?.appID, autoFormat: autoOn, inOwnApp: inOwnApp,
-                            cursorRead: read)
-    }
-
-    private func isOwnApp(_ target: DeliveryTarget?) -> Bool {
-        guard let own = ownAppID?.lowercased(), let id = target?.appID?.lowercased() else { return false }
-        return id == own
-    }
-
     private func stopAndProcess(mode: DeliveryMode, appName: String?,
-                                 target: DeliveryTarget?, press: PressCapture?) async {
+                                 target: DeliveryTarget?) async {
         let audioURL: URL
         do {
             audioURL = try recorder.stop()
@@ -391,7 +292,7 @@ public final class DictationController {
         // response omits one.
         let measuredDuration = recordingStartedAt.map { max(0, now().timeIntervalSince($0)) }
         await process(audioURL: audioURL, measuredDuration: measuredDuration,
-                      mode: mode, appName: appName, target: target, press: press)
+                      mode: mode, appName: appName, target: target)
     }
 
     private static let noSpeech = DictationError(
@@ -406,8 +307,7 @@ public final class DictationController {
                          presetContext: FormattingContext? = nil,
                          mode deliveryMode: DeliveryMode,
                          appName: String?,
-                         target: DeliveryTarget? = nil,
-                         press: PressCapture? = nil) async {
+                         target: DeliveryTarget? = nil) async {
         // Raw mode is consumed exactly once, at the top: a failed or empty
         // transcript used to leave the flag set and leak raw mode into the next
         // dictation.
@@ -468,7 +368,6 @@ public final class DictationController {
             // re-recording.
             lastFailedAudio = audioURL
             lastFailedContext = formattingContext
-            lastFailedPress = press?.withoutCursorRead()
             let detail = (lastError as? ProviderError).map(Self.describe)
                 ?? lastError?.localizedDescription ?? "unknown error"
             // Retry is offered only where it can help (see DictationError.fix);
@@ -483,7 +382,6 @@ public final class DictationController {
         // Transcription succeeded: any earlier failure is resolved.
         lastFailedAudio = nil
         lastFailedContext = nil
-        lastFailedPress = nil
 
         // No speech in the whole recording: discard with a notice. Nothing is
         // formatted, recorded, or delivered (an empty deliver would also wipe the
@@ -530,54 +428,24 @@ public final class DictationController {
                 memoryHitIDs = result.memoryHitIDs
                 snippetIDs = result.snippetIDs
             }
-        } else {
-            // The formatted path, in order: the transcript (Deepgram applied the transcript
-            // style), cleanup rules, category formatting, then the user's dictionary fixes,
-            // replacement rules and snippets inside `format`, so a user's own rule always
-            // has the last word. Both steps run only while "Auto-format transcript" is on,
-            // and anything unsure keeps the text.
-            var pipelineText = transcript.text
-            if press?.autoFormat == true {
-                // Cleanup rules (#48): fillers and stutters, English only. An empty result
-                // would lose the dictation, so the transcript is kept instead.
-                let cleaned = CleanupRules.apply(to: pipelineText, language: effectivePin.rawValue)
-                if !cleaned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { pipelineText = cleaned }
-            }
-            if let press, press.autoFormat, press.settings.enabled, !press.inOwnApp {
-                let plan = AppFormattingPlan(
-                    category: press.category,
-                    style: press.settings.requestedStyle(for: press.category),
-                    userName: press.settings.userName,
-                    textBeforeCursor: await boundedCursorRead(press.cursorRead))
-                pipelineText = plan.apply(to: pipelineText, dictionaryWords: effectiveContext.dictionaryWords)
-            }
-            let categoryChangedText = pipelineText != transcript.text
-            if let format {
-                do {
-                    let result = try await format(pipelineText, effectiveContext)
+        } else if let format {
+            do {
+                let result = try await format(transcript.text, effectiveContext)
+                finalText = result.text
+                mode = result.mode
+                replacementRuleIDs = result.replacementRuleIDs
+                memoryHitIDs = result.memoryHitIDs
+                snippetIDs = result.snippetIDs
+                if !result.newTerms.isEmpty { suggestTerms(result.newTerms) }
+            } catch {
+                formatterUnavailable()   // keep raw finalText; mode stays .raw
+                if let rawTransform {
+                    let result = await rawTransform(transcript.text, effectiveContext)
                     finalText = result.text
-                    mode = result.mode
                     replacementRuleIDs = result.replacementRuleIDs
                     memoryHitIDs = result.memoryHitIDs
                     snippetIDs = result.snippetIDs
-                    if !result.newTerms.isEmpty { suggestTerms(result.newTerms) }
-                    // History shows "formatted" when cleanup or the category formatter changed the text.
-                    if categoryChangedText { mode = .formatted }
-                } catch {
-                    // The formatter failed: deliver the transcript as it came, without
-                    // the category formatting.
-                    formatterUnavailable()   // keep raw finalText; mode stays .raw
-                    if let rawTransform {
-                        let result = await rawTransform(transcript.text, effectiveContext)
-                        finalText = result.text
-                        replacementRuleIDs = result.replacementRuleIDs
-                        memoryHitIDs = result.memoryHitIDs
-                        snippetIDs = result.snippetIDs
-                    }
                 }
-            } else {
-                finalText = pipelineText
-                if categoryChangedText { mode = .formatted }
             }
         }
 
@@ -601,9 +469,7 @@ public final class DictationController {
             memoryHitIDs: memoryHitIDs.isEmpty ? nil : memoryHitIDs,
             replacementRuleIDs: replacementRuleIDs.isEmpty ? nil : replacementRuleIDs,
             snippetIDs: snippetIDs.isEmpty ? nil : snippetIDs,
-            audioPath: audioURL.path,
-            appID: press?.appID,
-            category: press?.appID == nil ? nil : press?.category.rawValue))
+            audioPath: audioURL.path))
 
         state = .delivering
         try? store.prune(keep: recordingsToKeep)
@@ -611,9 +477,8 @@ public final class DictationController {
         // focus has moved (the user clicked into another composer, or stopped from
         // Useful Voice's own window), the target is brought back first; if that
         // does not work, or the target is gone, the text is copied and the user is
-        // told, rather than pasted into the wrong place. Started and still in an
-        // editable field of Useful Voice (a note, the practice pad) pastes; with no
-        // such field focused the press was a window dictation and only copies.
+        // told, rather than pasted into the wrong place. Started and still in
+        // Useful Voice (a note) pastes.
         var deliverMode = deliveryMode
         var pasteRedirected = false
         var lineBreaksCopied = false
@@ -638,13 +503,6 @@ public final class DictationController {
         deliveryToken += 1
         let token = deliveryToken
         let words = DictationOutcome.wordCount(of: finalText)
-        // Auto-send: only after a paste or typed delivery that landed in the target locked
-        // at the press (never a copy, a redirect, a retry or a window dictation).
-        let pastes = deliverMode == .paste
-        let sendChord: SendKeyChord? = {
-            guard pastes, let press, press.appID != nil, let target, target.isIdentified else { return nil }
-            return press.settings.autoSendKey(for: press.category).chord(for: .macOS)
-        }()
         deliver(finalText, deliverMode) { [weak self] report in
             guard let self, self.state == .delivering,
                   self.deliveryToken == token else { return }
@@ -654,7 +512,6 @@ public final class DictationController {
                 let reported: DeliveryResult =
                     lineBreaksCopied && result == .copied ? .copiedHasLineBreaks
                     : pasteRedirected && result == .copied ? .copiedAppChanged : result
-                if result == .pasted, let sendChord, let target { self.pressSendKey(sendChord, target: target) }
                 self.onOutcome?(.delivered(words: words, mode: reported, appName: appName))
                 self.state = .idle
             case .failure:
@@ -663,23 +520,6 @@ public final class DictationController {
                     message: "Couldn't copy the text. It's saved in Useful Voice."))
             }
         }
-    }
-
-    /// How long the transcript waits for the text-before-cursor read, which started at the
-    /// press and is normally long finished. The app layer caps its own read at 150 ms; this
-    /// only keeps a stuck reader from holding up a dictation.
-    private static let cursorReadWait: TimeInterval = 0.3
-
-    private func boundedCursorRead(_ read: Task<String?, Never>?) async -> String? {
-        guard let read else { return nil }
-        return await TextBeforeCursor.bounded(seconds: Self.cursorReadWait, read)
-    }
-
-    /// Presses the send key, if the target is still the one locked at the press and no
-    /// password field has taken focus. Otherwise nothing is pressed.
-    private func pressSendKey(_ chord: SendKeyChord, target: DeliveryTarget) {
-        guard !isSecureInputActive(), TargetLock.matches(target, currentFocus()) else { return }
-        sendKey(chord)
     }
 
     /// What has focus now: the full target when the app layer reads one, else

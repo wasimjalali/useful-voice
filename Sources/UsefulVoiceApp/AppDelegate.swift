@@ -660,13 +660,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             focusTarget: { FocusTracker.shared.snapshot() },
             isTargetRunning: { FocusTracker.shared.isRunning($0) },
             reactivate: { await FocusTracker.shared.reactivate($0) },
-            typeOutApps: { [settings] in settings.typeOutAppIDs },
-            appFormatting: { [settings] in settings.appFormatting },
-            textBeforeCursor: { target in await FocusTracker.shared.textBeforeCursor(of: target) },
-            sendKey: { chord in TextInserter.postSendKey(chord) },
-            ownAppID: Bundle.main.bundleIdentifier,
-            ownFieldIsEditable: { Self.ownEditableFieldHasFocus() },
-            autoFormat: { [settings] in settings.formattingEnabled }
+            typeOutApps: { [settings] in settings.typeOutAppIDs }
         )
         controller.onStateChange = { [weak self] state in
             if state == .recording, let target = self?.controller?.deliveryTarget {
@@ -706,22 +700,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.buildProviders().first
         }
         self.controller = controller
-    }
-
-    /// Whether one of this app's own text fields (a note, the first-run practice pad) has
-    /// focus and accepts typing. A password field does not count. Read from the responder
-    /// chain, not Accessibility: asking AX about our own process from the main thread can
-    /// stall.
-    private static func ownEditableFieldHasFocus() -> Bool {
-        isEditableTextFocus(NSApp.keyWindow?.firstResponder)
-    }
-
-    /// Whether a first responder is a text view that accepts typing and is not the field
-    /// editor of a password field.
-    static func isEditableTextFocus(_ responder: NSResponder?) -> Bool {
-        guard let editor = responder as? NSTextView, editor.isEditable else { return false }
-        if editor.isFieldEditor, editor.delegate is NSSecureTextField { return false }
-        return true
     }
 
     private func reprocessHistory(_ record: DictationRecord) {
@@ -816,9 +794,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             memoryHitIDs: formatted.memoryHitIDs.isEmpty ? nil : formatted.memoryHitIDs,
             replacementRuleIDs: formatted.replacementRuleIDs.isEmpty ? nil : formatted.replacementRuleIDs,
             snippetIDs: formatted.snippetIDs.isEmpty ? nil : formatted.snippetIDs,
-            audioPath: audioURL.path,
-            appID: record.appID,
-            category: record.category
+            audioPath: audioURL.path
         )
         languageMemory.recordUsage(
             termIDs: formatted.memoryHitIDs,

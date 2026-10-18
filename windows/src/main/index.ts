@@ -9,9 +9,7 @@ import { DataStore } from '../core/settings/dataStore.js';
 import { removeStaleTempFiles, writeJsonAtomic } from '../core/settings/jsonStore.js';
 import { planLoginItem, wasAutoStarted } from '../core/settings/autostart.js';
 import { deliverToTarget } from '../core/delivery/deliveryFlow.js';
-import { appIdFor, isKnownBrowser, type DeliveryTarget } from '../core/delivery/deliveryTarget.js';
-import { captureContext, snapshotPress, type ContextCapture } from '../core/apps/appAwareness.js';
-import { FOCUSED_FIELD_PROBE, isEditableField, OWN_FIELD_TIMEOUT_MS } from '../core/apps/ownField.js';
+import { isKnownBrowser, type DeliveryTarget } from '../core/delivery/deliveryTarget.js';
 import { PendingAddress, focusReader, forgetPageDetails, killOnTimeout, toDeliveryTarget } from './deliveryGlue.js';
 import {
   normaliseMemoryLanguage,
@@ -23,9 +21,7 @@ import { selectKeyterms } from '../core/memory/biasBuilder.js';
 import { HUD_EXIT_MS, HudModel, languageLabel, type HudFrame } from '../core/hudModel.js';
 import { normaliseLanguageCode } from '../core/transcription/languages.js';
 import { decideFirstRun, firstRunLaunch, shouldOpenAtLaunch, type FirstRunStep } from '../core/firstRun/gate.js';
-import { installDeepgramStub, setE2eTranscript } from './e2eStub.js';
-import { windowsDesktop, type Desktop } from './desktop.js';
-import { FakeDesktop, type FakeDesktopPatch } from './e2eDesktop.js';
+import { installDeepgramStub } from './e2eStub.js';
 import { sameAccelerator, validateAccelerator } from '../core/settings/accelerator.js';
 import { isSendableKey, keyCheckFailure } from '../core/firstRun/keyCheck.js';
 import {
@@ -55,6 +51,10 @@ import {
   clipboardHoldsText,
   foregroundWindow,
   restoreForegroundWindow,
+  pasteClipboard,
+  reactivateWindow,
+  browserAddress,
+  typeText,
   ownProcessName,
   playCue,
   restoreClipboard,
@@ -189,9 +189,6 @@ class UsefulVoiceApp {
   private recentTargetApps: string[] = [];
   /** The hotkey target whose browser address is still being read, if any. */
   private readonly pendingAddress = new PendingAddress();
-  /** The desktop dictation reads and types into. A scripted one stands in under `--e2e` only. */
-  private desktop: Desktop = windowsDesktop;
-  private fakeDesktop: FakeDesktop | null = null;
   private service!: DictationService;
   private diagnostics!: Diagnostics;
 
@@ -280,16 +277,6 @@ class UsefulVoiceApp {
       releaseStateRequests: () => this.e2eStateRelease?.(),
       stateRequests: () => this.e2eStateRequests,
       mainWindows: () => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().includes('view=main')).length,
-      // A scripted desktop for hotkey dictations: nothing is pasted, typed or pressed for real.
-      useFakeDesktop: (patch?: unknown) => {
-        this.fakeDesktop = new FakeDesktop(() => clipboard.readText());
-        this.fakeDesktop.set((patch ?? {}) as FakeDesktopPatch);
-        this.desktop = this.fakeDesktop;
-      },
-      fakeDesktop: (patch?: unknown) => this.fakeDesktop?.set((patch ?? {}) as FakeDesktopPatch),
-      fakeCalls: () => this.fakeDesktop?.calls() ?? [],
-      ownProcess: () => ({ name: ownProcessName(), pid: process.pid }),
-      setTranscript: (text?: unknown) => setE2eTranscript(typeof text === 'string' ? text : undefined),
     };
   }
 
@@ -1233,8 +1220,6 @@ class UsefulVoiceApp {
           intermediateText: outcome.intermediateText,
           language: outcome.language,
           appName: outcome.appName,
-          ...(outcome.appID !== undefined ? { appID: outcome.appID } : {}),
-          category: outcome.category,
           durationSeconds: outcome.durationSeconds,
           mode: outcome.mode,
           createdAt: outcome.createdAt,
@@ -1297,9 +1282,7 @@ class UsefulVoiceApp {
     if (this.quitting) return;
     // While the setup flow is open the hotkey dictates into the flow's own field, never
     // into the app in front.
-    // The settings this dictation uses, copied now: Settings changed while it runs apply to the next.
-    const press = snapshotPress(this.settings.all);
-    let source: DictationSource = requested === 'hotkey' && this.firstRun.open ? 'window' : requested;
+    const source: DictationSource = requested === 'hotkey' && this.firstRun.open ? 'window' : requested;
     this.lastToggleSource = source;
     // A dictation that starts while the flow is open is the flow's practice dictation.
     if (this.firstRun.open && (this.service.currentState === 'idle' || this.service.currentState === 'error')) {
@@ -1308,87 +1291,29 @@ class UsefulVoiceApp {
     let targetApp: string | undefined;
     let targetHandle: number | undefined;
     let target: DeliveryTarget | undefined;
-    let context: ContextCapture | undefined;
-    let ownEditable = false;
     if (this.service.currentState === 'idle' || this.service.currentState === 'error') this.recordingHandle = undefined;
     if (source === 'hotkey' && (this.service.currentState === 'idle' || this.service.currentState === 'error')) {
       // Capture which app is focused NOW, before recording: the target lock. By the
       // time the transcript is ready the user may have clicked elsewhere, and pasting
       // into the wrong window is worse than not pasting at all.
-      const front = await this.desktop.foregroundWindow();
-      const own = front !== null && this.isOwnWindow(front);
-      if (own && !(await this.ownFieldIsEditable())) {
-        // Useful Voice is in front with no field of ours to type into: a paste would land
-        // nowhere. It is a window dictation, saved and copied.
-        source = 'window';
-        this.lastToggleSource = source;
-        this.diagnostics.log('dictation', 'hotkey pressed in Useful Voice with no field focused; saving and copying only');
-      } else {
-        // In front, with one of our own fields focused, Useful Voice is the target like any app.
-        ownEditable = own;
-        targetApp = front ? front.title || front.processName : undefined;
-        targetHandle = front?.handle;
-        this.recordingHandle = targetHandle;
-        target = front ? toDeliveryTarget(front) : undefined;
-        if (target) this.noteRecentTarget(target);
-        let address: Promise<string | null> | undefined;
-        if (target && front && isKnownBrowser(target.appId)) {
-          // Off the critical path: recording never waits on UI Automation. The address
-          // stays on this dictation's target, in memory only, and a read that finishes
-          // after delivery has settled is dropped.
-          const handle = front.handle;
-          const appId = target.appId;
-          address = this.desktop.browserAddress(handle, appId).then((read) => read.address);
-          void this.pendingAddress.start(target, () => address as Promise<string | null>);
-        }
-        // The category and the text before the cursor belong to the same moment as the
-        // target: read beside the recording, so the press never waits for them. The text
-        // is only read when it will be used, and only ever kept in memory. Our own window
-        // has no category: it isn't an app the user can set one for.
-        if (!own) {
-          const wantsText = press.appAwareFormatting && press.formattingEnabled;
-          const handle = front?.handle;
-          context = captureContext(target?.appId, press.appCategories, {
-            ...(address ? { address: () => address as Promise<string | null> } : {}),
-            ...(wantsText && handle !== undefined ? { textBeforeCursor: () => this.desktop.textBeforeCursor(handle) } : {}),
-          });
-        }
+      const front = await foregroundWindow();
+      targetApp = front ? front.title || front.processName : undefined;
+      targetHandle = front?.handle;
+      this.recordingHandle = targetHandle;
+      target = front ? toDeliveryTarget(front) : undefined;
+      if (target) this.noteRecentTarget(target);
+      if (target && front && isKnownBrowser(target.appId)) {
+        // Off the critical path: recording never waits on UI Automation. The address
+        // stays on this dictation's target, in memory only, and a read that finishes
+        // after delivery has settled is dropped.
+        const handle = front.handle;
+        const appId = target.appId;
+        void this.pendingAddress.start(target, async () => (await browserAddress(handle, appId)).address);
       }
     }
     if (this.quitting) return;
-    await this.service.toggle({ source, targetApp, targetHandle, target, context, press, ownField: ownEditable });
+    await this.service.toggle({ source, targetApp, targetHandle, target });
     void this.data.flush();
-  }
-
-  /**
-   * Whether the field focused in our own window takes typed text (an input, a textarea or a
-   * contenteditable element, never a password). The page is asked with a short timeout:
-   * no answer, an error or an unfocused window is "no".
-   */
-  private async ownFieldIsEditable(): Promise<boolean> {
-    const window = this.mainWindow;
-    if (!window || window.isDestroyed()) return false;
-    // E2E windows are hidden, so they are never the focused window; the page's own focus still holds.
-    if (!E2E && !window.isFocused()) return false;
-    let timer: NodeJS.Timeout | undefined;
-    try {
-      const info = await Promise.race([
-        window.webContents.executeJavaScript(FOCUSED_FIELD_PROBE) as Promise<unknown>,
-        new Promise<null>((resolve) => {
-          timer = setTimeout(() => resolve(null), OWN_FIELD_TIMEOUT_MS);
-        }),
-      ]);
-      return isEditableField(info);
-    } catch {
-      return false;
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
-  }
-
-  /** Whether the window in front is Useful Voice's own. */
-  private isOwnWindow(front: { processName: string; processId?: number }): boolean {
-    return front.processId === process.pid || appIdFor(front.processName) === ownProcessName();
   }
 
   /**
@@ -1449,10 +1374,9 @@ class UsefulVoiceApp {
     const target = request.target;
     const deadline = Date.now() + (request.timeBudgetMs ?? DEFAULT_SINK_BUDGET_MS);
     const kill = killOnTimeout(request.signal);
-    const desktop = this.desktop;
     const readFocus = focusReader(target, {
-      foregroundWindow: (budgetMs) => desktop.foregroundWindow(budgetMs),
-      browserAddress: (handle, appId, budgetMs) => desktop.browserAddress(handle, appId, budgetMs),
+      foregroundWindow: (budgetMs) => foregroundWindow(budgetMs),
+      browserAddress: (handle, appId, budgetMs) => browserAddress(handle, appId, budgetMs),
       log: (category, message) => this.diagnostics.log(category, message),
     });
     try {
@@ -1465,27 +1389,23 @@ class UsefulVoiceApp {
           signal: request.signal,
           deadline,
           settleMs: CLIPBOARD_RESTORE_DELAY_MS,
-          ...(request.autoSend !== undefined ? { autoSend: request.autoSend } : {}),
         },
         {
           now: () => Date.now(),
           readFocus,
           reactivate: (lockTarget, budgetMs) =>
-            desktop.reactivateWindow(lockTarget.windowHandle ?? 0, lockTarget.focusHandle, budgetMs),
+            reactivateWindow(lockTarget.windowHandle ?? 0, lockTarget.focusHandle, budgetMs),
           snapshotClipboard: () => snapshotClipboard(),
           writeClipboard: (value) => clipboard.writeText(value),
           restoreClipboard: (snapshot) => this.restoreSnapshot(snapshot),
           clipboardHoldsText: (value) => clipboardHoldsText(value),
-          paste: (lockTarget, until) => desktop.pasteClipboard(lockTarget.windowHandle ?? 0, until, kill),
-          typeOut: (lockTarget, batches, until) => desktop.typeText(batches, lockTarget.windowHandle ?? 0, until, kill),
-          sendKey: (lockTarget, key, until) =>
-            desktop.sendKey(lockTarget.windowHandle ?? 0, key, until, kill, lockTarget.focusHandle),
+          paste: (lockTarget, until) => pasteClipboard(lockTarget.windowHandle ?? 0, until, kill),
+          typeOut: (lockTarget, batches, until) => typeText(batches, lockTarget.windowHandle ?? 0, until, kill),
           wait: (ms) => delay(ms),
           log: (category, message) => this.diagnostics.log(category, message),
         },
       );
       if (result.cancelled) return cancelled;
-      if (result.autoSent) this.diagnostics.log('delivery', 'send key pressed after the text landed');
       const delivered: DeliveryResult = { delivered: result.delivered, clipboardFallback: result.clipboardFallback };
       if (result.partlyTyped) delivered.partlyTyped = true;
       if (result.lineBreaks) delivered.lineBreaks = true;
@@ -2256,7 +2176,6 @@ export async function runSelfTest(): Promise<SelfTestResult> {
       maxRecordingSeconds: 600, recordingsToKeep: 5, soundEffectsEnabled: true,
       launchAtLogin: false, hotkey: { accelerator: 'Control+Alt+Space', pushToTalk: false },
       dictionaryBiasBudget: 100, restorePreviousClipboard: true, typeOutApps: [], recentTargetApps: [],
-      appAwareFormatting: true, categoryStyles: {}, userName: '', autoSend: {}, appCategories: {},
       hasApiKey: true,
     },
     'memory:get': {

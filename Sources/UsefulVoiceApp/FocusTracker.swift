@@ -1,6 +1,5 @@
 import AppKit
 import ApplicationServices
-import Carbon.HIToolbox
 import UsefulVoiceCore
 
 /// Reads what has focus (app, window, element, browser URL) and brings a captured
@@ -120,58 +119,6 @@ final class FocusTracker {
         // Let the app settle its focus before the caller looks again.
         try? await Task.sleep(for: .milliseconds(80))
         return true
-    }
-
-    // MARK: - Text before the caret
-
-    /// The longest the read may take. The answer is needed only when the transcript is
-    /// ready, so this never delays the press; it only bounds how long the work runs.
-    nonisolated static let cursorReadBudget: TimeInterval = 0.15
-
-    /// Up to `TextBeforeCursor.limit` characters before the caret in the target's focused
-    /// field, or nil. Nil for a password field, an app that exposes no text, a field that
-    /// answers too slowly or any AX error. The text is returned to the caller and kept
-    /// nowhere else: it is not logged and not stored.
-    ///
-    /// Only the element captured at the press is read (never whatever has focus now), and
-    /// the AX calls run off the main thread, so a busy app cannot stall the main run loop.
-    func textBeforeCursor(of target: DeliveryTarget) async -> String? {
-        guard AXIsProcessTrusted(), let id = target.elementID, let element = elements[id] else { return nil }
-        let box = ElementBox(element)
-        return await withCheckedContinuation { continuation in
-            let once = FirstResult<String?>(continuation)
-            DispatchQueue.global(qos: .userInitiated).async {
-                once.resume(Self.readTextBeforeCursor(box.element))
-            }
-            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + Self.cursorReadBudget) {
-                once.resume(nil)
-            }
-        }
-    }
-
-    /// Hands an AX element to a background queue. An `AXUIElement` is a thread-safe
-    /// Core Foundation reference; the type just isn't marked `Sendable`.
-    private final class ElementBox: @unchecked Sendable {
-        let element: AXUIElement
-        init(_ element: AXUIElement) { self.element = element }
-    }
-
-    private nonisolated static func readTextBeforeCursor(_ element: AXUIElement) -> String? {
-        AXUIElementSetMessagingTimeout(element, Float(cursorReadBudget))
-        // A password field is never read, whatever else it reports.
-        if IsSecureEventInputEnabled() { return nil }
-        var subrole: CFTypeRef?
-        if AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subrole) == .success,
-           (subrole as? String) == "AXSecureTextField" { return nil }
-        var rangeRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
-              let rangeRef, CFGetTypeID(rangeRef) == AXValueGetTypeID() else { return nil }
-        var range = CFRange(location: 0, length: 0)
-        guard AXValueGetValue(rangeRef as! AXValue, .cfRange, &range) else { return nil }
-        var valueRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &valueRef) == .success,
-              let value = valueRef as? String else { return nil }
-        return TextBeforeCursor.extract(value: value, caretUTF16: range.location)
     }
 
     // MARK: - AX helpers

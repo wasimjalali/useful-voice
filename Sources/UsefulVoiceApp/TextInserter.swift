@@ -257,24 +257,6 @@ struct TextInserter {
         return true
     }
 
-    /// Presses the Return key with the chord's modifiers (auto-send, after a dictation
-    /// landed). Needs Accessibility trust like a paste; without it nothing is posted.
-    static func postSendKey(_ chord: SendKeyChord) {
-        guard AXIsProcessTrusted(),
-              let source = CGEventSource(stateID: .combinedSessionState),
-              let down = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_Return), keyDown: true),
-              let up = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_Return), keyDown: false)
-        else { return }
-        var flags: CGEventFlags = []
-        if chord.shift { flags.insert(.maskShift) }
-        if chord.command { flags.insert(.maskCommand) }
-        if chord.control { flags.insert(.maskControl) }
-        down.flags = flags
-        up.flags = flags
-        down.post(tap: .cghidEventTap)
-        up.post(tap: .cghidEventTap)
-    }
-
     private static func postCommandV() -> Bool {
         // Posting a synthetic keystroke needs Accessibility trust; an untrusted
         // process has its events silently dropped. Gate here so deliver() falls

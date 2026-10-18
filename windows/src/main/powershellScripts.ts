@@ -64,58 +64,6 @@ ${GUARD_CS}
 `;
 }
 
-/** What `sendKeyScript` accepts: Return, Shift+Return or Ctrl+Return, as `SendKeys` writes them. */
-const SEND_KEYS = /^[+^]?\{ENTER\}$/;
-
-/**
- * Press the auto-send key, but only while `expectedForeground` is in front, before the
- * deadline and (when `expectedFocus` is given) while the same child control has the
- * keyboard focus. All of it is checked in the same script as the keystroke, like the
- * paste: a send key must never reach another field of the same window. `sendKeys` is
- * fixed by the setting (`{ENTER}`, `+{ENTER}` or `^{ENTER}`), never text from a dictation.
- * Prints `sent`, `moved`, `timeout` or `failed`.
- */
-export function sendKeyScript(
-  expectedForeground: number,
-  deadlineEpochMs: number,
-  sendKeys: string,
-  expectedFocus?: number,
-): string {
-  if (!isHandle(expectedForeground)) throw new Error('sendKeyScript needs a window handle');
-  if (!SEND_KEYS.test(sendKeys)) throw new Error('sendKeyScript needs Return, Shift+Return or Ctrl+Return');
-  const guardFocus = isHandle(expectedFocus);
-  return `
-$ErrorActionPreference = 'Stop'
-try {
-  Add-Type @"
-${GUARD_CS}
-"@${
-    guardFocus
-      ? `
-  Add-Type @"
-${FOREGROUND_CS}
-"@`
-      : ''
-  }
-  ${deadlineLine(deadlineEpochMs)}
-  if ([UvGuard]::GetForegroundWindow() -ne [IntPtr]${expectedForeground}) { Write-Output "moved"; exit 0 }
-  if ([DateTime]::UtcNow -ge $deadline) { Write-Output "timeout"; exit 0 }${
-    guardFocus
-      ? `
-  $procId = 0
-  $thread = [UvForeground]::GetWindowThreadProcessId([UvGuard]::GetForegroundWindow(), [ref]$procId)
-  if ([UvForeground]::Focus($thread) -ne ${expectedFocus}) { Write-Output "moved"; exit 0 }`
-      : ''
-  }
-  $wshell = New-Object -ComObject WScript.Shell
-  $wshell.SendKeys("${sendKeys}")
-  Write-Output "sent"
-} catch {
-  Write-Output "failed"
-}
-`;
-}
-
 /** The C# type-out needs: one SendInput call per batch of UTF-16 units. */
 export const TYPE_CS = `
 using System;
@@ -342,65 +290,6 @@ try {
   if ($edit -eq $null) { exit 0 }
   $value = $edit.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value
   Write-Output ([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($value)))
-} catch {
-  exit 0
-}
-`;
-}
-
-/** How many characters before the caret the text read returns. */
-export const TEXT_READ_CHARS = 200;
-
-/**
- * The longest the read itself may take once PowerShell and UI Automation are loaded. Past
- * it the script prints nothing, which the app treats as unknown.
- */
-export const TEXT_READ_BUDGET_MS = 300;
-
-/**
- * Read up to 200 characters before the caret in the focused field of `handle`, with UI
- * Automation. Prints `ok:<base64 of UTF-8>` (the text may be empty: the caret is at the
- * start) or nothing, which means unknown. Nothing is printed, and nothing read, when the
- * window is no longer in front, when the focused element is a password field, when there
- * is no caret to measure from, or when anything fails. A field that offers only
- * ValuePattern has no caret, so only its being empty is known.
- */
-export function textBeforeCursorScript(handle: number): string {
-  if (!isHandle(handle)) throw new Error('textBeforeCursorScript needs a window handle');
-  return `
-$ErrorActionPreference = 'Stop'
-try {
-  Add-Type -AssemblyName UIAutomationClient
-  Add-Type -AssemblyName UIAutomationTypes
-  Add-Type @"
-${GUARD_CS}
-"@
-  $clock = [System.Diagnostics.Stopwatch]::StartNew()
-  if ([UvGuard]::GetForegroundWindow() -ne [IntPtr]${handle}) { exit 0 }
-  $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
-  if ($focused -eq $null) { exit 0 }
-  if ($focused.Current.IsPassword) { exit 0 }
-  $text = $null
-  $pattern = $null
-  if ($focused.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref]$pattern)) {
-    $selection = $pattern.GetSelection()
-    if ($selection.Length -eq 0) { exit 0 }
-    $range = $selection[0].Clone()
-    $start = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start
-    $end = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::End
-    $range.MoveEndpointByRange($end, $range, $start)
-    [void]$range.MoveEndpointByUnit($start, [System.Windows.Automation.Text.TextUnit]::Character, -${TEXT_READ_CHARS})
-    if ($clock.ElapsedMilliseconds -ge ${TEXT_READ_BUDGET_MS}) { exit 0 }
-    $text = $range.GetText(${TEXT_READ_CHARS})
-  } else {
-    $valuePattern = $null
-    if ($focused.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$valuePattern)) {
-      if ($valuePattern.Current.Value.Length -eq 0) { $text = "" }
-    }
-  }
-  if ($text -eq $null) { exit 0 }
-  if ($clock.ElapsedMilliseconds -ge ${TEXT_READ_BUDGET_MS}) { exit 0 }
-  Write-Output ("ok:" + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($text)))
 } catch {
   exit 0
 }

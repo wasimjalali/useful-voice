@@ -35,9 +35,7 @@ public enum HistoryReprocessor {
                 memoryHitIDs: result.memoryHitIDs.isEmpty ? nil : result.memoryHitIDs,
                 replacementRuleIDs: result.replacementRuleIDs.isEmpty ? nil : result.replacementRuleIDs,
                 snippetIDs: result.snippetIDs.isEmpty ? nil : result.snippetIDs,
-                audioPath: record.audioPath,
-                appID: record.appID,
-                category: record.category
+                audioPath: record.audioPath
             )
             return HistoryReprocessResult(original: record, reprocessed: next, errorMessage: nil)
         } catch {
@@ -73,9 +71,7 @@ public enum HistoryReprocessor {
                 memoryHitIDs: result.memoryHitIDs.isEmpty ? nil : result.memoryHitIDs,
                 replacementRuleIDs: result.replacementRuleIDs.isEmpty ? nil : result.replacementRuleIDs,
                 snippetIDs: result.snippetIDs.isEmpty ? nil : result.snippetIDs,
-                audioPath: audioURL.path,
-                appID: record.appID,
-                category: record.category
+                audioPath: audioURL.path
             )
             return HistoryReprocessResult(original: record, reprocessed: next, errorMessage: nil)
         } catch {

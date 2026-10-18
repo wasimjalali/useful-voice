@@ -276,7 +276,6 @@ public final class AppSettings {
         static let dailyWordGoal = "dailyWordGoal"
         static let restorePreviousClipboard = "restorePreviousClipboard"
         static let typeOutAppIDs = "typeOutAppIDs"
-        static let appFormatting = "appFormatting"
     }
 
     /// Words per day the Insights goal ring aims at, until the person sets another.
@@ -456,28 +455,6 @@ public final class AppSettings {
         var ids = typeOutAppIDs.filter { $0.lowercased() != appID.lowercased() }
         if enabled { ids.append(appID) }
         typeOutAppIDs = ids
-    }
-
-    /// App-aware formatting: the switch, a style and an auto-send key per category, the name
-    /// for email sign-offs and the per-app category choices. One JSON value under one key,
-    /// decoded leniently: an install that never saved it, or a value that cannot be read,
-    /// gets the defaults.
-    public var appFormatting: AppFormattingSettings {
-        get {
-            guard let json = defaults.string(forKey: Keys.appFormatting),
-                  let data = json.data(using: .utf8),
-                  let stored = try? JSONDecoder().decode(AppFormattingSettings.self, from: data)
-            else { return .standard }
-            return stored
-        }
-        set {
-            var clean = newValue
-            clean.userName = AppFormattingSettings.cleaned(name: newValue.userName)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.sortedKeys]
-            guard let data = try? encoder.encode(clean), let json = String(data: data, encoding: .utf8) else { return }
-            defaults.set(json, forKey: Keys.appFormatting)
-        }
     }
 
     private static func normalisedAppIDs(_ ids: [String]) -> [String] {

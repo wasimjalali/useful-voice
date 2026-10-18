@@ -17,13 +17,6 @@ import path from 'node:path';
 
 export const E2E_TRANSCRIPT = 'Hello from Useful Voice.';
 
-/** What the stub answers next, when a spec set one (`__uv.setTranscript`). Undefined restores the fixture. */
-let transcript = E2E_TRANSCRIPT;
-
-export function setE2eTranscript(text: string | undefined): void {
-  transcript = text ?? E2E_TRANSCRIPT;
-}
-
 export function installDeepgramStub(userData: string): void {
   const real = globalThis.fetch.bind(globalThis);
   const log = (line: string): void => {
@@ -49,7 +42,7 @@ export function installDeepgramStub(userData: string): void {
     }
     return new Response(
       JSON.stringify({
-        results: { channels: [{ alternatives: [{ transcript }] }], duration: 1 },
+        results: { channels: [{ alternatives: [{ transcript: E2E_TRANSCRIPT }] }], duration: 1 },
       }),
       { status: 200, headers: { 'content-type': 'application/json' } },
     );

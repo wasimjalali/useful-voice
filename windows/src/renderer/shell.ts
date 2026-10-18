@@ -124,12 +124,6 @@ export function renderChrome(): void {
 }
 
 /**
- * Set by the Settings page while it is on screen: patches its app list after History
- * changed, without a repaint (a repaint would drop the focus the user is working with).
- */
-export const settingsLive: { historyChanged: (() => void) | null } = { historyChanged: null };
-
-/**
  * The language picker currently on screen, if Settings is open.
  *
  * A single mutable reference rather than a captured one: `renderSettings` runs on
@@ -416,13 +410,6 @@ export function mountMain(pages: Record<Page, PageModule>): void {
     void loadIfActive('stream', () => api.getHistory().then((history) => {
       state.history = history;
     }));
-    // Settings lists the apps from History. It is patched in place, never repainted.
-    if (state.page === 'settings') {
-      void api.getHistory().then((history) => {
-        state.history = history;
-        settingsLive.historyChanged?.();
-      }).catch((error) => console.warn('background refresh failed', error));
-    }
   });
 
   // Tray and floating-picker changes (language, auto-format) land in Settings too.

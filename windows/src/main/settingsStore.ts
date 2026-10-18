@@ -123,12 +123,8 @@ export class SettingsStore {
       const entry = stored?.[provider];
       if (!entry || typeof entry.data !== 'string' || entry.data.length === 0) continue;
       const key = this.decrypt(entry.data, entry.plaintext === true);
+      // An unreadable key is not a save problem: its row says "Add key" and the launch logs it once.
       this.extraKeys.set(provider, { key, stored: entry, undecrypted: key === null ? entry : null, onDisk: true });
-      if (key === null) {
-        this.lastSaveError = new Error(
-          `The stored ${KEY_PROVIDER_INFO[provider].name} key could not be decrypted on this account. Re-enter it in Settings.`,
-        );
-      }
     }
   }
 

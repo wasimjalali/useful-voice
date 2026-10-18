@@ -1,6 +1,5 @@
 import { KEY_PROVIDER_INFO, keyProviderOf, voiceModelById, DEFAULT_VOICE_MODEL_ID, type CatalogModel, type KeyProvider } from '../core/models/catalog.js';
 import { parakeetVersionFromCatalogId, type ParakeetVersion } from '../core/models/parakeet.js';
-import { parakeetLanguageProblem } from '../core/transcription/parakeetLanguages.js';
 import { ProviderError, transcribe as transcribeDeepgram, type Transcript } from '../core/transcription/deepgramProvider.js';
 import { transcribe as transcribeScribe } from '../core/transcription/elevenlabsProvider.js';
 import { transcribe as transcribeGemini } from '../core/transcription/geminiTranscribeProvider.js';
@@ -70,8 +69,7 @@ export function createTranscriber(deps: RouterDeps): TranscriberPort {
       }
       const version = parakeetVersionFromCatalogId(model.id);
       if (model.provider === 'nvidia' && version) {
-        const problem = parakeetLanguageProblem(version, request.language);
-        if (problem) throw new ProviderError('badRequest', problem, { provider: 'Parakeet' });
+        // The language rule lives with the model (`checkParakeetLanguage`, run inside `transcribe`).
         return deps.parakeet.transcribe(request.audio, version, signal, request.language);
       }
       throw new ProviderError('notConfigured', `${model.name} can't run here.`);

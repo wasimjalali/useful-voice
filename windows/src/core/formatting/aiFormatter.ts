@@ -194,6 +194,9 @@ export async function formatWithModel(options: FormatOptions): Promise<string> {
     if (response.status === 400) {
       // A model that no longer takes the thinking field says so: try once without it.
       const body = await safeText(response);
+      // The deadline covers reading this body too.
+      if (signal?.aborted) throw new FormatterError('cancelled', 'the dictation was cancelled');
+      if (timeout.aborted) throw new FormatterError('timeout', `no answer within ${deadlineMs / 1000} s`);
       if (/thinking/i.test(body)) {
         response = await send(buildAnthropicRequest(model, apiKey, userMessage, { withThinkingField: false, inputLength: text.length }));
       } else {

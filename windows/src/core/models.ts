@@ -183,6 +183,8 @@ export interface DictationError {
   kind: DictationErrorKind;
   message: string;
   fix?: DictationFix;
+  /** Who failed ("Gemini", "ElevenLabs", "Parakeet"), when a provider did. */
+  provider?: string;
 }
 
 /**

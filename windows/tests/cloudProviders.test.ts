@@ -20,7 +20,7 @@ import { checkProviderKey, keyCheckRequest } from '../src/core/models/providerKe
 import { transcriptionLogLine } from '../src/main/dictationService.js';
 import { setSecretSource } from '../src/core/redaction.js';
 import { describeErrorBody } from '../src/core/transcription/deepgramProvider.js';
-import { parakeetLanguageProblem } from '../src/core/transcription/parakeetLanguages.js';
+import { PARAKEET_V3_LANGUAGES, checkParakeetLanguage } from '../src/core/models/parakeetSupport.js';
 
 const audio = new Uint8Array(64_000).fill(7);
 const noSleep = async (): Promise<void> => undefined;
@@ -112,6 +112,15 @@ describe('ElevenLabs Scribe v2', () => {
     expect(normaliseDetectedLanguage('en')).toBe('en');
     expect(normaliseDetectedLanguage('')).toBeNull();
     expect(normaliseDetectedLanguage(7)).toBeNull();
+  });
+
+  it('tells a quota error from a key error on 401 and 403', () => {
+    const quota = classifyScribe(401, JSON.stringify({ detail: { status: 'quota_exceeded', message: 'x' } }));
+    expect(quota).toMatchObject({ kind: 'outOfCredits', message: 'Your ElevenLabs account is out of credits.' });
+    expect(classifyScribe(403, JSON.stringify({ detail: { status: 'quota_exceeded' } })).kind).toBe('outOfCredits');
+    const key = classifyScribe(401, JSON.stringify({ detail: { status: 'invalid_api_key' } }));
+    expect(key).toMatchObject({ kind: 'unauthorized', message: 'ElevenLabs rejected your API key. Check the key and its speech-to-text permission.' });
+    expect(classifyScribe(403, 'not json').kind).toBe('unauthorized');
   });
 
   it('classifies failures: 401 and 403 key, 429 rate limited, 5xx server', () => {
@@ -305,14 +314,14 @@ describe('key checks for the GET providers', () => {
   });
 });
 
-describe('Parakeet language pins', () => {
-  it('lets v2 speak English only', () => {
-    for (const pin of ['auto', 'multi', 'en', 'en-GB']) expect(parakeetLanguageProblem('v2', pin), pin).toBeNull();
-    expect(parakeetLanguageProblem('v2', 'de')).toMatch(/only speaks English/);
+describe('Parakeet language pins (one source: parakeetSupport)', () => {
+  it('lets v2 speak English only, and Auto or Multi pass', () => {
+    for (const pin of ['auto', 'multi', 'en', 'en-GB']) expect(() => checkParakeetLanguage('v2', pin), pin).not.toThrow();
+    expect(() => checkParakeetLanguage('v2', 'de')).toThrow(/only speaks English/);
   });
   it('lets v3 speak its 25 European languages and no others', () => {
-    for (const pin of ['de', 'fr', 'uk', 'bg', 'mt', 'de-CH']) expect(parakeetLanguageProblem('v3', pin), pin).toBeNull();
-    expect(parakeetLanguageProblem('v3', 'ja')).toBe("Parakeet Multilingual doesn't cover Japanese. Pick another voice model or another language.");
-    expect(parakeetLanguageProblem('v3', 'ar')).toMatch(/Arabic/);
+    for (const pin of ['de', 'fr', 'uk', 'bg', 'mt', 'de-CH']) expect(() => checkParakeetLanguage('v3', pin), pin).not.toThrow();
+    expect(PARAKEET_V3_LANGUAGES).toHaveLength(25);
+    expect(() => checkParakeetLanguage('v3', 'ja')).toThrow(/Japanese/);
   });
 });

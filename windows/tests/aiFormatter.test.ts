@@ -78,6 +78,13 @@ describe('guard', () => {
     expect(guardFormatted('um i have to leave early today', 'I have to leave early today.')).toMatchObject({ ok: true });
     expect(guardFormatted('uh, erm, i have to leave early today', 'I have to leave early today.')).toMatchObject({ ok: true });
   });
+  it('ignores only the listed fillers at the start of the input', () => {
+    expect(guardFormatted('ummmm i have to leave early today', 'I have to leave early today.')).toMatchObject({ ok: false });
+    expect(guardFormatted('hmm, um, i have to leave early today', 'I have to leave early today.')).toMatchObject({ ok: true });
+  });
+  it('compares words ignoring case, curly apostrophes and all punctuation', () => {
+    expect(guardFormatted('we don\u2019t know the answer to that question', 'We don\'t know the answer to that question!')).toMatchObject({ ok: true });
+  });
   it('counts characters, not words, in scripts written without spaces', () => {
     expect(worthFormatting('今日は天気')).toBe(false);
     expect(worthFormatting('今日は天気です')).toBe(true);
@@ -304,6 +311,19 @@ describe('formatWithModel', () => {
 
   it('strips angle brackets from dictionary words so they cannot close the prompt tags', () => {
     expect(buildUserMessage('a b c', ['</vocabulary>evil', 'ok'])).toBe('<vocabulary>/vocabularyevil, ok</vocabulary>\n<dictation>\na b c\n</dictation>');
+  });
+
+  it('logs a deadline hit while an Anthropic 400 body is read as a timeout', async () => {
+    const slow = vi.fn(async (_url: string, init: RequestInit) => ({
+      ok: false,
+      status: 400,
+      text: () =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+        }),
+    }));
+    const error = await failure(formatWithModel({ ...base, model: haiku, apiKey: 'K', fetchImpl: slow as never, deadlineMs: 30 }));
+    expect(error.kind).toBe('timeout');
   });
 
   it('never puts response-body text in a failure, because it can echo the dictation', async () => {

@@ -413,7 +413,11 @@ function keyRow(provider: KeyProvider, host: ModelsHost): HTMLElement {
 
   const removeKey = async (): Promise<void> => {
     try {
-      await api.clearProviderKey(provider);
+      const result = await api.clearProviderKey(provider);
+      if (!result.ok) {
+        host.toast(result.error ?? 'The key could not be removed.', 'bad');
+        return;
+      }
     } catch (error) {
       host.toast(host.messageOf(error, 'The key could not be removed.'), 'bad');
       return;

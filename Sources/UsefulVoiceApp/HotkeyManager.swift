@@ -41,8 +41,6 @@ struct HotkeyOption: Identifiable, Hashable {
 /// The callback must still be cheap: it only compares flags, feeds the pure
 /// recognizers, and hops to the main queue for work.
 final class HotkeyManager: @unchecked Sendable {
-    private static let escapeKeycode: Int64 = 53
-
     // MARK: - Cross-thread state
     //
     // Read from the tap thread, written from the main actor, so everything is
@@ -82,32 +80,15 @@ final class HotkeyManager: @unchecked Sendable {
     /// hotkey fails silently while the UI still claims it is active.
     var onTapDisabled: (() -> Void)?
 
-    /// The flag a given modifier keycode sets while held, used to read down/up.
-    static func flagMask(for keycode: Int64) -> CGEventFlags {
-        switch keycode {
-        case 61, 58: return .maskAlternate     // right / left option
-        case 54, 55: return .maskCommand        // right / left command
-        case 62, 59: return .maskControl        // right / left control
-        case 60: return .maskShift              // right shift
-        case 63: return .maskSecondaryFn        // fn / globe
-        default: return .maskAlternate
-        }
+    /// The pure decision logic (taps, cancellation, the Esc pair). Touched from the
+    /// tap thread for every event, and reset from whichever thread restarts the tap.
+    private let processorLock = NSLock()
+    private var processor = HotkeyEventProcessor()
+
+    private func withProcessor<T>(_ body: (inout HotkeyEventProcessor) -> T) -> T {
+        processorLock.lock(); defer { processorLock.unlock() }
+        return body(&processor)
     }
-
-    /// Per-key "was down last time we saw it" state, so a modifier tap is read as
-    /// a real transition.
-    ///
-    /// `flagsChanged` says which key changed, but `event.flags` only reports
-    /// whether *any* key of that modifier class is down. Holding Left Command and
-    /// tapping Right Command would otherwise read as two "down" events and the
-    /// tap would never fire. Comparing against the previous observation for that
-    /// keycode recovers the transition.
-    private var lastDownState: [Int64: Bool] = [:]
-
-    // One tap recognizer per tap-key. The type is a generic modifier-tap
-    // detector (its event names are historical, from the original Right Option).
-    private var activationRecognizer = RightOptionTapRecognizer()
-    private var languageSwitchRecognizer = RightOptionTapRecognizer()
 
     // MARK: - Tap lifecycle (main thread only for the properties below)
 
@@ -228,7 +209,7 @@ final class HotkeyManager: @unchecked Sendable {
             }
         }
         tapThread = nil
-        lastDownState.removeAll()
+        withProcessor { $0.reset() }
     }
 
     // MARK: - Event handling (runs on the tap thread)
@@ -239,11 +220,15 @@ final class HotkeyManager: @unchecked Sendable {
         // are recoverable; user-input disabling usually means the Accessibility
         // grant was revoked, in which case re-enabling is a silent no-op and the
         // app must be told so it can stop claiming the hotkey works.
+        // Events were lost while the tap was off, so whatever the processor
+        // remembers (a key "still down", a pending tap) is stale after re-enabling.
         if type == .tapDisabledByTimeout {
+            withProcessor { $0.reset() }
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             return Unmanaged.passUnretained(event)
         }
         if type == .tapDisabledByUserInput {
+            withProcessor { $0.reset() }
             let trusted = AXIsProcessTrusted()
             if trusted, let tap {
                 CGEvent.tapEnable(tap: tap, enable: true)
@@ -253,65 +238,41 @@ final class HotkeyManager: @unchecked Sendable {
             return Unmanaged.passUnretained(event)
         }
 
+        let keycode = event.getIntegerValueField(.keyboardEventKeycode)
+        let input: HotkeyEventProcessor.Input
+        switch type {
+        case .flagsChanged:
+            input = .flagsChanged(keycode: keycode, rawFlags: event.flags.rawValue)
+        case .keyDown:
+            input = .keyDown(keycode: keycode)
+        case .keyUp:
+            input = .keyUp(keycode: keycode)
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown,
+             .leftMouseDragged, .rightMouseDragged:
+            input = .pointerDown
+        case .scrollWheel:
+            input = .scroll(momentumPhase: event.getIntegerValueField(.scrollWheelEventMomentumPhase))
+        default:
+            return Unmanaged.passUnretained(event)
+        }
+
         let activation = activationKeycode
         let languageSwitch = languageSwitchKeycode
-        let keycode = event.getIntegerValueField(.keyboardEventKeycode)
+        let recording = isRecordingActive
         let now = ProcessInfo.processInfo.systemUptime
-
-        switch type {
-        case .flagsChanged where keycode == activation || keycode == languageSwitch:
-            let isDown = event.flags.contains(Self.flagMask(for: keycode))
-            // Ignore repeats: only a real transition counts. This is what makes
-            // "other side of the same modifier is held" stop producing phantom
-            // down events.
-            guard lastDownState[keycode] != isDown else {
-                return Unmanaged.passUnretained(event)
-            }
-            lastDownState[keycode] = isDown
-
-            let isActivation = keycode == activation
-            var recognizer = isActivation ? activationRecognizer : languageSwitchRecognizer
-            let fired = recognizer.handle(isDown ? .rightOptionDown(at: now)
-                                                : .rightOptionUp(at: now))
-            if isActivation {
-                activationRecognizer = recognizer
-            } else {
-                languageSwitchRecognizer = recognizer
-            }
-            if fired {
-                DispatchQueue.main.async { [weak self] in
-                    if isActivation { self?.onToggle?() } else { self?.onLanguageSwitch?() }
-                }
-            }
-
-        case .flagsChanged:
-            // A different modifier changed: invalidate pending taps on both keys.
-            invalidatePendingTaps()
-
-        case .keyDown where keycode == Self.escapeKeycode:
-            if isRecordingActive {
-                DispatchQueue.main.async { [weak self] in self?.onCancel?() }
-                return nil // consume Esc so the frontmost app never sees it
-            }
-
-        case .keyDown, .keyUp:
-            // Any other key invalidates a pending tap on every tap-key.
-            invalidatePendingTaps()
-
-        case .leftMouseDown, .rightMouseDown, .otherMouseDown,
-             .leftMouseDragged, .rightMouseDragged, .scrollWheel:
-            // A click, drag or scroll ends any pending modifier tap. Without
-            // this, modifier+click gestures fire the hotkey.
-            invalidatePendingTaps()
-
-        default:
-            break
+        let outcome = withProcessor {
+            $0.process(input, activationKeycode: activation, languageSwitchKeycode: languageSwitch,
+                       isRecording: recording, now: now)
         }
-        return Unmanaged.passUnretained(event)
-    }
 
-    private func invalidatePendingTaps() {
-        _ = activationRecognizer.handle(.otherKeyDown)
-        _ = languageSwitchRecognizer.handle(.otherKeyDown)
+        switch outcome.fire {
+        case .toggle: DispatchQueue.main.async { [weak self] in self?.onToggle?() }
+        case .languageSwitch: DispatchQueue.main.async { [weak self] in self?.onLanguageSwitch?() }
+        case .cancel: DispatchQueue.main.async { [weak self] in self?.onCancel?() }
+        case nil: break
+        }
+        // The Esc consumed on key-down is paired with its key-up, so the frontmost
+        // app never sees an unpaired event.
+        return outcome.consume ? nil : Unmanaged.passUnretained(event)
     }
 }

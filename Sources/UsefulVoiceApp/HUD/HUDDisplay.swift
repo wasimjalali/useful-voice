@@ -80,6 +80,9 @@ struct HUDError: Equatable {
         case .recordingFailed:
             message = "Couldn't start recording"
             symbol = "exclamationmark.triangle"
+        case .retryUnavailable:
+            message = error.message
+            symbol = "exclamationmark.triangle"
         case .deliveryFailed:
             message = "Couldn't copy the text"
             symbol = "exclamationmark.triangle"

@@ -41,7 +41,8 @@ public enum ProviderKeyTester {
     public static func classify(status: Int, body: String, milliseconds: Int) -> KeyTestResult {
         switch status {
         case 200..<300: return .ok(milliseconds: milliseconds)
-        case 401, 403: return .rejected
+        case 401, 403: return body.contains("quota_exceeded")
+            ? .failed("Your ElevenLabs account is out of credits.") : .rejected
         case 400 where body.contains("API_KEY_INVALID") || body.lowercased().contains("api key not valid"):
             return .rejected
         default: return .failed("The provider answered HTTP \(status).")

@@ -231,6 +231,7 @@ struct SettingsPage: View {
                 if let deleteError = viewModel.models.deleteError {
                     Text(deleteError).font(.uv(.meta)).foregroundStyle(Theme.danger).padding(.horizontal, 4)
                 }
+                SettingsFootnote(text: "AI formatting sends each transcript to the model's provider.")
             }
         }
     }

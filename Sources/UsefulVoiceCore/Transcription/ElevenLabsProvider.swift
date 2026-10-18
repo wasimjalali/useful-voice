@@ -123,6 +123,10 @@ public final class ElevenLabsProvider: TranscriptionProvider, @unchecked Sendabl
     static func error(forStatus status: Int, body: Data, retryAfter: String? = nil) -> ProviderError {
         switch status {
         case 401, 403:
+            // A 401 that says the quota is used up is about credits, not the key.
+            if String(decoding: body.prefix(2000), as: UTF8.self).contains("quota_exceeded") {
+                return .outOfCredits("Your ElevenLabs account is out of credits.")
+            }
             return .http(status, "ElevenLabs didn't accept the key.")
         case 429:
             let retry = retryAfter.map { " Retry after \($0)s." } ?? ""

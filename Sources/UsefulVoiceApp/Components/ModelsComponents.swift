@@ -317,6 +317,11 @@ struct ApiKeyRow: View {
                     .font(.uv(.meta)).foregroundStyle(Theme.danger)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if provider == .elevenLabs, test == .rejected {
+                Text("Key rejected. Check the key and its speech-to-text permission.")
+                    .font(.uv(.meta)).foregroundStyle(Theme.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if case .failed(let message) = test {
                 Text(message).font(.uv(.meta)).foregroundStyle(Theme.danger)
                     .fixedSize(horizontal: false, vertical: true)
@@ -421,7 +426,7 @@ struct ModelsLists: View {
             }
             ModelListHeader(title: "AI formatting", compact: compact)
                 .padding(.top, 8)
-            ModelOffRow(selected: models.formatterID == nil, compact: compact) {
+            ModelOffRow(selected: models.effectiveFormatterID == nil, compact: compact) {
                 models.selectFormatter(nil)
             }
             ForEach(ModelCatalog.language) { entry in

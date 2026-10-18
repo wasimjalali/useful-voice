@@ -1,7 +1,6 @@
 import Foundation
 
-/// What the saved voice model id resolves to. Like `ProviderPlan`, free of
-/// provider instances so the decision is testable without networks or models.
+/// What the saved voice model id resolves to, free of provider instances so the decision is testable without networks or models.
 public enum VoicePlan: Equatable, Sendable {
     /// Deepgram with this API model (`nova-3`, `nova-3-medical`).
     case deepgram(apiModel: String)
@@ -17,8 +16,7 @@ public enum VoicePlan: Equatable, Sendable {
 }
 
 public enum VoiceModelSelector {
-    /// The rule that matters, as for `ProviderSelector`: no silent fallback between
-    /// providers. A missing key or model is an actionable error, never a quiet
+    /// The rule that matters: no silent fallback between providers. A missing key or model is an actionable error, never a quiet
     /// request to a different provider.
     public static func resolve(
         voiceModelID: String,
@@ -65,8 +63,8 @@ public enum VoiceModelSelector {
     }
 }
 
-/// Refuses a language Parakeet can't transcribe before any audio is processed.
-/// v2 is English only; v3 speaks 25 European languages.
+/// Refuses a language Parakeet can't transcribe before any audio is processed, using
+/// the one rule in `ParakeetVersion.languageProblem`.
 public struct ParakeetLanguageGuard: TranscriptionProvider {
     public let version: ParakeetVersion
     private let inner: TranscriptionProvider
@@ -78,25 +76,8 @@ public struct ParakeetLanguageGuard: TranscriptionProvider {
         self.inner = inner
     }
 
-    public static let v3Languages: Set<String> = ParakeetVersion.v3Languages
-
-    /// nil when the pin works with this version, else the message to show.
-    public static func refusal(for pin: LanguagePin, version: ParakeetVersion) -> String? {
-        if pin.isAuto { return nil }
-        let base = String(pin.rawValue.split(separator: "-").first ?? "").lowercased()
-        switch version {
-        case .v2:
-            return base == "en"
-                ? nil
-                : "Parakeet only speaks English. Pick Parakeet Multilingual or another voice model, or switch the language to English."
-        case .v3:
-            if pin.isMultilingual || v3Languages.contains(base) { return nil }
-            return "Parakeet Multilingual doesn't speak \(pin.displayName). Pick another voice model or switch the language."
-        }
-    }
-
     public func transcribe(audio: URL, hint: TranscriptionHint) async throws -> Transcript {
-        if let message = Self.refusal(for: hint.languagePin, version: version) {
+        if let message = version.languageProblem(for: hint.languagePin) {
             throw ProviderError.notConfigured(message)
         }
         return try await inner.transcribe(audio: audio, hint: hint)

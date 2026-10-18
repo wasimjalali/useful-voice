@@ -71,7 +71,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// app in front); the window's mic button passes `.window` (saved and copied).
     private func toggleDictation(source: DictationSource = .hotkey) {
         // Cheap when the model is already loaded; covers a model that was evicted.
-        if let version = ParakeetVersion(catalogID: settings.voiceModelID) { parakeet.preload(version) }
+        if let version = ParakeetVersion(catalogID: settings.voiceModelID),
+           case .ready = parakeet.state(of: version) { parakeet.preload(version) }
         controller?.toggle(source: source)
     }
 
@@ -749,9 +750,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         guard let transcript else {
-            let detail = (lastError as? ProviderError).map(Self.describeProviderError)
-                ?? lastError?.localizedDescription ?? "unknown error"
-            Diagnostics.shared.warning("reprocess", "reprocess failed: \(detail)")
+            // Provider and a fixed reason only: a response body can echo the transcript.
+            let reason = (lastError as? ProviderError)?.logReason ?? "error"
+            Diagnostics.shared.warning("reprocess", "reprocess failed: \(chain.last?.name ?? "provider") \(reason)")
             hud.show(.error(HUDError(message: "Reprocess failed")))
             return
         }
@@ -936,8 +937,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ).prefix(200)
             return detail.isEmpty ? "HTTP \(status) from provider"
                                   : "HTTP \(status): \(detail)"
-        case .outOfCredits:
-            return "Your Deepgram account is out of credits. Add credits, then try again."
+        case .outOfCredits(let message):
+            return message.hasPrefix("Your ElevenLabs")
+                ? message
+                : "Your Deepgram account is out of credits. Add credits, then try again."
         case .badResponse:
             return "unreadable provider response"
         case .notConfigured(let what):

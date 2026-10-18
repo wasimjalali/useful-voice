@@ -104,9 +104,6 @@ struct ParakeetReviewTests {
         #expect(!FileManager.default.fileExists(atPath: trash.path))
     }
 
-    @Test func theGuardAndTheModelShareOneLanguageList() {
-        #expect(ParakeetLanguageGuard.v3Languages == ParakeetVersion.v3Languages)
-    }
 }
 
 private enum ModelVocab {

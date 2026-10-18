@@ -199,7 +199,6 @@ final class UsefulVoiceViewModel: ObservableObject {
         let voice = settings.voiceModel
         providerName = voice.isLocal || voice.name.hasPrefix(voice.providerName)
             ? voice.name : "\(voice.providerName) \(voice.name)"
-        let model = models.activeModel
         let plan = VoiceModelSelector.resolve(
             voiceModelID: voice.id,
             keyAvailable: { provider in
@@ -207,7 +206,6 @@ final class UsefulVoiceViewModel: ObservableObject {
                 return store.current != nil || store.isConfigured()
             },
             whisperAvailability: { models.availability(of: $0) })
-        _ = model
         switch plan {
         case .deepgram, .elevenLabs, .gemini, .whisper:
             providerConfigured = true
@@ -240,8 +238,11 @@ final class UsefulVoiceViewModel: ObservableObject {
     /// another voice model is selected.
     func syncParakeetPin() {
         if let version = ParakeetVersion(catalogID: settings.voiceModelID) {
-            parakeet.pinned = version
-            parakeet.preload(version)
+            // The manager's published state decides: no disk check on this path.
+            if parakeet.pinned != version {
+                parakeet.pinned = version
+                if case .ready = parakeet.state(of: version) { parakeet.preload(version) }
+            }
         } else if parakeet.pinned != nil {
             parakeet.pinned = nil
         }

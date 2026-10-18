@@ -463,6 +463,10 @@ struct InsightsPage: View {
                     }
                     costRow(swatch: InsightsInk.k3, name: "Whisper (local)", minutes: c.whisperMinutes,
                             amount: c.whisperMinutes > 0 ? "No cost" : "Not used", quiet: true)
+                    if c.otherMinutes > 0 {
+                        costRow(swatch: InsightsInk.k3, name: "Other models", minutes: c.otherMinutes,
+                                amount: "Not priced", quiet: true)
+                    }
                 }
                 Text("List prices. Your Deepgram invoice is the source of truth.")
                     .font(.uv(.label)).foregroundStyle(Theme.inkMuted)
@@ -472,17 +476,18 @@ struct InsightsPage: View {
 
     private func minutesBar(_ c: InsightsCost) -> some View {
         GeometryReader { proxy in
-            let total = Double(max(c.deepgramMinutes + c.whisperMinutes, 1))
-            let gap: CGFloat = c.whisperMinutes > 0 && c.deepgramMinutes > 0 ? 3 : 0
+            let local = c.whisperMinutes + c.otherMinutes
+            let total = Double(max(c.deepgramMinutes + local, 1))
+            let gap: CGFloat = local > 0 && c.deepgramMinutes > 0 ? 3 : 0
             let usable = proxy.size.width - gap
             HStack(spacing: gap) {
                 if c.deepgramMinutes > 0 {
                     Capsule().fill(InsightsInk.k1)
                         .frame(width: max(6, usable * CGFloat(Double(c.deepgramMinutes) / total)))
                 }
-                if c.whisperMinutes > 0 {
+                if local > 0 {
                     Capsule().fill(InsightsInk.k3)
-                        .frame(width: max(6, usable * CGFloat(Double(c.whisperMinutes) / total)))
+                        .frame(width: max(6, usable * CGFloat(Double(local) / total)))
                 }
             }
         }

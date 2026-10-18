@@ -450,7 +450,12 @@ final class FirstRunModel: ObservableObject {
             }
         } else {
             cancelDiskTask()
-            restoreSnapshotIfUnusable()
+            if startedFromSettings {
+                // Quitting during "Run setup again" puts back exactly what was chosen before.
+                restoreSnapshotExactly()
+            } else {
+                restoreSnapshotIfUnusable()
+            }
         }
     }
 
@@ -626,7 +631,8 @@ final class FirstRunModel: ObservableObject {
         // The setup's choice writes the voice model itself: Deepgram is Nova-3, and
         // Whisper is the model that is active.
         settings.voiceModelID = FirstRunGate.setupVoiceModelID(
-            engine: engine, whisperModelID: settings.localModelID)
+            engine: engine, whisperModelID: settings.localModelID,
+            currentVoiceModelID: settings.voiceModelID)
         viewModel.models.engineChanged(to: engine)
         viewModel.refreshConfig()
     }

@@ -92,7 +92,17 @@ final class ModelsViewModel: ObservableObject {
         whisper.refreshAvailability()
     }
 
-    func hasKey(_ provider: KeyProvider) -> Bool { keyStored[provider] ?? false }
+    /// A key that is stored but can't be read (a locked Keychain) counts as missing: the
+    /// row says "Add key", and nothing pretends the model it serves is working.
+    func hasKey(_ provider: KeyProvider) -> Bool {
+        (keyStored[provider] ?? false) && keyProblem[provider] == nil
+    }
+
+    /// The formatter in effect: a selected model whose key can't be used is not on.
+    var effectiveFormatterID: String? {
+        guard let id = formatterID, let entry = ModelCatalog.languageModel(id: id), !needsKey(entry) else { return nil }
+        return id
+    }
 
     /// A cloud model whose key isn't saved can't be picked; "Add key" takes its place.
     func needsKey(_ entry: ModelEntry) -> Bool {
@@ -103,7 +113,7 @@ final class ModelsViewModel: ObservableObject {
     func isSelected(_ entry: ModelEntry, kind: ModelKind) -> Bool {
         switch kind {
         case .voice: return (pendingLocalID ?? voiceID) == entry.id
-        case .formatter: return formatterID == entry.id
+        case .formatter: return effectiveFormatterID == entry.id
         }
     }
 
@@ -231,7 +241,8 @@ final class ModelsViewModel: ObservableObject {
                   let status = self.status(of: entry) else { return }
             switch status {
             case .ready: self.commitVoice(id)
-            case .failed: self.pendingLocalID = nil
+            // A failed download keeps the pending switch, so a successful retry still
+            // selects the model. Picking another model clears it.
             default: break
             }
         }

@@ -68,6 +68,8 @@ public final class ProviderKeyStore: @unchecked Sendable {
     private var loaded = false
     /// Set when a completed read failed for a reason other than "nothing stored".
     private var problem: String?
+    /// The last read problem that was logged. Only touched on `queue`.
+    private var loggedProblem: String?
 
     public convenience init(provider: KeyProvider = .deepgram) {
         self.init(backend: KeychainKeyBackend(account: provider.account), provider: provider)
@@ -239,13 +241,19 @@ public final class ProviderKeyStore: @unchecked Sendable {
         let lookup = backend.lookup()
         switch lookup {
         case .found(let value):
+            loggedProblem = nil
             publish(value, problem: nil)
         case .absent:
+            loggedProblem = nil
             publish(nil, problem: nil)
         case .unavailable(let reason):
             // Worth a log line: silent refusal to read a stored key is exactly
             // the failure that produced unhelpful support conversations.
-            Diagnostics.shared.error("keychain", "could not read the \(provider.displayName) key: \(reason)")
+            // Logged once per problem, not on every look at it.
+            if loggedProblem != reason {
+                Diagnostics.shared.error("keychain", "could not read the \(provider.displayName) key: \(reason)")
+                loggedProblem = reason
+            }
             publish(nil, problem: reason)
         }
         return lookup

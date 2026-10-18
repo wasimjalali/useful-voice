@@ -102,7 +102,15 @@ if !arguments.contains("--paused") { setPlaying(true, why: "launch") } else { pu
 DispatchQueue.global().async {
     while let line = readLine() {
         DispatchQueue.main.async {
-            switch line.trimmingCharacters(in: .whitespaces) {
+            let word = line.trimmingCharacters(in: .whitespaces)
+            // `blip <ms>`: an alert sound, outputting for that long and then stopping by itself.
+            if word.hasPrefix("blip "), let ms = Double(word.dropFirst(5)) {
+                log("BLIP \(Int(ms)) ms")
+                setPlaying(true, why: "blip")
+                DispatchQueue.main.asyncAfter(deadline: .now() + ms / 1000) { setPlaying(false, why: "blip over") }
+                return
+            }
+            switch word {
             case "play": log("USER play"); setPlaying(true, why: "user")
             case "pause": log("USER pause"); setPlaying(false, why: "user")
             case "quit": log("QUIT"); exit(0)

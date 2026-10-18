@@ -7,13 +7,9 @@
  * from the dock), where a paste would land nowhere useful, so it is copied instead.
  * A dictation started in our own window (a note) still pastes there.
  *
- * A foreground window that could not be read (`null`) pastes as it always has.
+ * Both facts are synchronous reads (`BrowserWindow.getFocusedWindow() !== null`), so
+ * neither the start nor the delivery waits on a query to Windows for them.
  */
-export function pasteLandsInOwnWindow(
-  startHandle: number | undefined,
-  foregroundNow: { handle: number } | null,
-  ownHandles: readonly number[],
-): boolean {
-  if (foregroundNow === null || !ownHandles.includes(foregroundNow.handle)) return false;
-  return startHandle === undefined || !ownHandles.includes(startHandle);
+export function pasteLandsInOwnWindow(startedInOwnWindow: boolean, ownWindowInFront: boolean): boolean {
+  return ownWindowInFront && !startedInOwnWindow;
 }

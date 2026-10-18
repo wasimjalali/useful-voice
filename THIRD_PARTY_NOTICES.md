@@ -58,3 +58,27 @@ The ggml authors.
 - [licenses/llama.cpp/LICENSE](licenses/llama.cpp/LICENSE)
 
 The Windows runtime (node-llama-cpp and its dependencies) has its own notices in `windows/THIRD_PARTY_NOTICES.md` in the repository.
+
+## FluidAudio
+
+Runs the Parakeet models on macOS through Core ML (the `FluidAudio` Swift package, release 0.17.7,
+from [FluidInference/FluidAudio](https://github.com/FluidInference/FluidAudio)). Apache License 2.0,
+Copyright FluidInference. The package statically links the NeMo text normalization library
+(Apache-2.0, built on NVIDIA NeMo Text Processing) and fastcluster (BSD), and carries VBx code; their
+notices come with it.
+
+- [licenses/fluidaudio/LICENSE](licenses/fluidaudio/LICENSE)
+- [licenses/fluidaudio/NemoTextProcessing-LICENSE.md](licenses/fluidaudio/NemoTextProcessing-LICENSE.md)
+- [licenses/fluidaudio/fastcluster-LICENSE.md](licenses/fluidaudio/fastcluster-LICENSE.md)
+- [licenses/fluidaudio/vbx-LICENSE.md](licenses/fluidaudio/vbx-LICENSE.md)
+
+## NVIDIA Parakeet TDT 0.6B v2 and v3
+
+The Parakeet voice models (`parakeet-tdt-0.6b-v2` and `-v3`) are by NVIDIA, licensed under
+[CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/legalcode), and are downloaded on request in
+the Core ML conversion by FluidInference
+([v2](https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v2-coreml),
+[v3](https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml)). The conversion changes the format
+and quantizes the weights. NVIDIA does not endorse Useful Voice.
+
+- [licenses/parakeet/NOTICE](licenses/parakeet/NOTICE)

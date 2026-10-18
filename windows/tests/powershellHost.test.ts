@@ -30,14 +30,14 @@ class FakeChild extends EventEmitter implements HostChild {
   /** Called for each request line; the test decides what the "script" prints. */
   onRequest: (request: { script: string; id: string }, child: FakeChild) => void = () => undefined;
 
-  readonly stdin = {
+  readonly stdin = Object.assign(new EventEmitter(), {
     write: (data: string): void => {
       const [encoded, id] = data.trimEnd().split('|') as [string, string];
       const request = { script: Buffer.from(encoded, 'base64').toString('utf8'), id: id };
       this.written.push(request);
       this.onRequest(request, this);
     },
-  };
+  });
 
   /** Print lines then the sentinel, as the bootstrap does. */
   reply(id: string, ...lines: string[]): void {
@@ -189,20 +189,100 @@ describe('PowerShellHost', () => {
     expect(await host.run('next')).toBe('ran:next');
   });
 
-  it('gives up on a request that never reached the host without killing it', async () => {
+  it('starts a request\'s clock when it is written, not when it is queued', async () => {
     const { host, children } = makeHost();
     await host.start();
     const child = children[0] as FakeChild;
     child.onRequest = () => undefined;
     const slow = host.run('slow', { timeoutMs: 5000 });
-    const queued = host.run('queued', { timeoutMs: 200 }).catch((e: unknown) => e);
-    await vi.advanceTimersByTimeAsync(300);
-    const error = (await queued) as PowerShellHostError;
-    expect(error).toMatchObject({ kind: 'timeout', sent: false });
-    expect(child.killed).toBe(false);
-    expect(child.written.map((entry) => entry.script)).toEqual([SETUP, 'slow']);
+    // Waits 800 ms behind the slow one with a 500 ms limit: only its own run counts.
+    const queued = host.run('queued', { timeoutMs: 500 });
+    await vi.advanceTimersByTimeAsync(800);
     child.reply(child.written[1]?.id as string, 'done');
-    expect(await slow).toBe('done');
+    await slow;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(child.written.map((entry) => entry.script)).toEqual([SETUP, 'slow', 'queued']);
+    child.reply(child.written[2]?.id as string, 'queued answer');
+    expect(await queued).toBe('queued answer');
+    expect(child.killed).toBe(false);
+  });
+
+  it('still kills the host when a written request outlives its own limit', async () => {
+    const { host, children } = makeHost();
+    await host.start();
+    const child = children[0] as FakeChild;
+    child.onRequest = () => undefined;
+    const slow = host.run('slow', { timeoutMs: 5000 });
+    const queued = host.run('queued', { timeoutMs: 300 }).catch((e: unknown) => e);
+    child.reply(child.written[1]?.id as string, 'done');
+    await slow;
+    await vi.advanceTimersByTimeAsync(400);
+    expect(((await queued) as PowerShellHostError).kind).toBe('timeout');
+    expect(child.killed).toBe(true);
+  });
+
+  it('rejects an aborted request at once, without waiting behind a hung one', async () => {
+    const { host, children } = makeHost();
+    await host.start();
+    const child = children[0] as FakeChild;
+    child.onRequest = () => undefined;
+    const controller = new AbortController();
+    void host.run('hung', { timeoutMs: 60_000 }).catch(() => undefined);
+    const paste = host.run('paste', { signal: controller.signal }).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+    expect(await paste).toMatchObject({ kind: 'aborted', sent: false });
+    expect(child.written.map((entry) => entry.script)).toEqual([SETUP, 'hung']);
+  });
+
+  it('does not write a request whose beforeWrite check refuses', async () => {
+    const { host, children } = makeHost();
+    await host.start();
+    const child = children[0] as FakeChild;
+    child.onRequest = () => undefined;
+    let allowed = true;
+    const slow = host.run('slow');
+    const paste = host.run('paste', { beforeWrite: () => allowed }).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(0);
+    allowed = false;
+    child.reply(child.written[1]?.id as string, 'done');
+    await slow;
+    expect(await paste).toMatchObject({ kind: 'aborted', sent: false });
+    expect(child.written.map((entry) => entry.script)).toEqual([SETUP, 'slow']);
+  });
+
+  it('treats a broken stdin pipe as a death: fails the request and restarts', async () => {
+    const { host, children } = makeHost();
+    await host.start();
+    const first = children[0] as FakeChild;
+    first.onRequest = () => undefined;
+    const running = host.run('running').catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(0);
+    // EPIPE arrives as an event on stdin; unhandled it would throw in the main process.
+    first.stdin.emit('error', new Error('write EPIPE'));
+    expect(await running).toMatchObject({ kind: 'exited', sent: true });
+    expect(first.killed).toBe(true);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(children).toHaveLength(2);
+    expect(await host.run('next')).toBe('ran:next');
+  });
+
+  it('ignores a stdin error from a process that was already replaced', async () => {
+    const { host, children } = makeHost();
+    await host.start();
+    const first = children[0] as FakeChild;
+    first.onRequest = () => undefined;
+    const hung = host.run('paste', { timeoutMs: 100 }).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(200);
+    await hung;
+    await vi.advanceTimersByTimeAsync(10);
+    expect(children).toHaveLength(2);
+    first.stdin.emit('error', new Error('write EPIPE'));
+    await vi.advanceTimersByTimeAsync(10);
+    // The new process is untouched.
+    expect(children).toHaveLength(2);
+    expect(children[1]?.killed).toBe(false);
+    expect(await host.run('next')).toBe('ran:next');
   });
 
   it('never writes a request whose signal aborted while it waited', async () => {

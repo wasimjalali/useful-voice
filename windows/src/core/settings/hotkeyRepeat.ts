@@ -7,12 +7,12 @@
  * an ignored event still counts as the previous one. The window therefore slides, so a
  * key that stays down never re-toggles, however long it is held.
  *
- * The window must be longer than Windows' keyboard repeat delay, which runs from 250 ms to
- * 1 s (500 ms by default): a shorter window lets the first auto-repeat through as a second
- * toggle. A real stop press within 1.1 s of the start would be a recording too short to
- * keep anyway.
+ * The window must be longer than Windows' default keyboard repeat delay of 500 ms: a shorter
+ * one lets the first auto-repeat through as a second toggle. It stays short enough that a
+ * real stop press about 0.7 s after the start still works. The slowest repeat delay
+ * setting (1 s) lets one repeat through; that is the price of the shorter window.
  */
-export const HOTKEY_REPEAT_WINDOW_MS = 1100;
+export const HOTKEY_REPEAT_WINDOW_MS = 600;
 
 /**
  * Whether a hotkey event at `now` should act.

@@ -168,8 +168,6 @@ class UsefulVoiceApp {
     y: number;
     last: { display: Electron.Display; origin: { x: number; y: number } } | null;
   } | null = null;
-  /** The window the current hotkey recording will paste into, so the picker need not ask Windows. */
-  private recordingHandle: number | undefined;
   private pickerClosing = false;
   /** The window that was in front when the picker opened, to hand focus back to on close. */
   private pickerReturnTo: number | null = null;
@@ -285,12 +283,10 @@ class UsefulVoiceApp {
   /** Talks to the hidden recorder window: start acks, tokens, discard on cancel. */
   private recorder!: RecorderBridge;
 
-  /** Whether Esc is registered as a global shortcut. It is, only while recording or transcribing. */
+  /** Whether Esc is registered as a global shortcut. It is, only while recording. */
   private escapeRegistered = false;
   /** Drops the repeat events of a held dictation hotkey. */
   private readonly hotkeyRepeatGuard = createHotkeyRepeatGuard();
-  /** Counts dictation starts, so a late window lookup cannot label the next dictation. */
-  private dictationStarts = 0;
 
   /** Set once `quit()` starts, so a second Quit or launch during it changes nothing. */
   private quitting: Promise<void> | null = null;
@@ -809,10 +805,9 @@ class UsefulVoiceApp {
     const stateAtPress = this.service.currentState;
     void (async () => {
       // Before the picker exists on screen: afterwards the foreground window would be the
-      // picker. During a hotkey recording the window in front was captured when it started,
-      // so there is nothing to ask Windows (a PowerShell spawn, up to 1,5 s).
-      const known = stateAtPress === 'recording' ? this.recordingHandle : undefined;
-      const front = known === undefined ? await foregroundWindow() : { handle: known };
+      // picker. Read now, not at the start of the dictation: the person may have moved to
+      // another window since, and that is the one to hand focus back to.
+      const front = await foregroundWindow();
       // The state moved on while that ran (recording stopped): the picker would open over
       // transcribing or delivering and take the foreground the paste needs.
       if (this.service.currentState !== stateAtPress) return;
@@ -1292,27 +1287,27 @@ class UsefulVoiceApp {
     // A dictation that starts while the flow is open is the flow's practice dictation.
     if (this.firstRun.open && starts) this.practiceActive = true;
     let startedInOwnWindow: boolean | undefined;
-    if (starts) this.recordingHandle = undefined;
     if (source === 'hotkey' && starts) {
       // A paste lands wherever the cursor is when the text is ready, so the window in
       // front now is not recorded as a destination. Only "did it begin in our window"
       // matters, and Electron knows that without asking Windows.
       startedInOwnWindow = BrowserWindow.getFocusedWindow() !== null;
-      this.lookUpTargetApp(++this.dictationStarts);
     }
-    await this.service.toggle({ source, startedInOwnWindow });
+    const toggled = this.service.toggle({ source, startedInOwnWindow });
+    // The service has counted this start by now (its first step is synchronous).
+    if (source === 'hotkey' && starts) this.lookUpTargetApp(this.service.sequence);
+    await toggled;
     void this.data.flush();
   }
 
   /** Name the app a hotkey dictation started over, without making the recorder wait for it. */
-  private lookUpTargetApp(start: number): void {
+  private lookUpTargetApp(sequence: number): void {
     void foregroundWindow().then((target) => {
-      // Another dictation has begun since, or this one is over: the answer is stale.
-      if (!target || start !== this.dictationStarts) return;
+      // Any start or cancel since (a window dictation included) makes the answer stale.
+      if (!target || sequence !== this.service.sequence) return;
       const state = this.service.currentState;
       if (state !== 'recording' && !this.service.isStarting) return;
       const label = target.title || target.processName;
-      this.recordingHandle = target.handle;
       this.service.setTargetApp(label);
       if (state === 'recording') {
         this.recordingTarget = label;
@@ -1322,9 +1317,10 @@ class UsefulVoiceApp {
   }
 
   /**
-   * Esc cancels a dictation, and is a global shortcut only while one can still be
-   * cancelled (recording or transcribing). Registered for the whole session it would
-   * swallow Esc in every other app.
+   * Esc cancels a recording, and is a global shortcut only while one is running.
+   * Registered for the whole session it would swallow Esc in every other app, and held
+   * past the recording it would let an Esc meant for the app in front discard a finished
+   * dictation. Cancelling later is for the tray and the window.
    */
   private syncEscapeShortcut(recording: boolean): void {
     // The language picker needs Esc for itself while it is open.
@@ -1356,9 +1352,8 @@ class UsefulVoiceApp {
    * The contract: the text is ALWAYS available afterwards, either pasted or on the
    * clipboard. The macOS version restored the previous clipboard contents on a
    * timer that could fire before the paste landed, destroying the dictation — so
-   * the restore here is gated (see `decideClipboardRestore`): the keystroke went out,
-   * focus stayed, and the clipboard still holds our text. Otherwise the text stays on
-   * the clipboard.
+   * the previous clipboard is never put back after a sent paste (see `clipboardRestore.ts`):
+   * the dictation stays on the clipboard.
    *
    * The ordering rules (never paste after an abort, when to restore) live in
    * `deliverText`, so they are testable without Electron; this only supplies the ports.
@@ -1369,11 +1364,9 @@ class UsefulVoiceApp {
       snapshot: snapshotClipboard,
       restore: restoreClipboard,
       holdsText: clipboardHoldsText,
-      foregroundWindow,
-      pasteKeystroke: (signal) => pasteClipboard(signal),
+      pasteKeystroke: (signal, canSend) => pasteClipboard(signal, canSend),
       // Synchronous: one of our windows has focus. The HUD is not focusable, so it never counts.
       ownWindowInFront: () => BrowserWindow.getFocusedWindow() !== null,
-      delay,
       log: (category, message) => this.diagnostics.log(category, message),
     });
   }
@@ -2032,10 +2025,6 @@ class UsefulVoiceApp {
     ];
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));
   }
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function csvCell(value: string): string {

@@ -220,6 +220,7 @@ export class DictationService {
   private session: Session | null = null;
   /** True while `recorder.start()` is pending, so a second press cannot start another. */
   private starting = false;
+  private sequenceNumber = 0;
   /** A stop arrived while the recorder was still starting: apply it as soon as recording begins. */
   private stopWhenStarted = false;
   /** The target app learned while the recorder was still starting. */
@@ -239,6 +240,15 @@ export class DictationService {
 
   get currentState(): DictationState {
     return this.state;
+  }
+
+  /**
+   * Changes on every start and every cancel, never on a stop. An answer that arrives late
+   * (the window lookup for the "dictating into" label) compares it with the value it was
+   * asked under, so it can never label a different dictation.
+   */
+  get sequence(): number {
+    return this.sequenceNumber;
   }
 
   /** The recorder is still starting: nothing records yet, but a start is in flight. */
@@ -287,6 +297,7 @@ export class DictationService {
     if (this.isBusy || this.session !== null || this.starting) {
       return;
     }
+    this.sequenceNumber += 1;
     const settings = this.deps.settings();
     this.clock = new RecordingClock(settings.maxRecordingSeconds, this.nowFn());
     const session: Session = {
@@ -405,6 +416,7 @@ export class DictationService {
    * the user had no way to abort a hung upload at all.
    */
   async cancel(): Promise<void> {
+    this.sequenceNumber += 1;
     // The recorder is still starting: nothing is recording yet to stop, so abandon the start.
     if (this.starting) {
       this.startToken += 1;

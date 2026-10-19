@@ -162,7 +162,7 @@ Codex:
   cut-off transcript without keeping the audio for Retry.
 - **Dictation text in diagnostics** (#64 r1 and r2): a provider's error body can echo the transcript, and the log is
   exposed through the diagnostics page.
-- It reproduced races in memory with mocked I/O in every finished review ("reproduced" appears on 16 lines across the five answers).
+- It reproduced races in memory with mocked I/O in every finished review ("reproduced" appears in all five answers).
   DeepSeek only read.
 
 ## Limits
@@ -180,7 +180,8 @@ Codex:
 - **Effort differs and is partly inferred.** Codex ran at high throughout. DeepSeek ran at max, then high, and which run used which
   isn't recorded in a command line.
 - **Model identity.** `dsh` reports `deepseek-v4-flash`, not a snapshot. A later run may be a different build.
-- **Timing is from file times.** It includes start-up. Treat the seconds as rough.
+- **Timing is from file times.** They were read from the scratchpad files' modification times, which a copy doesn't keep, so
+  the seconds can't be re-derived from `raw/`. They include start-up. Treat them as rough.
 
 ## What changed
 

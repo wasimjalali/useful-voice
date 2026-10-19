@@ -123,6 +123,7 @@ export function renderChime(recipe: ChimeRecipe): Int16Array {
   const attack = 0.003;
   for (const boop of recipe.boops) {
     const first = Math.trunc(boop.time * sampleRate);
+    if (first >= count) continue;
     const angle = ((boop.pan + 1) * Math.PI) / 4;
     const gainLeft = Math.cos(angle);
     const gainRight = Math.sin(angle);

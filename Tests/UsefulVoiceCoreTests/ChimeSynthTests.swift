@@ -5,15 +5,19 @@ import Foundation
 /// How a cue can fail: a header the player rejects, a click at either edge, clipping or a
 /// cue too quiet to hear, a first sound that lags the hotkey, a tail that drags on, start
 /// and stop sounding the same, left and right swapped, or macOS drifting from Windows
-/// (`Tests/Fixtures/chimes/cues.json` holds the shared recipe and a loudness fingerprint).
+/// (`Tests/Fixtures/chimes/cues.json` holds the shared recipe, a loudness fingerprint and
+/// sample probes).
 @Suite struct ChimeSynthTests {
-    static let fixture: [String: Any] = {
+    struct FixtureError: Error {}
+
+    static func fixture() throws -> [String: Any] {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Fixtures/chimes/cues.json")
-        let data = try! Data(contentsOf: url)
-        return try! JSONSerialization.jsonObject(with: data) as! [String: Any]
-    }()
+        guard let object = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+        else { throw FixtureError() }
+        return object
+    }
 
     /// Interleaved stereo frames from a cue's WAV data.
     static func frames(_ data: Data) -> [(left: Int, right: Int)] {
@@ -31,8 +35,12 @@ import Foundation
         for (_, data) in Self.cues {
             #expect(String(decoding: data.prefix(4), as: UTF8.self) == "RIFF")
             #expect(String(decoding: data.subdata(in: 8..<12), as: UTF8.self) == "WAVE")
+            #expect(String(decoding: data.subdata(in: 12..<16), as: UTF8.self) == "fmt ")
+            #expect(String(decoding: data.subdata(in: 36..<40), as: UTF8.self) == "data")
             let u16 = { (at: Int) in Int(data[at]) | Int(data[at + 1]) << 8 }
             let u32 = { (at: Int) in u16(at) | u16(at + 2) << 16 }
+            #expect(u32(16) == 16)                   // fmt chunk size
+            #expect(u16(20) == 1)                    // PCM
             #expect(u16(22) == 2)                    // stereo
             #expect(u32(24) == 44_100)
             #expect(u32(28) == 44_100 * 4)           // byte rate
@@ -46,9 +54,8 @@ import Foundation
     @Test func testNoClickAtEitherEdge() {
         for (name, data) in Self.cues {
             let frames = Self.frames(data)
-            for frame in [frames.first!, frames.last!] {
-                #expect(abs(frame.left) < 200 && abs(frame.right) < 200, "\(name) clicks")
-            }
+            #expect(frames.first! == (0, 0), "\(name) clicks in")
+            #expect(abs(frames.last!.left) <= 2 && abs(frames.last!.right) <= 2, "\(name) clicks out")
         }
     }
 
@@ -69,6 +76,15 @@ import Foundation
         }
     }
 
+    /// A boop that rings into the final fade, or starts past the end, is cut off.
+    @Test func testEveryBoopRingsOutBeforeTheFade() {
+        for recipe in [ChimeSynth.start, ChimeSynth.stop] {
+            for boop in recipe.boops {
+                #expect(boop.time + 0.003 + recipe.hold + 10 * recipe.release < ChimeSynth.seconds - 0.03)
+            }
+        }
+    }
+
     @Test func testStartAndStopDiffer() {
         #expect(ChimeSynth.startChime() != ChimeSynth.stopChime())
     }
@@ -86,8 +102,8 @@ import Foundation
         #expect(echo.left > echo.right * 4)
     }
 
-    @Test func testRecipesMatchSharedFixture() {
-        let recipes = Self.fixture["recipes"] as! [String: [String: Any]]
+    @Test func testRecipesMatchSharedFixture() throws {
+        let recipes = try Self.fixture()["recipes"] as! [String: [String: Any]]
         for (name, recipe) in [("start", ChimeSynth.start), ("stop", ChimeSynth.stop)] {
             let expected = recipes[name]!
             #expect(expected["thumpStart"] as? Double == recipe.thumpStart)
@@ -119,8 +135,8 @@ import Foundation
     }
 
     /// Loudness per 20 ms block and channel, within 1 dB of the fixture both platforms share.
-    @Test func testRenderMatchesSharedFingerprint() {
-        let fingerprint = Self.fixture["fingerprint"] as! [String: [String: [Double]]]
+    @Test func testRenderMatchesSharedFingerprint() throws {
+        let fingerprint = try Self.fixture()["fingerprint"] as! [String: [String: [Double]]]
         for (name, data) in Self.cues {
             let frames = Self.frames(data)
             let block = 882
@@ -136,6 +152,22 @@ import Foundation
                 for (index, (got, want)) in zip(levels, expected[channel]!).enumerated() {
                     #expect(abs(got - want) <= 1, "\(name) \(channel) block \(index): \(got) vs \(want)")
                 }
+            }
+        }
+    }
+
+    /// The waveform itself, sampled every 997th frame, within 2 LSB of the fixture: catches a
+    /// different noise seed, phase or onset that loudness alone would miss.
+    @Test func testRenderMatchesSharedProbes() throws {
+        let probes = try Self.fixture()["probes"] as! [String: [String: [Int]]]
+        for (name, data) in Self.cues {
+            let frames = Self.frames(data)
+            let picked = stride(from: 0, to: frames.count, by: 997).map { frames[$0] }
+            let expected = probes[name]!
+            #expect(picked.count == expected["left"]!.count)
+            for (index, frame) in picked.enumerated() {
+                #expect(abs(frame.left - expected["left"]![index]) <= 2, "\(name) left probe \(index)")
+                #expect(abs(frame.right - expected["right"]![index]) <= 2, "\(name) right probe \(index)")
             }
         }
     }

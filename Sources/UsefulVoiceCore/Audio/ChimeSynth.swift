@@ -114,6 +114,7 @@ public enum ChimeSynth {
         let attack = 0.003
         for boop in recipe.boops {
             let first = Int(boop.time * sampleRate)
+            guard first < count else { continue }
             let angle = (boop.pan + 1) * .pi / 4
             let gains = (left: cos(angle), right: sin(angle))
             let weights = recipe.partials.map { $0.darkens ? $0.weight * boop.brightness : $0.weight }

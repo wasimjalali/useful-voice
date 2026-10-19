@@ -52,7 +52,7 @@ Cross-platform dictation app. macOS: Swift (`Sources/UsefulVoiceCore`,
   formatter stubs answer `<text> (Gemini|Anthropic)`.
 
 - Sound cues: `Sources/UsefulVoiceCore/Audio/ChimeSynth.swift` and `windows/src/core/audio/chimeSynth.ts` synthesize the same
-  start/stop cues (tap, boop, panned echoes; stereo 44.1 kHz). The recipes and a per-20 ms loudness fingerprint live in
+  start/stop cues (tap, boop, panned echoes; stereo 44.1 kHz). The recipes, a per-20 ms loudness fingerprint and sample probes live in
   `Tests/Fixtures/chimes/cues.json`, which both test suites check; change a recipe on both platforms and regenerate the fingerprint.
 
 ## Delivery

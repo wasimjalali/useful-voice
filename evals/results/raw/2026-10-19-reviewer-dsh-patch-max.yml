@@ -1,0 +1,7 @@
+- id: agent-default-model
+  config:
+    provider: deepseek-official
+    model: deepseek-v4-flash
+    reasoningEffort: max
+- id: credentials
+  disabled: false

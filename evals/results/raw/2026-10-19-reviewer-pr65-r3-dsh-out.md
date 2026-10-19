@@ -1,0 +1,25 @@
+## Findings
+
+**1. The logoff/shutdown media resume never completes.** `windows/src/main/index.ts:390-392`, severity **high**.
+`window.on('session-end', () => void this.media?.shutdown(1000))` starts an async resume and returns. In the pinned Electron 43.7.0, `NativeWindowViews` handles `WM_ENDSESSION` by emitting `session-end` to every window, then calling `TerminateCurrentProcessImmediately(0)` unless `Browser::is_quitting()` (ShellBrowser `native_window_views_win.cc`, commit #52620). `shutdown()` only queues the resume on a promise chain and never begins an Electron quit, so `is_quitting()` is false and the process dies as the handler returns: the PowerShell host write/`Play` never completes, and no log line is written. Scenario: Spotify is paused by a dictation, the user logs off or shuts down, the app dies immediately, Spotify stays paused after sign-in. The comment at 379-382 ("a logoff or shutdown ... goes through the orderary quit") is also wrong: Electron does not emit `before-quit` for `WM_ENDSESSION`. Fix: handle `query-session-end` (preventDefault, run the bounded resume, then quit) or make the handler begin an Electron quit so `is_quitting()` stays true and the resume finishes in `runQuit`.
+
+**2. A pause that lands but answers slowly is dropped, not recovered.** `windows/src/main/mediaScripts.ts:132` plus `windows/src/core/media/mediaPausePolicy.ts:188-193`, severity **low**.
+`pauseScript` wraps the whole session in `try/catch` and prints `UVSKIP:session` for an exception. Round 2 lowered the per-WinRT-call cap to 1.5 s (`PAUSE_WAIT_MS`, line 104; was 3 s in round 1). If `TryPauseAsync` completes the pause but the await exceeds 1.5 s, the policy sees neither `UVPAUSED` nor `UVREFUSED`, treats the session as "no longer playing when the pause ran", deletes the hold and never resumes. The lost-answer heuristic that would recover exactly this case only runs when the whole effect throws. Scenario: Spotify or an Edge tab under load takes ~1.6 s to answer; the media stays paused for good with a misleading "Left spotify alone: its pause was not confirmed". Fix: emit a per-session `UVSKIP:<id>` and keep it held/unconfirmed for the timeline check.
+
+**3. A failed resume script counts as success.** `windows/src/main/mediaScripts.ts:266-272` plus `windows/src/core/media/mediaPausePolicy.ts:284-288`, severity **low**.
+`resumeScript` ends with `UVRESUMED:<n>`, but `parseResumeOutput` ignores it. If the script throws before or inside `Get-UvMediaSessions`, the host catches it and resolves with `UVERR:` and no tag; parsing yields empty lists, `resumeHeld` deletes every held session, and `shutdown()` returns true, so the quit's "may stay paused" line is skipped. Scenario: resume after display sleep when the GSMTC manager request fails once; media stays paused with no trace. Fix: require the sentinel and throw/log when it is absent.
+
+**4. The quit/session-end wiring has no behavioural test.** `windows/tests/pauseMediaSettings.test.ts:79-92`, severity **low**.
+All three quit checks are regexes over the source ("within a second"), and `e2e/pause-media.spec.ts` never quits. Nothing exercises the path, which is why #1 passes CI. Add a real test with the fake media: session-end/quit must `resume` before exit.
+
+## DISMISSED
+- **Update installs broken by before-quit?** No. `runQuit` still calls `updater.installOnExit`; electron-updater's `install()` only spawns the installer; `autoInstallOnAppQuit` stays false; and before-quit is not emitted at logoff, so no installer runs during shutdown.
+- **Before-quit loop / double quit?** `quitting ??=` plus `app.exit` make it idempotent. A startup `app.quit()` before `service`/`media` exist could reject the quit and leave the app up, but the only in-app `app.quit()` runs before the listener is attached.
+- **`shutdown` budget cached across callers (1000 vs 2500):** same promise; a 1 s false after session-end is moot because the process is ending.
+- **Dispose doesn't stop an already-started one-shot:** only queued requests are refused, as documented; a pause could still run after quit when the host is unavailable, but that is rare.
+- **Quit budget (2.5 s) under host/one-shot timeouts:** media can stay paused, but it is logged and deliberate.
+- **Same-AUMID multi-session:** one settled timeline is applied to every paused session with that id, so a second user-paused Chrome session could be played; GSMTC exposes no pid, and the timeline check normally separates them.
+- **Timers/queue:** the 200 ms settle and 400 ms grace are unref'd and cleared by `beginQuit`/`cancelGrace`; the effects chain is bounded by host timeouts.
+- **Main thread:** media work runs in its own PowerShell host, fully async.
+- **Settings:** default-on and the non-boolean fallback are correct; the toggle persists through the existing channel.
+- **`update.ps1` retry:** CI-only and limited to the known 0xC0000005 exit.

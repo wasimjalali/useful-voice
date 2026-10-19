@@ -1,0 +1,32 @@
+## Review: PR #65 round 2, Windows media pause
+
+Scope read: `windows/src/core/media/mediaPausePolicy.ts`, `main/mediaScripts.ts`, `windowsPlatform.ts` media effects, `main/index.ts` quit and service wiring, `main/dictationService.ts` hooks, settings models/bounds/preload/renderer, `main/e2eMedia.ts`, `e2e/pause-media.spec.ts`, `tests/*media*`.
+
+### Findings
+
+1. **Resume can play a session the user paused** (low). `windows/src/core/media/mediaPausePolicy.ts:54` with `windows/src/main/mediaScripts.ts:165`. `touchedSince` returns `false` when there is no settle reading, and the resume script accepts `n:n`, so the "do not guess" branch in fact guesses. Scenario: Spotify is Playing at `listPlaying`, the user presses pause before `pause` reaches it (or the pause request fails and returns nothing). The id is already in `held` without `settled`; at the end the resume script sees `Paused` plus `n:n` and plays it. The window is one host round trip, roughly 100 to 400 ms, wider than macOS's `waitForStop`, which only holds what it saw stop just after its own command.
+
+2. **Quit can leave media paused, and can act after quit** (low). `windows/src/core/media/mediaPausePolicy.ts:147`, `windows/src/main/windowsPlatform.ts:453`, mechanism at `windows/src/main/keystroke.ts:160`. `shutdown` queues the resume behind an in-flight pause and waits only 2.5 s, but the pause can spend `Start-Sleep 200` plus 3 s per WinRT wait (`mediaScripts.ts:115`). On timeout, `dispose()` rejects still-queued requests as "unsent", so `runHosted` re-runs them as one-shot processes. Scenario: quit right after the press (or with a cold or restarting media host) while the pause is in flight. The resume never gets its turn, and a queued pause can land after `app.exit`, leaving playback paused with no app to resume it. macOS shortens the pause settle to 0.3 s on quit so the resume fits its 1.5 s budget.
+
+3. **A refused pause or resume is never logged** (low). `windows/src/main/mediaScripts.ts:115` and `:169`, `windows/src/core/media/mediaPausePolicy.ts:210`. `TryPauseAsync` and `TryPlayAsync` returning `false` print nothing; `resume()` still resolves, so the policy clears `held` and reports success. Scenario: the player refuses play (or the session vanished between listing and the call). The track stays paused, and no line reaches "media", though the brief requires failures there. macOS logs "Could not pause" and "Could not resume".
+
+4. **Quits outside `runQuit` skip the resume** (low). `windows/src/main/index.ts:1075`. There is no `before-quit` or `will-quit` handler; the media shutdown runs only from the tray, IPC, Alt+F4 and updater paths that call `runQuit`. Scenario: Windows logoff or shutdown mid-dictation, or any other `app.quit()`, leaves media paused. macOS covers this in `applicationWillTerminate` (`AppDelegate.swift:418`).
+
+5. **The back-compat test cannot fail** (low, test). `windows/tests/pauseMediaSettings.test.ts:31`. `normaliseSettings({ ...DEFAULT_SETTINGS, ...older })` still contains the key from the first spread, so it never models a file written before the setting existed. Scenario: a regression that forces a missing key off would still pass. The production merge-over-defaults behaviour is correct.
+
+### DISMISSED
+
+- **Script injection**: session ids reach scripts only as base64, with strict charset, length and count checks; `ownAppId` is regex-checked; timeline values are plain integers. No raw-text path found.
+- **Double pause / back-to-back**: `recordingStarted` cancels the grace timer and `held` filters the new list, so a press inside the grace sends no second pause. The unit and service tests cover this. A press that lands while a resume is already executing can play for one script round trip and is re-paused, the same structural race macOS has.
+- **Starting something that was not playing**: `held` is filled only from `listPlaying` (Playing), and the resume script requires `Paused`, so a session that kept playing, or that the user resumed and left playing, is skipped.
+- **Resuming after the user scrubbed**: deliberate 1500 ms tolerance, tested with fake and real sessions.
+- **"Play reached another app", macOS's re-pause**: not applicable. `TryPlayAsync` targets one session, unlike MediaRemote's global Play.
+- **No two-sample confirm on Windows**: the pause script re-reads `PlaybackStatus` 100 to 300 ms after the list, which is a later second sample. An alert sound longer than that could still be paused, but that is a narrower edge than macOS's 40 ms pair, not a regression.
+- **Single-snapshot touch detection instead of a 500 ms watch**: the timeline check at resume covers scrub and play-then-pause; a user action that starts and undoes itself inside the tolerance is the accepted limit. Windows has no watch timer, so no watch race exists.
+- **Stuck chain or timer**: every `enqueue` attaches a catch; host requests are bounded at 6 s warm and 12 s one-shot; the grace timer is cleared and unref'd; `settled` and `shutdown` wait on the same chain.
+- **Main-thread blocking**: `recordingStarted` and `recordingEnded` return at once; effects are async child processes on a dedicated host, so the 200 ms sleep cannot queue behind or ahead of a paste.
+- **Media left paused on a normal resume failure**: held is dropped and logged, matching macOS (`hold = nil`, logged). A retry could play something the user paused.
+- **Settings**: default true, normalised, in the DTO and self-test stub, General toggle with no hint, saved through `settings:save`, and a missing key keeps the default.
+- **E2E isolation**: `--e2e` swaps in `FakeMedia`, so the spec never touches real playback, and it covers off, stop, cancel, scrub and mic failure. The Windows real-session test snapshots `before` and restores what it pauses; an app the person starts during its 20 s window would be briefly paused and played back (test-only).
+
+**Mac vs Windows parity**: both pause only what was playing, keep the 400 ms grace and the held-only resume, and skip a touched session; macOS additionally needs the 500 ms watch and the after-play re-pause because MediaRemote is global, Windows gets that from per-session `TryPlayAsync` and the timeline. The remaining gaps are 1 (wider no-settle window), 2 (quit budget does not shorten the pause) and 4 (OS-initiated quit).

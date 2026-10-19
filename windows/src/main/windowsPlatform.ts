@@ -41,6 +41,7 @@ import {
   type PasteTarget,
   type RestoreOutcome,
 } from '../core/delivery/clipboardRestore.js';
+import { chimeWav } from '../core/audio/chimeSynth.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -226,21 +227,18 @@ async function ensureCueFile(kind: 'start' | 'stop' | 'error'): Promise<string |
 }
 
 /**
- * Short two-tone cues, generated rather than shipped as assets.
+ * Cues generated rather than shipped as assets.
  *
- * Start rises, stop falls, error is a single low tone — the same information the
- * macOS build conveys with its synthesized chimes.
+ * Start and stop are the tap-and-echo cues shared with macOS (`core/audio/chimeSynth.ts`);
+ * error, which macOS has no sound for, is a single low tone.
  */
 function buildCue(kind: 'start' | 'stop' | 'error'): Buffer {
+  if (kind !== 'error') return Buffer.from(chimeWav(kind));
   const sampleRate = 22_050;
-  const tones: Record<typeof kind, Array<{ hz: number; ms: number }>> = {
-    start: [{ hz: 660, ms: 70 }, { hz: 990, ms: 90 }],
-    stop: [{ hz: 990, ms: 70 }, { hz: 660, ms: 90 }],
-    error: [{ hz: 320, ms: 180 }],
-  };
+  const tones = [{ hz: 320, ms: 180 }];
 
   const samples: number[] = [];
-  for (const tone of tones[kind]) {
+  for (const tone of tones) {
     const count = Math.round((tone.ms / 1000) * sampleRate);
     for (let i = 0; i < count; i += 1) {
       // Short fade at each end so the cue does not click.

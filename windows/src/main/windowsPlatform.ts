@@ -179,9 +179,9 @@ Write-Output ([UvRestore]::SetForegroundWindow($h))
 /**
  * Sound feedback.
  *
- * Windows has no built-in API for a short cue that does not need a file, so a
- * short synthesized WAV is written once to the temp directory and played with the
- * system's own player. Failures are ignored: a missing beep must never affect a
+ * Windows has no built-in API for a short cue that does not need a file, so each
+ * cue's WAV is copied once to the temp directory and played with the system's own
+ * player. Failures are ignored: a missing beep must never affect a
  * dictation.
  */
 export async function playCue(kind: 'start' | 'stop' | 'error'): Promise<void> {
@@ -221,7 +221,8 @@ async function ensureCueFile(kind: 'start' | 'stop' | 'error'): Promise<string |
     }
     await fs.writeFile(file, kind === 'error' ? buildErrorCue() : await fs.readFile(cueAsset(kind)));
     return file;
-  } catch {
+  } catch (error) {
+    console.warn(`sound cue ${kind} unavailable: ${(error as Error).message}`);
     return null;
   }
 }

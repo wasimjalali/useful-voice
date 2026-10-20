@@ -10,10 +10,10 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { chimeWav } = await import(path.join(root, 'dist', 'core', 'audio', 'chimeSynth.js'));
+const { chimeWav } = await import(pathToFileURL(path.join(root, 'dist', 'core', 'audio', 'chimeSynth.js')).href);
 const out = path.join(root, 'dist', 'cues');
 await fs.mkdir(out, { recursive: true });
 for (const kind of ['start', 'stop']) {

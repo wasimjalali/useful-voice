@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   FOREGROUND_QUERY_TIMEOUT_MS,
   HOST_STARTUP_TIMEOUT_MS,
@@ -178,9 +179,9 @@ Write-Output ([UvRestore]::SetForegroundWindow($h))
 /**
  * Sound feedback.
  *
- * Windows has no built-in API for a short cue that does not need a file, so a
- * short synthesized WAV is written once to the temp directory and played with the
- * system's own player. Failures are ignored: a missing beep must never affect a
+ * Windows has no built-in API for a short cue that does not need a file, so each
+ * cue's WAV is copied once to the temp directory and played with the system's own
+ * player. Failures are ignored: a missing beep must never affect a
  * dictation.
  */
 export async function playCue(kind: 'start' | 'stop' | 'error'): Promise<void> {
@@ -218,29 +219,31 @@ async function ensureCueFile(kind: 'start' | 'stop' | 'error'): Promise<string |
     } catch {
       // Not written yet.
     }
-    await fs.writeFile(file, buildCue(kind));
+    await fs.writeFile(file, kind === 'error' ? buildErrorCue() : await fs.readFile(cueAsset(kind)));
     return file;
-  } catch {
+  } catch (error) {
+    console.warn(`sound cue ${kind} unavailable: ${(error as Error).message}`);
     return null;
   }
 }
 
 /**
- * Short two-tone cues, generated rather than shipped as assets.
- *
- * Start rises, stop falls, error is a single low tone — the same information the
- * macOS build conveys with its synthesized chimes.
+ * Start and stop are the tap-and-echo cues shared with macOS (`core/audio/chimeSynth.ts`),
+ * rendered at build time by `scripts/build-cues.mjs` so no synthesis runs in this process.
+ * The path works inside app.asar too: Electron's fs reads it, and the copy in the temp
+ * directory is what SoundPlayer opens.
  */
-function buildCue(kind: 'start' | 'stop' | 'error'): Buffer {
+function cueAsset(kind: 'start' | 'stop'): string {
+  return fileURLToPath(new URL(`../cues/${kind}.wav`, import.meta.url));
+}
+
+/** The error cue, which macOS has no sound for: a single low tone. */
+function buildErrorCue(): Buffer {
   const sampleRate = 22_050;
-  const tones: Record<typeof kind, Array<{ hz: number; ms: number }>> = {
-    start: [{ hz: 660, ms: 70 }, { hz: 990, ms: 90 }],
-    stop: [{ hz: 990, ms: 70 }, { hz: 660, ms: 90 }],
-    error: [{ hz: 320, ms: 180 }],
-  };
+  const tones = [{ hz: 320, ms: 180 }];
 
   const samples: number[] = [];
-  for (const tone of tones[kind]) {
+  for (const tone of tones) {
     const count = Math.round((tone.ms / 1000) * sampleRate);
     for (let i = 0; i < count; i += 1) {
       // Short fade at each end so the cue does not click.

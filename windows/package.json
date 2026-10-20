@@ -16,7 +16,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "npm run build:main && npm run build:renderer",
-    "build:main": "tsc -p tsconfig.main.json",
+    "build:main": "tsc -p tsconfig.main.json && node scripts/build-cues.mjs",
     "build:renderer": "node scripts/build-renderer.mjs",
     "build:icon": "node scripts/make-icon.mjs",
     "test": "vitest run",

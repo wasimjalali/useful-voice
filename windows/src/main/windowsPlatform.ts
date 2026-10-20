@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   FOREGROUND_QUERY_TIMEOUT_MS,
   HOST_STARTUP_TIMEOUT_MS,
@@ -41,7 +42,6 @@ import {
   type PasteTarget,
   type RestoreOutcome,
 } from '../core/delivery/clipboardRestore.js';
-import { chimeWav } from '../core/audio/chimeSynth.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -219,7 +219,7 @@ async function ensureCueFile(kind: 'start' | 'stop' | 'error'): Promise<string |
     } catch {
       // Not written yet.
     }
-    await fs.writeFile(file, buildCue(kind));
+    await fs.writeFile(file, kind === 'error' ? buildErrorCue() : await fs.readFile(cueAsset(kind)));
     return file;
   } catch {
     return null;
@@ -227,13 +227,17 @@ async function ensureCueFile(kind: 'start' | 'stop' | 'error'): Promise<string |
 }
 
 /**
- * Cues generated rather than shipped as assets.
- *
- * Start and stop are the tap-and-echo cues shared with macOS (`core/audio/chimeSynth.ts`);
- * error, which macOS has no sound for, is a single low tone.
+ * Start and stop are the tap-and-echo cues shared with macOS (`core/audio/chimeSynth.ts`),
+ * rendered at build time by `scripts/build-cues.mjs` so no synthesis runs in this process.
+ * The path works inside app.asar too: Electron's fs reads it, and the copy in the temp
+ * directory is what SoundPlayer opens.
  */
-function buildCue(kind: 'start' | 'stop' | 'error'): Buffer {
-  if (kind !== 'error') return Buffer.from(chimeWav(kind));
+function cueAsset(kind: 'start' | 'stop'): string {
+  return fileURLToPath(new URL(`../cues/${kind}.wav`, import.meta.url));
+}
+
+/** The error cue, which macOS has no sound for: a single low tone. */
+function buildErrorCue(): Buffer {
   const sampleRate = 22_050;
   const tones = [{ hz: 320, ms: 180 }];
 

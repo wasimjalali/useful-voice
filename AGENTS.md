@@ -53,7 +53,9 @@ Cross-platform dictation app. macOS: Swift (`Sources/UsefulVoiceCore`,
 
 - Sound cues: `Sources/UsefulVoiceCore/Audio/ChimeSynth.swift` and `windows/src/core/audio/chimeSynth.ts` synthesize the same
   start/stop cues (tap, boop, panned echoes; stereo 44.1 kHz). The recipes, a per-20 ms loudness fingerprint and sample probes live in
-  `Tests/Fixtures/chimes/cues.json`, which both test suites check; change a recipe on both platforms and regenerate the fingerprint.
+  `Tests/Fixtures/chimes/cues.json`, which both test suites check; change a recipe on both platforms and regenerate the fingerprint. Windows renders the WAVs at build time
+  (`scripts/build-cues.mjs`, part of `build:main`, into `dist/cues/`; the self-test checks them), never in the main process:
+  a render there broke the e2e driver's in-flight evaluate calls.
 
 ## Delivery
 

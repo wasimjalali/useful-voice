@@ -2439,6 +2439,26 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     record('keyterm budget enforced', false, (error as Error).message);
   }
 
+  // 2b. The start/stop cues were rendered at build time; a missing file would only mean silence.
+  try {
+    const { chimeWav } = await import('../core/audio/chimeSynth.js');
+    const { readWavFormat } = await import('../core/audio/wav.js');
+    const cues = await Promise.all(
+      (['start', 'stop'] as const).map(async (kind) => {
+        const bytes = new Uint8Array(await fs.readFile(path.join(__dirname, '..', 'cues', `${kind}.wav`)));
+        const format = readWavFormat(bytes);
+        return { kind, format, current: Buffer.from(bytes).equals(Buffer.from(chimeWav(kind))) };
+      }),
+    );
+    record(
+      'sound cues built',
+      cues.every((cue) => cue.current && cue.format.channels === 2 && cue.format.sampleRate === 44_100),
+      cues.map((cue) => `${cue.kind}=${cue.format.durationSeconds.toFixed(2)}s current=${cue.current}`).join(' '),
+    );
+  } catch (error) {
+    record('sound cues built', false, (error as Error).message);
+  }
+
   // 3. The preload and the renderer must load together and expose the API.
   const probe = new BrowserWindow({
     show: false,

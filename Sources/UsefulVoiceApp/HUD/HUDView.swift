@@ -102,7 +102,7 @@ struct HUDView: View {
             } else if let timeline, !reduceMotion {
                 // Runs at display rate while something moves, and pauses once the
                 // HUD has settled on a state with no loop (the panel nudges the view then).
-                TimelineView(.animation(minimumInterval: nil,
+                TimelineView(.animation(minimumInterval: HUDFrame.frameInterval(display, timeline, at: Date()),
                                         paused: HUDFrame.isSettled(display, placement, timeline, at: Date()))) { context in
                     scene(at: context.date, still: false, timeline: timeline)
                 }
@@ -238,6 +238,13 @@ struct HUDView: View {
 /// Every value one frame needs, worked out from the timeline and the clock.
 @MainActor
 private struct HUDFrame {
+    /// 60 fps at most; 30 once a recording's entrance is over, which is as often as
+    /// the voice level changes.
+    static func frameInterval(_ display: HUDDisplay, _ tl: HUDTimeline, at now: Date) -> Double {
+        if display.isRecording, now > tl.bubbleAt.addingTimeInterval(HUDTiming.settle) { return 1.0 / 30 }
+        return 1.0 / 60
+    }
+
     /// Nothing moves any more: no loop (waveform, dots, shimmer) on screen, and the
     /// last change (entrance, state change, chip, exit) is over.
     static func isSettled(_ display: HUDDisplay, _ placement: HUDPlacement, _ tl: HUDTimeline, at now: Date) -> Bool {

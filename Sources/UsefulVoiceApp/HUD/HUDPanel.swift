@@ -116,7 +116,10 @@ final class HUDPanel: NSObject {
             model.timeline.advance(from: old, to: display, placement: model.placement, at: now)
             model.display = display
             if case .done = display, old.phase != display.phase, model.placement.isCaret { placeChip() }
-            if old.phase != display.phase { fitBesideCaret(width: size.width, at: now) }
+            // While the bubble folds into the cursor, the chip owns the placement.
+            if old.phase != display.phase, !display.foldsIntoCaret {
+                fitBesideCaret(width: size.width, unfolding: old.foldsIntoCaret, at: now)
+            }
         }
         if case .recording(_, let level, _) = display {
             model.level = levelSmoother.step(rms: level, at: now.timeIntervalSinceReferenceDate)
@@ -130,9 +133,14 @@ final class HUDPanel: NSObject {
     /// The view decides to pause its clock only when it is redrawn, so redraw it once
     /// just after the last change has played out.
     private func scheduleSettle() {
+        // A recording or a transcription never settles; its ticks need no nudge.
+        switch model.display {
+        case .recording, .transcribing: return
+        default: break
+        }
         settleTimer?.invalidate()
         let timer = Timer(timeInterval: HUDTiming.settle + 0.05, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.model.objectWillChange.send() }
+            MainActor.assumeIsolated { self?.model.settleToken &+= 1 }
         }
         settleTimer = timer
         RunLoop.main.add(timer, forMode: .common)
@@ -222,6 +230,7 @@ final class HUDPanel: NSObject {
         lastAnnouncementKey = nil
         generation &+= 1
         model.timeline.exitAt = Date()
+        scheduleSettle()
         let token = generation
         let delay = reduceMotion ? 0.0 : HUDTiming.exit + 0.04
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
@@ -248,17 +257,20 @@ final class HUDPanel: NSObject {
 
     /// A wider state (an error with its verb, the copied notice) that would run off the
     /// screen beside the cursor moves to the cursor's other side and enters again there.
-    private func fitBesideCaret(width: CGFloat, at now: Date) {
+    /// A bubble that comes back after the done chip returns to the bubble's own gap.
+    private func fitBesideCaret(width: CGFloat, unfolding: Bool, at now: Date) {
         guard case .caret(let flipped) = model.placement, let caret, let panel,
               let visible = screen(containing: caret)?.visibleFrame else { return }
         let fitsRight = caret.maxX + HUDView.caretGap + width <= visible.maxX
         let fitsLeft = caret.minX - HUDView.caretGap - width >= visible.minX
         let flip: Bool
         if flipped { flip = !fitsLeft && fitsRight ? false : true } else { flip = !fitsRight && fitsLeft }
-        guard flip != flipped else { return }
-        model.placement = .caret(flipped: flip)
-        model.timeline.bubbleAt = now
-        model.timeline.previous = nil
+        guard flip != flipped || unfolding else { return }
+        if flip != flipped {
+            model.placement = .caret(flipped: flip)
+            model.timeline.bubbleAt = now
+            model.timeline.previous = nil
+        }
         position(panel, at: caretOrigin(for: caret, gap: HUDView.caretGap, room: width))
     }
 

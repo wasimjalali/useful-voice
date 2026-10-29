@@ -5,8 +5,8 @@ import ApplicationServices
 /// can sit beside it. Most native apps answer; many browsers and Electron apps do
 /// not, and then the HUD keeps its bottom-centre place.
 ///
-/// Every call carries a short messaging timeout and the lookup stops once 0,15 s
-/// have gone, so an app that hangs delays the dictation start by at most that.
+/// Every call carries a 0,05 s messaging timeout and no new call starts once 0,15 s
+/// have gone, so an app that hangs delays the dictation start by about 0,2 s at most.
 enum CaretLocator {
     /// Per-call Accessibility timeout, and the budget for the whole lookup, in seconds.
     private static let timeout: Float = 0.05
@@ -32,8 +32,7 @@ enum CaretLocator {
         // Our own window copies instead of pasting, and has no caret to point at.
         if pid == ProcessInfo.processInfo.processIdentifier { return nil }
         // A password field is a text field with the secure subrole.
-        if string(element, kAXSubroleAttribute) == "AXSecureTextField"
-            || string(element, kAXRoleAttribute) == "AXSecureTextField" { return nil }
+        guard inTime(), string(element, kAXSubroleAttribute) != "AXSecureTextField" else { return nil }
 
         guard inTime(), let rangeValue = value(element, kAXSelectedTextRangeAttribute) else { return nil }
         var range = CFRange()

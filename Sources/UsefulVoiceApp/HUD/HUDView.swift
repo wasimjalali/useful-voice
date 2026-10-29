@@ -13,6 +13,8 @@ final class HUDModel: ObservableObject {
     @Published var level: Double = 0
     /// Bumped each time a recording starts, so the waveform starts empty for every recording.
     @Published var recordingID = 0
+    /// Bumped once the motion is over, so the view re-checks whether its clock may pause.
+    @Published var settleToken = 0
     /// The bubble's (or the done chip's) frame in the window, top-left origin. The
     /// panel uses it to take clicks over the bubble only and to anchor the picker.
     var bubbleFrame: CGRect = .zero {
@@ -39,7 +41,7 @@ struct HUDRoot: View {
     var body: some View {
         HUDView(display: model.display, placement: model.placement, palette: model.palette,
                 timeline: model.timeline, level: model.level, recordingID: model.recordingID,
-                onFix: onFix, onClose: onClose)
+                settleToken: model.settleToken, onFix: onFix, onClose: onClose)
             .coordinateSpace(name: HUDView.space)
             .onPreferenceChange(BubbleFrameKey.self) { model.bubbleFrame = $0 }
     }
@@ -64,6 +66,8 @@ struct HUDView: View {
     /// The smoothed mic level, 0...1.
     var level: Double = 0
     var recordingID = 0
+    /// Changes when the panel asks the view to re-check whether its clock may pause.
+    var settleToken = 0
     /// A fixed moment to draw, for snapshot frames. Nil: the live clock.
     var clock: Date? = nil
     var onFix: (DictationFix) -> Void = { _ in }

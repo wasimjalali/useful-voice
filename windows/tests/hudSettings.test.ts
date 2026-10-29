@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_HUD_ACCENT, HUD_COLORWAYS } from '../src/core/hudModel.js';
+import { DEFAULT_HUD_ACCENT, HUD_COLORWAYS, parseAppsUseLightTheme } from '../src/core/hudModel.js';
 import { DEFAULT_SETTINGS, type AppSettings } from '../src/core/models.js';
 import { normaliseSettings } from '../src/core/settings/settingsBounds.js';
 
@@ -70,7 +70,21 @@ describe('the plumbing for the dictation pill', () => {
   it('sends every HUD frame with its placement and style, on the existing channel', () => {
     const main = source('src/main/index.ts');
     expect(main).toContain("window.webContents.send('hud:view', wire)");
-    expect(main).toContain('placement: this.hudPlacement, style: this.hudStyle()');
-    expect(main).toContain('systemDark: nativeTheme.shouldUseDarkColors');
+    expect(main).toContain('placement: this.hudPlacement, style: this.hudStyle(), appearance: this.hudAppearance');
+    expect(main).toContain('systemDark: this.systemDark ?? nativeTheme.shouldUseDarkColors');
+  });
+});
+
+describe('parseAppsUseLightTheme', () => {
+  const out = (value: string): string =>
+    `\r\nHKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\r\n    AppsUseLightTheme    REG_DWORD    ${value}\r\n\r\n`;
+  it('reads 0 as dark and 1 as light', () => {
+    expect(parseAppsUseLightTheme(out('0x0'))).toBe(true);
+    expect(parseAppsUseLightTheme(out('0x1'))).toBe(false);
+  });
+  it('gives null for anything it cannot read, so the caller falls back', () => {
+    for (const bad of ['', 'ERROR: The system was unable to find the specified registry key or value.', out('0x7'), out('zz')]) {
+      expect(parseAppsUseLightTheme(bad)).toBeNull();
+    }
   });
 });

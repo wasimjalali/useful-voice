@@ -50,8 +50,23 @@ export interface HudStyle {
   systemDark: boolean;
 }
 
-/** What main sends the HUD window on `hud:view`. */
-export type HudWireFrame = HudFrame & { placement: HudPlacement; style: HudStyle };
+/**
+ * What main sends the HUD window on `hud:view`. `appearance` counts every new appearance (the HUD
+ * coming up from nothing, or a recording that starts over a finished or failed view), so the
+ * window knows when to play the entrance and the bloom again.
+ */
+export type HudWireFrame = HudFrame & { placement: HudPlacement; style: HudStyle; appearance: number };
+
+/**
+ * Read `reg query ... /v AppsUseLightTheme`: true when Windows is in dark mode (value 0), false for
+ * light (1), null when the output has no readable value.
+ */
+export function parseAppsUseLightTheme(output: string): boolean | null {
+  const match = /AppsUseLightTheme\s+REG_DWORD\s+0x([0-9a-f]+)/i.exec(output);
+  if (!match?.[1]) return null;
+  const value = parseInt(match[1], 16);
+  return value === 0 ? true : value === 1 ? false : null;
+}
 
 export interface HudStatusInput {
   state: 'idle' | 'recording' | 'transcribing' | 'delivering' | 'error';

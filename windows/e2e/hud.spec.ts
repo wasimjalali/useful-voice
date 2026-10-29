@@ -341,3 +341,66 @@ test('reduce motion: no scale, bloom or aura, still dots, no shimmer, check full
   expect(await hud.locator('.hud-chip').evaluate((n) => getComputedStyle(n).transform)).toBe('none');
 });
 
+/** Samples the anchor's scale and the bloom rings' opacity on every frame, for `ms`, around `action`. */
+async function sampleEntrance(hud: Page, action: () => Promise<void>, ms = 450): Promise<{ minScale: number; maxRing: number }> {
+  await hud.evaluate(() => {
+    const w = window as unknown as { __s: { minScale: number; maxRing: number; on: boolean } };
+    w.__s = { minScale: 1, maxRing: 0, on: true };
+    const step = (): void => {
+      const anchor = document.querySelector('.hud-anchor');
+      const m = anchor ? /matrix\(([^,]+),/.exec(getComputedStyle(anchor).transform) : null;
+      if (m) w.__s.minScale = Math.min(w.__s.minScale, Number(m[1]));
+      for (const ring of document.querySelectorAll('.hud-ring')) w.__s.maxRing = Math.max(w.__s.maxRing, Number(getComputedStyle(ring).opacity));
+      if (w.__s.on) requestAnimationFrame(step);
+    };
+    step();
+  });
+  await action();
+  await hud.waitForTimeout(ms);
+  return hud.evaluate(() => {
+    const w = window as unknown as { __s: { minScale: number; maxRing: number; on: boolean } };
+    w.__s.on = false;
+    return { minScale: w.__s.minScale, maxRing: w.__s.maxRing };
+  });
+}
+
+test('a recording with a new appearance over a visible error replays the entrance and the bloom', async () => {
+  const hud = hudPageHandle;
+  const style = { colorway: 'ink', accent: '#F2A93B', systemDark: false };
+  const bottom = { kind: 'bottom' } as const;
+  await send('hud:view', { kind: 'error', seq: 1, appearance: 1, placement: bottom, style, error: { kind: 'offline', message: 'Could not reach Deepgram.', fix: 'retry' } });
+  await hud.waitForTimeout(500);
+  await expect(hud.locator('.hud-capsule')).toContainText('No connection');
+  const sample = await sampleEntrance(hud, () => send('hud:view', { kind: 'recording', elapsedSeconds: 0, seq: 2, appearance: 2, placement: bottom, style }));
+  expect(sample.minScale).toBeLessThan(0.9);
+  expect(sample.maxRing).toBeGreaterThan(0.1);
+  // The error is replaced at once, not cross-faded.
+  await expect(hud.locator('.hud-inner')).toHaveCount(1);
+  await expect(hud.locator('.hud-capsule')).not.toContainText('No connection');
+
+  // The same appearance: a state change morphs in place, with no new entrance.
+  await hud.waitForTimeout(500);
+  const same = await sampleEntrance(hud, () => send('hud:view', { kind: 'transcribing', seq: 3, appearance: 2, placement: bottom, style }), 450);
+  expect(same.minScale).toBeGreaterThan(0.99);
+});
+
+test('a placement that flips mid-appearance re-enters the bubble on its new side', async () => {
+  const hud = hudPageHandle;
+  const style = { colorway: 'ink', accent: '#F2A93B', systemDark: false };
+  await send('hud:view', { kind: 'recording', elapsedSeconds: 50, seq: 1, appearance: 1, placement: { kind: 'caret', flipped: false }, style });
+  await hud.waitForTimeout(600);
+  let box = (await hud.locator('.hud-capsule').boundingBox())!;
+  expect(box.x).toBeCloseTo(28, 0);
+  const sample = await sampleEntrance(hud, () =>
+    send('hud:view', { kind: 'recording', elapsedSeconds: 55, stopsIn: 5, seq: 2, appearance: 1, placement: { kind: 'caret', flipped: true }, style }),
+  );
+  expect(sample.minScale).toBeLessThan(0.9);
+  box = (await hud.locator('.hud-capsule').boundingBox())!;
+  expect(box.x + box.width).toBeCloseTo(492, 0);
+  await expect(hud.locator('.hud-stage')).toHaveAttribute('data-place', 'caret-flip');
+  const tb = (await hud.locator('.hud-tail').boundingBox())!;
+  expect(tb.x + tb.width / 2).toBeCloseTo(492, 0);
+  await expect(hud.locator('.hud-inner')).toHaveCount(1);
+  await shoot(hud, 'hud-caret-flip-reenter.png');
+});
+

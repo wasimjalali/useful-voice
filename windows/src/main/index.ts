@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { promises as fs, appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 import { DataStore } from '../core/settings/dataStore.js';
 import { removeStaleTempFiles, writeJsonAtomic } from '../core/settings/jsonStore.js';
@@ -27,6 +29,8 @@ import {
   type HudPlacement,
   type HudStyle,
   type HudWireFrame,
+  parseAppsUseLightTheme,
+  startsNewAppearance,
 } from '../core/hudModel.js';
 import {
   HUD_HEIGHT,
@@ -35,6 +39,8 @@ import {
   bubbleRect,
   chipWindowOrigin,
   decidePlacement,
+  estimatedBubbleWidth,
+  fitSide,
   hudWindowOrigin,
   pickerOrigin,
 } from '../core/hudPlacement.js';
@@ -87,6 +93,7 @@ import {
 } from './windowsPlatform.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const execFileAsync = promisify(execFile);
 
 /**
  * The Windows app.
@@ -188,6 +195,19 @@ class UsefulVoiceApp {
   private hudPlacement: HudPlacement = { kind: 'bottom' };
   /** Frames go out after this: the window is moved first, so a frame never draws at the old spot. */
   private hudGate: Promise<void> = Promise.resolve();
+  private hudGateFailureLogged = false;
+  /** Counts appearances. A placement that finishes for an older one changes nothing. */
+  private hudAppearance = 0;
+  /** The appearance whose placement is still waiting for the caret (0 for none). */
+  private hudPlacing = 0;
+  /** The dictation (service sequence) the current appearance was started for. */
+  private hudDictation = 0;
+  /** The kind showing, not counting language confirmations, or null when nothing is. */
+  private hudBase: HudFrame['kind'] | null = null;
+  /** The caret this appearance was placed beside, to move the bubble to the other side if a wider state needs it. */
+  private hudCaret: CaretFix | null = null;
+  /** Windows' own dark mode, read from the registry; null until read or when it cannot be. */
+  private systemDark: boolean | null = null;
   /** The caret lookup started at the latest hotkey press, for the recording frame that follows. */
   private caretLookup: { sequence: number; startedAt: number; result: Promise<CaretFix | null> } | null = null;
   private hudHideTimer: NodeJS.Timeout | null = null;
@@ -462,7 +482,11 @@ class UsefulVoiceApp {
 
     // Before any window exists, so the first paint is already in the right theme.
     applyAppearance(this.settings.all.appearance);
-    nativeTheme.on('updated', () => this.syncTheme());
+    nativeTheme.on('updated', () => {
+      this.syncTheme();
+      void this.refreshSystemDark();
+    });
+    void this.refreshSystemDark();
 
     this.data = new DataStore(path.join(app.getPath('userData'), 'data.json'));
     await this.data.load();
@@ -833,6 +857,8 @@ class UsefulVoiceApp {
    */
   private onHudFrame(frame: HudFrame | null): void {
     const before = this.hudFrame;
+    // A frame that arrives while an appearance still waits for the caret replaces the frame it
+    // will show; it belongs to that appearance and does not start another.
     this.hudFrame = frame;
     if (this.hudHideTimer) {
       clearTimeout(this.hudHideTimer);
@@ -842,16 +868,25 @@ class UsefulVoiceApp {
       // The suite never puts a window on the screen.
       const window = E2E ? null : this.ensureHudWindow();
       if (window) {
-        const visible = window.isVisible();
-        // A new appearance: nothing was showing, or a recording follows a finished or failed one.
-        const starts =
-          !visible ||
-          before === null ||
-          (frame.kind === 'recording' && ['done', 'copied', 'cancelled', 'error'].includes(before.kind));
+        const waiting = this.hudPlacing !== 0 && this.hudPlacing === this.hudAppearance && before !== null;
+        const starts = startsNewAppearance({
+          kind: frame.kind,
+          base: this.hudBase,
+          hidden: !window.isVisible(),
+          waiting,
+          // A recording of another dictation than the one the appearance was started for.
+          newDictation: frame.kind === 'recording' && this.service.sequence !== this.hudDictation,
+        });
         if (starts) {
-          this.hudGate = this.beginHudAppearance(window, frame);
+          this.hudAppearance += 1;
+          this.hudDictation = this.service.sequence;
+          this.hudGate = this.guardHudGate(this.beginHudAppearance(window, frame, this.hudAppearance));
+        } else if (waiting) {
+          // begin fits the bubble to whatever frame stands when the caret answer is in.
         } else if (frame.kind === 'done' && before?.kind !== 'done' && this.hudPlacement.kind === 'caret') {
-          this.hudGate = this.moveHudToChip(window, frame);
+          this.hudGate = this.guardHudGate(this.moveHudToChip(window, frame, this.hudAppearance));
+        } else {
+          this.fitBubbleBesideCaret(window);
         }
       }
     } else if (this.hudWindow && !this.hudWindow.isDestroyed()) {
@@ -861,49 +896,114 @@ class UsefulVoiceApp {
         if (this.hudWindow && !this.hudWindow.isDestroyed()) this.hudWindow.hide();
       }, HUD_EXIT_MS + 60);
     }
+    if (!frame) this.hudBase = null;
+    else if (frame.kind !== 'language') this.hudBase = frame.kind;
     this.scheduleHudPush();
     this.announcer.hud(frame);
   }
 
+  /** The gate must always settle: one failed placement may not stop every later frame. */
+  private guardHudGate(placement: Promise<void>): Promise<void> {
+    return placement.catch((error: unknown) => {
+      if (this.hudGateFailureLogged) return;
+      this.hudGateFailureLogged = true;
+      this.diagnostics.log('hud', `placing the HUD failed: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }
+
   /**
-   * Place the window for a new appearance and show it. Only an appearance that starts with
-   * recording looks for the caret (the lookup began at the press); any other starts at the bottom,
-   * at once. Resolves when the window is in place, which is what the first frame waits for.
+   * Place the window for a new appearance (number `appearance`) and show it. Only an appearance
+   * that starts with recording looks for the caret (the lookup began at the press): it waits for
+   * what is left of 150 ms from the press, with the window still where it was and hidden, and any
+   * frame that arrives meanwhile just replaces the one to show. Any other appearance starts at the
+   * bottom at once. Resolves when the window is in place, which is what the frame waits for. If a
+   * newer appearance has begun by then, this one changes nothing.
    */
-  private async beginHudAppearance(window: BrowserWindow, frame: HudFrame): Promise<void> {
+  private async beginHudAppearance(window: BrowserWindow, frame: HudFrame, appearance: number): Promise<void> {
+    try {
+      await this.placeHudAppearance(window, frame, appearance);
+    } finally {
+      // Whatever happened, no frame may keep joining an appearance that is over.
+      if (this.hudPlacing === appearance) this.hudPlacing = 0;
+    }
+  }
+
+  private async placeHudAppearance(window: BrowserWindow, frame: HudFrame, appearance: number): Promise<void> {
+    const wasHidden = !window.isVisible();
     const lookup = frame.kind === 'recording' ? this.caretLookup : null;
     let fix: CaretFix | null = null;
     if (lookup && lookup.sequence === this.service.sequence) {
-      // Placing needs an answer; the lookup is already running since the press, so this is only what is left of the wait.
+      this.hudPlacing = appearance;
+      // The lookup is already running since the press, so this is only what is left of the wait.
       const left = Math.max(0, CARET_WAIT_MS - (Date.now() - lookup.startedAt));
       fix = (await waitAtMost(lookup.result, left)) ?? null;
     }
-    // The state moved on while the lookup ran: the frame that now stands is what to place for.
+    if (appearance !== this.hudAppearance || window.isDestroyed()) return;
+    this.hudPlacing = 0;
     const placement: HudPlacement = fix ? decidePlacement(fix.rect, fix.workArea) : { kind: 'bottom' };
-    if (window.isDestroyed()) return;
+    this.hudCaret = fix;
     this.placeHud(window, placement, fix);
     if (this.hudFrame === null) return;
-    // Back to click-through: a button from the last view may have left it switched off.
-    window.setIgnoreMouseEvents(true, { forward: true });
-    if (!window.isVisible()) window.showInactive();
+    if (wasHidden) {
+      // Back to click-through: a button from the last view may have left it switched off.
+      window.setIgnoreMouseEvents(true, { forward: true });
+      window.showInactive();
+    }
+    this.fitBubbleBesideCaret(window);
+  }
+
+  /**
+   * A state wider than the room on its side of the caret moves to the other side when it fits
+   * there. Done is left to the chip, which decides its own side.
+   */
+  private fitBubbleBesideCaret(window: BrowserWindow): void {
+    const frame = this.hudFrame;
+    const caret = this.hudCaret;
+    const placement = this.hudPlacement;
+    if (!frame || !caret || placement.kind !== 'caret' || frame.kind === 'done' || window.isDestroyed()) return;
+    const next = fitSide(placement, caret.rect, caret.workArea, estimatedBubbleWidth(frame));
+    if (next === placement) return;
+    this.hudPlacement = next;
+    const origin = hudWindowOrigin(next, caret.rect, caret.workArea);
+    window.setBounds({ ...origin, width: HUD_WIDTH, height: HUD_HEIGHT });
   }
 
   /** After the paste: the done chip goes beside the new caret. If the caret cannot be found it stays where it was. */
-  private async moveHudToChip(window: BrowserWindow, frame: HudFrame): Promise<void> {
+  private async moveHudToChip(window: BrowserWindow, frame: HudFrame, appearance: number): Promise<void> {
     const placement = this.hudPlacement;
     if (placement.kind !== 'caret') return;
     await new Promise<void>((resolve) => setTimeout(resolve, CHIP_LOOKUP_DELAY_MS));
     const fix = await waitAtMost(lookUpCaret(), CARET_WAIT_MS);
-    // Replaced by a newer view while it looked, or a different appearance: leave the window alone.
-    if (!fix || window.isDestroyed() || this.hudFrame?.seq !== frame.seq) return;
+    // Replaced by a newer view or appearance while it looked: leave the window alone.
+    if (!fix || window.isDestroyed() || appearance !== this.hudAppearance || this.hudFrame?.seq !== frame.seq) return;
     const chip = chipWindowOrigin(placement, fix.rect, fix.workArea);
     this.hudPlacement = chip.placement;
+    this.hudCaret = fix;
     window.setBounds({ ...chip.origin, width: HUD_WIDTH, height: HUD_HEIGHT });
+  }
+
+  /** Windows' own light or dark mode, which the HUD follows because it sits over other apps. */
+  private async refreshSystemDark(): Promise<void> {
+    if (process.platform !== 'win32') return;
+    let dark: boolean | null = null;
+    try {
+      const { stdout } = await execFileAsync(
+        'reg',
+        ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize', '/v', 'AppsUseLightTheme'],
+        { timeout: 3000, windowsHide: true },
+      );
+      dark = parseAppsUseLightTheme(stdout);
+    } catch (error) {
+      this.diagnostics.log('hud', `could not read the Windows theme: ${(error as Error).message}`);
+    }
+    if (dark === this.systemDark) return;
+    this.systemDark = dark;
+    if (this.hudFrame) this.scheduleHudPush();
   }
 
   private hudStyle(): HudStyle {
     const { hudColorway, hudAccent } = this.settings.all;
-    return { colorway: hudColorway, accent: hudAccent, systemDark: nativeTheme.shouldUseDarkColors };
+    return { colorway: hudColorway, accent: hudAccent, systemDark: this.systemDark ?? nativeTheme.shouldUseDarkColors };
   }
 
   /** Send the latest frame once the window has been placed. A frame replaced meanwhile is not sent. */
@@ -918,7 +1018,7 @@ class UsefulVoiceApp {
     const window = this.hudWindow;
     if (!window || window.isDestroyed() || window.webContents.isLoading()) return;
     const wire: HudWireFrame | null = this.hudFrame
-      ? { ...this.hudFrame, placement: this.hudPlacement, style: this.hudStyle() }
+      ? { ...this.hudFrame, placement: this.hudPlacement, style: this.hudStyle(), appearance: this.hudAppearance }
       : null;
     window.webContents.send('hud:view', wire);
   }

@@ -107,6 +107,8 @@ export interface PowerShellHostOptions {
   now?: () => number;
   newId?: () => string;
   log?: (message: string) => void;
+  /** What the log says when the host is given up on. The default describes the one-shot fallback. */
+  giveUpMessage?: string;
 }
 
 export interface RunOptions {
@@ -521,7 +523,7 @@ export class PowerShellHost {
     this.deaths.push(at);
     if (this.deaths.length > this.maxRestarts) {
       this.state = 'disabled';
-      this.options.log?.('the PowerShell host keeps stopping; using one-shot processes instead');
+      this.options.log?.(this.options.giveUpMessage ?? 'the PowerShell host keeps stopping; using one-shot processes instead');
       this.failAll(new PowerShellHostError('unavailable', 'the PowerShell host keeps stopping', false));
     }
   }

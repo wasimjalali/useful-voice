@@ -282,6 +282,14 @@ extension HUDSnapshot {
             }
             RunLoop.main.add(timer, forMode: .common)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay + 7) { exit(0) }
+        // `UV_HUD_DEMO_HOLD=1` follows the run with an error that stays up, to check the
+        // frame clock pauses once nothing moves.
+        let hold = environment["UV_HUD_DEMO_HOLD"] != nil
+        if hold {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay + 6) {
+                hud.show(.error(HUDError(DictationError(kind: .offline, message: "", fix: .retry))))
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay + (hold ? 13 : 7)) { exit(0) }
     }
 }

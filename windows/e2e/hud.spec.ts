@@ -4,6 +4,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { seedUserData } from './fixtures.js';
 
+/** Layout lands within a pixel: Windows and macOS round text widths differently. */
+function expectPx(actual: number, expected: number): void {
+  expect(Math.abs(actual - expected)).toBeLessThanOrEqual(1);
+}
+
 // The HUD bubble on the built app: waveform, placements (bottom, beside the cursor, flipped), colorways and halo. The HUD window only exists
 // while a dictation runs, so the test opens a second window on the HUD page and feeds it
 // the same IPC messages main sends: a recording frame and a stream of input levels.
@@ -154,7 +159,7 @@ test('the recording bubble draws a moving 16-bar waveform that fits the window',
   expect(capsule).not.toBeNull();
   const viewport = await hud.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
   expect(viewport).toEqual({ w: 520, h: 96 });
-  expect(capsule!.height).toBeCloseTo(30, 0);
+  expectPx(capsule!.height, 30);
   expect(capsule!.y).toBeGreaterThanOrEqual(0);
   expect(capsule!.y + capsule!.height).toBeLessThanOrEqual(96);
   expect(capsule!.x).toBeGreaterThan(0);
@@ -196,21 +201,21 @@ for (const [placeName, place] of placements) {
       }
       await expect(capsule).toHaveAttribute('data-kind', 'recording');
       const box = (await capsule.boundingBox())!;
-      expect(box.height).toBeCloseTo(30, 0);
+      expectPx(box.height, 30);
       if (place.kind === 'bottom') {
-        expect(box.x + box.width / 2).toBeCloseTo(260, 0);
-        expect(box.y + box.height).toBeCloseTo(68, 0);
+        expectPx(box.x + box.width / 2, 260);
+        expectPx(box.y + box.height, 68);
         await expect(hud.locator('.hud-tail')).toBeHidden();
         await expect(hud.locator('.hud-kbd')).toHaveText('esc');
       } else {
-        expect(box.y + box.height / 2).toBeCloseTo(48, 0);
+        expectPx(box.y + box.height / 2, 48);
         const tail = hud.locator('.hud-tail');
         await expect(tail).toBeVisible();
         const tb = (await tail.boundingBox())!;
         const edge = flipped ? box.x + box.width : box.x;
-        expect(edge).toBeCloseTo(flipped ? 492 : 28, 0);
-        expect(tb.x + tb.width / 2).toBeCloseTo(edge, 0);
-        expect(tb.y + tb.height / 2).toBeCloseTo(48, 0);
+        expectPx(edge, flipped ? 492 : 28);
+        expectPx(tb.x + tb.width / 2, edge);
+        expectPx(tb.y + tb.height / 2, 48);
         await expect(hud.locator('.hud-kbd')).toHaveCount(0);
       }
       expect(await capsule.evaluate((n) => getComputedStyle(n).backgroundColor)).toBe(SURFACE[colorway].light);
@@ -230,7 +235,7 @@ for (const [placeName, place] of placements) {
       await expect(hud.locator('.hud-inner')).toHaveCount(1);
       await expect(hud.locator('.hud-shim')).toHaveText('Transcribing');
       const t = (await capsule.boundingBox())!;
-      if (place.kind === 'caret') expect(flipped ? t.x + t.width : t.x).toBeCloseTo(flipped ? 492 : 28, 0);
+      if (place.kind === 'caret') expectPx(flipped ? t.x + t.width : t.x, flipped ? 492 : 28);
       // The aura has faded out.
       expect(await hud.locator('.hud-aura').evaluate((n) => Number(getComputedStyle(n).opacity))).toBeLessThan(0.01);
       await shoot(hud, `hud-${tag}-transcribing.png`);
@@ -253,17 +258,17 @@ for (const [placeName, place] of placements) {
         await expect(capsule).toContainText('Inserted · 23 words');
         expect(await hud.locator('.hud-chip').evaluate((n) => Number(getComputedStyle(n).opacity))).toBe(0);
         const d = (await capsule.boundingBox())!;
-        expect(d.x + d.width / 2).toBeCloseTo(260, 0);
-        expect(d.y + d.height).toBeCloseTo(68, 0);
+        expectPx(d.x + d.width / 2, 260);
+        expectPx(d.y + d.height, 68);
         const checkOffset = await hud.locator('.hud-check path').evaluate((n) => n.getAttribute('stroke-dashoffset'));
         expect(Number(checkOffset)).toBeCloseTo(0, 2);
       } else {
         const chip = hud.locator('.hud-chip');
         await expect(chip).toHaveText('23 words');
         const c = (await chip.boundingBox())!;
-        expect(c.height).toBeCloseTo(22, 0);
-        expect(c.y + c.height / 2).toBeCloseTo(48, 0);
-        expect(flipped ? c.x + c.width : c.x).toBeCloseTo(flipped ? 492 : 28, 0);
+        expectPx(c.height, 22);
+        expectPx(c.y + c.height / 2, 48);
+        expectPx(flipped ? c.x + c.width : c.x, flipped ? 492 : 28);
         expect(await chip.evaluate((n) => getComputedStyle(n).backgroundColor)).toBe(SURFACE[colorway].light);
         expect(Number(await chip.evaluate((n) => getComputedStyle(n).opacity))).toBeGreaterThan(0.99);
         expect(Number(await hud.locator('.hud-chip path').evaluate((n) => n.getAttribute('stroke-dashoffset')))).toBeCloseTo(0, 2);
@@ -307,11 +312,11 @@ test('an error beside the cursor unfolds the bubble again', async () => {
   const capsule = hud.locator('.hud-capsule');
   await expect(capsule).toContainText('No connection');
   const box = (await capsule.boundingBox())!;
-  expect(box.x).toBeCloseTo(28, 0);
-  expect(box.height).toBeCloseTo(30, 0);
+  expectPx(box.x, 28);
+  expectPx(box.height, 30);
   await expect(hud.locator('.hud-btn')).toBeVisible();
-  expect((await hud.locator('.hud-btn').boundingBox())!.height).toBeCloseTo(22, 0);
-  expect((await hud.locator('.hud-x').boundingBox())!.width).toBeCloseTo(20, 0);
+  expectPx((await hud.locator('.hud-btn').boundingBox())!.height, 22);
+  expectPx((await hud.locator('.hud-x').boundingBox())!.width, 20);
   await shoot(hud, 'hud-caret-error.png');
 });
 
@@ -339,5 +344,71 @@ test('reduce motion: no scale, bloom or aura, still dots, no shimmer, check full
   await expect(hud.locator('.hud-chip')).toHaveText('Copied · 5 words');
   expect(Number(await hud.locator('.hud-chip path').evaluate((n) => n.getAttribute('stroke-dashoffset')))).toBeCloseTo(0, 2);
   expect(await hud.locator('.hud-chip').evaluate((n) => getComputedStyle(n).transform)).toBe('none');
+});
+
+/** Samples the anchor's scale and the bloom rings' opacity on every frame, for `ms`, around `action`. */
+async function sampleEntrance(hud: Page, action: () => Promise<void>, ms = 450): Promise<{ minScale: number; maxRing: number }> {
+  await hud.evaluate(() => {
+    const w = window as unknown as { __s: { minScale: number; maxRing: number; on: boolean } };
+    w.__s = { minScale: 1, maxRing: 0, on: true };
+    const step = (): void => {
+      const anchor = document.querySelector('.hud-anchor');
+      const m = anchor ? /matrix\(([^,]+),/.exec(getComputedStyle(anchor).transform) : null;
+      if (m) w.__s.minScale = Math.min(w.__s.minScale, Number(m[1]));
+      for (const ring of document.querySelectorAll('.hud-ring')) w.__s.maxRing = Math.max(w.__s.maxRing, Number(getComputedStyle(ring).opacity));
+      if (w.__s.on) requestAnimationFrame(step);
+    };
+    step();
+  });
+  await action();
+  await hud.waitForTimeout(ms);
+  return hud.evaluate(() => {
+    const w = window as unknown as { __s: { minScale: number; maxRing: number; on: boolean } };
+    w.__s.on = false;
+    return { minScale: w.__s.minScale, maxRing: w.__s.maxRing };
+  });
+}
+
+test('a recording with a new appearance over a visible error replays the entrance and the bloom', async () => {
+  const hud = hudPageHandle;
+  const style = { colorway: 'ink', accent: '#F2A93B', systemDark: false };
+  const bottom = { kind: 'bottom' } as const;
+  await send('hud:view', { kind: 'error', seq: 1, appearance: 1, placement: bottom, style, error: { kind: 'offline', message: 'Could not reach Deepgram.', fix: 'retry' } });
+  await hud.waitForTimeout(500);
+  await expect(hud.locator('.hud-capsule')).toContainText('No connection');
+  const sample = await sampleEntrance(hud, () => send('hud:view', { kind: 'recording', elapsedSeconds: 0, seq: 2, appearance: 2, placement: bottom, style }));
+  expect(sample.minScale).toBeLessThan(0.9);
+  expect(sample.maxRing).toBeGreaterThan(0.1);
+  // The error is replaced at once, not cross-faded.
+  await expect(hud.locator('.hud-inner')).toHaveCount(1);
+  await expect(hud.locator('.hud-capsule')).not.toContainText('No connection');
+
+  // The same appearance: a state change morphs in place, with no new entrance.
+  await hud.waitForTimeout(500);
+  const same = await sampleEntrance(hud, () => send('hud:view', { kind: 'transcribing', seq: 3, appearance: 2, placement: bottom, style }), 450);
+  expect(same.minScale).toBeGreaterThan(0.99);
+});
+
+test('a placement that flips mid-appearance re-enters the bubble on its new side', async () => {
+  const hud = hudPageHandle;
+  const style = { colorway: 'ink', accent: '#F2A93B', systemDark: false };
+  await send('hud:view', { kind: 'recording', elapsedSeconds: 50, seq: 1, appearance: 1, placement: { kind: 'caret', flipped: false }, style });
+  await hud.waitForTimeout(600);
+  let box = (await hud.locator('.hud-capsule').boundingBox())!;
+  expectPx(box.x, 28);
+  const sample = await sampleEntrance(hud, () =>
+    send('hud:view', { kind: 'recording', elapsedSeconds: 55, stopsIn: 5, seq: 1, appearance: 1, placement: { kind: 'caret', flipped: true }, style }),
+  );
+  expect(sample.minScale).toBeLessThan(0.9);
+  box = (await hud.locator('.hud-capsule').boundingBox())!;
+  expectPx(box.x + box.width, 492);
+  await expect(hud.locator('.hud-stage')).toHaveAttribute('data-place', 'caret-flip');
+  const tb = (await hud.locator('.hud-tail').boundingBox())!;
+  expectPx(tb.x + tb.width / 2, 492);
+  await expect(hud.locator('.hud-inner')).toHaveCount(1);
+  // Sent with the same seq, as main does for a telemetry update: the countdown is drawn on the new side.
+  await expect(hud.locator('.hud-stops')).toHaveText('Stops in 5 s');
+  await expect(hud.locator('.hud-time')).toHaveText('0:55');
+  await shoot(hud, 'hud-caret-flip-reenter.png');
 });
 

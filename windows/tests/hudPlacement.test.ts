@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { startsNewAppearance } from '../src/core/hudModel.js';
 import {
   HUD_HEIGHT,
   HUD_WIDTH,
   bubbleRect,
   chipWindowOrigin,
   decidePlacement,
+  estimatedBubbleWidth,
+  fitSide,
   hudWindowOrigin,
   parseCaretLine,
   pickerOrigin,
@@ -205,5 +208,80 @@ describe('parseCaretLine', () => {
     expect(parseCaretLine('10,10,11,130', 6, 120)).not.toBeNull();
     expect(parseCaretLine('10,10,11,131', 6, 120)).toBeNull();
     expect(parseCaretLine('20,10,10,30', 6, 120)).toBeNull();
+  });
+});
+
+describe('estimatedBubbleWidth', () => {
+  it('has a width for every view', () => {
+    expect(estimatedBubbleWidth({ kind: 'recording', elapsedSeconds: 3 })).toBe(120);
+    expect(estimatedBubbleWidth({ kind: 'recording', elapsedSeconds: 3, stopsIn: 5 })).toBe(210);
+    expect(estimatedBubbleWidth({ kind: 'transcribing' })).toBe(130);
+    expect(estimatedBubbleWidth({ kind: 'inserting' })).toBe(120);
+    expect(estimatedBubbleWidth({ kind: 'saving' })).toBe(120);
+    expect(estimatedBubbleWidth({ kind: 'done', words: 4, saved: false })).toBe(110);
+    expect(estimatedBubbleWidth({ kind: 'cancelled' })).toBe(110);
+    expect(estimatedBubbleWidth({ kind: 'language', name: 'German' })).toBe(170);
+    expect(estimatedBubbleWidth({ kind: 'copied' })).toBe(300);
+    expect(estimatedBubbleWidth({ kind: 'error', error: { kind: 'offline', message: 'x' } as never })).toBe(340);
+  });
+});
+
+describe('fitSide', () => {
+  const right = { kind: 'caret', flipped: false } as const;
+  const left = { kind: 'caret', flipped: true } as const;
+
+  it('keeps the side when the bubble fits there', () => {
+    expect(fitSide(right, caretAt(800, 400), SCREEN, 340)).toEqual(right);
+    expect(fitSide(left, caretAt(800, 400), SCREEN, 340)).toEqual(left);
+  });
+
+  it('moves a wide bubble to the left when it would cross the right edge but fits on the left', () => {
+    expect(fitSide(right, caretAt(1700, 400), SCREEN, 340)).toEqual(left);
+    // Exactly fitting stays.
+    expect(fitSide(right, caretAt(1920 - 14 - 340, 400), SCREEN, 340)).toEqual(right);
+  });
+
+  it('moves a flipped bubble back to the right when it would cross the left edge but fits on the right', () => {
+    expect(fitSide(left, caretAt(200, 400), SCREEN, 340)).toEqual(right);
+  });
+
+  it('stays put when neither side fits, and works on a monitor with negative coordinates', () => {
+    expect(fitSide(right, caretAt(100, 400), { x: 0, y: 0, width: 400, height: 300 }, 340)).toEqual(right);
+    expect(fitSide(right, caretAt(-300, 100), LEFT, 340)).toEqual(left);
+  });
+});
+
+describe('startsNewAppearance', () => {
+  const base = { kind: 'recording', base: 'recording', hidden: false, waiting: false, newDictation: false } as const;
+
+  it('continues the same dictation', () => {
+    expect(startsNewAppearance(base)).toBe(false);
+    expect(startsNewAppearance({ ...base, kind: 'transcribing' })).toBe(false);
+    expect(startsNewAppearance({ ...base, kind: 'cancelled' })).toBe(false);
+  });
+
+  it('starts when nothing was showing', () => {
+    expect(startsNewAppearance({ ...base, base: null })).toBe(true);
+    expect(startsNewAppearance({ ...base, hidden: true })).toBe(true);
+  });
+
+  it('starts for a recording over a finished or failed view, also one a language view covered', () => {
+    for (const over of ['done', 'copied', 'cancelled', 'error'] as const) {
+      expect(startsNewAppearance({ ...base, base: over })).toBe(true);
+    }
+  });
+
+  it('starts for a retry whose first frame is transcribing over an error', () => {
+    expect(startsNewAppearance({ ...base, kind: 'transcribing', base: 'error' })).toBe(true);
+    expect(startsNewAppearance({ ...base, kind: 'transcribing', base: 'copied' })).toBe(true);
+  });
+
+  it('lets a frame join an appearance that still waits for the caret', () => {
+    expect(startsNewAppearance({ ...base, hidden: true, waiting: true })).toBe(false);
+    expect(startsNewAppearance({ ...base, kind: 'cancelled', hidden: true, waiting: true })).toBe(false);
+  });
+
+  it('lets a newer dictation supersede a waiting appearance', () => {
+    expect(startsNewAppearance({ ...base, hidden: true, waiting: true, newDictation: true })).toBe(true);
   });
 });

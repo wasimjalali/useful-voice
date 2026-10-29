@@ -9,7 +9,7 @@
  *    left edge (flipped: its trailing edge 28 from the right edge).
  */
 
-import type { HudPlacement } from './hudModel.js';
+import type { HudPlacement, HudView } from './hudModel.js';
 
 export interface Rect {
   x: number;
@@ -170,4 +170,42 @@ export function parseCaretLine(line: string, minHeight: number, maxHeight: numbe
   const height = bottomEdge - top;
   if (width < 0 || height < minHeight || height > maxHeight) return null;
   return { x: left, y: top, width, height };
+}
+
+/** About how wide the bubble is for a view, for deciding whether it fits on a side of the caret. */
+export function estimatedBubbleWidth(view: HudView): number {
+  switch (view.kind) {
+    case 'recording':
+      return view.stopsIn === undefined ? 120 : 210;
+    case 'transcribing':
+      return 130;
+    case 'inserting':
+    case 'saving':
+      return 120;
+    case 'done':
+    case 'cancelled':
+      return 110;
+    case 'language':
+      return 170;
+    case 'copied':
+      return 300;
+    case 'error':
+      return 340;
+  }
+}
+
+/**
+ * The side of the caret for a bubble `width` wide: the current one if it fits there, the other
+ * when only that one fits, and the current one when neither does.
+ */
+export function fitSide(
+  placement: Extract<HudPlacement, { kind: 'caret' }>,
+  caret: Rect,
+  workArea: Rect,
+  width: number,
+): Extract<HudPlacement, { kind: 'caret' }> {
+  const fitsRight = caret.x + caret.width + CARET_GAP + width <= right(workArea);
+  const fitsLeft = caret.x - CARET_GAP - width >= workArea.x;
+  const flipped = placement.flipped ? !(fitsRight && !fitsLeft) : !fitsRight && fitsLeft;
+  return flipped === placement.flipped ? placement : { kind: 'caret', flipped };
 }

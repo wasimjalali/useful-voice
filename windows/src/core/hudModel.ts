@@ -50,8 +50,23 @@ export interface HudStyle {
   systemDark: boolean;
 }
 
-/** What main sends the HUD window on `hud:view`. */
-export type HudWireFrame = HudFrame & { placement: HudPlacement; style: HudStyle };
+/**
+ * What main sends the HUD window on `hud:view`. `appearance` counts every new appearance (the HUD
+ * coming up from nothing, or a recording that starts over a finished or failed view), so the
+ * window knows when to play the entrance and the bloom again.
+ */
+export type HudWireFrame = HudFrame & { placement: HudPlacement; style: HudStyle; appearance: number };
+
+/**
+ * Read `reg query ... /v AppsUseLightTheme`: true when Windows is in dark mode (value 0), false for
+ * light (1), null when the output has no readable value.
+ */
+export function parseAppsUseLightTheme(output: string): boolean | null {
+  const match = /AppsUseLightTheme\s+REG_DWORD\s+0x([0-9a-f]+)/i.exec(output);
+  if (!match?.[1]) return null;
+  const value = parseInt(match[1], 16);
+  return value === 0 ? true : value === 1 ? false : null;
+}
 
 export interface HudStatusInput {
   state: 'idle' | 'recording' | 'transcribing' | 'delivering' | 'error';
@@ -330,4 +345,28 @@ export function languageLabel(value: string): string {
   if (value === 'auto') return 'Auto-detect';
   if (value === MULTILINGUAL_CODE_SWITCHING.code) return 'Multiple languages';
   return findLanguage(value)?.nativeName ?? 'Auto-detect';
+}
+
+const FINISHED = new Set<HudView['kind']>(['done', 'copied', 'cancelled', 'error']);
+
+/**
+ * Whether a frame starts a new appearance (a fresh placement, entrance and caret lookup) rather
+ * than continuing the one on screen.
+ *  - `base`: the kind showing before, not counting language confirmations (they only cover a view),
+ *    or null when nothing was showing. `hidden`: the window is not on screen.
+ *  - `waiting`: an appearance is still waiting for the caret; frames join it.
+ *  - `newDictation`: this is a recording of a different dictation than the pending appearance's.
+ */
+export function startsNewAppearance(input: {
+  kind: HudView['kind'];
+  base: HudView['kind'] | null;
+  hidden: boolean;
+  waiting: boolean;
+  newDictation: boolean;
+}): boolean {
+  if (input.newDictation) return true;
+  if (input.waiting) return false;
+  if (input.hidden || input.base === null) return true;
+  // A recording, or a retry's transcribing, over a finished or failed view.
+  return (input.kind === 'recording' || input.kind === 'transcribing') && FINISHED.has(input.base);
 }

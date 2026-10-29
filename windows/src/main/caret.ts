@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { screen } from 'electron';
 import { HOST_STARTUP_TIMEOUT_MS } from '../core/delivery/timing.js';
 import { parseCaretLine, type Rect } from '../core/hudPlacement.js';
-import { PowerShellHost, hostArguments } from './powershellHost.js';
+import { PowerShellHost, PowerShellHostError, hostArguments } from './powershellHost.js';
 
 /**
  * Where the text cursor of the app in front is, so the HUD can sit beside it.
@@ -15,8 +15,9 @@ import { PowerShellHost, hostArguments } from './powershellHost.js';
  *
  * It runs in a PowerShell host of its own, like the media scripts: the types compile once, and a
  * slow UI Automation call (some apps take hundreds of ms) never sits in front of a paste.
- * The host process is made per-monitor DPI aware first, otherwise Windows hands it scaled
- * coordinates on a display above 100 %. Every failure is `null`: the HUD then sits at the bottom.
+ * Each lookup runs with its thread set to per-monitor DPI awareness (v2), otherwise Windows hands
+ * the host scaled coordinates on a display above 100 %. Every failure is `null`, and the HUD then
+ * sits at the bottom; the first failure of each kind is logged (then at most once a minute).
  */
 
 /** How long a caller waits for an answer. A slower answer is dropped, not waited for. */
@@ -45,10 +46,15 @@ public class UvCaret {
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
   [DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint thread, ref GUITHREADINFO info);
   [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
-  [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr context);
+  [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
 
-  public static void Prepare() {
-    try { SetProcessDpiAwarenessContext(new IntPtr(-4)); } catch (Exception) { }
+  // Per-monitor aware v2 for this thread. Returns the previous context, or 0 when it could not be set.
+  public static long Enter() {
+    try { return SetThreadDpiAwarenessContext(new IntPtr(-4)).ToInt64(); } catch (Exception) { return 0; }
+  }
+  public static void Leave(long previous) {
+    if (previous == 0) return;
+    try { SetThreadDpiAwarenessContext(new IntPtr(previous)); } catch (Exception) { }
   }
 
   // "left,top,right,bottom" in physical screen pixels, "own" for our own window, or "".
@@ -71,7 +77,6 @@ public class UvCaret {
   }
 }
 "@
-[UvCaret]::Prepare()
 function Get-UvCaretUia([int]$ownPid) {
   try {
     $element = [System.Windows.Automation.AutomationElement]::FocusedElement
@@ -101,29 +106,62 @@ function Get-UvCaretUia([int]$ownPid) {
 `;
 
 const caretBody = (): string => `
-$uvResult = [UvCaret]::Read(${process.pid})
-if ($uvResult -eq '') { $uvResult = Get-UvCaretUia ${process.pid} }
-Write-Output $uvResult
+$uvPrevious = [UvCaret]::Enter()
+if ($uvPrevious -eq 0) { Write-Output 'UVWARN:dpi' }
+try {
+  $uvResult = [UvCaret]::Read(${process.pid})
+  if ($uvResult -eq '') { $uvResult = Get-UvCaretUia ${process.pid} }
+  Write-Output $uvResult
+} finally { [UvCaret]::Leave($uvPrevious) }
 `;
 
-let host: PowerShellHost | null = null;
+let report: ((message: string) => void) | undefined;
+const lastReported = new Map<string, number>();
+/** The first failure of each kind is logged, then at most one a minute, so a broken lookup is traceable without flooding the log. */
+function noteFailure(kind: string, detail: string): void {
+  const now = Date.now();
+  const last = lastReported.get(kind);
+  if (last !== undefined && now - last < 60_000) return;
+  lastReported.set(kind, now);
+  report?.(`caret lookup ${kind}: ${detail}`);
+}
 
-/** The caret host: its own process, so a lookup never queues in front of (or behind) a paste. */
-function caretHost(log?: (message: string) => void): PowerShellHost {
+let host: PowerShellHost | null = null;
+/** When the host was given up on (it kept dying), or null. */
+let givenUpAt: number | null = null;
+/** A host that was given up on is replaced by a fresh one after this long. */
+const HOST_COOL_OFF_MS = 5 * 60_000;
+
+/**
+ * The caret host: its own process, so a lookup never queues in front of (or behind) a paste.
+ * A host that kept dying (one hung UI Automation provider can do that in a couple of dictations)
+ * is dropped, lookups answer null meanwhile, and a new host starts after a cool-off.
+ */
+function caretHost(log?: (message: string) => void): PowerShellHost | null {
+  if (host?.isUnavailable) {
+    givenUpAt ??= Date.now();
+    if (Date.now() - givenUpAt < HOST_COOL_OFF_MS) return null;
+    host.dispose();
+    host = null;
+    givenUpAt = null;
+    noteFailure('host restarted', 'trying the caret host again after a cool-off');
+  }
   host ??= new PowerShellHost({
     spawn: () => spawn('powershell.exe', hostArguments(), { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }),
     setupScript: CARET_PRELUDE,
     startupTimeoutMs: HOST_STARTUP_TIMEOUT_MS,
     requestTimeoutMs: CARET_HOST_TIMEOUT_MS,
     log,
+    giveUpMessage: 'the caret host keeps stopping; the HUD stays at the bottom for 5 minutes, then it tries again',
   });
   return host;
 }
 
 /** Start the host ahead of the first dictation, so its C# is already compiled. Safe off Windows. */
 export function startCaretHost(log?: (message: string) => void): void {
+  report = log;
   if (process.platform !== 'win32') return;
-  void caretHost(log).start();
+  void caretHost(log ?? report)?.start();
 }
 
 /** Stop the host. Safe to call when it never started. */
@@ -146,31 +184,43 @@ export interface CaretFix {
 export async function lookUpCaret(): Promise<CaretFix | null> {
   if (process.platform !== 'win32') return null;
   try {
-    const answer = caretHost().run(caretBody(), { timeoutMs: CARET_HOST_TIMEOUT_MS });
-    // A late answer is dropped; the request still finishes in the host on its own.
-    answer.catch(() => undefined);
+    const current = caretHost();
+    if (!current) return null;
+    const answer = current.run(caretBody(), { timeoutMs: CARET_HOST_TIMEOUT_MS });
     const output = await new Promise<string | null>((resolve) => {
-      const timer = setTimeout(() => resolve(null), CARET_LOOKUP_TIMEOUT_MS);
+      const timer = setTimeout(() => {
+        noteFailure('timeout', `no answer within ${CARET_LOOKUP_TIMEOUT_MS} ms`);
+        resolve(null);
+      }, CARET_LOOKUP_TIMEOUT_MS);
       answer.then(
         (text) => {
           clearTimeout(timer);
           resolve(text);
         },
-        () => {
+        (error: unknown) => {
           clearTimeout(timer);
+          // A late failure is still worth a line: after our own wait ran out this is the only report of why.
+          const kind = error instanceof PowerShellHostError ? (error.kind === 'unavailable' ? 'host disabled' : error.kind) : 'script';
+          noteFailure(kind, error instanceof Error ? error.message : String(error));
           resolve(null);
         },
       );
     });
     if (output === null) return null;
-    const physical = parseCaretLine(output.trim().split(/\r?\n/).pop() ?? '', MIN_CARET_HEIGHT, MAX_CARET_HEIGHT);
+    const lines = output.trim().split(/\r?\n/);
+    if (lines.some((line) => line.startsWith('UVWARN:dpi'))) {
+      noteFailure('dpi', 'could not set per-monitor DPI awareness; coordinates may be scaled');
+    }
+    const answerLine = [...lines].reverse().find((line) => !line.startsWith('UVWARN:')) ?? '';
+    const physical = parseCaretLine(answerLine, MIN_CARET_HEIGHT, MAX_CARET_HEIGHT);
     if (!physical) return null;
     const rect = screen.screenToDipRect(null, physical);
     const centre = { x: Math.round(rect.x + rect.width / 2), y: Math.round(rect.y + rect.height / 2) };
     const display = screen.getAllDisplays().find((d) => contains(d.bounds, centre));
     if (!display) return null;
     return { rect, workArea: display.workArea };
-  } catch {
+  } catch (error) {
+    noteFailure('script', error instanceof Error ? error.message : String(error));
     return null;
   }
 }

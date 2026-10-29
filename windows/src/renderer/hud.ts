@@ -312,7 +312,8 @@ function mountHudCapsule(): void {
     const wasActive = active;
     const nextPlace = next.placement ?? DEFAULT_PLACEMENT;
     // A frame with a new `appearance` is a new dictation on screen; a moved placement re-enters on its new side.
-    const appearance = (next as { appearance?: number }).appearance ?? lastAppearance;
+    // A frame from an older main process carries no appearance number.
+    const appearance = next.appearance ?? lastAppearance;
     const reenter = appearance !== lastAppearance || JSON.stringify(nextPlace) !== JSON.stringify(place);
     lastAppearance = appearance;
     place = nextPlace;

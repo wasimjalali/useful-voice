@@ -63,14 +63,14 @@
   min-height: 0;
   overflow-y: auto;
   /* Spans the rail's 8px gutters (items stay inset) so the scroll box doesn't clip
-     the selection bar, which sits in the gutter. */
+     the selected item's shadow. */
   width: calc(100% + 16px);
   margin: 0 -8px;
   padding: 0 8px;
 }
 
-/* Icon over label. The selected item lifts onto the surface and carries a 2px ink bar on
-   its leading edge, so selection never rests on tint alone. */
+/* Icon over label. The selected item lifts onto the surface (edge and soft shadow), so
+   selection never rests on tint alone. */
 .rail-item {
   position: relative;
   display: flex;
@@ -95,17 +95,6 @@
   background: var(--surface);
   color: var(--ink);
   box-shadow: var(--shadow-sm), 0 0 0 0.5px var(--edge);
-}
-.rail-item[aria-current="page"]::before {
-  content: "";
-  position: absolute;
-  /* In the rail's 8px gutter, outside the item, clear of a wide label. */
-  left: -5px;
-  top: 14px;
-  bottom: 14px;
-  width: 2px;
-  border-radius: 1px;
-  background: var(--ink);
 }
 .rail-glyph { display: grid; place-items: center; }
 .rail-glyph svg { width: 22px; height: 22px; }

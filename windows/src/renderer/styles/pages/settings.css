@@ -42,8 +42,6 @@
   background: var(--sunken);
   color: var(--ink);
   font-weight: 550;
-  /* A shape cue besides the tint: a 2px ink bar on the leading edge. */
-  box-shadow: inset 2px 0 0 var(--ink);
 }
 
 /* Under 900 px the index becomes a row above the groups. After the base rules, or they win. */

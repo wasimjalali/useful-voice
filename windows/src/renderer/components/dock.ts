@@ -13,6 +13,7 @@ import { STREAM_ICONS } from './dockIcons.js';
 import { createLandingMark, setLandingMarkLevels, swellScales, type LandingMarkOptions } from './landingMark.js';
 import { createLevelSmoother } from './waveform.js';
 import { languagePicker, type LanguagePickerHandle } from './languagePicker.js';
+import { createDrawnCheck, createShimmerLabel, createWorkingDots } from './workingMark.js';
 import { formatAccelerator, formatClock, pluralize } from './bubbleFormat.js';
 
 export interface DockOptions {
@@ -251,8 +252,8 @@ export function createDock(options: DockOptions): DockHandle {
       el(
         'div',
         { class: 'dock-status', role: 'status' },
-        el('span', { class: 'dock-spinner', 'aria-hidden': 'true' }),
-        el('b', {}, label),
+        createWorkingDots(16),
+        createShimmerLabel(label),
         since,
       ),
       el('span', { class: 'spacer' }),
@@ -291,7 +292,7 @@ export function createDock(options: DockOptions): DockHandle {
       el(
         'div',
         { class: 'dock-status', role: 'status' },
-        icon(STREAM_ICONS.check, 18),
+        createDrawnCheck(14),
         el('b', {}, text),
         el('span', { class: 'dock-muted' }, pluralize(info.words, 'word')),
       ),

@@ -47,6 +47,14 @@ struct StreamTimeline: View {
                     .padding(.horizontal, 28)
                     .padding(.bottom, 24)
                 }
+                // Content dissolves into the surface above the dock instead of being sliced.
+                .mask(alignment: .top) {
+                    VStack(spacing: 0) {
+                        Rectangle().fill(.black)
+                        LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                            .frame(height: 16)
+                    }
+                }
                 .coordinateSpace(name: Self.scrollSpace)
                 .defaultScrollAnchor(.bottom)
                 .onChange(of: store.focusedID) { _, id in
@@ -148,10 +156,18 @@ private struct StreamDayBand: View {
             Rectangle().fill(Theme.line).frame(height: 1).opacity(pinned ? 1 : 0)
         }
         .padding(.horizontal, -28)
+        // A soft 12 pt fade under the stuck band; it never catches clicks.
+        .overlay(alignment: .bottom) {
+            LinearGradient(colors: [Theme.surface, Theme.surface.opacity(0)], startPoint: .top, endPoint: .bottom)
+                .frame(height: 12)
+                .offset(y: 12)
+                .opacity(pinned ? 1 : 0)
+                .allowsHitTesting(false)
+        }
         .background {
             GeometryReader { proxy in
                 Color.clear
-                    .onChange(of: proxy.frame(in: .named(StreamTimeline.scrollSpace)).minY) { _, y in
+                    .onChange(of: proxy.frame(in: .named(StreamTimeline.scrollSpace)).minY, initial: true) { _, y in
                         pinned = y <= 1
                     }
             }

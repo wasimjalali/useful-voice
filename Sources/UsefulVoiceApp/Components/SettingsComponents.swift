@@ -136,11 +136,6 @@ private struct SettingsIndexRow: View {
                 .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
                 .background(isActive ? Theme.sunken : (hovering ? Theme.sunken.opacity(0.5) : Color.clear),
                             in: RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
-                .overlay(alignment: .leading) {
-                    if isActive {
-                        Capsule().fill(Theme.ink).frame(width: 2, height: 16).padding(.leading, -8)
-                    }
-                }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

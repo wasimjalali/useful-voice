@@ -235,6 +235,7 @@ function mountHudCapsule(): void {
   /** The frame the bubble currently draws: the only state, always replaced whole. */
   let frame: HudWireFrame | null = null;
   let place: HudPlacement = DEFAULT_PLACEMENT;
+  let lastAppearance = 0;
   /** A frame stream is on screen (false once main says there is no view, while the exit plays). */
   let active = false;
   /** The bubble is folded away (or was never shown): only the done chip may be visible. */
@@ -309,7 +310,12 @@ function mountHudCapsule(): void {
   function build(next: HudWireFrame): void {
     const t = performance.now();
     const wasActive = active;
-    place = next.placement ?? DEFAULT_PLACEMENT;
+    const nextPlace = next.placement ?? DEFAULT_PLACEMENT;
+    // A frame with a new `appearance` is a new dictation on screen; a moved placement re-enters on its new side.
+    const appearance = (next as { appearance?: number }).appearance ?? lastAppearance;
+    const reenter = appearance !== lastAppearance || JSON.stringify(nextPlace) !== JSON.stringify(place);
+    lastAppearance = appearance;
+    place = nextPlace;
     applyPlacement();
 
     frame = next;
@@ -344,7 +350,7 @@ function mountHudCapsule(): void {
 
     hideChip();
     const row = buildRow(next, t);
-    if (!wasActive || folded) {
+    if (!wasActive || folded || reenter) {
       // A new appearance, or a bubble state after the fold: it enters.
       capsule.replaceChildren(row.el);
       capsule.classList.remove('is-hidden');
@@ -358,6 +364,7 @@ function mountHudCapsule(): void {
       folded = false;
       foldAt = null;
       enterAt = t;
+      anchor.style.opacity = '0';
       bloomAt = next.kind === 'recording' ? t : null;
     } else {
       // A state change: the old row fades, the new follows, the width eases.

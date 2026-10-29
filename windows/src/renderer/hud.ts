@@ -274,7 +274,10 @@ function mountHudCapsule(): void {
       return;
     }
     applyStyle(next.style ?? DEFAULT_STYLE);
-    if (frame && frame.seq === next.seq) {
+    // Same seq is an update in place, unless the window moved (placement) or a new appearance began.
+    const moved = JSON.stringify(next.placement ?? DEFAULT_PLACEMENT) !== JSON.stringify(place);
+    const newAppearance = next.appearance !== undefined && next.appearance !== lastAppearance;
+    if (frame && frame.seq === next.seq && !moved && !newAppearance) {
       patch(next);
       return;
     }

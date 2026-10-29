@@ -392,7 +392,7 @@ test('a placement that flips mid-appearance re-enters the bubble on its new side
   let box = (await hud.locator('.hud-capsule').boundingBox())!;
   expect(box.x).toBeCloseTo(28, 0);
   const sample = await sampleEntrance(hud, () =>
-    send('hud:view', { kind: 'recording', elapsedSeconds: 55, stopsIn: 5, seq: 2, appearance: 1, placement: { kind: 'caret', flipped: true }, style }),
+    send('hud:view', { kind: 'recording', elapsedSeconds: 55, stopsIn: 5, seq: 1, appearance: 1, placement: { kind: 'caret', flipped: true }, style }),
   );
   expect(sample.minScale).toBeLessThan(0.9);
   box = (await hud.locator('.hud-capsule').boundingBox())!;
@@ -401,6 +401,9 @@ test('a placement that flips mid-appearance re-enters the bubble on its new side
   const tb = (await hud.locator('.hud-tail').boundingBox())!;
   expect(tb.x + tb.width / 2).toBeCloseTo(492, 0);
   await expect(hud.locator('.hud-inner')).toHaveCount(1);
+  // Sent with the same seq, as main does for a telemetry update: the countdown is drawn on the new side.
+  await expect(hud.locator('.hud-stops')).toHaveText('Stops in 5 s');
+  await expect(hud.locator('.hud-time')).toHaveText('0:55');
   await shoot(hud, 'hud-caret-flip-reenter.png');
 });
 

@@ -5,7 +5,7 @@ import type {
   DictationTelemetry,
   HistoryEntryDTO,
   HudAction,
-  HudFrame,
+  HudWireFrame,
   MemorySnapshotDTO,
   FirstRunKeyCheck,
   FirstRunStateDTO,
@@ -109,8 +109,8 @@ const api = {
    * What the HUD window should draw: the latest view, or null once it should sink away.
    * The window draws only this, so a stale view can never be left on screen.
    */
-  onHudView: (handler: (frame: HudFrame | null) => void): (() => void) => {
-    const listener = (_event: unknown, payload: HudFrame | null): void => handler(payload);
+  onHudView: (handler: (frame: HudWireFrame | null) => void): (() => void) => {
+    const listener = (_event: unknown, payload: HudWireFrame | null): void => handler(payload);
     ipcRenderer.on('hud:view', listener);
     return () => ipcRenderer.removeListener('hud:view', listener);
   },

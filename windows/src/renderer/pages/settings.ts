@@ -585,7 +585,64 @@ function appearanceGroup(settings: SettingsDTO): HTMLElement {
     group.append(button);
   }
   mark(settings.appearance);
-  return surface(row('Theme', group));
+  return surface(row('Theme', group), row('Dictation pill', pillControl(settings)));
+}
+
+/** The swatch colours per colorway: the pill's surface, its record dot and its waveform bar. */
+const PILL_SWATCHES: Record<'ink' | 'paper' | 'signal' | 'accent', { surface: string; dot: string; bar: string }> = {
+  ink: { surface: '#171717', dot: '#F0795C', bar: '#D4D4D4' },
+  paper: { surface: '#FFFFFF', dot: '#C2412A', bar: '#5C5C5C' },
+  signal: { surface: '#171717', dot: '#F0795C', bar: '#F0795C' },
+  accent: { surface: '#171717', dot: '', bar: '' },
+};
+
+/** Four colorways for the dictation pill, and a colour well for the accent hue. */
+function pillControl(settings: SettingsDTO): HTMLElement {
+  const buttons = new Map<string, HTMLButtonElement>();
+  const swatches = new Map<string, HTMLElement>();
+  const mark = (value: string): void => {
+    for (const [id, button] of buttons) button.setAttribute('aria-pressed', id === value ? 'true' : 'false');
+  };
+  const paintAccent = (hue: string): void => {
+    const swatch = swatches.get('accent');
+    swatch?.style.setProperty('--sw-dot', hue);
+    swatch?.style.setProperty('--sw-bar', hue);
+  };
+  const group = el('div', { class: 'segmented', role: 'group', 'aria-label': 'Dictation pill' } as never);
+  for (const [value, label] of [['ink', 'Ink'], ['paper', 'Paper'], ['signal', 'Signal'], ['accent', 'Accent']] as const) {
+    const colours = PILL_SWATCHES[value];
+    const swatch = el('span', { class: `s-pill-swatch s-pill-${value}`, 'aria-hidden': 'true' } as never, el('i', { class: 's-pill-dot' }), el('i', { class: 's-pill-bar' }));
+    swatch.style.setProperty('--sw-surface', colours.surface);
+    swatch.style.setProperty('--sw-dot', colours.dot);
+    swatch.style.setProperty('--sw-bar', colours.bar);
+    swatches.set(value, swatch);
+    const button = el('button', { type: 'button' } as never, swatch, label);
+    button.addEventListener('click', () => {
+      const before = state.settings?.hudColorway ?? settings.hudColorway;
+      mark(value);
+      void save({ hudColorway: value }).then((ok) => {
+        if (!ok) mark(before);
+      });
+    });
+    buttons.set(value, button);
+    group.append(button);
+  }
+  const well = el('input', { type: 'color', id: 'hud-accent', class: 's-pill-well', 'aria-label': 'Accent colour', value: settings.hudAccent.toLowerCase() } as never);
+  paintAccent(settings.hudAccent);
+  well.addEventListener('change', () => {
+    const beforeHue = (state.settings?.hudAccent ?? settings.hudAccent).toLowerCase();
+    const beforeColorway = state.settings?.hudColorway ?? settings.hudColorway;
+    paintAccent(well.value);
+    mark('accent');
+    void save({ hudAccent: well.value.toUpperCase(), hudColorway: 'accent' }).then((ok) => {
+      if (ok) return;
+      well.value = beforeHue;
+      paintAccent(beforeHue);
+      mark(beforeColorway);
+    });
+  });
+  mark(settings.hudColorway);
+  return el('div', { class: 's-pill' }, group, well);
 }
 
 function dataGroup(settings: SettingsDTO, page: HTMLElement): HTMLElement {

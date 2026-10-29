@@ -127,47 +127,66 @@ function noteFailure(kind: string, detail: string): void {
 }
 
 let host: PowerShellHost | null = null;
-/** When the host was given up on (it kept dying), or null. */
-let givenUpAt: number | null = null;
-/** A host that was given up on is replaced by a fresh one after this long. */
+let replaceTimer: NodeJS.Timeout | null = null;
+/** A host that was given up on is replaced by a fresh one, started warm, after this long. */
 const HOST_COOL_OFF_MS = 5 * 60_000;
+const GIVE_UP_MESSAGE = 'the caret host keeps stopping; the HUD stays at the bottom for 5 minutes, then it tries again';
 
-/**
- * The caret host: its own process, so a lookup never queues in front of (or behind) a paste.
- * A host that kept dying (one hung UI Automation provider can do that in a couple of dictations)
- * is dropped, lookups answer null meanwhile, and a new host starts after a cool-off.
- */
-function caretHost(log?: (message: string) => void): PowerShellHost | null {
-  if (host?.isUnavailable) {
-    givenUpAt ??= Date.now();
-    if (Date.now() - givenUpAt < HOST_COOL_OFF_MS) return null;
-    host.dispose();
-    host = null;
-    givenUpAt = null;
-    noteFailure('host restarted', 'trying the caret host again after a cool-off');
-  }
-  host ??= new PowerShellHost({
+/** The caret host: its own process, so a lookup never queues in front of (or behind) a paste. */
+function createHost(): PowerShellHost {
+  return new PowerShellHost({
     spawn: () => spawn('powershell.exe', hostArguments(), { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }),
     setupScript: CARET_PRELUDE,
     startupTimeoutMs: HOST_STARTUP_TIMEOUT_MS,
     requestTimeoutMs: CARET_HOST_TIMEOUT_MS,
-    log,
-    giveUpMessage: 'the caret host keeps stopping; the HUD stays at the bottom for 5 minutes, then it tries again',
+    log: (message) => {
+      // The host announces it gave up (it kept dying: one hung UI Automation provider can do that in
+      // a couple of dictations). The cool-off runs from this moment.
+      if (message === GIVE_UP_MESSAGE) scheduleReplacement();
+      report?.(message);
+    },
+    giveUpMessage: GIVE_UP_MESSAGE,
   });
-  return host;
+}
+
+/** Lookups answer null while the host is given up on; this starts a new, warm one when the cool-off ends. */
+function scheduleReplacement(): void {
+  if (replaceTimer) return;
+  replaceTimer = setTimeout(() => {
+    replaceTimer = null;
+    const old = host;
+    host = createHost();
+    old?.dispose();
+    noteFailure('host restarted', 'trying the caret host again after a cool-off');
+    void host.start();
+  }, HOST_COOL_OFF_MS);
+  replaceTimer.unref();
+}
+
+function caretHost(): PowerShellHost | null {
+  host ??= createHost();
+  return host.isUnavailable ? null : host;
 }
 
 /** Start the host ahead of the first dictation, so its C# is already compiled. Safe off Windows. */
 export function startCaretHost(log?: (message: string) => void): void {
   report = log;
   if (process.platform !== 'win32') return;
-  void caretHost(log ?? report)?.start();
+  void caretHost()?.start();
 }
 
 /** Stop the host. Safe to call when it never started. */
 export function stopCaretHost(): void {
+  if (replaceTimer) clearTimeout(replaceTimer);
+  replaceTimer = null;
   host?.dispose();
   host = null;
+}
+
+/** E2E only: what the next lookups answer, and after how long (null: no caret found). */
+let fake: { fix: CaretFix | null; delayMs: number } | undefined;
+export function setE2eCaret(fix: CaretFix | null, delayMs: number): void {
+  fake = { fix, delayMs };
 }
 
 export interface CaretFix {
@@ -182,10 +201,18 @@ export interface CaretFix {
  * is not a text caret, one outside every display, or no answer within `CARET_LOOKUP_TIMEOUT_MS`.
  */
 export async function lookUpCaret(): Promise<CaretFix | null> {
+  if (fake) {
+    const answer = fake;
+    await new Promise<void>((resolve) => setTimeout(resolve, answer.delayMs));
+    return answer.fix;
+  }
   if (process.platform !== 'win32') return null;
   try {
     const current = caretHost();
-    if (!current) return null;
+    if (!current) {
+      noteFailure('host disabled', 'the caret host was given up on; waiting for the cool-off');
+      return null;
+    }
     const answer = current.run(caretBody(), { timeoutMs: CARET_HOST_TIMEOUT_MS });
     const output = await new Promise<string | null>((resolve) => {
       const timer = setTimeout(() => {

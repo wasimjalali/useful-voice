@@ -346,3 +346,27 @@ export function languageLabel(value: string): string {
   if (value === MULTILINGUAL_CODE_SWITCHING.code) return 'Multiple languages';
   return findLanguage(value)?.nativeName ?? 'Auto-detect';
 }
+
+const FINISHED = new Set<HudView['kind']>(['done', 'copied', 'cancelled', 'error']);
+
+/**
+ * Whether a frame starts a new appearance (a fresh placement, entrance and caret lookup) rather
+ * than continuing the one on screen.
+ *  - `base`: the kind showing before, not counting language confirmations (they only cover a view),
+ *    or null when nothing was showing. `hidden`: the window is not on screen.
+ *  - `waiting`: an appearance is still waiting for the caret; frames join it.
+ *  - `newDictation`: this is a recording of a different dictation than the pending appearance's.
+ */
+export function startsNewAppearance(input: {
+  kind: HudView['kind'];
+  base: HudView['kind'] | null;
+  hidden: boolean;
+  waiting: boolean;
+  newDictation: boolean;
+}): boolean {
+  if (input.newDictation) return true;
+  if (input.waiting) return false;
+  if (input.hidden || input.base === null) return true;
+  // A recording, or a retry's transcribing, over a finished or failed view.
+  return (input.kind === 'recording' || input.kind === 'transcribing') && FINISHED.has(input.base);
+}

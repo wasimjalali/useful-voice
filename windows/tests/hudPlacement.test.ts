@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { startsNewAppearance } from '../src/core/hudModel.js';
 import {
   HUD_HEIGHT,
   HUD_WIDTH,
@@ -247,5 +248,40 @@ describe('fitSide', () => {
   it('stays put when neither side fits, and works on a monitor with negative coordinates', () => {
     expect(fitSide(right, caretAt(100, 400), { x: 0, y: 0, width: 400, height: 300 }, 340)).toEqual(right);
     expect(fitSide(right, caretAt(-300, 100), LEFT, 340)).toEqual(left);
+  });
+});
+
+describe('startsNewAppearance', () => {
+  const base = { kind: 'recording', base: 'recording', hidden: false, waiting: false, newDictation: false } as const;
+
+  it('continues the same dictation', () => {
+    expect(startsNewAppearance(base)).toBe(false);
+    expect(startsNewAppearance({ ...base, kind: 'transcribing' })).toBe(false);
+    expect(startsNewAppearance({ ...base, kind: 'cancelled' })).toBe(false);
+  });
+
+  it('starts when nothing was showing', () => {
+    expect(startsNewAppearance({ ...base, base: null })).toBe(true);
+    expect(startsNewAppearance({ ...base, hidden: true })).toBe(true);
+  });
+
+  it('starts for a recording over a finished or failed view, also one a language view covered', () => {
+    for (const over of ['done', 'copied', 'cancelled', 'error'] as const) {
+      expect(startsNewAppearance({ ...base, base: over })).toBe(true);
+    }
+  });
+
+  it('starts for a retry whose first frame is transcribing over an error', () => {
+    expect(startsNewAppearance({ ...base, kind: 'transcribing', base: 'error' })).toBe(true);
+    expect(startsNewAppearance({ ...base, kind: 'transcribing', base: 'copied' })).toBe(true);
+  });
+
+  it('lets a frame join an appearance that still waits for the caret', () => {
+    expect(startsNewAppearance({ ...base, hidden: true, waiting: true })).toBe(false);
+    expect(startsNewAppearance({ ...base, kind: 'cancelled', hidden: true, waiting: true })).toBe(false);
+  });
+
+  it('lets a newer dictation supersede a waiting appearance', () => {
+    expect(startsNewAppearance({ ...base, hidden: true, waiting: true, newDictation: true })).toBe(true);
   });
 });

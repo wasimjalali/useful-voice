@@ -30,6 +30,7 @@ import {
   type HudStyle,
   type HudWireFrame,
   parseAppsUseLightTheme,
+  startsNewAppearance,
 } from '../core/hudModel.js';
 import {
   HUD_HEIGHT,
@@ -199,6 +200,10 @@ class UsefulVoiceApp {
   private hudAppearance = 0;
   /** The appearance whose placement is still waiting for the caret (0 for none). */
   private hudPlacing = 0;
+  /** The dictation (service sequence) the current appearance was started for. */
+  private hudDictation = 0;
+  /** The kind showing, not counting language confirmations, or null when nothing is. */
+  private hudBase: HudFrame['kind'] | null = null;
   /** The caret this appearance was placed beside, to move the bubble to the other side if a wider state needs it. */
   private hudCaret: CaretFix | null = null;
   /** Windows' own dark mode, read from the registry; null until read or when it cannot be. */
@@ -864,14 +869,17 @@ class UsefulVoiceApp {
       const window = E2E ? null : this.ensureHudWindow();
       if (window) {
         const waiting = this.hudPlacing !== 0 && this.hudPlacing === this.hudAppearance && before !== null;
-        // A new appearance: nothing was showing, or a recording follows a finished or failed one.
-        const starts =
-          !waiting &&
-          (!window.isVisible() ||
-            before === null ||
-            (frame.kind === 'recording' && ['done', 'copied', 'cancelled', 'error'].includes(before.kind)));
+        const starts = startsNewAppearance({
+          kind: frame.kind,
+          base: this.hudBase,
+          hidden: !window.isVisible(),
+          waiting,
+          // A recording of another dictation than the one the appearance was started for.
+          newDictation: frame.kind === 'recording' && this.service.sequence !== this.hudDictation,
+        });
         if (starts) {
           this.hudAppearance += 1;
+          this.hudDictation = this.service.sequence;
           this.hudGate = this.guardHudGate(this.beginHudAppearance(window, frame, this.hudAppearance));
         } else if (waiting) {
           // begin fits the bubble to whatever frame stands when the caret answer is in.
@@ -888,6 +896,8 @@ class UsefulVoiceApp {
         if (this.hudWindow && !this.hudWindow.isDestroyed()) this.hudWindow.hide();
       }, HUD_EXIT_MS + 60);
     }
+    if (!frame) this.hudBase = null;
+    else if (frame.kind !== 'language') this.hudBase = frame.kind;
     this.scheduleHudPush();
     this.announcer.hud(frame);
   }
@@ -910,6 +920,15 @@ class UsefulVoiceApp {
    * newer appearance has begun by then, this one changes nothing.
    */
   private async beginHudAppearance(window: BrowserWindow, frame: HudFrame, appearance: number): Promise<void> {
+    try {
+      await this.placeHudAppearance(window, frame, appearance);
+    } finally {
+      // Whatever happened, no frame may keep joining an appearance that is over.
+      if (this.hudPlacing === appearance) this.hudPlacing = 0;
+    }
+  }
+
+  private async placeHudAppearance(window: BrowserWindow, frame: HudFrame, appearance: number): Promise<void> {
     const wasHidden = !window.isVisible();
     const lookup = frame.kind === 'recording' ? this.caretLookup : null;
     let fix: CaretFix | null = null;

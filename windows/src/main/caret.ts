@@ -127,15 +127,32 @@ function noteFailure(kind: string, detail: string): void {
 }
 
 let host: PowerShellHost | null = null;
+/** When the host was given up on (it kept dying), or null. */
+let givenUpAt: number | null = null;
+/** A host that was given up on is replaced by a fresh one after this long. */
+const HOST_COOL_OFF_MS = 5 * 60_000;
 
-/** The caret host: its own process, so a lookup never queues in front of (or behind) a paste. */
-function caretHost(log?: (message: string) => void): PowerShellHost {
+/**
+ * The caret host: its own process, so a lookup never queues in front of (or behind) a paste.
+ * A host that kept dying (one hung UI Automation provider can do that in a couple of dictations)
+ * is dropped, lookups answer null meanwhile, and a new host starts after a cool-off.
+ */
+function caretHost(log?: (message: string) => void): PowerShellHost | null {
+  if (host?.isUnavailable) {
+    givenUpAt ??= Date.now();
+    if (Date.now() - givenUpAt < HOST_COOL_OFF_MS) return null;
+    host.dispose();
+    host = null;
+    givenUpAt = null;
+    noteFailure('host restarted', 'trying the caret host again after a cool-off');
+  }
   host ??= new PowerShellHost({
     spawn: () => spawn('powershell.exe', hostArguments(), { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }),
     setupScript: CARET_PRELUDE,
     startupTimeoutMs: HOST_STARTUP_TIMEOUT_MS,
     requestTimeoutMs: CARET_HOST_TIMEOUT_MS,
     log,
+    giveUpMessage: 'the caret host keeps stopping; the HUD stays at the bottom for 5 minutes, then it tries again',
   });
   return host;
 }
@@ -144,7 +161,7 @@ function caretHost(log?: (message: string) => void): PowerShellHost {
 export function startCaretHost(log?: (message: string) => void): void {
   report = log;
   if (process.platform !== 'win32') return;
-  void caretHost(log).start();
+  void caretHost(log ?? report)?.start();
 }
 
 /** Stop the host. Safe to call when it never started. */
@@ -167,7 +184,9 @@ export interface CaretFix {
 export async function lookUpCaret(): Promise<CaretFix | null> {
   if (process.platform !== 'win32') return null;
   try {
-    const answer = caretHost().run(caretBody(), { timeoutMs: CARET_HOST_TIMEOUT_MS });
+    const current = caretHost();
+    if (!current) return null;
+    const answer = current.run(caretBody(), { timeoutMs: CARET_HOST_TIMEOUT_MS });
     const output = await new Promise<string | null>((resolve) => {
       const timer = setTimeout(() => {
         noteFailure('timeout', `no answer within ${CARET_LOOKUP_TIMEOUT_MS} ms`);

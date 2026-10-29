@@ -23,8 +23,14 @@ export const HUD_HEIGHT = 96;
 /** How far the bubble sits inside the window's edge (room for its shadow and halo). */
 const INSET = 28;
 const BUBBLE_HEIGHT = 30;
-/** The widest bubble, used to decide a flip and to keep it on screen. */
+/** The widest bubble, for the rectangle `bubbleRect` reports when the real width is not known. */
 const BUBBLE_MAX_WIDTH = 340;
+/**
+ * Room the bubble needs beyond the caret before it flips to the caret's left (flipping covers the
+ * words just before the cursor, so only when there is truly no room), and how much of it must
+ * stay on screen when the window is clamped.
+ */
+const BUBBLE_MIN_ROOM = 170;
 const CHIP_HEIGHT = 22;
 const CHIP_MAX_WIDTH = 160;
 /** Gap between the caret and the bubble / the done chip. */
@@ -42,7 +48,7 @@ const bottom = (area: Rect): number => area.y + area.height;
 /** Caret placement when there is a caret, flipped to its left when the bubble would not fit on the right. */
 export function decidePlacement(caret: Rect | null, workArea: Rect): HudPlacement {
   if (!caret) return { kind: 'bottom' };
-  return { kind: 'caret', flipped: caret.x + caret.width + CARET_GAP + BUBBLE_MAX_WIDTH > right(workArea) };
+  return { kind: 'caret', flipped: caret.x + caret.width + CARET_GAP + BUBBLE_MIN_ROOM > right(workArea) };
 }
 
 /** The window's top-left for the bottom spot, plus the user's remembered drag (bottom only). */
@@ -76,10 +82,10 @@ export function hudWindowOrigin(
   const x = placement.flipped
     ? anchor.x - CARET_GAP - (HUD_WIDTH - INSET)
     : anchor.x + anchor.width + CARET_GAP - INSET;
-  return clampCaretWindow(x, Math.round(centreY - HUD_HEIGHT / 2), placement.flipped, BUBBLE_HEIGHT, BUBBLE_MAX_WIDTH, workArea);
+  return clampCaretWindow(x, Math.round(centreY - HUD_HEIGHT / 2), placement.flipped, BUBBLE_HEIGHT, BUBBLE_MIN_ROOM, workArea);
 }
 
-/** Keep the bubble (or chip) of a caret window inside the work area. */
+/** Keep at least `maxWidth` (the room the bubble or chip needs) of a caret window's bubble inside the work area. */
 function clampCaretWindow(
   x: number,
   y: number,

@@ -25,21 +25,23 @@ describe('decidePlacement', () => {
     expect(decidePlacement(caretAt(800, 400), SCREEN)).toEqual({ kind: 'caret', flipped: false });
   });
 
-  it('flips when the widest bubble would pass the right edge', () => {
-    // right + 14 + 340 = 1920 exactly: still fits.
-    expect(decidePlacement(caretAt(1920 - 354, 400), SCREEN)).toEqual({ kind: 'caret', flipped: false });
+  it('flips only when there is truly no room: less than 170 beyond the caret', () => {
+    // right + 14 + 170 = 1920 exactly: still fits.
+    expect(decidePlacement(caretAt(1920 - 184, 400), SCREEN)).toEqual({ kind: 'caret', flipped: false });
     // One pixel more: flips.
-    expect(decidePlacement(caretAt(1920 - 353, 400), SCREEN)).toEqual({ kind: 'caret', flipped: true });
+    expect(decidePlacement(caretAt(1920 - 183, 400), SCREEN)).toEqual({ kind: 'caret', flipped: true });
+    // Room for a short bubble but not the widest one: stays on the right of the cursor.
+    expect(decidePlacement(caretAt(1920 - 300, 400), SCREEN)).toEqual({ kind: 'caret', flipped: false });
   });
 
   it('measures the flip against the right edge of a monitor with negative coordinates', () => {
     // LEFT's right edge is x = 0.
-    expect(decidePlacement(caretAt(-300, 200), LEFT)).toEqual({ kind: 'caret', flipped: true });
+    expect(decidePlacement(caretAt(-100, 200), LEFT)).toEqual({ kind: 'caret', flipped: true });
     expect(decidePlacement(caretAt(-700, 200), LEFT)).toEqual({ kind: 'caret', flipped: false });
   });
 
   it('uses the caret right edge, not its left, for a caret with width', () => {
-    const wide: Rect = { x: 1920 - 400, y: 300, width: 60, height: 20 };
+    const wide: Rect = { x: 1920 - 220, y: 300, width: 60, height: 20 };
     expect(decidePlacement(wide, SCREEN)).toEqual({ kind: 'caret', flipped: true });
   });
 });
@@ -85,6 +87,18 @@ describe('hudWindowOrigin', () => {
     expect(bubble.x + bubble.width).toBe(1700 - 14);
   });
 
+  it('never pushes the leading edge past 170 from the right edge, nor over the caret further left', () => {
+    const placement = { kind: 'caret', flipped: false } as const;
+    const origin = hudWindowOrigin(placement, caretAt(1745, 400), SCREEN);
+    expect(bubbleRect(placement, origin).x).toBe(1920 - 170);
+    // With room, the bubble is not moved at all.
+    expect(bubbleRect(placement, hudWindowOrigin(placement, caretAt(1700, 400), SCREEN)).x).toBe(1714);
+    const flipped = { kind: 'caret', flipped: true } as const;
+    const left = hudWindowOrigin(flipped, caretAt(100, 400), SCREEN);
+    const rect = bubbleRect(flipped, left);
+    expect(rect.x + rect.width).toBe(170);
+  });
+
   it('clamps a caret near the bottom so the bubble stays on screen', () => {
     const origin = hudWindowOrigin({ kind: 'caret', flipped: false }, caretAt(800, 1035), SCREEN);
     const bubble = bubbleRect({ kind: 'caret', flipped: false }, origin);
@@ -98,7 +112,7 @@ describe('hudWindowOrigin', () => {
 
   it('clamps a caret at the far left of a flipped bubble', () => {
     const origin = hudWindowOrigin({ kind: 'caret', flipped: true }, caretAt(100, 400), SCREEN);
-    expect(bubbleRect({ kind: 'caret', flipped: true }, origin).x).toBeGreaterThanOrEqual(0);
+    expect(bubbleRect({ kind: 'caret', flipped: true }, origin).x + 340).toBeGreaterThanOrEqual(170);
   });
 
   it('works on a monitor with negative coordinates', () => {

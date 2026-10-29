@@ -104,18 +104,11 @@ enum HUDSnapshot {
                                    initialHighlight: "lang:bn")
                 })
         } else if let display = display(named: name) {
+            let placement = Self.placement
             scene = AnyView(
-                ZStack(alignment: .bottom) {
-                    Theme.surface
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Slack #launch").font(.uv(.ui, .semibold))
-                        Text("Looks good to me. Ship it once the checklist is green")
-                            .font(.uv(.body))
-                    }
-                    .foregroundStyle(Theme.ink)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(20)
-                    HUDView(display: display, waveformFixture: waveformFixture(named: name))
+                Self.stage(placement: placement, size: size) {
+                    HUDView(display: display, placement: placement, palette: Self.palette,
+                            waveformFixture: waveformFixture(named: name))
                 })
         } else {
             fputs("UV_HUD_STATE must be one of: \(names.joined(separator: ", "))\n", stderr)
@@ -123,5 +116,172 @@ enum HUDSnapshot {
         }
         SnapshotWriter.write(view: scene, size: size, appearance: appearance, to: url,
                              completion: completion)
+    }
+}
+
+// MARK: - Placement, colorway and frames
+
+/// `UV_HUD_PLACEMENT=bottom|caret|caretFlipped`, `UV_HUD_COLORWAY=ink|paper|signal|accent`,
+/// `UV_HUD_ACCENT=#RRGGBB` and `UV_HUD_SYSTEM_DARK=1` shape the snapshot; nothing is saved.
+/// `UV_HUD_FRAMES=<from>:<to>:<step>` renders a scripted dictation (record, transcribe,
+/// insert, done, exit) as one PNG per moment, next to the `UV_SNAPSHOT` path with the
+/// frame number appended.
+extension HUDSnapshot {
+    private static var environment: [String: String] { ProcessInfo.processInfo.environment }
+
+    static var placement: HUDPlacement {
+        switch environment["UV_HUD_PLACEMENT"] {
+        case "caret": return .caret(flipped: false)
+        case "caretFlipped": return .caret(flipped: true)
+        default: return .bottom
+        }
+    }
+
+    static var palette: HUDPalette {
+        let colorway = HUDColorway(rawValue: environment["UV_HUD_COLORWAY"] ?? "") ?? .ink
+        return HUDPalette.resolve(colorway, accentHex: environment["UV_HUD_ACCENT"] ?? AppSettings.defaultHUDAccentHex,
+                                  systemDark: environment["UV_HUD_SYSTEM_DARK"] == "1")
+    }
+
+    /// A page of an app with its text cursor, and the HUD's window placed the way
+    /// the panel would place it: beside the cursor, or at the bottom centre.
+    @ViewBuilder
+    static func stage<HUD: View>(placement: HUDPlacement, size: CGSize, @ViewBuilder hud: () -> HUD) -> some View {
+        let window = HUDView.windowSize
+        let caretX: CGFloat = placement.isFlipped ? size.width - 44 : 40
+        let caretMid = size.height / 2 + 6
+        ZStack(alignment: .topLeading) {
+            Theme.surface
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Launch review").font(.uv(.ui, .semibold))
+                Text("Hi Jordan,").font(.uv(.body))
+            }
+            .foregroundStyle(Theme.ink)
+            .padding(.leading, 40)
+            .padding(.top, 22)
+            if placement.isCaret {
+                if placement.isFlipped {
+                    Text("Sounds good, I'll send the updated deck")
+                        .font(.uv(.body)).foregroundStyle(Theme.ink)
+                        .frame(width: caretX - 40, alignment: .trailing)
+                        .offset(x: 38, y: caretMid - 9)
+                }
+                RoundedRectangle(cornerRadius: 1).fill(Theme.ink)
+                    .frame(width: 2, height: 18)
+                    .offset(x: caretX, y: caretMid - 9)
+                let x = placement.isFlipped
+                    ? caretX - HUDView.caretGap - (window.width - HUDView.shadowPad)
+                    : caretX + 2 + HUDView.caretGap - HUDView.shadowPad
+                hud().offset(x: x, y: caretMid - window.height / 2)
+            } else {
+                hud().offset(x: (size.width - window.width) / 2, y: size.height - window.height - 12)
+            }
+        }
+        .frame(width: size.width, height: size.height)
+    }
+
+    /// The scripted dictation, as the panel would show it.
+    private struct Event {
+        let at: Double
+        let display: HUDDisplay
+    }
+
+    private static let script: [Event] = [
+        Event(at: 0, display: .recording(seconds: 0, level: 0, stopsIn: nil)),
+        Event(at: 3.0, display: .transcribing(partial: nil, local: false)),
+        Event(at: 4.2, display: .delivering),
+        Event(at: 4.36, display: .done(.inserted(words: 23))),
+    ]
+    private static let chipAt = 4.42
+    private static let exitAt = 5.56
+
+    /// A voice-like level, 0...1: syllable bursts with a breath in the middle.
+    private static func voice(_ t: Double) -> Double {
+        guard t > 0.2, t < 2.9, !(1.35...1.6).contains(t) else { return 0.02 }
+        let bursts = max(0, sin(t * 17.3)) * (0.55 + 0.45 * sin(t * 4.1 + 1))
+        return min(1, 0.06 + 0.9 * bursts)
+    }
+
+    private static func frame(at t: Double, base: Date, placement: HUDPlacement) -> (HUDDisplay, HUDTimeline, Double, [Double]) {
+        var display = script[0].display
+        var timeline = HUDTimeline.entering(display, at: base)
+        for event in script.dropFirst() where event.at <= t {
+            // The recording that ends here shows its last second, as the live one would.
+            let old: HUDDisplay = display.isRecording
+                ? .recording(seconds: Int(event.at), level: 0, stopsIn: nil) : display
+            timeline.advance(from: old, to: event.display, placement: placement,
+                             at: base.addingTimeInterval(event.at))
+            display = event.display
+        }
+        if case .recording = display {
+            display = .recording(seconds: Int(t), level: Float(voice(t) * 0.05), stopsIn: nil)
+        }
+        if placement.isCaret, t >= chipAt { timeline.chipAt = base.addingTimeInterval(chipAt) }
+        if t >= exitAt { timeline.exitAt = base.addingTimeInterval(exitAt) }
+        let history = (0..<HUDWaveform.barCount).map { i in voice(t - Double(HUDWaveform.barCount - 1 - i) * 0.05) }
+        let level = (voice(t) + voice(t - 0.04) + voice(t - 0.08)) / 3
+        return (display, timeline, level, history)
+    }
+
+    static func renderFrames(_ spec: String, size: CGSize, appearance: NSAppearance?, to url: URL) -> Bool {
+        let parts = spec.split(separator: ":").compactMap { Double($0) }
+        guard parts.count == 3, parts[2] > 0 else {
+            fputs("UV_HUD_FRAMES must look like 0:6:0.0333\n", stderr)
+            return false
+        }
+        NSApp.appearance = appearance
+        let placement = Self.placement
+        let palette = Self.palette
+        let base = Date(timeIntervalSinceReferenceDate: 1_000_000)
+        let stem = url.deletingPathExtension().path
+        var index = 0
+        var t = parts[0]
+        while t <= parts[1] + 1e-9 {
+            let (display, timeline, level, history) = frame(at: t, base: base, placement: placement)
+            let scene = stage(placement: placement, size: size) {
+                HUDView(display: display, placement: placement, palette: palette, timeline: timeline, level: level,
+                        clock: base.addingTimeInterval(t), waveformFixture: history)
+            }
+            let renderer = ImageRenderer(content: scene.environment(\.colorScheme,
+                appearance?.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .dark : .light))
+            renderer.scale = 2
+            guard let image = renderer.nsImage, let tiff = image.tiffRepresentation,
+                  let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]),
+                  (try? png.write(to: URL(fileURLWithPath: String(format: "%@-%04d.png", stem, index)))) != nil
+            else { return false }
+            index += 1
+            t += parts[2]
+        }
+        return true
+    }
+
+    /// The scripted dictation on the real clock, through the real panel: placement,
+    /// the cursor lookup, the window and its shadow, as a person would see them.
+    static func playDemo(on hud: HUDPanel, after delay: Double) {
+        if let pid = environment["UV_HUD_DEMO_PID"].flatMap({ pid_t($0) }) { CaretLocator.targetPID = pid }
+        for moment in [0.6, 2.0, 3.6, 4.7] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay + moment) {
+                print(String(format: "t=%.1f ", moment) + hud.geometry())
+                fflush(stdout)
+            }
+        }
+        let start = Date().addingTimeInterval(delay)
+        for event in script.dropFirst() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay + event.at) { hud.show(event.display) }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            hud.show(script[0].display)
+            let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { timer in
+                MainActor.assumeIsolated {
+                    let t = Date().timeIntervalSince(start)
+                    guard t < script[1].at else { timer.invalidate(); return }
+                    // Back from the 0...1 meter level to the raw RMS the panel expects.
+                    let rms = Float(pow(10, (voice(t) * 36 - 52) / 20))
+                    hud.show(.recording(seconds: Int(t), level: rms, stopsIn: nil))
+                }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay + 7) { exit(0) }
     }
 }

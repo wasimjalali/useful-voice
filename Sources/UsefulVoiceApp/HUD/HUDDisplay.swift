@@ -33,6 +33,13 @@ struct HUDDone: Equatable {
     static func savedAndCopied(words: Int) -> HUDDone { HUDDone(label: "Saved and copied", words: words) }
     static let reprocessed = HUDDone(label: "Reprocessed", words: nil)
 
+    /// The done chip's line beside the text cursor: the count alone for a paste.
+    var chipText: String {
+        if label == "Inserted", let wordsText { return wordsText }
+        let short = label == "Saved and copied" ? "Copied" : label
+        return [short, wordsText].compactMap { $0 }.joined(separator: " \u{00B7} ")
+    }
+
     /// "24 words" with the German-region thousands separator (77.974 words).
     var wordsText: String? {
         guard let words else { return nil }
@@ -230,10 +237,10 @@ extension LanguagePin {
 
 /// Keeps the newest words of a live partial visible.
 enum HUDPartial {
-    static let font = NSFont.systemFont(ofSize: 13)
+    static let font = NSFont.systemFont(ofSize: 12)
     static let ellipsis = "\u{2026}"
-    /// 1,45 times the 13 pt size, as the board sets the live words.
-    static let lineHeight: CGFloat = 19
+    /// About 1,4 times the 12 pt size.
+    static let lineHeight: CGFloat = 17
 
     /// The ending of `text` that fits `lines` lines of `width`, cut at a word
     /// start and prefixed with an ellipsis. The cut is on the logical start of

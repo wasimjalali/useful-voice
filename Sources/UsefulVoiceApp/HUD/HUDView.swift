@@ -2,29 +2,28 @@ import AppKit
 import SwiftUI
 import UsefulVoiceCore
 
-/// Where the HUD is in its enter and exit. Enter rises 8 pt and fades in over
-/// 220 ms; exit sinks 6 pt and fades out over 160 ms.
-enum HUDPresentation {
-    case entering
-    case shown
-    case exiting
-}
-
 /// What the panel's hosting view observes. The panel changes it; the view only reads.
 @MainActor
 final class HUDModel: ObservableObject {
     @Published var display: HUDDisplay = .delivering
-    @Published var presentation: HUDPresentation = .entering
-    /// Bumped each time the HUD comes up, so the waveform starts empty for every recording.
+    @Published var placement: HUDPlacement = .bottom
+    @Published var palette: HUDPalette = .standard
+    @Published var timeline = HUDTimeline.settled
+    /// The smoothed mic level (0...1) the aura follows.
+    @Published var level: Double = 0
+    /// Bumped each time a recording starts, so the waveform starts empty for every recording.
     @Published var recordingID = 0
-    /// The capsule's current size, reported by the view. The panel uses it to take
-    /// clicks over the capsule only.
-    var capsuleSize: CGSize = .zero
+    /// The bubble's (or the done chip's) frame in the window, top-left origin. The
+    /// panel uses it to take clicks over the bubble only and to anchor the picker.
+    var bubbleFrame: CGRect = .zero
 }
 
-private struct CapsuleSizeKey: PreferenceKey {
-    static let defaultValue: CGSize = .zero
-    static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
+private struct BubbleFrameKey: PreferenceKey {
+    static let defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        let next = nextValue()
+        if next != .zero { value = next }
+    }
 }
 
 /// The root of the panel's hosting view.
@@ -34,154 +33,425 @@ struct HUDRoot: View {
     let onClose: () -> Void
 
     var body: some View {
-        HUDView(display: model.display, presentation: model.presentation, recordingID: model.recordingID,
+        HUDView(display: model.display, placement: model.placement, palette: model.palette,
+                timeline: model.timeline, level: model.level, recordingID: model.recordingID,
                 onFix: onFix, onClose: onClose)
-            .onPreferenceChange(CapsuleSizeKey.self) { model.capsuleSize = $0 }
+            .coordinateSpace(name: HUDView.space)
+            .onPreferenceChange(BubbleFrameKey.self) { model.bubbleFrame = $0 }
     }
 }
 
-/// The floating capsule. Ink surface, light mark, in both appearances. Every
-/// state is one clear line so it reads from across the screen without stealing
-/// focus from the app you are dictating into. The view fills the panel's fixed
-/// 400 by 160 pt window and keeps the capsule at the bottom centre, so every
-/// morph (cross-fade, width easing, growing into the local bubble) happens inside
-/// it and the window itself never resizes.
+/// The floating pill. It sits beside the text cursor of the app you are dictating
+/// into, or at the bottom centre when that app does not report its cursor. Every
+/// state is one short line in a 30 pt bubble, so it reads at a glance without
+/// covering what you are writing. The view fills the panel's fixed 400 by 160 pt
+/// window; the bubble sits at its bottom centre, or vertically centred against its
+/// left edge (right edge when flipped), so every morph happens inside it and the
+/// window never resizes during a state.
+///
+/// Every frame is drawn from `timeline` and the clock (`HUDTimeline`), so any
+/// moment of the motion can be rendered on its own (`clock`).
 struct HUDView: View {
     let display: HUDDisplay
-    var presentation: HUDPresentation = .shown
+    var placement: HUDPlacement = .bottom
+    var palette: HUDPalette = .standard
+    /// Nil: a still frame of `display` with nothing in motion.
+    var timeline: HUDTimeline? = nil
+    /// The smoothed mic level, 0...1.
+    var level: Double = 0
     var recordingID = 0
+    /// A fixed moment to draw, for snapshot frames. Nil: the live clock.
+    var clock: Date? = nil
     var onFix: (DictationFix) -> Void = { _ in }
     var onClose: () -> Void = {}
     /// Snapshot only: a ready-made waveform history for the recording state.
     var waveformFixture: [Double]? = nil
 
     static let windowSize = CGSize(width: 400, height: 160)
-    /// Transparent margin around the capsule, so its shadow is not clipped.
+    /// Transparent margin around the bubble, for its shadow, tail and halo.
     static let shadowPad: CGFloat = 20
-    static let capsuleHeight: CGFloat = 40
-    static let bubbleWidth: CGFloat = 360
+    static let bubbleHeight: CGFloat = 30
+    static let partialWidth: CGFloat = 320
+    /// From the text cursor to the bubble's near edge, and to the done chip's.
+    static let caretGap: CGFloat = 14
+    static let chipGap: CGFloat = 8
+    /// Room the recording and transcribing bubble needs beside the cursor before it
+    /// flips to the other side. Flipping covers the words before the cursor, so it
+    /// happens only when the bubble would otherwise run off the screen.
+    static let flipRoom: CGFloat = 170
+    /// The widest one-line bubble (an error with its verb and close).
+    static let maxBubbleWidth: CGFloat = 340
+    static let space = "hud"
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        container
-            .padding(.bottom, Self.shadowPad)
-            .frame(width: Self.windowSize.width, height: Self.windowSize.height, alignment: .bottom)
-            .opacity(presentation == .shown ? 1 : 0)
-            .offset(y: offset)
-            .animation(enterExitAnimation, value: presentation)
-    }
-
-    private var offset: CGFloat {
-        if reduceMotion { return 0 }
-        switch presentation {
-        case .entering: return 8
-        case .shown: return 0
-        case .exiting: return 6
+        Group {
+            if let clock {
+                scene(at: clock, still: false)
+            } else if timeline != nil, !reduceMotion {
+                TimelineView(.animation) { context in scene(at: context.date, still: false) }
+            } else {
+                scene(at: Date(), still: true)
+            }
         }
-    }
-
-    private var enterExitAnimation: Animation? {
-        reduceMotion ? nil : (presentation == .exiting ? BrandMotion.hudExit : BrandMotion.hudEnter)
-    }
-
-    /// The stable surface. Only the content inside it fades, so the surface never
-    /// flickers during a state change while its size eases to the new content. The
-    /// content is clipped to the surface: the new line is laid out at its full width
-    /// at once, and while the surface eases from a narrower state it would otherwise
-    /// spill past the capsule's ends onto the app below.
-    private var container: some View {
-        ZStack {
-            content
-                .id(display.phase)
-                .transition(.morphSwap)
-        }
-        .frame(minHeight: Self.capsuleHeight)
-        .clipShape(surfaceShape)
-        .background(surface)
-        .background(GeometryReader { proxy in
-            Color.clear.preference(key: CapsuleSizeKey.self, value: proxy.size)
-        })
-        .animation(reduceMotion ? nil : BrandMotion.morph, value: display.phase)
+        .frame(width: Self.windowSize.width, height: Self.windowSize.height)
         .accessibilityElement(children: display.isPersistent ? .contain : .ignore)
         .accessibilityLabel(display.accessibilityLabel)
     }
 
-    /// The ink surface, its hairline ring and its shadow. The shadow belongs to the
-    /// fill alone, so it never doubles up behind the ring. Circular corners: a
-    /// continuous-corner stroke at a half-height radius draws a stray vertical
-    /// segment past each end of the capsule.
-    private var surfaceShape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: display.isBubble ? Radius.md : Self.capsuleHeight / 2,
-                         style: .circular)
+    // MARK: - One frame
+
+    private func scene(at now: Date, still: Bool) -> some View {
+        let frame = HUDFrame(display: display, placement: placement,
+                             timeline: still ? .settled : (timeline ?? .settled), now: now, still: still)
+        return ZStack(alignment: frame.alignment) {
+            if frame.bubbleOpacity > 0.001 { bubble(frame) }
+            if frame.chipOpacity > 0.001 { chip(frame) }
+        }
+        .padding(frame.insets)
+        .frame(width: Self.windowSize.width, height: Self.windowSize.height, alignment: frame.alignment)
     }
 
-    private var surface: some View {
-        let shape = surfaceShape
-        return ZStack {
-            shape
-                .fill(Theme.hudSurface)
-                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.6 : 0.34), radius: 12, x: 0, y: 8)
-            shape
-                .strokeBorder(Color.white.opacity(0.14), lineWidth: colorScheme == .dark ? 1 : 0.5)
+    private func bubble(_ f: HUDFrame) -> some View {
+        let shape = RoundedRectangle(cornerRadius: f.radius, style: .circular)
+        return ZStack(alignment: f.rowAlignment) {
+            if let previous = f.previous {
+                row(previous, f).opacity(f.previousOpacity)
+            }
+            row(f.content, f).opacity(f.contentOpacity)
+        }
+        .frame(width: f.size.width, height: f.size.height, alignment: f.rowAlignment)
+        .clipShape(shape)
+        .background {
+            shape.fill(palette.surface)
+                .shadow(color: palette.contactShadow, radius: 1, x: 0, y: 0.5)
+                .shadow(color: palette.shadow, radius: palette.shadowRadius, x: 0, y: palette.shadowY)
+        }
+        .overlay { shape.strokeBorder(palette.edge, lineWidth: palette.edgeWidth) }
+        .background(alignment: placement.isFlipped ? .trailing : .leading) {
+            if placement.isCaret { tail.offset(x: placement.isFlipped ? 4.5 : -4.5) }
+        }
+        .background { halo(f, shape: f.radius) }
+        .background(GeometryReader { proxy in
+            Color.clear.preference(key: BubbleFrameKey.self, value: proxy.frame(in: .named(Self.space)))
+        })
+        .scaleEffect(f.bubbleScale, anchor: f.anchor)
+        .offset(x: f.offset.width, y: f.offset.height)
+        .opacity(f.bubbleOpacity)
+    }
+
+    /// The point on the bubble's near edge, at the cursor.
+    private var tail: some View {
+        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+            .fill(palette.surface)
+            .overlay(RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .strokeBorder(palette.edge, lineWidth: palette.edgeWidth))
+            .frame(width: 9, height: 9)
+            .rotationEffect(.degrees(45))
+    }
+
+    /// The two rings that bloom out of the bubble as a recording starts, and the
+    /// aura that breathes with the voice while it records.
+    @ViewBuilder
+    private func halo(_ f: HUDFrame, shape radius: CGFloat) -> some View {
+        ZStack {
+            ForEach(Array(f.bloom.enumerated()), id: \.offset) { _, ring in
+                RoundedRectangle(cornerRadius: radius + ring.outset, style: .circular)
+                    .stroke(palette.halo, lineWidth: 1.5)
+                    .frame(width: f.size.width + 2 * ring.outset, height: f.size.height + 2 * ring.outset)
+                    .opacity(ring.opacity)
+            }
+            if f.aura > 0.001 {
+                // A soft glow, not a ring: it swells and brightens with the voice.
+                let lv = level
+                let outset = 1 + 3 * lv
+                RoundedRectangle(cornerRadius: radius + outset, style: .circular)
+                    .fill(palette.halo)
+                    .frame(width: f.size.width + 2 * outset, height: f.size.height + 2 * outset)
+                    .blur(radius: 5 + 5 * lv)
+                    .opacity((0.18 + 0.37 * lv) * f.aura)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// Beside the new text cursor once the words have landed.
+    private func chip(_ f: HUDFrame) -> some View {
+        var line = ""
+        if case .done(let done) = display { line = done.chipText }
+        return HStack(spacing: 5) {
+            HUDCheck(progress: f.chipCheck, color: palette.ok, size: 14)
+            Text(line)
+        }
+        .font(.system(size: 11.5, weight: .medium))
+        .foregroundStyle(palette.ink)
+        .lineLimit(1)
+        .fixedSize()
+        .padding(.leading, 6)
+        .padding(.trailing, 9)
+        .frame(height: 22)
+        .background {
+            Capsule(style: .circular).fill(palette.surface)
+                .shadow(color: palette.contactShadow, radius: 1, x: 0, y: 0.5)
+                .shadow(color: palette.shadow.opacity(0.8), radius: 6, x: 0, y: 3)
+        }
+        .overlay { Capsule(style: .circular).strokeBorder(palette.edge, lineWidth: palette.edgeWidth) }
+        .background(GeometryReader { proxy in
+            Color.clear.preference(key: BubbleFrameKey.self, value: proxy.frame(in: .named(Self.space)))
+        })
+        .scaleEffect(f.chipScale, anchor: placement.isFlipped ? .trailing : .leading)
+        .opacity(f.chipOpacity)
+    }
+
+    private func row(_ shown: HUDDisplay, _ f: HUDFrame) -> some View {
+        HUDRow(display: shown, placement: placement, palette: palette, time: f.time, animated: !f.still,
+               check: f.check, recordingID: recordingID, waveformFixture: waveformFixture,
+               onFix: onFix, onClose: onClose)
+    }
+
+    /// m:ss, counting up from zero. Tabular digits so the bubble never jitters in
+    /// width as the seconds tick over.
+    static func timecode(_ seconds: Int) -> String {
+        let s = max(0, seconds)
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+/// Every value one frame needs, worked out from the timeline and the clock.
+@MainActor
+private struct HUDFrame {
+    let content: HUDDisplay
+    let previous: HUDDisplay?
+    let size: CGSize
+    let radius: CGFloat
+    let previousOpacity: Double
+    let contentOpacity: Double
+    let bubbleOpacity: Double
+    let bubbleScale: CGFloat
+    let anchor: UnitPoint
+    let offset: CGSize
+    let check: Double
+    let chipOpacity: Double
+    let chipScale: CGFloat
+    let chipCheck: Double
+    let bloom: [(outset: CGFloat, opacity: Double)]
+    let aura: Double
+    let alignment: Alignment
+    let rowAlignment: Alignment
+    let insets: EdgeInsets
+    /// Seconds on a steady clock, for the loops (dots, shimmer, breathing dot).
+    let time: Double
+    let still: Bool
+
+    init(display: HUDDisplay, placement: HUDPlacement, timeline tl: HUDTimeline, now: Date, still: Bool) {
+        self.still = still
+        time = now.timeIntervalSinceReferenceDate
+        func since(_ date: Date?) -> Double { date.map { now.timeIntervalSince($0) } ?? .infinity }
+        let caret = placement.isCaret
+        let flipped = placement.isFlipped
+
+        // Caret placement folds the bubble into the cursor while the text lands; it
+        // keeps showing the row it had.
+        let folding = caret && display.foldsIntoCaret
+        let fold = folding ? (tl.foldAt == nil ? 1 : HUDEase.inOut(HUDEase.progress(since(tl.foldAt), over: HUDTiming.fold))) : 0
+        content = folding ? (tl.held ?? display) : display
+
+        // State change: out first, then in; the size eases over the whole change.
+        let change = since(tl.phaseAt)
+        if let old = tl.previous, !folding, change < HUDTiming.morph {
+            previous = old
+            previousOpacity = 1 - HUDEase.in(HUDEase.progress(change, over: HUDTiming.morphOut))
+            contentOpacity = HUDEase.out(HUDEase.progress(change - HUDTiming.morphOut,
+                                                          over: HUDTiming.morph - HUDTiming.morphOut))
+            let p = HUDEase.out(HUDEase.progress(change, over: HUDTiming.morph))
+            let from = HUDLayout.size(of: old, placement: placement)
+            let to = HUDLayout.size(of: content, placement: placement)
+            size = CGSize(width: from.width + (to.width - from.width) * p,
+                          height: from.height + (to.height - from.height) * p)
+        } else {
+            previous = nil
+            previousOpacity = 0
+            contentOpacity = 1
+            size = HUDLayout.size(of: content, placement: placement)
+        }
+        radius = content.isBubble ? 12 : min(size.height / 2, HUDView.bubbleHeight / 2)
+
+        // Enter, from the cursor or rising from below; exit, ease-in.
+        let enter = HUDEase.out(HUDEase.progress(since(tl.bubbleAt), over: HUDTiming.enter))
+        let exit = tl.exitAt == nil ? 0 : HUDEase.in(HUDEase.progress(since(tl.exitAt), over: HUDTiming.exit))
+        let tailX: CGFloat = 6.4 / max(size.width, 1)
+        if caret {
+            anchor = UnitPoint(x: flipped ? 1 + tailX : -tailX, y: 0.5)
+            bubbleScale = (0.3 + 0.7 * enter) * (1 - 0.8 * fold) * (1 - 0.1 * exit)
+            offset = CGSize(width: (flipped ? 4 : -4) * (1 - enter), height: 0)
+        } else {
+            anchor = .center
+            bubbleScale = (0.6 + 0.4 * enter) * (1 - 0.04 * exit)
+            offset = CGSize(width: 0, height: 6 * (1 - enter) + 6 * exit)
+        }
+        bubbleOpacity = enter * (1 - fold) * (1 - exit)
+
+        // The check in the bottom placement's done row draws after the row arrives.
+        check = still ? 1 : HUDEase.out(HUDEase.progress(change - HUDTiming.bottomCheckDelay, over: 0.3))
+
+        // The done chip beside the new cursor.
+        if caret, case .done = display, let chipAt = tl.chipAt {
+            let c = HUDEase.out(HUDEase.progress(since(chipAt), over: HUDTiming.chipIn))
+            chipOpacity = c * (1 - exit)
+            chipScale = 0.7 + 0.3 * c
+            chipCheck = still ? 1 : HUDEase.out(HUDEase.progress(since(chipAt) - HUDTiming.chipCheckDelay,
+                                                                   over: HUDTiming.checkDraw))
+        } else {
+            chipOpacity = 0
+            chipScale = 1
+            chipCheck = 0
+        }
+
+        // Halo: two rings bloom out as the recording starts; the aura follows the voice.
+        var rings: [(outset: CGFloat, opacity: Double)] = []
+        if !still, let bloomAt = tl.bloomAt {
+            for i in 0..<2 {
+                let t = since(bloomAt) - Double(i) * HUDTiming.bloomGap
+                guard t >= 0, t <= HUDTiming.bloomRing else { continue }
+                let e = HUDEase.out(t / HUDTiming.bloomRing)
+                rings.append((outset: 1 + 11 * CGFloat(e), opacity: 0.55 * (1 - e)))
+            }
+        }
+        bloom = rings
+        if still {
+            aura = 0
+        } else if display.isRecording {
+            aura = enter
+        } else {
+            aura = 1 - HUDEase.progress(since(tl.recordingEndedAt), over: HUDTiming.auraFade)
+        }
+
+        let pad = HUDView.shadowPad
+        if caret {
+            alignment = flipped ? .trailing : .leading
+            rowAlignment = flipped ? .trailing : .leading
+            insets = EdgeInsets(top: 0, leading: flipped ? 0 : pad, bottom: 0, trailing: flipped ? pad : 0)
+        } else {
+            alignment = .bottom
+            rowAlignment = .center
+            insets = EdgeInsets(top: 0, leading: 0, bottom: pad, trailing: 0)
+        }
+    }
+}
+
+/// Natural sizes of each state's row, measured once per layout and cached, so a
+/// state change can ease between two known sizes on any frame.
+@MainActor
+enum HUDLayout {
+    private static var cache: [String: CGSize] = [:]
+
+    static func size(of display: HUDDisplay, placement: HUDPlacement) -> CGSize {
+        if case .transcribing(let partial?, true) = display {
+            let lines = min(HUDPartial.lineCount(HUDPartial.tail(partial, width: textWidth, lines: 2),
+                                                 width: textWidth), 2)
+            return CGSize(width: HUDView.partialWidth,
+                          height: 10 + HUDPartial.lineHeight * CGFloat(lines) + 6 + 16 + 10)
+        }
+        let key = "\(placement.isCaret)|\(layoutKey(display))"
+        if let known = cache[key] { return known }
+        let row = HUDRow(display: display, placement: placement, palette: .standard, time: 0, animated: false,
+                         check: 1, recordingID: 0, waveformFixture: [0], onFix: { _ in }, onClose: {})
+        let hosting = NSHostingView(rootView: row)
+        let measured = hosting.fittingSize
+        let size = CGSize(width: ceil(measured.width), height: max(HUDView.bubbleHeight, ceil(measured.height)))
+        if cache.count > 64 { cache.removeAll() }
+        cache[key] = size
+        return size
+    }
+
+    static let textWidth = HUDView.partialWidth - 24
+
+    /// Measures the rows every dictation shows, ahead of the first one.
+    static func warm() {
+        let rows: [HUDDisplay] = [.recording(seconds: 0, level: 0, stopsIn: nil),
+                                  .transcribing(partial: nil, local: false), .delivering,
+                                  .done(.inserted(words: 10))]
+        for placement in [HUDPlacement.bottom, .caret(flipped: false)] {
+            for row in rows { _ = size(of: row, placement: placement) }
         }
     }
 
-    // MARK: - States
+    /// What decides a row's size: the recording's timer only by its digit count.
+    private static func layoutKey(_ display: HUDDisplay) -> String {
+        switch display {
+        case .recording(let seconds, _, let stopsIn):
+            return "rec|\(HUDView.timecode(seconds).count)|\(stopsIn.map { "\($0)" } ?? "")"
+        default:
+            return String(describing: display)
+        }
+    }
+}
 
-    @ViewBuilder private var content: some View {
+/// One state's line inside the bubble.
+struct HUDRow: View {
+    let display: HUDDisplay
+    let placement: HUDPlacement
+    let palette: HUDPalette
+    let time: Double
+    let animated: Bool
+    /// How far the done check has drawn.
+    let check: Double
+    let recordingID: Int
+    let waveformFixture: [Double]?
+    let onFix: (DictationFix) -> Void
+    let onClose: () -> Void
+
+    var body: some View {
         switch display {
         case .recording(let seconds, let level, let stopsIn):
-            row(trailing: 16) {
-                RecordingDot(reduceMotion: reduceMotion)
-                WaveformView(level: level, fill: Theme.hudMark, fixture: waveformFixture)
-                    .id(recordingID)
-                Text(Self.timecode(seconds)).monospacedDigit()
-                if let stopsIn { Text("Stops in \(stopsIn) s") }
-                KeyCap(label: "esc")
+            line {
+                HUDRecordDot(time: time, color: palette.rec, animated: animated)
+                HUDWaveform(level: level, color: palette.mark, fixture: waveformFixture).id(recordingID)
+                Text(HUDView.timecode(seconds)).monospacedDigit()
+                if let stopsIn { Text("Stops in \(stopsIn) s").foregroundStyle(palette.dim) }
+                if !placement.isCaret { keycap("esc") }
             }
         case .transcribing(let partial, let local):
             if let partial, local {
-                bubble(partial: partial)
+                partialBubble(partial)
             } else {
-                row(trailing: 16) {
-                    HUDSpinner(reduceMotion: reduceMotion)
-                    Text(local ? "Transcribing locally" : "Transcribing")
+                line {
+                    HUDDotsMark(time: time, color: palette.dots, animated: animated)
+                    HUDShimmerLabel(text: local ? "Transcribing locally" : "Transcribing", ink: palette.ink,
+                                    time: time, animated: animated)
                 }
             }
         case .delivering:
-            row(trailing: 16) {
-                HUDSpinner(reduceMotion: reduceMotion)
+            line {
+                HUDDotsMark(time: time, color: palette.dots, animated: animated)
                 Text("Inserting")
             }
         case .done(let done):
-            row(trailing: 16) {
-                symbol("checkmark")
+            line {
+                HUDCheck(progress: check, color: palette.ok, size: 14)
                 HStack(spacing: 0) {
                     Text(done.label)
                     if let words = done.wordsText {
-                        Text(" \u{00B7} \(words)").foregroundStyle(Theme.hudInk.opacity(0.72)).fontWeight(.regular)
+                        Text(" \u{00B7} \(words)").foregroundStyle(palette.dim).fontWeight(.regular)
                     }
                 }
             }
         case .copiedNotPasted(let fix):
-            row(trailing: 8) {
+            line(trailing: 6) {
                 symbol("doc.on.clipboard")
                 Text("Copied. Press \u{2318}V to paste")
                 if let fix { fixButton(fix) }
                 closeButton
             }
         case .cancelled:
-            row(trailing: 16) {
+            line {
                 symbol("xmark")
                 Text("Cancelled")
             }
         case .error(let error):
-            row(trailing: 8) {
+            line(trailing: 6) {
                 symbol(error.symbol)
-                // The message is the one flexible item: it truncates so the verb and
-                // the close always stay whole inside the 360 pt content width.
                 Text(error.message)
                     .truncationMode(.tail)
                     .frame(maxWidth: Self.messageWidth(for: error.fix), alignment: .leading)
@@ -189,43 +459,49 @@ struct HUDView: View {
                 closeButton
             }
         case .language(let pin):
-            row(trailing: 16) {
+            line {
                 symbol("globe")
                 Text(pin.hudName)
             }
         }
     }
 
-    /// One capsule row: 40 pt tall, 16 pt in on the leading side, 10 pt between items.
-    private func row<Items: View>(trailing: CGFloat, @ViewBuilder _ items: () -> Items) -> some View {
-        HStack(spacing: 10) {
-            items()
-        }
-        .font(.uv(.ui, .medium))
-        .foregroundStyle(Theme.hudInk)
-        .lineLimit(1)
-        .fixedSize()
-        .padding(.leading, 16)
-        .padding(.trailing, trailing)
-        .frame(height: Self.capsuleHeight)
+    /// One bubble line: 30 pt tall, 12 pt in on the leading side, 8 pt between items.
+    private func line<Items: View>(trailing: CGFloat = 12, @ViewBuilder _ items: () -> Items) -> some View {
+        HStack(spacing: 8) { items() }
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(palette.ink)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.leading, 12)
+            .padding(.trailing, trailing)
+            .frame(height: HUDView.bubbleHeight)
     }
 
     private func symbol(_ name: String) -> some View {
         Image(systemName: name)
-            .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(Theme.hudInk)
-            .frame(width: 16)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(palette.ink)
+            .frame(width: 14)
             .accessibilityHidden(true)
+    }
+
+    private func keycap(_ label: String) -> some View {
+        Text(label)
+            .font(.system(size: 10, weight: .semibold))
+            .padding(.horizontal, 5)
+            .frame(height: 16)
+            .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(palette.chip))
     }
 
     private func fixButton(_ fix: DictationFix) -> some View {
         Button { onFix(fix) } label: {
             Text(fix.hudTitle)
-                .font(.uv(.meta, .semibold))
-                .foregroundStyle(Theme.hudInk)
-                .padding(.horizontal, 11)
-                .frame(height: 26)
-                .background(Capsule(style: .continuous).fill(Color.white.opacity(0.16)))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(palette.ink)
+                .padding(.horizontal, 9)
+                .frame(height: 22)
+                .background(Capsule(style: .continuous).fill(palette.chip))
                 .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
@@ -234,14 +510,14 @@ struct HUDView: View {
         .accessibilityLabel(fix.hudTitle)
     }
 
-    /// 24 pt target, the smallest the board allows for a close.
+    /// 20 pt target inside the 30 pt bubble.
     private var closeButton: some View {
         Button(action: onClose) {
             Image(systemName: "xmark")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.hudInk)
-                .frame(width: 24, height: 24)
-                .background(Circle().fill(Color.white.opacity(0.12)))
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(palette.ink)
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(palette.chip))
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -250,60 +526,51 @@ struct HUDView: View {
         .accessibilityLabel("Dismiss")
     }
 
-    /// The local engine's live words. The capsule grows upward into a 360 pt
-    /// bubble: the newest words sit at the end, the head is clipped, and a
-    /// right-to-left script is clipped at its logical start.
-    private func bubble(partial: String) -> some View {
+    /// The local engine's live words above a working line. The newest words sit at
+    /// the end, the head is clipped, and a right-to-left script is clipped at its
+    /// logical start.
+    private func partialBubble(_ partial: String) -> some View {
         let rtl = HUDPartial.isRightToLeft(partial)
-        let textWidth = Self.bubbleWidth - 32
-        // Measured a little narrower than it is drawn, so SwiftUI and AppKit never
-        // disagree about where a line breaks and clip the newest words.
-        let text = HUDPartial.tail(partial, width: textWidth - 8, lines: 2)
-        let lines = HUDPartial.lineCount(text, width: textWidth - 8)
-        return VStack(alignment: .leading, spacing: 8) {
-            PartialLabel(text: text, rtl: rtl, width: textWidth)
-                .frame(width: textWidth, height: HUDPartial.lineHeight * CGFloat(min(lines, 2)),
+        let width = HUDLayout.textWidth
+        let text = HUDPartial.tail(partial, width: width - 8, lines: 2)
+        let lines = HUDPartial.lineCount(text, width: width - 8)
+        return VStack(alignment: .leading, spacing: 6) {
+            PartialLabel(text: text, rtl: rtl, width: width, color: NSColor(palette.ink).withAlphaComponent(0.72))
+                .frame(width: width, height: HUDPartial.lineHeight * CGFloat(min(lines, 2)),
                        alignment: rtl ? .trailing : .leading)
-            HStack(spacing: 10) {
-                HUDSpinner(reduceMotion: reduceMotion)
-                Text("Transcribing locally")
-                    .font(.uv(.ui, .medium))
-                    .foregroundStyle(Theme.hudInk)
+            HStack(spacing: 8) {
+                HUDDotsMark(time: time, color: palette.dots, animated: animated)
+                HUDShimmerLabel(text: "Transcribing locally", ink: palette.ink, time: time, animated: animated)
+                    .font(.system(size: 12, weight: .medium))
             }
+            .frame(height: 16)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .frame(width: Self.bubbleWidth, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(width: HUDView.partialWidth, alignment: .leading)
     }
 
-    /// The room an error message has: the 360 pt content width less the icon, the
+    /// The room an error message has: the bubble's widest line less the icon, the
     /// verb pill, the close and the gaps and padding around them.
     static func messageWidth(for fix: DictationFix?) -> CGFloat {
-        let fixed: CGFloat = 16 + 16 + 10 + 10 + 24 + 8
-        guard let fix else { return bubbleWidth - fixed }
+        let fixed: CGFloat = 12 + 14 + 8 + 8 + 20 + 6
+        guard let fix else { return HUDView.maxBubbleWidth - fixed }
         let label = NSAttributedString(string: fix.hudTitle, attributes: [
-            .font: NSFont.systemFont(ofSize: TypeScale.meta.rawValue, weight: .semibold)])
-        let pill = ceil(label.size().width) + 22
-        return bubbleWidth - fixed - 10 - pill
-    }
-
-    /// m:ss, counting up from zero. Tabular digits so the capsule never jitters
-    /// in width as the seconds tick over.
-    static func timecode(_ seconds: Int) -> String {
-        let s = max(0, seconds)
-        return String(format: "%d:%02d", s / 60, s % 60)
+            .font: NSFont.systemFont(ofSize: 11, weight: .semibold)])
+        let pill = ceil(label.size().width) + 18
+        return HUDView.maxBubbleWidth - fixed - 8 - pill
     }
 }
 
-/// The live words of the local engine. An AppKit label rather than a SwiftUI
-/// `Text`, because `Text` ignores the paragraph direction: a Persian line would be
-/// laid out left to right, with the ellipsis at the wrong end. The label is told
-/// the base direction, so the logical start is on the right and the newest words
-/// stay in view.
+/// The local engine's live words. An AppKit label rather than a SwiftUI `Text`,
+/// because `Text` ignores the paragraph direction: a Persian line would be laid out
+/// left to right, with the ellipsis at the wrong end. The label is told the base
+/// direction, so the logical start is on the right and the newest words stay in view.
 private struct PartialLabel: NSViewRepresentable {
     let text: String
     let rtl: Bool
     let width: CGFloat
+    let color: NSColor
 
     func makeNSView(context: Context) -> NSTextField {
         let field = NSTextField(wrappingLabelWithString: "")
@@ -332,70 +599,8 @@ private struct PartialLabel: NSViewRepresentable {
         style.lineBreakMode = .byWordWrapping
         field.attributedStringValue = NSAttributedString(string: text, attributes: [
             .font: HUDPartial.font,
-            .foregroundColor: NSColor(srgbRed: 0.98, green: 0.98, blue: 0.98, alpha: 0.7),
+            .foregroundColor: color,
             .paragraphStyle: style,
         ])
-    }
-}
-
-/// A record dot that breathes while recording, 1 down to 0.8 over 1,1 s. Solid
-/// under Reduce Motion.
-private struct RecordingDot: View {
-    let reduceMotion: Bool
-
-    var body: some View {
-        if reduceMotion {
-            dot(opacity: 1)
-        } else {
-            TimelineView(.animation) { timeline in
-                let t = timeline.date.timeIntervalSinceReferenceDate
-                dot(opacity: 0.9 + 0.1 * cos(t * 2 * .pi / 2.2))
-            }
-        }
-    }
-
-    private func dot(opacity: Double) -> some View {
-        Circle()
-            .fill(Theme.hudDanger)
-            .frame(width: 8, height: 8)
-            .opacity(opacity)
-            .accessibilityHidden(true)
-    }
-}
-
-/// A ring with a moving arc. Reduce Motion: a static ring.
-private struct HUDSpinner: View {
-    let reduceMotion: Bool
-
-    var body: some View {
-        ZStack {
-            Circle().stroke(Theme.hudInk.opacity(reduceMotion ? 0.7 : 0.25), lineWidth: 2)
-            if !reduceMotion {
-                TimelineView(.animation) { timeline in
-                    let t = timeline.date.timeIntervalSinceReferenceDate
-                    Circle()
-                        .trim(from: 0, to: 0.28)
-                        .stroke(Theme.hudInk, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                        .rotationEffect(.degrees((t / 0.9).truncatingRemainder(dividingBy: 1) * 360))
-                }
-            }
-        }
-        .frame(width: 16, height: 16)
-        .accessibilityHidden(true)
-    }
-}
-
-/// A quiet keycap showing that Esc cancels the recording.
-private struct KeyCap: View {
-    let label: String
-
-    var body: some View {
-        Text(label)
-            .font(.uv(.label, .semibold))
-            .foregroundStyle(Theme.hudInk)
-            .padding(.horizontal, 6)
-            .frame(height: 20)
-            .background(RoundedRectangle(cornerRadius: Radius.xs, style: .continuous)
-                .fill(Color.white.opacity(0.14)))
     }
 }

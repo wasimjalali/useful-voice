@@ -27,6 +27,8 @@ struct SettingsPage: View {
     @State private var soundEffectsEnabled = true
     @State private var pauseMediaWhileDictating = true
     @State private var appearance: AppearanceChoice = .system
+    @State private var hudColorway: HUDColorway = .ink
+    @State private var hudAccentHex = AppSettings.defaultHUDAccentHex
     @State private var dailyGoal = AppSettings.defaultDailyWordGoal
     /// Login item, permissions and the dictation count, read once and refreshed on appear and
     /// when the app comes forward, never on every body evaluation.
@@ -60,6 +62,8 @@ struct SettingsPage: View {
         _soundEffectsEnabled = State(initialValue: settings.soundEffectsEnabled)
         _pauseMediaWhileDictating = State(initialValue: settings.pauseMediaWhileDictating)
         _appearance = State(initialValue: settings.appearance)
+        _hudColorway = State(initialValue: settings.hudColorway)
+        _hudAccentHex = State(initialValue: settings.hudAccentHex)
         _dailyGoal = State(initialValue: settings.dailyWordGoal)
         _system = StateObject(wrappedValue: SettingsSystemState(history: viewModel.historyStore))
         switch SettingsSnapshot.state {
@@ -325,7 +329,32 @@ struct SettingsPage: View {
                 ])
                 .frame(width: 240)
             }
+            SettingsRow(title: "Dictation pill") {
+                HUDColorwayPicker(selection: hudColorwayBinding, accentHex: hudAccentHex)
+                ColorPicker("Accent hue", selection: hudAccentBinding, supportsOpacity: false)
+                    .labelsHidden()
+                    .help("Accent hue")
+            }
         }
+    }
+
+    private var hudColorwayBinding: Binding<HUDColorway> {
+        Binding(get: { hudColorway }, set: { value in
+            hudColorway = value
+            settings.hudColorway = value
+        })
+    }
+
+    /// Picking a hue also picks the Accent colorway, which is the one that shows it.
+    private var hudAccentBinding: Binding<Color> {
+        Binding(get: { HUDPalette.color(hex: hudAccentHex) ?? .orange }, set: { color in
+            guard let srgb = NSColor(color).usingColorSpace(.sRGB) else { return }
+            let hex = String(format: "#%02X%02X%02X", Int((srgb.redComponent * 255).rounded()),
+                             Int((srgb.greenComponent * 255).rounded()), Int((srgb.blueComponent * 255).rounded()))
+            hudAccentHex = hex
+            settings.hudAccentHex = hex
+            if hudColorway != .accent { hudColorwayBinding.wrappedValue = .accent }
+        })
     }
 
     // MARK: - Data

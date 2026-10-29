@@ -18,6 +18,7 @@ import {
   normaliseMemoryLanguage,
   type AppSettings,
   type DictationSource,
+  type DictationTelemetry,
   type Note,
 } from '../core/models.js';
 import { selectKeyterms } from '../core/memory/biasBuilder.js';
@@ -44,7 +45,7 @@ import {
   hudWindowOrigin,
   pickerOrigin,
 } from '../core/hudPlacement.js';
-import { lookUpCaret, startCaretHost, stopCaretHost, type CaretFix } from './caret.js';
+import { lookUpCaret, setE2eCaret, startCaretHost, stopCaretHost, type CaretFix } from './caret.js';
 import { normaliseLanguageCode } from '../core/transcription/languages.js';
 import { decideFirstRun, firstRunLaunch, shouldOpenAtLaunch, type FirstRunStep } from '../core/firstRun/gate.js';
 import { installProviderStubs, parakeetE2eDeps } from './e2eStub.js';
@@ -176,6 +177,34 @@ const OWN_FIELD_CHECK_MS = 200;
 /** Cap on handing focus back: a cold PowerShell with Add-Type is slow, and the picker is invisible meanwhile. */
 const PICKER_RESTORE_TIMEOUT_MS = 3000;
 
+/** What the placement logic needs of the HUD window; under `--e2e` a recorder stands in for it. */
+interface HudSurface {
+  isVisible(): boolean;
+  isDestroyed(): boolean;
+  setBounds(bounds: Electron.Rectangle): void;
+  showInactive(): void;
+  setIgnoreMouseEvents(ignore: boolean, options?: { forward: boolean }): void;
+}
+
+/** E2E only: a HUD window that is never on screen but keeps the bounds main computed. */
+class E2eHudSurface implements HudSurface {
+  visible = false;
+  bounds: Electron.Rectangle = { x: 0, y: 0, width: HUD_WIDTH, height: HUD_HEIGHT };
+  isVisible(): boolean {
+    return this.visible;
+  }
+  isDestroyed(): boolean {
+    return false;
+  }
+  setBounds(bounds: Electron.Rectangle): void {
+    this.bounds = bounds;
+  }
+  showInactive(): void {
+    this.visible = true;
+  }
+  setIgnoreMouseEvents(): void {}
+}
+
 class UsefulVoiceApp {
   private settings!: SettingsStore;
   /** The Parakeet models on this PC: downloads, deletes and transcription. */
@@ -209,6 +238,11 @@ class UsefulVoiceApp {
   /** Windows' own dark mode, read from the registry; null until read or when it cannot be. */
   private systemDark: boolean | null = null;
   /** The caret lookup started at the latest hotkey press, for the recording frame that follows. */
+  /** E2E only: the stand-in window, and every frame main pushed to it with where it put the window. */
+  private readonly e2eHud = new E2eHudSurface();
+  private e2eHudFrames: Array<Record<string, unknown>> = [];
+  /** E2E only: a spec can widen the wait for the first caret answer to make a superseded wait reproducible. */
+  private e2eCaretWaitMs = CARET_WAIT_MS;
   private caretLookup: { sequence: number; startedAt: number; result: Promise<CaretFix | null> } | null = null;
   private hudHideTimer: NodeJS.Timeout | null = null;
   /** Where the user left the HUD, per display, as an offset from its default spot. */
@@ -330,6 +364,20 @@ class UsefulVoiceApp {
       scrubMedia: (arg: unknown) => {
         const { id, byMs } = arg as { id: string; byMs: number };
         this.fakeMedia?.scrub(id, byMs);
+      },
+      // The HUD placement logic, run against a stand-in window: every frame pushed, with the origin main chose.
+      hudFrames: () => this.e2eHudFrames.slice(),
+      clearHudFrames: () => {
+        this.e2eHudFrames = [];
+      },
+      setCaretWait: (ms: unknown) => {
+        this.e2eCaretWaitMs = typeof ms === 'number' ? ms : CARET_WAIT_MS;
+      },
+      hudTelemetry: (value: unknown) => this.hudModel.telemetry(value as DictationTelemetry),
+      setCaret: (value: unknown) => {
+        const { rect, delayMs } = value as { rect: { x: number; y: number; w: number; h: number } | null; delayMs?: number };
+        const workArea = screen.getPrimaryDisplay().workArea;
+        setE2eCaret(rect ? { rect: { x: rect.x, y: rect.y, width: rect.w, height: rect.h }, workArea } : null, delayMs ?? 0);
       },
       mainWindows: () => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().includes('view=main')).length,
     };
@@ -769,7 +817,7 @@ class UsefulVoiceApp {
     return hudWindowOrigin({ kind: 'bottom' }, null, display.workArea, offset);
   }
 
-  private placeHud(window: BrowserWindow, placement: HudPlacement, fix: CaretFix | null): void {
+  private placeHud(window: HudSurface, placement: HudPlacement, fix: CaretFix | null): void {
     this.hudPlacement = placement;
     const origin =
       placement.kind === 'caret' && fix
@@ -866,7 +914,7 @@ class UsefulVoiceApp {
     }
     if (frame) {
       // The suite never puts a window on the screen.
-      const window = E2E ? null : this.ensureHudWindow();
+      const window: HudSurface = E2E ? this.e2eHud : this.ensureHudWindow();
       if (window) {
         const waiting = this.hudPlacing !== 0 && this.hudPlacing === this.hudAppearance && before !== null;
         const starts = startsNewAppearance({
@@ -889,6 +937,11 @@ class UsefulVoiceApp {
           this.fitBubbleBesideCaret(window);
         }
       }
+    } else if (E2E) {
+      this.hudHideTimer = setTimeout(() => {
+        this.hudHideTimer = null;
+        this.e2eHud.visible = false;
+      }, HUD_EXIT_MS + 60);
     } else if (this.hudWindow && !this.hudWindow.isDestroyed()) {
       // After the exit animation has played.
       this.hudHideTimer = setTimeout(() => {
@@ -919,7 +972,7 @@ class UsefulVoiceApp {
    * bottom at once. Resolves when the window is in place, which is what the frame waits for. If a
    * newer appearance has begun by then, this one changes nothing.
    */
-  private async beginHudAppearance(window: BrowserWindow, frame: HudFrame, appearance: number): Promise<void> {
+  private async beginHudAppearance(window: HudSurface, frame: HudFrame, appearance: number): Promise<void> {
     try {
       await this.placeHudAppearance(window, frame, appearance);
     } finally {
@@ -928,14 +981,14 @@ class UsefulVoiceApp {
     }
   }
 
-  private async placeHudAppearance(window: BrowserWindow, frame: HudFrame, appearance: number): Promise<void> {
+  private async placeHudAppearance(window: HudSurface, frame: HudFrame, appearance: number): Promise<void> {
     const wasHidden = !window.isVisible();
     const lookup = frame.kind === 'recording' ? this.caretLookup : null;
     let fix: CaretFix | null = null;
     if (lookup && lookup.sequence === this.service.sequence) {
       this.hudPlacing = appearance;
       // The lookup is already running since the press, so this is only what is left of the wait.
-      const left = Math.max(0, CARET_WAIT_MS - (Date.now() - lookup.startedAt));
+      const left = Math.max(0, this.e2eCaretWaitMs - (Date.now() - lookup.startedAt));
       fix = (await waitAtMost(lookup.result, left)) ?? null;
     }
     if (appearance !== this.hudAppearance || window.isDestroyed()) return;
@@ -956,7 +1009,7 @@ class UsefulVoiceApp {
    * A state wider than the room on its side of the caret moves to the other side when it fits
    * there. Done is left to the chip, which decides its own side.
    */
-  private fitBubbleBesideCaret(window: BrowserWindow): void {
+  private fitBubbleBesideCaret(window: HudSurface): void {
     const frame = this.hudFrame;
     const caret = this.hudCaret;
     const placement = this.hudPlacement;
@@ -969,7 +1022,7 @@ class UsefulVoiceApp {
   }
 
   /** After the paste: the done chip goes beside the new caret. If the caret cannot be found it stays where it was. */
-  private async moveHudToChip(window: BrowserWindow, frame: HudFrame, appearance: number): Promise<void> {
+  private async moveHudToChip(window: HudSurface, frame: HudFrame, appearance: number): Promise<void> {
     const placement = this.hudPlacement;
     if (placement.kind !== 'caret') return;
     await new Promise<void>((resolve) => setTimeout(resolve, CHIP_LOOKUP_DELAY_MS));
@@ -1015,11 +1068,20 @@ class UsefulVoiceApp {
   }
 
   private pushHudFrame(): void {
-    const window = this.hudWindow;
-    if (!window || window.isDestroyed() || window.webContents.isLoading()) return;
     const wire: HudWireFrame | null = this.hudFrame
       ? { ...this.hudFrame, placement: this.hudPlacement, style: this.hudStyle(), appearance: this.hudAppearance }
       : null;
+    if (E2E) {
+      const { x, y } = this.e2eHud.bounds;
+      this.e2eHudFrames.push(
+        wire
+          ? { kind: wire.kind, seq: wire.seq, appearance: wire.appearance, placement: wire.placement, origin: { x, y }, stopsIn: wire.kind === 'recording' ? wire.stopsIn : undefined }
+          : { kind: 'hidden' },
+      );
+      return;
+    }
+    const window = this.hudWindow;
+    if (!window || window.isDestroyed() || window.webContents.isLoading()) return;
     window.webContents.send('hud:view', wire);
   }
 

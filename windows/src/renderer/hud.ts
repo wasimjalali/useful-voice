@@ -4,14 +4,21 @@ import { el, icon, ICONS } from './components/dom.js';
 import { createLanguagePanel, LANGUAGE_PATHS } from './components/languagePicker.js';
 import { createWaveform } from './components/waveform.js';
 import {
+  DEFAULT_HUD_ACCENT,
   errorTitle,
   fixLabel,
   formatClock,
   formatWords,
   hudLabel,
+  type HudPlacement,
+  type HudStyle,
+  type HudWireFrame,
 } from '../core/hudModel.js';
 import type { HudAction } from '../preload/types.js';
-import { DEFAULT_PLACEMENT, DEFAULT_STYLE, type HudPlacement, type HudStyle, type HudWireFrame } from './hudWire.js';
+
+// A frame from an older main process carries no placement or style.
+const DEFAULT_PLACEMENT: HudPlacement = { kind: 'bottom' };
+const DEFAULT_STYLE: HudStyle = { colorway: 'ink', accent: DEFAULT_HUD_ACCENT, systemDark: false };
 
 // ---------------------------------------------------------------------------
 // The two small windows that float over other apps share this entry: the HUD (a

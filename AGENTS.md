@@ -57,6 +57,18 @@ Cross-platform dictation app. macOS: Swift (`Sources/UsefulVoiceCore`,
   (`scripts/build-cues.mjs`, part of `build:main`, into `dist/cues/`; the self-test checks them), never in the main process:
   a render there broke the e2e driver's in-flight evaluate calls.
 
+## The HUD (both platforms)
+
+The dictation pill sits beside the text cursor of the app in front and falls back to bottom centre when that app does
+not report it (macOS: Accessibility caret bounds in `HUD/CaretLocator.swift`; Windows: `GetGUIThreadInfo`, then UI
+Automation, in `src/main/caret.ts` on its own PowerShell host). Placement is decided once per appearance; after the
+paste the done chip moves beside the new cursor. Geometry: macOS `HUDPanel.swift`, Windows `src/core/hudPlacement.ts`
+(tests in `tests/hudPlacement.test.ts`). Both draw every frame from timestamps (macOS `HUD/HUDTimeline.swift` and
+`HUDView.swift`, Windows `src/renderer/hud.ts`), so any moment can be rendered alone. Colorways (`hudColorway`,
+`hudAccentHex` / `hudAccent`) live in Settings > Appearance > Dictation pill; the colours are `HUD/HUDPalette.swift` and
+the `--cw-*` tokens in `windows/src/renderer/styles/components/hud.css` (scoped to the HUD, never `tokens.css`).
+Windows frames carry `placement` and `style` on `hud:view` (`HudWireFrame` in `core/hudModel.ts`).
+
 ## Delivery
 
 A hotkey dictation pastes wherever the cursor is when the text is ready, on both platforms; only Useful Voice's own
@@ -123,7 +135,14 @@ Snapshot-only state hooks (they act only when `UV_SNAPSHOT` is set):
 | `UV_INSIGHTS_RANGE`, `UV_INSIGHTS_FIXTURE` | `7d`/`30d`/`all`; `empty`/`firstWeek`/`full` |
 | `UV_SETTINGS_ANCHOR`, `UV_SETTINGS_STATE` | a group id (`models` the Models group, `keys` API keys; `engine` is an alias of `models`); `noKey`, `invalidKey`, `confirmDelete`, `modelsSample` (sample keys, downloads and formatter), `modelsCompact` (modelsSample with the narrow row layout) |
 | `UV_HUD_STATE` | `recording`, `recordingLoud`, `silence`, `transcribing`, `local`, `localFa`, `inserting`, `done`, `doneSaved`, `copied`, `cancelled`, `errorNetwork`, `errorMic`, `language`, `picker` (renders the HUD alone; try `480x210`, picker `360x440`) |
+| `UV_HUD_PLACEMENT`, `UV_HUD_COLORWAY`, `UV_HUD_ACCENT`, `UV_HUD_SYSTEM_DARK` | `bottom`/`caret`/`caretFlipped`; `ink`/`paper`/`signal`/`accent`; `#RRGGBB`; `1` (the system's dark mode, which the pill follows) |
+| `UV_HUD_FRAMES` | `<from>:<to>:<step>` renders a scripted dictation (record, transcribe, insert, done, exit) one PNG per moment, `<snapshot stem>-0000.png` up, for frame-by-frame review of the HUD's motion |
 | `UV_MENU_HEADER` | `idle`, `recording` (the menu bar header row, `260x76`) |
+
+`UV_HUD_DEMO=<delay>` (no `UV_SNAPSHOT`) plays that scripted dictation through the real HUD panel beside the text
+cursor of the app in front, prints the cursor and bubble geometry and quits: no recording, no paste, no hotkeys, so it
+runs beside the installed copy. `UV_HUD_DEMO_PID=<pid>` reads that app's cursor instead, for a window that is not in
+front. Needs the signed bundle (Accessibility). Record it with `screenrec --display --scale 0.5 --fps 60`.
 
 `UV_PREVIEW_FEATURES=1` shows controls whose backend has not shipped (Correct this one, delete
 with Undo, hotkey capture).

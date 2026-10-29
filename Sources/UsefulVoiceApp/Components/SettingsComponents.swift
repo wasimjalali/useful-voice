@@ -515,7 +515,7 @@ struct HUDColorwayPicker: View {
     private func swatch(_ palette: HUDPalette) -> some View {
         Capsule(style: .circular)
             .fill(palette.surface)
-            .overlay(Capsule(style: .circular).strokeBorder(Color.black.opacity(0.12), lineWidth: 0.5))
+            .overlay(Capsule(style: .circular).strokeBorder(Theme.inkFaint.opacity(0.5), lineWidth: 0.5))
             .overlay(alignment: .leading) {
                 HStack(spacing: 3) {
                     Circle().fill(palette.rec).frame(width: 5, height: 5)

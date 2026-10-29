@@ -36,6 +36,23 @@ export type HudView =
 /** A view plus the counter that tells the window whether it is a new one or an update of the same. */
 export type HudFrame = HudView & { seq: number };
 
+/** Where the bubble sits: centred at the bottom, or beside the text cursor (`flipped`: on its left). */
+export type HudPlacement = { kind: 'bottom' } | { kind: 'caret'; flipped: boolean };
+
+export type HudColorway = 'ink' | 'paper' | 'signal' | 'accent';
+export const HUD_COLORWAYS: readonly HudColorway[] = ['ink', 'paper', 'signal', 'accent'];
+export const DEFAULT_HUD_ACCENT = '#F2A93B';
+
+/** How the HUD is dressed. `systemDark` is Windows' own mode, not the app's theme, as the HUD sits over other apps. */
+export interface HudStyle {
+  colorway: HudColorway;
+  accent: string;
+  systemDark: boolean;
+}
+
+/** What main sends the HUD window on `hud:view`. */
+export type HudWireFrame = HudFrame & { placement: HudPlacement; style: HudStyle };
+
 export interface HudStatusInput {
   state: 'idle' | 'recording' | 'transcribing' | 'delivering' | 'error';
   message?: string;

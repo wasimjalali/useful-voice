@@ -8,6 +8,7 @@
 
 import { DEEPGRAM_LANGUAGES, normaliseLanguageCode } from './transcription/languages.js';
 import { DEFAULT_VOICE_MODEL_ID } from './models/catalog.js';
+import { DEFAULT_HUD_ACCENT, type HudColorway } from './hudModel.js';
 
 /**
  * The language a setting, term or replacement is scoped to.
@@ -278,6 +279,10 @@ export interface AppSettings {
   dictionaryBiasBudget: number;
   /** Which theme the window uses. `system` follows Windows. */
   appearance: Appearance;
+  /** The dictation pill's look: a colorway, and the hue `accent` uses. */
+  hudColorway: HudColorway;
+  /** `#RRGGBB`, upper case. */
+  hudAccent: string;
   /** Words per day the Insights page measures progress against. No UI sets it yet. */
   dailyWordGoal: number;
   /** The voice (transcription) model, a catalog id such as `deepgram:nova-3`. */
@@ -317,6 +322,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   languageSwitchHotkey: { accelerator: 'Control+Alt+L', pushToTalk: false },
   dictionaryBiasBudget: 100,
   appearance: 'system',
+  hudColorway: 'ink',
+  hudAccent: DEFAULT_HUD_ACCENT,
   dailyWordGoal: 2500,
   voiceModelId: DEFAULT_VOICE_MODEL_ID,
   formatterId: null,

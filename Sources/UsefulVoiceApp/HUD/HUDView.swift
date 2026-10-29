@@ -15,7 +15,11 @@ final class HUDModel: ObservableObject {
     @Published var recordingID = 0
     /// The bubble's (or the done chip's) frame in the window, top-left origin. The
     /// panel uses it to take clicks over the bubble only and to anchor the picker.
-    var bubbleFrame: CGRect = .zero
+    var bubbleFrame: CGRect = .zero {
+        didSet { if bubbleFrame != oldValue { bubbleFrameChanged?() } }
+    }
+    /// The panel re-checks click-through when the bubble moves under a still pointer.
+    var bubbleFrameChanged: (() -> Void)?
 }
 
 private struct BubbleFrameKey: PreferenceKey {
@@ -79,6 +83,8 @@ struct HUDView: View {
     /// flips to the other side. Flipping covers the words before the cursor, so it
     /// happens only when the bubble would otherwise run off the screen.
     static let flipRoom: CGFloat = 170
+    /// Room the done chip needs beside the cursor.
+    static let chipRoom: CGFloat = 140
     /// The widest one-line bubble (an error with its verb and close).
     static let maxBubbleWidth: CGFloat = 340
     static let space = "hud"
@@ -88,11 +94,19 @@ struct HUDView: View {
     var body: some View {
         Group {
             if let clock {
-                scene(at: clock, still: false)
-            } else if timeline != nil, !reduceMotion {
-                TimelineView(.animation) { context in scene(at: context.date, still: false) }
+                scene(at: clock, still: false, timeline: timeline ?? .settled)
+            } else if let timeline, !reduceMotion {
+                // Runs at display rate while something moves, and pauses once the
+                // HUD has settled on a state with no loop (the panel nudges the view then).
+                TimelineView(.animation(minimumInterval: nil,
+                                        paused: HUDFrame.isSettled(display, placement, timeline, at: Date()))) { context in
+                    scene(at: context.date, still: false, timeline: timeline)
+                }
+            } else if let timeline {
+                // Reduce Motion: the end of every change, at once.
+                scene(at: .distantFuture, still: true, timeline: timeline)
             } else {
-                scene(at: Date(), still: true)
+                scene(at: .distantFuture, still: true, timeline: .settled)
             }
         }
         .frame(width: Self.windowSize.width, height: Self.windowSize.height)
@@ -102,9 +116,8 @@ struct HUDView: View {
 
     // MARK: - One frame
 
-    private func scene(at now: Date, still: Bool) -> some View {
-        let frame = HUDFrame(display: display, placement: placement,
-                             timeline: still ? .settled : (timeline ?? .settled), now: now, still: still)
+    private func scene(at now: Date, still: Bool, timeline: HUDTimeline) -> some View {
+        let frame = HUDFrame(display: display, placement: placement, timeline: timeline, now: now, still: still)
         return ZStack(alignment: frame.alignment) {
             if frame.bubbleOpacity > 0.001 { bubble(frame) }
             if frame.chipOpacity > 0.001 { chip(frame) }
@@ -221,6 +234,19 @@ struct HUDView: View {
 /// Every value one frame needs, worked out from the timeline and the clock.
 @MainActor
 private struct HUDFrame {
+    /// Nothing moves any more: no loop (waveform, dots, shimmer) on screen, and the
+    /// last change (entrance, state change, chip, exit) is over.
+    static func isSettled(_ display: HUDDisplay, _ placement: HUDPlacement, _ tl: HUDTimeline, at now: Date) -> Bool {
+        switch display {
+        case .recording, .transcribing: return false
+        case .delivering where !placement.isCaret: return false
+        default: break
+        }
+        let last = [tl.shownAt, tl.bubbleAt, tl.phaseAt, tl.foldAt, tl.chipAt, tl.exitAt, tl.recordingEndedAt]
+            .compactMap { $0 }.filter { $0 != .distantPast }.max() ?? .distantPast
+        return now > last.addingTimeInterval(HUDTiming.settle)
+    }
+
     let content: HUDDisplay
     let previous: HUDDisplay?
     let size: CGSize
@@ -254,7 +280,15 @@ private struct HUDFrame {
         // Caret placement folds the bubble into the cursor while the text lands; it
         // keeps showing the row it had.
         let folding = caret && display.foldsIntoCaret
-        let fold = folding ? (tl.foldAt == nil ? 1 : HUDEase.inOut(HUDEase.progress(since(tl.foldAt), over: HUDTiming.fold))) : 0
+        let fold: Double
+        if !folding {
+            fold = 0
+        } else if still {
+            // Without motion the bubble stays until the done chip takes over.
+            fold = display.isDone ? 1 : 0
+        } else {
+            fold = tl.foldAt == nil ? 1 : HUDEase.inOut(HUDEase.progress(since(tl.foldAt), over: HUDTiming.fold))
+        }
         content = folding ? (tl.held ?? display) : display
 
         // State change: out first, then in; the size eases over the whole change.
@@ -348,10 +382,8 @@ enum HUDLayout {
 
     static func size(of display: HUDDisplay, placement: HUDPlacement) -> CGSize {
         if case .transcribing(let partial?, true) = display {
-            let lines = min(HUDPartial.lineCount(HUDPartial.tail(partial, width: textWidth, lines: 2),
-                                                 width: textWidth), 2)
             return CGSize(width: HUDView.partialWidth,
-                          height: 10 + HUDPartial.lineHeight * CGFloat(lines) + 6 + 16 + 10)
+                          height: 10 + HUDPartial.lineHeight * CGFloat(self.partial(partial).lines) + 6 + 16 + 10)
         }
         let key = "\(placement.isCaret)|\(layoutKey(display))"
         if let known = cache[key] { return known }
@@ -366,6 +398,18 @@ enum HUDLayout {
     }
 
     static let textWidth = HUDView.partialWidth - 24
+
+    private static var lastPartial: (input: String, text: String, lines: Int)?
+
+    /// The live words' visible ending and its line count, worked out once per new
+    /// partial rather than on every frame.
+    static func partial(_ input: String) -> (text: String, lines: Int) {
+        if let last = lastPartial, last.input == input { return (last.text, last.lines) }
+        let text = HUDPartial.tail(input, width: textWidth - 8, lines: 2)
+        let lines = min(HUDPartial.lineCount(text, width: textWidth - 8), 2)
+        lastPartial = (input, text, lines)
+        return (text, lines)
+    }
 
     /// Measures the rows every dictation shows, ahead of the first one.
     static func warm() {
@@ -532,11 +576,10 @@ struct HUDRow: View {
     private func partialBubble(_ partial: String) -> some View {
         let rtl = HUDPartial.isRightToLeft(partial)
         let width = HUDLayout.textWidth
-        let text = HUDPartial.tail(partial, width: width - 8, lines: 2)
-        let lines = HUDPartial.lineCount(text, width: width - 8)
+        let (text, lines) = HUDLayout.partial(partial)
         return VStack(alignment: .leading, spacing: 6) {
             PartialLabel(text: text, rtl: rtl, width: width, color: NSColor(palette.ink).withAlphaComponent(0.72))
-                .frame(width: width, height: HUDPartial.lineHeight * CGFloat(min(lines, 2)),
+                .frame(width: width, height: HUDPartial.lineHeight * CGFloat(lines),
                        alignment: rtl ? .trailing : .leading)
             HStack(spacing: 8) {
                 HUDDotsMark(time: time, color: palette.dots, animated: animated)

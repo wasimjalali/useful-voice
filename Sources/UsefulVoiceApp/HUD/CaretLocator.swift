@@ -5,11 +5,12 @@ import ApplicationServices
 /// can sit beside it. Most native apps answer; many browsers and Electron apps do
 /// not, and then the HUD keeps its bottom-centre place.
 ///
-/// Every call carries a short messaging timeout, so an app that hangs costs the
-/// dictation start a fraction of a second, never a beachball.
+/// Every call carries a short messaging timeout and the lookup stops once 0,15 s
+/// have gone, so an app that hangs delays the dictation start by at most that.
 enum CaretLocator {
-    /// Per-call Accessibility timeout, in seconds.
-    private static let timeout: Float = 0.06
+    /// Per-call Accessibility timeout, and the budget for the whole lookup, in seconds.
+    private static let timeout: Float = 0.05
+    private static let budget: TimeInterval = 0.15
 
     /// Live checks only (`UV_HUD_DEMO_PID`): read this app's focused element instead
     /// of the system's, so a check can point at a window that is not in front.
@@ -19,6 +20,8 @@ enum CaretLocator {
     /// primary display), or nil when the app in front does not report one we can trust.
     static func locate() -> CGRect? {
         guard AXIsProcessTrusted() else { return nil }
+        let deadline = Date().addingTimeInterval(budget)
+        func inTime() -> Bool { Date() < deadline }
         let source = targetPID.map { AXUIElementCreateApplication($0) } ?? AXUIElementCreateSystemWide()
         AXUIElementSetMessagingTimeout(source, timeout)
         guard let element = element(source, kAXFocusedUIElementAttribute) else { return nil }
@@ -28,19 +31,22 @@ enum CaretLocator {
         AXUIElementGetPid(element, &pid)
         // Our own window copies instead of pasting, and has no caret to point at.
         if pid == ProcessInfo.processInfo.processIdentifier { return nil }
-        if string(element, kAXRoleAttribute) == "AXSecureTextField" { return nil }
+        // A password field is a text field with the secure subrole.
+        if string(element, kAXSubroleAttribute) == "AXSecureTextField"
+            || string(element, kAXRoleAttribute) == "AXSecureTextField" { return nil }
 
-        guard let rangeValue = value(element, kAXSelectedTextRangeAttribute) else { return nil }
+        guard inTime(), let rangeValue = value(element, kAXSelectedTextRangeAttribute) else { return nil }
         var range = CFRange()
         guard AXValueGetValue(rangeValue, .cfRange, &range), range.location >= 0 else { return nil }
         let end = range.location + range.length
 
         // The empty range at the caret first. Many apps answer it with a zero rect,
         // so fall back to the character before the caret and use its trailing edge.
+        guard inTime() else { return nil }
         if let rect = bounds(element, CFRange(location: end, length: 0)), isUsable(rect) {
             return cocoa(rect)
         }
-        if end > 0, let rect = bounds(element, CFRange(location: end - 1, length: 1)), isUsable(rect) {
+        if end > 0, inTime(), let rect = bounds(element, CFRange(location: end - 1, length: 1)), isUsable(rect) {
             return cocoa(CGRect(x: rect.maxX, y: rect.minY, width: 0, height: rect.height))
         }
         return nil

@@ -56,6 +56,8 @@ final class HUDPanel: NSObject {
     /// Smooths the mic level for the aura.
     private var levelSmoother = MicLevel.Smoother()
     private var styleObserver: NSObjectProtocol?
+    /// Nudges the view once the motion is over, so its frame clock can pause.
+    private var settleTimer: Timer?
 
     /// The pill's button: the fix verb. Wired by the app to `viewModel.perform`.
     var onFix: ((DictationFix) -> Void)?
@@ -110,17 +112,30 @@ final class HUDPanel: NSObject {
             }
             enter(panel)
         } else if old != display {
-            _ = HUDLayout.size(of: display, placement: model.placement)
+            let size = HUDLayout.size(of: display, placement: model.placement)
             model.timeline.advance(from: old, to: display, placement: model.placement, at: now)
             model.display = display
             if case .done = display, old.phase != display.phase, model.placement.isCaret { placeChip() }
+            if old.phase != display.phase { fitBesideCaret(width: size.width, at: now) }
         }
         if case .recording(_, let level, _) = display {
             model.level = levelSmoother.step(rms: level, at: now.timeIntervalSinceReferenceDate)
         }
         announce(display)
+        scheduleSettle()
 
         if let lifetime = display.lifetime { scheduleHide(after: lifetime) }
+    }
+
+    /// The view decides to pause its clock only when it is redrawn, so redraw it once
+    /// just after the last change has played out.
+    private func scheduleSettle() {
+        settleTimer?.invalidate()
+        let timer = Timer(timeInterval: HUDTiming.settle + 0.05, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.model.objectWillChange.send() }
+        }
+        settleTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     /// Hides the HUD, now or after `delay`.
@@ -184,6 +199,8 @@ final class HUDPanel: NSObject {
 
     private func enter(_ panel: NSPanel) {
         isShowing = true
+        // The last appearance's frame is stale until this one draws.
+        model.bubbleFrame = .zero
         generation &+= 1
         position(panel, at: windowOrigin())
         panel.alphaValue = 1
@@ -193,6 +210,7 @@ final class HUDPanel: NSObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
             guard let self, self.generation == token, self.isShowing else { return }
             self.model.timeline.start(at: Date())
+            self.scheduleSettle()
         }
     }
 
@@ -228,6 +246,22 @@ final class HUDPanel: NSObject {
         return .caret(flipped: flipped)
     }
 
+    /// A wider state (an error with its verb, the copied notice) that would run off the
+    /// screen beside the cursor moves to the cursor's other side and enters again there.
+    private func fitBesideCaret(width: CGFloat, at now: Date) {
+        guard case .caret(let flipped) = model.placement, let caret, let panel,
+              let visible = screen(containing: caret)?.visibleFrame else { return }
+        let fitsRight = caret.maxX + HUDView.caretGap + width <= visible.maxX
+        let fitsLeft = caret.minX - HUDView.caretGap - width >= visible.minX
+        let flip: Bool
+        if flipped { flip = !fitsLeft && fitsRight ? false : true } else { flip = !fitsRight && fitsLeft }
+        guard flip != flipped else { return }
+        model.placement = .caret(flipped: flip)
+        model.timeline.bubbleAt = now
+        model.timeline.previous = nil
+        position(panel, at: caretOrigin(for: caret, gap: HUDView.caretGap, room: width))
+    }
+
     /// Once the words have landed, the done chip goes beside the cursor's new
     /// position. The app in front gets a moment to move its cursor first; if it
     /// no longer answers, the chip stays at the old spot.
@@ -238,28 +272,37 @@ final class HUDPanel: NSObject {
                   case .done = self.model.display else { return }
             if let moved = CaretLocator.locate() {
                 self.caret = moved
-                self.position(panel, at: self.caretOrigin(for: moved, gap: HUDView.chipGap))
+                // The chip is smaller than the bubble: it flips only when even it would
+                // run off the screen beside the cursor's new position.
+                if let visible = self.screen(containing: moved)?.visibleFrame {
+                    let flip = moved.maxX + HUDView.chipGap + HUDView.chipRoom > visible.maxX
+                    self.model.placement = .caret(flipped: flip)
+                }
+                self.position(panel, at: self.caretOrigin(for: moved, gap: HUDView.chipGap, room: HUDView.chipRoom))
             }
             self.model.timeline.chipAt = Date()
+            self.scheduleSettle()
         }
     }
 
     private func windowOrigin() -> CGPoint {
-        if model.placement.isCaret, let caret { return caretOrigin(for: caret, gap: HUDView.caretGap) }
+        if model.placement.isCaret, let caret {
+            return caretOrigin(for: caret, gap: HUDView.caretGap, room: HUDView.flipRoom)
+        }
         return bottomOrigin(on: activeScreen)
     }
 
     /// The window that puts the bubble's near edge `gap` from the cursor, vertically
-    /// centred on it, kept on the cursor's screen.
-    private func caretOrigin(for caret: CGRect, gap: CGFloat) -> CGPoint {
+    /// centred on it, kept on the cursor's screen with `room` for the bubble.
+    private func caretOrigin(for caret: CGRect, gap: CGFloat, room: CGFloat) -> CGPoint {
         let size = HUDView.windowSize
         let pad = HUDView.shadowPad
         let flipped = model.placement.isFlipped
         var x = flipped ? caret.minX - gap - (size.width - pad) : caret.maxX + gap - pad
         var y = caret.midY - size.height / 2
         if let visible = screen(containing: caret)?.visibleFrame {
-            // Keep a bubble of the flip room on screen without sliding it over the cursor.
-            x = min(max(x, visible.minX - pad), visible.maxX - pad - HUDView.flipRoom)
+            // Keep a bubble of that room on screen without sliding it over the cursor.
+            x = flipped ? max(x, visible.minX + room - (size.width - pad)) : min(x, visible.maxX - pad - room)
             let half = (size.height - HUDView.bubbleHeight) / 2
             y = min(max(y, visible.minY - half + 4), visible.maxY - size.height + half - 4)
         }
@@ -368,6 +411,7 @@ final class HUDPanel: NSObject {
                 // status surface and the menu.
                 self?.hide()
             })
+        model.bubbleFrameChanged = { [weak self] in self?.updateMouseEvents() }
         let hosting = HUDHostingView(rootView: root)
         // Single sizing authority: the window is a fixed size, so the hosting view
         // must not try to resize it.

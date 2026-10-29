@@ -38,6 +38,8 @@ enum HUDTiming {
     static let auraFade = 0.2
     /// One turn of the working dots, and one sweep of the label's shimmer.
     static let dotsPeriod = 1.15
+    /// After the last change, how long before the frame clock may stop.
+    static let settle = 1.1
     static let shimmerPeriod = 1.5
 }
 
@@ -101,7 +103,9 @@ struct HUDTimeline: Equatable {
         guard shownAt == .distantFuture else { return }
         shownAt = now
         bubbleAt = now
-        if phaseAt == .distantFuture { phaseAt = now }
+        // A change that came in while waiting starts with the entrance, not before it.
+        phaseAt = phaseAt == .distantFuture ? now : max(phaseAt, now)
+        if let fold = foldAt { foldAt = max(fold, now) }
         if bloomAt != nil { bloomAt = now }
     }
 
@@ -145,6 +149,11 @@ extension HUDDisplay {
 
     /// In caret placement these states fold the bubble into the cursor: the text is
     /// on its way to it, and the done chip follows beside the new cursor position.
+    var isDone: Bool {
+        if case .done = self { return true }
+        return false
+    }
+
     var foldsIntoCaret: Bool {
         switch self {
         case .delivering, .done: return true

@@ -210,9 +210,8 @@ function mountHudCapsule(): void {
   const capsule = el('div', { class: 'hud-capsule is-hidden', role: 'group' });
   const tail = el('div', { class: 'hud-tail' });
   const rings = [el('div', { class: 'hud-ring' }), el('div', { class: 'hud-ring' })];
-  const glow = el('div', { class: 'hud-glow' });
   const aura = el('div', { class: 'hud-aura' });
-  const body = el('div', { class: 'hud-body' }, tail, ...rings, glow, aura, capsule);
+  const body = el('div', { class: 'hud-body' }, tail, ...rings, aura, capsule);
   const anchor = el('div', { class: 'hud-anchor' }, body);
   const chip = el('div', { class: 'hud-chip', 'aria-hidden': 'true' });
   const stage = el(
@@ -413,7 +412,7 @@ function mountHudCapsule(): void {
     capsule.removeAttribute('title');
     anchor.style.opacity = '0';
     anchor.classList.remove('is-live');
-    for (const node of [...rings, glow, aura]) node.style.opacity = '0';
+    for (const node of [...rings, aura]) node.style.opacity = '0';
     hideChip();
     exitAt = null;
     enterAt = null;
@@ -632,14 +631,12 @@ function mountHudCapsule(): void {
     auraK = auraTarget > auraK ? Math.min(1, auraK + dt / AURA_FADE_MS) : Math.max(0, auraK - dt / AURA_FADE_MS);
     if (recording) auraLevel = wave.level();
     const level = auraLevel;
-    const spread = 3 + 1.5 * level;
-    for (const node of [aura, glow]) {
-      node.style.inset = `${-spread}px`;
-      node.style.borderRadius = `${15 + spread}px`;
-    }
-    aura.style.opacity = ((0.1 + 0.4 * level) * auraK).toFixed(3);
-    glow.style.boxShadow = `0 0 ${(3 + 7 * level).toFixed(1)}px var(--cw-halo)`;
-    glow.style.opacity = (0.45 * level * auraK).toFixed(3);
+    // A soft glow: the bubble's shape grown by 1 + 3 x level, blurred, behind the bubble.
+    const spread = 1 + 3 * level;
+    aura.style.inset = `${-spread}px`;
+    aura.style.borderRadius = `${15 + spread}px`;
+    aura.style.filter = `blur(${(5 + 5 * level).toFixed(1)}px)`;
+    aura.style.opacity = ((0.18 + 0.37 * level) * auraK).toFixed(3);
 
     // The done chip beside the cursor.
     if (chipAt !== null) {

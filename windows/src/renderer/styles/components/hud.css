@@ -24,7 +24,7 @@ body.hud {
   --cw-rec: #f0795c;
   --cw-ok: #fafafa;
   --cw-dots: #fafafa;
-  --cw-halo: #171717;
+  --cw-halo: #f0795c;
   --cw-edge: rgb(255 255 255 / 0.14);
   --cw-edge-w: 0.5px;
   --cw-chip: rgb(255 255 255 / 0.14);
@@ -33,7 +33,6 @@ body.hud {
 }
 .hud-stage[data-dark='true'] {
   --cw-surface: #202020;
-  --cw-halo: #ffffff;
   --cw-edge-w: 1px;
   --cw-shadow: 0 6px 18px rgb(0 0 0 / 0.55);
   --cw-shadow-sm: 0 3px 10px rgb(0 0 0 / 0.55);
@@ -46,7 +45,7 @@ body.hud {
   --cw-rec: #c2412a;
   --cw-ok: #171717;
   --cw-dots: #171717;
-  --cw-halo: #171717;
+  --cw-halo: #f0795c;
   --cw-edge: rgb(0 0 0 / 0.08);
   --cw-edge-w: 1px;
   --cw-chip: #efefef;
@@ -55,7 +54,6 @@ body.hud {
 }
 .hud-stage[data-colorway='paper'][data-dark='true'] {
   --cw-surface: #f2f2f2;
-  --cw-halo: #ffffff;
   --cw-shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 22px rgb(0 0 0 / 0.5);
   --cw-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06), 0 4px 10px rgb(0 0 0 / 0.4);
 }
@@ -152,8 +150,7 @@ body.hud {
 
 /* Halo: the bloom rings and the aura follow the bubble's shape. */
 .hud-ring,
-.hud-aura,
-.hud-glow {
+.hud-aura {
   position: absolute;
   inset: 0;
   z-index: 0;
@@ -162,8 +159,7 @@ body.hud {
   pointer-events: none;
 }
 .hud-ring { border: 1.5px solid var(--cw-halo); }
-.hud-aura { border: 1px solid var(--cw-halo); }
-.hud-glow { box-shadow: 0 0 3px var(--cw-halo); }
+.hud-aura { background: var(--cw-halo); }
 
 /* One state's row. Rows overlap while a state change cross-fades; the bubble clips them. */
 .hud-inner {

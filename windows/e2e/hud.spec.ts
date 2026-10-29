@@ -324,7 +324,7 @@ test('reduce motion: no scale, bloom or aura, still dots, no shimmer, check full
   await send('hud:level', 0.3);
   await hud.waitForTimeout(100);
   expect(await hud.locator('.hud-anchor').evaluate((n) => getComputedStyle(n).transform)).toBe('none');
-  const halo = await hud.locator('.hud-ring, .hud-aura, .hud-glow').evaluateAll((nodes) => nodes.map((n) => Number(getComputedStyle(n).opacity)));
+  const halo = await hud.locator('.hud-ring, .hud-aura').evaluateAll((nodes) => nodes.map((n) => Number(getComputedStyle(n).opacity)));
   expect(Math.max(...halo)).toBe(0);
   await send('hud:view', { kind: 'transcribing', seq: 2, placement: place, style });
   await hud.waitForTimeout(60);

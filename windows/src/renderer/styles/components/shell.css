@@ -96,6 +96,9 @@
   color: var(--ink);
   box-shadow: var(--shadow-sm), 0 0 0 0.5px var(--edge);
 }
+@media (forced-colors: active) {
+  .rail-item[aria-current="page"] { outline: 1px solid CanvasText; }
+}
 .rail-glyph { display: grid; place-items: center; }
 .rail-glyph svg { width: 22px; height: 22px; }
 .rail-glyph.ok { color: var(--success); }

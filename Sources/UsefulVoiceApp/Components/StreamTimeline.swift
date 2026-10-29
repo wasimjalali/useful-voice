@@ -11,6 +11,8 @@ struct StreamTimeline: View {
 
     @FocusState private var focused: Bool
     @State private var atBottom = true
+    /// True once the list is scrolled away from its top, so something is under the day band.
+    @State private var scrolled = false
 
     private static let bottomID = "stream-bottom"
     static let scrollSpace = "stream-scroll"
@@ -29,7 +31,7 @@ struct StreamTimeline: View {
                                         .transition(.brandRise())
                                 }
                             } header: {
-                                StreamDayBand(day: day, store: store) { target in
+                                StreamDayBand(day: day, store: store, scrolled: scrolled) { target in
                                     withAnimation(BrandMotion.resolved(BrandMotion.rise)) {
                                         proxy.scrollTo(target, anchor: .top)
                                     }
@@ -46,6 +48,14 @@ struct StreamTimeline: View {
                     }
                     .padding(.horizontal, 28)
                     .padding(.bottom, 24)
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear
+                                .onChange(of: proxy.frame(in: .named(Self.scrollSpace)).minY, initial: true) { _, y in
+                                    scrolled = y < -0.5
+                                }
+                        }
+                    }
                 }
                 // Content dissolves into the surface above the dock instead of being sliced.
                 .mask(alignment: .top) {
@@ -119,6 +129,7 @@ struct StreamTimeline: View {
 private struct StreamDayBand: View {
     let day: StreamDay
     @ObservedObject var store: StreamStore
+    let scrolled: Bool
     let jump: (Date) -> Void
 
     @State private var open = false
@@ -153,7 +164,7 @@ private struct StreamDayBand: View {
         .padding(.bottom, 8)
         .background(Theme.surface)
         .overlay(alignment: .bottom) {
-            Rectangle().fill(Theme.line).frame(height: 1).opacity(pinned ? 1 : 0)
+            Rectangle().fill(Theme.line).frame(height: 1).opacity(pinned && scrolled ? 1 : 0)
         }
         .padding(.horizontal, -28)
         // A soft 12 pt fade under the stuck band; it never catches clicks.
@@ -161,7 +172,7 @@ private struct StreamDayBand: View {
             LinearGradient(colors: [Theme.surface, Theme.surface.opacity(0)], startPoint: .top, endPoint: .bottom)
                 .frame(height: 12)
                 .offset(y: 12)
-                .opacity(pinned ? 1 : 0)
+                .opacity(pinned && scrolled ? 1 : 0)
                 .allowsHitTesting(false)
         }
         .background {

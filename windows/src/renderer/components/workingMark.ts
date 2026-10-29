@@ -18,8 +18,9 @@ function svg(tag: string, attrs: Record<string, string>): SVGElement {
   return node;
 }
 
-/** One shared goo filter: blur, then threshold the alpha so overlapping dots fuse. */
-function gooFilter(): SVGSVGElement {
+/** One shared, hidden goo filter in the document (blur, then threshold the alpha so overlapping dots fuse). */
+function ensureGooFilter(): void {
+  if (document.getElementById(FILTER_ID)) return;
   const defs = svg('svg', { width: '0', height: '0', 'aria-hidden': 'true', focusable: 'false' }) as SVGSVGElement;
   defs.style.position = 'absolute';
   const filter = svg('filter', { id: FILTER_ID, x: '-50%', y: '-50%', width: '200%', height: '200%' });
@@ -27,9 +28,10 @@ function gooFilter(): SVGSVGElement {
     svg('feGaussianBlur', { in: 'SourceGraphic', stdDeviation: '1', result: 'b' }),
     svg('feColorMatrix', { in: 'b', type: 'matrix', values: '1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 12 -4.4' }),
   );
-  defs.append(svg('defs', {}));
-  defs.firstChild?.appendChild(filter);
-  return defs;
+  const container = svg('defs', {});
+  container.append(filter);
+  defs.append(container);
+  document.body.append(defs);
 }
 
 /** The working dots: a 24 box drawn at 16 px, in the current text colour. */
@@ -39,7 +41,7 @@ export function createWorkingDots(size = 16): HTMLElement {
   wrap.setAttribute('aria-hidden', 'true');
   wrap.style.width = `${size}px`;
   wrap.style.height = `${size}px`;
-  wrap.append(gooFilter());
+  ensureGooFilter();
 
   const mark = svg('svg', { viewBox: '-12 -12 24 24', width: String(size), height: String(size) }) as SVGSVGElement;
   const group = svg('g', { filter: `url(#${FILTER_ID})`, fill: 'currentColor' });
@@ -70,17 +72,21 @@ export function createWorkingDots(size = 16): HTMLElement {
   }
   place(0, false);
   // Runs only while the mark is on screen; a rebuilt dock disconnects it and the loop ends.
+  // The wrap is attached after this returns, so the loop waits for it (a few frames at most)
+  // and ends once it has been on screen and then removed.
+  let wasConnected = false;
+  let waited = 0;
   const tick = (now: number): void => {
-    if (!wrap.isConnected) return;
+    if (wrap.isConnected) wasConnected = true;
+    else if (wasConnected || ++waited > 5) return;
     place(now / 1000, false);
     requestAnimationFrame(tick);
   };
-  // The wrap is attached after this returns, so the first frame waits for it.
   requestAnimationFrame(tick);
   return wrap;
 }
 
-/** A label at half ink with a full-ink band sweeping left to right (see workingMark.css). */
+/** A label at half ink with a full-ink band sweeping left to right (styles in dock.css). */
 export function createShimmerLabel(text: string): HTMLElement {
   const label = document.createElement('b');
   label.className = 'working-shimmer';

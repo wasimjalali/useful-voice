@@ -142,8 +142,10 @@ export function createTimeline(hooks: TimelineHooks): Timeline {
 
   function updateStuck(): void {
     const top = scroll.getBoundingClientRect().top;
+    // Stuck only once the list is scrolled: at rest nothing is under the band.
+    const scrolled = scroll.scrollTop > 0.5;
     for (const label of col.querySelectorAll<HTMLElement>('.tl-day-band')) {
-      label.classList.toggle('is-stuck', Math.abs(label.getBoundingClientRect().top - top) < 1.5);
+      label.classList.toggle('is-stuck', scrolled && Math.abs(label.getBoundingClientRect().top - top) < 1.5);
     }
   }
 

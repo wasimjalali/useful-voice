@@ -120,6 +120,8 @@ struct HUDShimmerLabel: View {
     let ink: Color
     let time: Double
     var animated = true
+    /// Ink strength outside the sweeping band.
+    var baseOpacity = 0.5
 
     var body: some View {
         Text(text).foregroundStyle(style)
@@ -131,7 +133,7 @@ struct HUDShimmerLabel: View {
         // The gradient is three label-widths wide; its band sweeps from just
         // before the label to just past it.
         let start = -0.5 + 2 * phase - 1.5
-        let base = ink.opacity(0.5)
+        let base = ink.opacity(baseOpacity)
         return AnyShapeStyle(LinearGradient(
             stops: [.init(color: base, location: 0), .init(color: base, location: 0.38),
                     .init(color: ink, location: 0.5), .init(color: base, location: 0.62),

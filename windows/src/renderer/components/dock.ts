@@ -392,6 +392,7 @@ export function createDock(options: DockOptions): DockHandle {
   }
 
   let lastShape = '';
+  let lastStatusKey = '';
   function paint(): void {
     cancelAnimationFrame(markFrame);
     markFrame = 0;
@@ -407,6 +408,8 @@ export function createDock(options: DockOptions): DockHandle {
 
     root.className = `dock ${toneClass()}`.trim();
     root.setAttribute('aria-label', mode === 'recording' && !selection ? `Recording, ${formatClock(elapsed)}` : 'Dictation');
+    const statusKey = !selection && mode === 'done' && done ? `done:${JSON.stringify(done)}`
+      : !selection && (mode === 'transcribing' || mode === 'inserting') ? mode : '';
     const swapping = shape !== lastShape;
     const next = el('div', { class: `dock-inner${swapping ? ' is-swapping' : ''}` }, ...nodes);
     if (swapping) {
@@ -418,8 +421,17 @@ export function createDock(options: DockOptions): DockHandle {
       window.setTimeout(() => leaving.remove(), DOCK_SWAP_MS);
       root.append(next);
     } else {
+      // The busy and done rows keep their status when nothing in it changed, so the check
+      // draws once per done and the shimmer is not restarted by a repaint.
+      const keep = statusKey !== '' && statusKey === lastStatusKey ? inner.querySelector('.dock-status') : null;
+      const fresh = next.querySelector('.dock-status');
+      if (keep && fresh) {
+        fresh.replaceWith(keep);
+        if (mode === 'transcribing' || mode === 'inserting') live.since = keep.querySelector<HTMLElement>('.tnum') ?? undefined;
+      }
       inner.replaceWith(next);
     }
+    lastStatusKey = statusKey;
     inner = next;
     lastShape = shape;
   }

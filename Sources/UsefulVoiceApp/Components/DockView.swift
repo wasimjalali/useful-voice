@@ -495,11 +495,11 @@ private struct DockWorking: View {
 
     var body: some View {
         let animated = !reduceMotion && DockSnapshot.current == nil
-        TimelineView(.animation(paused: !animated)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !animated)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             HStack(spacing: 10) {
                 HUDDotsMark(time: t, color: Theme.ink, animated: animated, size: 16)
-                HUDShimmerLabel(text: label, ink: Theme.ink, time: t, animated: animated)
+                HUDShimmerLabel(text: label, ink: Theme.ink, time: t, animated: animated, baseOpacity: 0.62)
                     .font(.uv(.body, .semibold))
             }
         }

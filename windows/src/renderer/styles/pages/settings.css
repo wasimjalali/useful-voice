@@ -41,7 +41,11 @@
 .s-index-item[aria-current="true"] {
   background: var(--sunken);
   color: var(--ink);
-  font-weight: 550;
+  font-weight: 600;
+}
+
+@media (forced-colors: active) {
+  .s-index-item[aria-current="true"] { outline: 1px solid CanvasText; }
 }
 
 /* Under 900 px the index becomes a row above the groups. After the base rules, or they win. */

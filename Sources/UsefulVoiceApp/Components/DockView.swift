@@ -289,17 +289,10 @@ struct StreamDock: View {
                 DockRecordingLive(telemetry: viewModel.telemetry)
             }
         case .transcribing(let local):
-            HStack(spacing: 10) {
-                DockSpinner()
-                Text(local ? "Transcribing locally" : "Transcribing")
-                    .font(.uv(.body, .semibold))
-                    .foregroundStyle(Theme.ink)
-            }
+            DockWorking(label: local ? "Transcribing locally" : "Transcribing")
         case .done(let words, let destination):
             HStack(spacing: 10) {
-                Image(systemName: "checkmark")
-                    .font(.uv(.ui, .semibold))
-                    .foregroundStyle(Theme.ink)
+                DockCheck()
                 Text(destination)
                     .font(.uv(.body, .semibold))
                     .foregroundStyle(Theme.ink)
@@ -494,25 +487,39 @@ private struct DockRecordDot: View {
     }
 }
 
-/// A 14 pt ring with a turning arc. A still ring under Reduce Motion.
-struct DockSpinner: View {
+/// The transcribing row: the working dots and a shimmering label, on one clock.
+/// Still dots and a plain label under Reduce Motion.
+private struct DockWorking: View {
+    let label: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var turning = false
 
     var body: some View {
-        ZStack {
-            Circle().stroke(Theme.lineStrong, lineWidth: 2)
-            Circle()
-                .trim(from: 0, to: reduceMotion ? 1 : 0.28)
-                .stroke(Theme.ink, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                .rotationEffect(.degrees(turning ? 360 : 0))
+        let animated = !reduceMotion && DockSnapshot.current == nil
+        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !animated)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            HStack(spacing: 10) {
+                HUDDotsMark(time: t, color: Theme.ink, animated: animated, size: 16)
+                HUDShimmerLabel(text: label, ink: Theme.ink, time: t, animated: animated, baseOpacity: 0.62)
+                    .font(.uv(.body, .semibold))
+            }
         }
-        .frame(width: 14, height: 14)
-        .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) { turning = true }
-        }
-        .accessibilityHidden(true)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+    }
+}
+
+/// The done check: draws itself once when the row appears. Fully drawn under Reduce
+/// Motion and in snapshots.
+private struct DockCheck: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var progress = 0.0
+
+    var body: some View {
+        HUDCheck(progress: progress, color: Theme.ink, size: 14)
+            .onAppear {
+                if reduceMotion || DockSnapshot.current != nil { progress = 1; return }
+                withAnimation(.easeOut(duration: 0.28).delay(0.11)) { progress = 1 }
+            }
     }
 }
 

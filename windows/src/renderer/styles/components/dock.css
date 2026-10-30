@@ -123,17 +123,22 @@
 
 .dock-action { height: 32px; background: var(--surface); flex: none; }
 
-.dock-spinner {
-  flex: none;
-  width: 18px;
-  height: 18px;
-  border: 2px solid var(--line-strong);
-  border-top-color: var(--ink);
-  border-radius: 50%;
-  animation: dock-spin 800ms linear infinite;
+/* The working dots, shimmer label and drawn check (components/workingMark.ts). */
+.working-dots { position: relative; display: inline-flex; flex: none; color: var(--ink); }
+.working-shimmer {
+  color: transparent;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ink) 62%, transparent) 0%, color-mix(in srgb, var(--ink) 62%, transparent) 38%, var(--ink) 50%, color-mix(in srgb, var(--ink) 62%, transparent) 62%, color-mix(in srgb, var(--ink) 62%, transparent) 100%) 0 0 / 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: working-shimmer 1.5s linear infinite;
 }
-
-@keyframes dock-spin { to { transform: rotate(360deg); } }
+@media (forced-colors: active) {
+  .working-shimmer { color: CanvasText; background: none; -webkit-text-fill-color: CanvasText; animation: none; }
+}
+@keyframes working-shimmer { from { background-position: 0 0; } to { background-position: 100% 0; } }
+.working-check { flex: none; color: var(--ink); }
+.working-check path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: working-check 280ms var(--ease-out) 110ms forwards; }
+@keyframes working-check { to { stroke-dashoffset: 0; } }
 
 /* ---------- Recording ---------- */
 
@@ -282,7 +287,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .dock-dot { animation: none; }
-  .dock-spinner { animation: none; border-color: var(--ink-muted); }
+  .working-shimmer { animation: none; background: none; color: var(--ink); }
+  .working-check path { animation: none; stroke-dashoffset: 0; }
   .dock-inner.is-swapping { animation: none; }
   .dock-inner.is-leaving { animation: none; opacity: 0; }
 }

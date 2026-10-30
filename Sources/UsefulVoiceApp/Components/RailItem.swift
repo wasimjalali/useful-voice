@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// One rail item: icon over a label, 68 x 54. The selected item gets the lift (surface
-/// card with a hairline) and a 2 pt leading ink bar, so selection is never only a tint.
+/// card with a hairline and a soft shadow) and a semibold glyph, so selection is never only a tint.
 /// Pure presentation: the parent owns selection and tap handling.
 struct RailItem: View {
     let title: String
@@ -34,16 +34,6 @@ struct RailItem: View {
                 .strokeBorder(Theme.edge, lineWidth: isSelected ? 0.5 : 0)
         )
         .shadow(color: Theme.ink.opacity(isSelected ? 0.06 : 0), radius: 1, y: 1)
-        .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 1, style: .continuous)
-                .fill(Theme.ink)
-                .frame(width: 2)
-                .padding(.vertical, 14)
-                // In the rail's 8 pt gutter, outside the card: inside it the bar sat
-                // a point or two from a wide label ("Vocabulary").
-                .offset(x: -5)
-                .opacity(isSelected ? 1 : 0)
-        }
         // The highlight fades in and out (150 ms) instead of snapping.
         .brandAnimation(BrandMotion.control, value: isSelected)
         .brandAnimation(BrandMotion.control, value: hovering)

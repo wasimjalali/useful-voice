@@ -149,3 +149,32 @@
   .settings-page .s-capture-field { height: 40px; }
   .s-index-item { min-height: 40px; }
 }
+
+/* Dictation pill: four colorway buttons and a colour well for the accent hue. */
+.s-pill { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.s-pill-swatch {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--sw-surface);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.s-pill-dot,
+.s-pill-bar { position: absolute; top: 50%; transform: translateY(-50%); }
+.s-pill-dot { left: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--sw-dot); }
+.s-pill-bar { left: 14px; width: 9px; height: 2px; border-radius: 1px; background: var(--sw-bar); }
+.s-pill-well {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--control-edge);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  cursor: pointer;
+}
+.s-pill-well::-webkit-color-swatch-wrapper { padding: 3px; }
+.s-pill-well::-webkit-color-swatch { border: 0; border-radius: 3px; }
+.s-pill-well:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }

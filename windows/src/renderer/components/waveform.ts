@@ -49,25 +49,41 @@ export function createLevelSmoother(): LevelSmoother {
 // ---------------------------------------------------------------------------
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const BARS = 30;
 const BAR_W = 2;
-const WIDTH = 104;
-const HEIGHT = 28;
-const MIN_H = 3;
 const PUSH_MS = 50;
-const OLDEST_OPACITY = 0.35;
+
+export interface WaveformOptions {
+  /** Number of bars; default 30. */
+  bars?: number;
+  /** Box size in px; default 104 x 28. */
+  width?: number;
+  height?: number;
+  /** Height of a silent bar; default 3. */
+  minHeight?: number;
+  /** `position`: older bars are dimmer (default). `level`: a bar's opacity follows its own level, 0.45 to 1. */
+  opacity?: 'position' | 'level';
+}
 
 export interface Waveform {
   element: SVGSVGElement;
   /** Feeds the latest meter level (0 to 1). */
   push(meterLevel: number): void;
+  /** The smoothed level (0..1) of the latest frame, for effects that follow the voice. */
+  level(): number;
   /** Starts the animation loop with an empty history; `stop` ends it. */
   start(): void;
   stop(): void;
 }
 
-/** 30 bars of 2 px in 104 x 28 px: every 50 ms the smoothed level enters on the right. */
-export function createWaveform(): Waveform {
+/** Scrolling bars of 2 px: every 50 ms the smoothed level enters on the right. Defaults: 30 bars in 104 x 28 px. */
+export function createWaveform(options: WaveformOptions = {}): Waveform {
+  const BARS = options.bars ?? 30;
+  const WIDTH = options.width ?? 104;
+  const HEIGHT = options.height ?? 28;
+  const MIN_H = options.minHeight ?? 3;
+  const byLevel = options.opacity === 'level';
+  const OLDEST_OPACITY = byLevel ? 0.45 : 0.35;
+
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('viewBox', `0 0 ${WIDTH} ${HEIGHT}`);
   svg.setAttribute('width', String(WIDTH));
@@ -83,7 +99,6 @@ export function createWaveform(): Waveform {
     rect.setAttribute('x', (i * (BAR_W + gap)).toFixed(3));
     rect.setAttribute('width', String(BAR_W));
     rect.setAttribute('rx', '1');
-    rect.setAttribute('opacity', (OLDEST_OPACITY + ((1 - OLDEST_OPACITY) * i) / (BARS - 1)).toFixed(3));
     svg.append(rect);
     rects.push(rect);
   }
@@ -93,23 +108,29 @@ export function createWaveform(): Waveform {
   let frame = 0;
   let last = 0;
   let sincePush = 0;
+  let current = 0;
 
   const paint = (): void => {
     rects.forEach((rect, i) => {
-      const h = MIN_H + (HEIGHT - MIN_H) * (history[i] ?? 0);
+      const v = history[i] ?? 0;
+      const h = MIN_H + (HEIGHT - MIN_H) * v;
       rect.setAttribute('y', ((HEIGHT - h) / 2).toFixed(2));
       rect.setAttribute('height', h.toFixed(2));
+      const opacity = byLevel
+        ? OLDEST_OPACITY + (1 - OLDEST_OPACITY) * v
+        : OLDEST_OPACITY + ((1 - OLDEST_OPACITY) * i) / (BARS - 1);
+      rect.setAttribute('opacity', opacity.toFixed(3));
     });
   };
 
   const tick = (now: number): void => {
     const dt = Math.min(100, now - last);
     last = now;
-    const v = smoother.step(dt);
+    current = smoother.step(dt);
     sincePush += dt;
     if (sincePush >= PUSH_MS) {
       sincePush -= PUSH_MS;
-      history = [...history.slice(1), v];
+      history = [...history.slice(1), current];
       paint();
     }
     frame = requestAnimationFrame(tick);
@@ -119,11 +140,13 @@ export function createWaveform(): Waveform {
   return {
     element: svg,
     push: (meterLevel) => smoother.push(meterLevel),
+    level: () => current,
     start: () => {
       cancelAnimationFrame(frame);
       smoother.reset();
       history = new Array<number>(BARS).fill(0);
       sincePush = 0;
+      current = 0;
       last = performance.now();
       paint();
       frame = requestAnimationFrame(tick);

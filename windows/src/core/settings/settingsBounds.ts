@@ -10,6 +10,7 @@
  */
 
 import { normaliseFormatterId, normaliseVoiceModelId } from '../models/catalog.js';
+import { HUD_COLORWAYS } from '../hudModel.js';
 import { APPEARANCES, DEFAULT_SETTINGS, normaliseMemoryLanguage, type AppSettings } from '../models.js';
 
 /**
@@ -65,6 +66,12 @@ export function normaliseSettings(settings: AppSettings): AppSettings {
     // An unknown theme falls back to following the system rather than leaving the
     // window with no data-theme and so no tokens.
     appearance: APPEARANCES.includes(settings.appearance) ? settings.appearance : DEFAULT_SETTINGS.appearance,
+    // An unknown colorway or a colour that is not #RRGGBB falls back, so the HUD always has a palette.
+    hudColorway: HUD_COLORWAYS.includes(settings.hudColorway) ? settings.hudColorway : DEFAULT_SETTINGS.hudColorway,
+    hudAccent:
+      typeof settings.hudAccent === 'string' && /^#[0-9a-f]{6}$/i.test(settings.hudAccent)
+        ? settings.hudAccent.toUpperCase()
+        : DEFAULT_SETTINGS.hudAccent,
     dailyWordGoal: Number.isFinite(settings.dailyWordGoal)
       ? clamp(Math.round(settings.dailyWordGoal), MIN_DAILY_WORD_GOAL, MAX_DAILY_WORD_GOAL)
       : DEFAULT_SETTINGS.dailyWordGoal,

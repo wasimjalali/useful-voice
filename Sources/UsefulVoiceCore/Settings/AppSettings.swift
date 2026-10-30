@@ -252,10 +252,21 @@ public enum AppearanceChoice: String, CaseIterable, Sendable {
     case dark
 }
 
+/// The dictation pill's colors. Ink and Paper are the brand's monochrome pair;
+/// Signal colors the voice and the check by state; Accent uses a hue the person picks.
+public enum HUDColorway: String, CaseIterable, Sendable {
+    case ink
+    case paper
+    case signal
+    case accent
+}
+
 extension Notification.Name {
     /// Posted after `AppSettings.appearance` changes, so the app can
     /// apply it at once with no restart.
     public static let uvAppearanceDidChange = Notification.Name("uv.appearanceDidChange")
+    /// Posted after the pill's colorway or accent hue changes.
+    public static let uvHUDStyleDidChange = Notification.Name("uv.hudStyleDidChange")
 }
 
 /// Non-secret app configuration. The Deepgram API key lives in Keychain, never here.
@@ -277,7 +288,12 @@ public final class AppSettings {
         static let formatterModelID = "formatterModelID"
         static let appearance = "appearance"
         static let dailyWordGoal = "dailyWordGoal"
+        static let hudColorway = "hudColorway"
+        static let hudAccentHex = "hudAccentHex"
     }
+
+    /// The Accent colorway's hue until the person picks another.
+    public static let defaultHUDAccentHex = "#F2A93B"
 
     /// Words per day the Insights goal ring aims at, until the person sets another.
     public static let defaultDailyWordGoal = 2500
@@ -514,5 +530,33 @@ public final class AppSettings {
             return stored >= 1 ? stored : Self.defaultDailyWordGoal
         }
         set { defaults.set(max(1, newValue), forKey: Keys.dailyWordGoal) }
+    }
+
+    /// The dictation pill's colors. Defaults to Ink; an unrecognised stored value
+    /// falls back to it.
+    public var hudColorway: HUDColorway {
+        get { HUDColorway(rawValue: defaults.string(forKey: Keys.hudColorway) ?? "") ?? .ink }
+        set {
+            defaults.set(newValue.rawValue, forKey: Keys.hudColorway)
+            NotificationCenter.default.post(name: .uvHUDStyleDidChange, object: nil)
+        }
+    }
+
+    /// The Accent colorway's hue as `#RRGGBB`. Anything else stored reads as the default.
+    public var hudAccentHex: String {
+        get { Self.normalizedHex(defaults.string(forKey: Keys.hudAccentHex)) ?? Self.defaultHUDAccentHex }
+        set {
+            guard let hex = Self.normalizedHex(newValue) else { return }
+            defaults.set(hex, forKey: Keys.hudAccentHex)
+            NotificationCenter.default.post(name: .uvHUDStyleDidChange, object: nil)
+        }
+    }
+
+    /// `#rrggbb` in upper case, or nil when `raw` is not a six-digit hex colour.
+    public static func normalizedHex(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let body = raw.hasPrefix("#") ? raw.dropFirst() : Substring(raw)
+        guard body.count == 6, body.allSatisfy(\.isHexDigit) else { return nil }
+        return "#" + body.uppercased()
     }
 }

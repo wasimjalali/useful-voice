@@ -106,6 +106,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // `UV_HUD_DEMO=<delay>` plays a scripted dictation through the real HUD panel,
+        // beside the text cursor of the app in front, then quits. It records nothing,
+        // pastes nothing and installs no hotkey or status item, so it runs beside the
+        // installed copy.
+        if let delay = ProcessInfo.processInfo.environment["UV_HUD_DEMO"] {
+            HUDSnapshot.playDemo(on: hud, after: Double(delay) ?? 1.5)
+            return
+        }
         // Before anything else installs an event tap: a second copy of the app
         // would fight this one for the hotkey (one press would toggle dictation
         // on and straight back off) and draw a second HUD pill. The duplicate is
@@ -164,6 +172,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let appearance = Appearance.nsAppearance(for: settings.appearance)
             // `UV_HUD_STATE=<state>` renders the HUD (or the language picker) with
             // sample data, and `UV_MENU_HEADER=idle|recording` the menu bar header.
+            if let frames = ProcessInfo.processInfo.environment["UV_HUD_FRAMES"] {
+                exit(HUDSnapshot.renderFrames(frames, size: size, appearance: appearance, to: url) ? 0 : 1)
+            }
             if let state = ProcessInfo.processInfo.environment["UV_HUD_STATE"] {
                 HUDSnapshot.render(state, size: size, appearance: appearance, to: url) { ok in
                     exit(ok ? 0 : 1)

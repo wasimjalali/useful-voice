@@ -9,17 +9,21 @@ private final class HUDHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
-/// Borderless, non-activating floating panel at the bottom centre of the display
-/// under the pointer. Never steals focus from the app being dictated into; its
-/// buttons still take a click.
+/// Borderless, non-activating floating panel beside the text cursor of the app in
+/// front, or at the bottom centre of the display under the pointer when that app
+/// does not report its cursor. Never steals focus from the app being dictated
+/// into; its buttons still take a click.
 ///
-/// The window is a fixed 400 by 160 pt: 360 by 120 of content and 20 pt of
-/// transparent margin for the shadow. Every morph runs inside it, so the window
-/// never resizes and a state change never moves the pill. Clicks pass through the
-/// transparent margin (the window is non-opaque, so the window server skips fully
-/// transparent pixels). The window ignores mouse events except while the pointer
-/// is over the capsule: a pointer monitor flips `ignoresMouseEvents`, so the margin
-/// never takes a click, whatever the hosting view does with transparent pixels.
+/// The window is a fixed 400 by 160 pt: the bubble and a transparent margin for its
+/// shadow, tail and halo. Every morph runs inside it, so the window never resizes
+/// and a state change never moves the bubble. Clicks pass through the transparent
+/// margin: a pointer monitor flips `ignoresMouseEvents`, so the window takes events
+/// only while the pointer is over the bubble.
+///
+/// Where it sits is decided once per appearance (`HUDPlacement`): a dictation looks
+/// for the cursor as it starts, and once the words have landed the done chip moves
+/// beside the cursor's new position. Anything else (an error at launch, a language
+/// switch) sits at the bottom centre.
 ///
 /// Timing lives here, not in the callers: `show` arms the state's own lifetime
 /// (`HUDDisplay.lifetime`), and a new `show` always replaces what is on screen,
@@ -29,6 +33,7 @@ final class HUDPanel: NSObject {
     private var panel: NSPanel?
     private var hosting: NSHostingView<HUDRoot>?
     private let model = HUDModel()
+    private let settings = AppSettings()
     private var hideTimer: Timer?
     /// Whether the HUD is meant to be on screen. False once the exit has begun.
     private var isShowing = false
@@ -38,7 +43,7 @@ final class HUDPanel: NSObject {
     /// The last thing announced, so the per-tick recording updates and a growing
     /// partial are not announced again.
     private var lastAnnouncementKey: String?
-    /// Where the user dragged the window to, if anywhere. Preserved across shows
+    /// Where the user dragged the bottom pill to, if anywhere. Preserved across shows
     /// and clamped to the active screen so it can never strand the HUD off-screen.
     private var userOrigin: CGPoint?
     /// Set around programmatic frame changes so windowDidMove can tell a real
@@ -46,11 +51,36 @@ final class HUDPanel: NSObject {
     private var isProgrammaticMove = false
     /// Pointer monitors, installed while the HUD is on screen.
     private var pointerMonitors: [Any] = []
+    /// The text cursor the bubble points at in caret placement.
+    private var caret: CGRect?
+    /// Smooths the mic level for the aura.
+    private var levelSmoother = MicLevel.Smoother()
+    private var styleObserver: NSObjectProtocol?
+    /// Nudges the view once the motion is over, so its frame clock can pause.
+    private var settleTimer: Timer?
 
     /// The pill's button: the fix verb. Wired by the app to `viewModel.perform`.
     var onFix: ((DictationFix) -> Void)?
 
     private var reduceMotion: Bool { BrandMotion.reduceMotion }
+
+    override init() {
+        super.init()
+        // Built at launch and its common rows measured, so the first dictation's
+        // entrance is as smooth as every later one.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.panel == nil else { return }
+            self.buildPanel()
+            HUDLayout.warm()
+        }
+        styleObserver = NotificationCenter.default.addObserver(forName: .uvHUDStyleDidChange, object: nil,
+                                                               queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.model.palette = HUDPalette.current(self.settings)
+            }
+        }
+    }
 
     // MARK: - Showing
 
@@ -59,36 +89,61 @@ final class HUDPanel: NSObject {
     func show(_ display: HUDDisplay) {
         hideTimer?.invalidate()
         hideTimer = nil
-
-        if model.display != display {
-            if isShowing {
-                model.display = display
-            } else {
-                // Coming back from hidden: swap without the morph. Animating it faded
-                // the last outcome ("Copied…") out over the new "0:00" as it entered.
-                var swap = Transaction()
-                swap.disablesAnimations = true
-                withTransaction(swap) { model.display = display }
-            }
-        }
-        announce(display)
-
         if panel == nil { buildPanel() }
         guard let panel else { return }
+        let now = Date()
+        let old = model.display
 
-        if isShowing {
-            // Already up (a level tick, a state change): nothing to enter.
-        } else if panel.isVisible && model.presentation == .exiting {
-            // Mid-exit: come back from where it is instead of restarting.
-            isShowing = true
-            model.recordingID &+= 1
-            model.presentation = .shown
-            startPointerTracking(panel)
-        } else {
+        // A new dictation over an outcome still on screen starts over too: it looks
+        // for the cursor again and blooms.
+        let startsOver = !isShowing || (display.isRecording && !old.isRecording)
+        if startsOver {
+            let placement = decidePlacement(for: display)
+            model.placement = placement
+            model.palette = HUDPalette.current(settings)
+            _ = HUDLayout.size(of: display, placement: placement)
+            model.display = display
+            // The clock starts once the window's first frame is on screen, so the
+            // entrance is never half over before anyone sees it.
+            model.timeline = .waiting(display)
+            if display.isRecording {
+                model.recordingID &+= 1
+                levelSmoother = MicLevel.Smoother()
+            }
             enter(panel)
+        } else if old != display {
+            let size = HUDLayout.size(of: display, placement: model.placement)
+            model.timeline.advance(from: old, to: display, placement: model.placement, at: now)
+            model.display = display
+            if case .done = display, old.phase != display.phase, model.placement.isCaret { placeChip() }
+            // While the bubble folds into the cursor, the chip owns the placement.
+            if old.phase != display.phase, !display.foldsIntoCaret {
+                fitBesideCaret(width: size.width, unfolding: old.foldsIntoCaret, at: now)
+            }
         }
+        if case .recording(_, let level, _) = display {
+            model.level = levelSmoother.step(rms: level, at: now.timeIntervalSinceReferenceDate)
+        }
+        announce(display)
+        scheduleSettle()
 
         if let lifetime = display.lifetime { scheduleHide(after: lifetime) }
+    }
+
+    /// The view decides to pause its clock only when it is redrawn, so redraw it once
+    /// just after the last change has played out.
+    private func scheduleSettle() {
+        // A recording or a transcription never settles; its ticks need no nudge.
+        switch model.display {
+        case .recording, .transcribing: return
+        default: break
+        }
+        settleTimer?.invalidate()
+        let timer = Timer(timeInterval: HUDTiming.settle + 0.05, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.model.settleToken &+= 1 }
+        }
+        settleTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     /// Hides the HUD, now or after `delay`.
@@ -118,17 +173,24 @@ final class HUDPanel: NSObject {
         panel?.orderOut(nil)
     }
 
-    /// The top centre of the pill where it sits (or would sit), in screen
+    /// The top centre of the bubble where it sits (or would sit), in screen
     /// coordinates, for anchoring the language picker above it.
     func capsuleAnchor() -> NSPoint {
-        let origin: CGPoint
-        if let panel, panel.isVisible {
-            origin = panel.frame.origin
-        } else {
-            origin = windowOrigin(on: activeScreen)
+        if let panel, panel.isVisible, model.bubbleFrame != .zero {
+            let frame = screenRect(of: model.bubbleFrame, in: panel)
+            return NSPoint(x: frame.midX, y: frame.maxY)
         }
+        let origin = bottomOrigin(on: activeScreen)
         return NSPoint(x: origin.x + HUDView.windowSize.width / 2,
-                       y: origin.y + HUDView.shadowPad + HUDView.capsuleHeight)
+                       y: origin.y + HUDView.shadowPad + HUDView.bubbleHeight)
+    }
+
+    /// Live checks only: the cursor and the bubble on screen, for comparing the two.
+    func geometry() -> String {
+        guard let panel else { return "no panel" }
+        let bubble = model.bubbleFrame == .zero ? NSRect.zero : screenRect(of: model.bubbleFrame, in: panel)
+        return "placement=\(model.placement) caret=\(caret.map { NSStringFromRect($0) } ?? "nil") "
+            + "bubble=\(NSStringFromRect(bubble)) window=\(NSStringFromRect(panel.frame))"
     }
 
     // MARK: - Timing
@@ -145,17 +207,18 @@ final class HUDPanel: NSObject {
 
     private func enter(_ panel: NSPanel) {
         isShowing = true
-        model.recordingID &+= 1
-        model.presentation = .entering
-        position(panel)
+        // The last appearance's frame is stale until this one draws.
+        model.bubbleFrame = .zero
+        generation &+= 1
+        position(panel, at: windowOrigin())
         panel.alphaValue = 1
         panel.orderFrontRegardless()
         startPointerTracking(panel)
-        // One run loop turn later, so the hidden first frame is on screen and the
-        // change to "shown" animates instead of being the first thing drawn.
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.isShowing, self.model.presentation == .entering else { return }
-            self.model.presentation = .shown
+        let token = generation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
+            guard let self, self.generation == token, self.isShowing else { return }
+            self.model.timeline.start(at: Date())
+            self.scheduleSettle()
         }
     }
 
@@ -166,9 +229,10 @@ final class HUDPanel: NSObject {
         isShowing = false
         lastAnnouncementKey = nil
         generation &+= 1
-        model.presentation = .exiting
+        model.timeline.exitAt = Date()
+        scheduleSettle()
         let token = generation
-        let delay = reduceMotion ? 0.0 : BrandMotion.hudExitDuration + 0.04
+        let delay = reduceMotion ? 0.0 : HUDTiming.exit + 0.04
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             // A show() during the exit sets isShowing again: do not hide then.
             guard let self, self.generation == token, !self.isShowing else { return }
@@ -177,23 +241,135 @@ final class HUDPanel: NSObject {
         }
     }
 
-    // MARK: - Click-through
+    // MARK: - Placement
 
-    /// The capsule in screen coordinates, with a few points of slack so the edge
-    /// is easy to hit.
-    private func capsuleScreenRect(_ panel: NSPanel) -> NSRect {
-        let size = model.capsuleSize
-        guard size.width > 0 else { return .zero }
-        let window = panel.frame
-        return NSRect(x: window.minX + (window.width - size.width) / 2,
-                      y: window.minY + HUDView.shadowPad,
-                      width: size.width, height: size.height).insetBy(dx: -4, dy: -4)
+    /// Caret placement when a dictation starts and the app in front reports its
+    /// cursor; the bottom centre otherwise.
+    private func decidePlacement(for display: HUDDisplay) -> HUDPlacement {
+        caret = nil
+        guard display.isRecording, let found = CaretLocator.locate(), let screen = screen(containing: found) else {
+            return .bottom
+        }
+        caret = found
+        let flipped = found.maxX + HUDView.caretGap + HUDView.flipRoom > screen.visibleFrame.maxX
+        return .caret(flipped: flipped)
     }
 
-    /// Takes mouse events only while the pointer is over the capsule.
+    /// A wider state (an error with its verb, the copied notice) that would run off the
+    /// screen beside the cursor moves to the cursor's other side and enters again there.
+    /// A bubble that comes back after the done chip returns to the bubble's own gap.
+    private func fitBesideCaret(width: CGFloat, unfolding: Bool, at now: Date) {
+        guard case .caret(let flipped) = model.placement, let caret, let panel,
+              let visible = screen(containing: caret)?.visibleFrame else { return }
+        let fitsRight = caret.maxX + HUDView.caretGap + width <= visible.maxX
+        let fitsLeft = caret.minX - HUDView.caretGap - width >= visible.minX
+        let flip: Bool
+        if flipped { flip = !fitsLeft && fitsRight ? false : true } else { flip = !fitsRight && fitsLeft }
+        guard flip != flipped || unfolding else { return }
+        if flip != flipped {
+            model.placement = .caret(flipped: flip)
+            model.timeline.bubbleAt = now
+            model.timeline.previous = nil
+        }
+        position(panel, at: caretOrigin(for: caret, gap: HUDView.caretGap, room: width))
+    }
+
+    /// Once the words have landed, the done chip goes beside the cursor's new
+    /// position. The app in front gets a moment to move its cursor first; if it
+    /// no longer answers, the chip stays at the old spot.
+    private func placeChip() {
+        let token = generation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self, self.generation == token, self.isShowing, let panel = self.panel,
+                  case .done = self.model.display else { return }
+            if let moved = CaretLocator.locate() {
+                self.caret = moved
+                // The chip is smaller than the bubble: it flips only when even it would
+                // run off the screen beside the cursor's new position.
+                if let visible = self.screen(containing: moved)?.visibleFrame {
+                    let flip = moved.maxX + HUDView.chipGap + HUDView.chipRoom > visible.maxX
+                    self.model.placement = .caret(flipped: flip)
+                }
+                self.position(panel, at: self.caretOrigin(for: moved, gap: HUDView.chipGap, room: HUDView.chipRoom))
+            }
+            self.model.timeline.chipAt = Date()
+            self.scheduleSettle()
+        }
+    }
+
+    private func windowOrigin() -> CGPoint {
+        if model.placement.isCaret, let caret {
+            return caretOrigin(for: caret, gap: HUDView.caretGap, room: HUDView.flipRoom)
+        }
+        return bottomOrigin(on: activeScreen)
+    }
+
+    /// The window that puts the bubble's near edge `gap` from the cursor, vertically
+    /// centred on it, kept on the cursor's screen with `room` for the bubble.
+    private func caretOrigin(for caret: CGRect, gap: CGFloat, room: CGFloat) -> CGPoint {
+        let size = HUDView.windowSize
+        let pad = HUDView.shadowPad
+        let flipped = model.placement.isFlipped
+        var x = flipped ? caret.minX - gap - (size.width - pad) : caret.maxX + gap - pad
+        var y = caret.midY - size.height / 2
+        if let visible = screen(containing: caret)?.visibleFrame {
+            // Keep a bubble of that room on screen without sliding it over the cursor.
+            x = flipped ? max(x, visible.minX + room - (size.width - pad)) : min(x, visible.maxX - pad - room)
+            let half = (size.height - HUDView.bubbleHeight) / 2
+            y = min(max(y, visible.minY - half + 4), visible.maxY - size.height + half - 4)
+        }
+        return CGPoint(x: x, y: y)
+    }
+
+    /// Bottom centre, 32 pt above the Dock (the visible frame already excludes
+    /// it), or where the user dragged it, kept on the screen.
+    private func bottomOrigin(on screen: NSScreen) -> CGPoint {
+        let visible = screen.visibleFrame
+        let size = HUDView.windowSize
+        let pad = HUDView.shadowPad
+        if let dragged = userOrigin {
+            // The transparent margin may hang over the edge; the bubble may not.
+            let bounds = visible.insetBy(dx: -pad, dy: -pad)
+            return CGPoint(x: min(max(dragged.x, bounds.minX), max(bounds.minX, bounds.maxX - size.width)),
+                           y: min(max(dragged.y, bounds.minY), max(bounds.minY, bounds.maxY - size.height)))
+        }
+        return CGPoint(x: visible.midX - size.width / 2, y: visible.minY + 32 - pad)
+    }
+
+    private func position(_ panel: NSPanel, at origin: CGPoint) {
+        isProgrammaticMove = true
+        panel.setFrame(NSRect(origin: origin, size: HUDView.windowSize), display: false)
+        isProgrammaticMove = false
+    }
+
+    /// The display under the pointer, which is where the person is working.
+    private var activeScreen: NSScreen {
+        let pointer = NSEvent.mouseLocation
+        return NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) }
+            ?? NSScreen.main ?? NSScreen.screens[0]
+    }
+
+    private func screen(containing rect: CGRect) -> NSScreen? {
+        let point = CGPoint(x: rect.minX, y: rect.midY)
+        return NSScreen.screens.first { $0.frame.insetBy(dx: -1, dy: -1).contains(point) }
+    }
+
+    // MARK: - Click-through
+
+    /// A frame in the hosting view (top-left origin) in screen coordinates.
+    private func screenRect(of frame: CGRect, in panel: NSPanel) -> NSRect {
+        let window = panel.frame
+        return NSRect(x: window.minX + frame.minX, y: window.maxY - frame.maxY,
+                      width: frame.width, height: frame.height)
+    }
+
+    /// Takes mouse events only while the pointer is over the bubble, with a few
+    /// points of slack so the edge is easy to hit.
     private func updateMouseEvents() {
         guard let panel else { return }
-        let inside = capsuleScreenRect(panel).contains(NSEvent.mouseLocation)
+        let frame = model.bubbleFrame
+        let inside = frame.width > 0
+            && screenRect(of: frame, in: panel).insetBy(dx: -4, dy: -4).contains(NSEvent.mouseLocation)
         if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
     }
 
@@ -202,7 +378,7 @@ final class HUDPanel: NSObject {
         guard pointerMonitors.isEmpty else { return }
         // Global: moves over other apps' windows, which is where the pointer is
         // while the window ignores it. Local: moves over this window while it takes
-        // events, which is how it learns the pointer left the capsule.
+        // events, which is how it learns the pointer left the bubble.
         if let global = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved, handler: { [weak self] _ in
             MainActor.assumeIsolated { self?.updateMouseEvents() }
         }) { pointerMonitors.append(global) }
@@ -247,6 +423,7 @@ final class HUDPanel: NSObject {
                 // status surface and the menu.
                 self?.hide()
             })
+        model.bubbleFrameChanged = { [weak self] in self?.updateMouseEvents() }
         let hosting = HUDHostingView(rootView: root)
         // Single sizing authority: the window is a fixed size, so the hosting view
         // must not try to resize it.
@@ -264,7 +441,7 @@ final class HUDPanel: NSObject {
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
         // Draggable by its body; the buttons still take their own clicks. Ignores
-        // the mouse until the pointer is over the capsule (see updateMouseEvents).
+        // the mouse until the pointer is over the bubble (see updateMouseEvents).
         panel.ignoresMouseEvents = true
         panel.acceptsMouseMovedEvents = true
         panel.isMovableByWindowBackground = true
@@ -274,44 +451,13 @@ final class HUDPanel: NSObject {
         self.panel = panel
         self.hosting = hosting
     }
-
-    // MARK: - Positioning
-
-    /// The display under the pointer, which is where the person is working.
-    private var activeScreen: NSScreen {
-        let pointer = NSEvent.mouseLocation
-        return NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) }
-            ?? NSScreen.main ?? NSScreen.screens[0]
-    }
-
-    /// Bottom centre, 32 pt above the Dock (the visible frame already excludes
-    /// it), or where the user dragged it, kept on the screen.
-    private func windowOrigin(on screen: NSScreen) -> CGPoint {
-        let visible = screen.visibleFrame
-        let size = HUDView.windowSize
-        let pad = HUDView.shadowPad
-        if let dragged = userOrigin {
-            // The transparent margin may hang over the edge; the capsule may not.
-            let bounds = visible.insetBy(dx: -pad, dy: -pad)
-            return CGPoint(x: min(max(dragged.x, bounds.minX), max(bounds.minX, bounds.maxX - size.width)),
-                           y: min(max(dragged.y, bounds.minY), max(bounds.minY, bounds.maxY - size.height)))
-        }
-        return CGPoint(x: visible.midX - size.width / 2, y: visible.minY + 32 - pad)
-    }
-
-    private func position(_ panel: NSPanel) {
-        let origin = windowOrigin(on: activeScreen)
-        isProgrammaticMove = true
-        panel.setFrame(NSRect(origin: origin, size: HUDView.windowSize), display: false)
-        isProgrammaticMove = false
-    }
 }
 
 extension HUDPanel: NSWindowDelegate {
-    /// Remember where the user drags the HUD so it stays there, but only for real
-    /// drags, not our own repositioning.
+    /// Remember where the user drags the bottom pill so it stays there, but only for
+    /// real drags, not our own repositioning, and never a bubble beside the cursor.
     func windowDidMove(_ notification: Notification) {
-        guard !isProgrammaticMove, let panel else { return }
+        guard !isProgrammaticMove, let panel, model.placement == .bottom else { return }
         userOrigin = panel.frame.origin
     }
 }

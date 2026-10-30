@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { promises as fs, appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 import { DataStore } from '../core/settings/dataStore.js';
 import { removeStaleTempFiles, writeJsonAtomic } from '../core/settings/jsonStore.js';
@@ -16,10 +18,34 @@ import {
   normaliseMemoryLanguage,
   type AppSettings,
   type DictationSource,
+  type DictationTelemetry,
   type Note,
 } from '../core/models.js';
 import { selectKeyterms } from '../core/memory/biasBuilder.js';
-import { HUD_EXIT_MS, HudModel, languageLabel, type HudFrame } from '../core/hudModel.js';
+import {
+  HUD_EXIT_MS,
+  HudModel,
+  languageLabel,
+  type HudFrame,
+  type HudPlacement,
+  type HudStyle,
+  type HudWireFrame,
+  parseAppsUseLightTheme,
+  startsNewAppearance,
+} from '../core/hudModel.js';
+import {
+  HUD_HEIGHT,
+  HUD_WIDTH,
+  bottomDefaultOrigin,
+  bubbleRect,
+  chipWindowOrigin,
+  decidePlacement,
+  estimatedBubbleWidth,
+  fitSide,
+  hudWindowOrigin,
+  pickerOrigin,
+} from '../core/hudPlacement.js';
+import { lookUpCaret, setE2eCaret, startCaretHost, stopCaretHost, type CaretFix } from './caret.js';
 import { normaliseLanguageCode } from '../core/transcription/languages.js';
 import { decideFirstRun, firstRunLaunch, shouldOpenAtLaunch, type FirstRunStep } from '../core/firstRun/gate.js';
 import { installProviderStubs, parakeetE2eDeps } from './e2eStub.js';
@@ -68,6 +94,7 @@ import {
 } from './windowsPlatform.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const execFileAsync = promisify(execFile);
 
 /**
  * The Windows app.
@@ -125,16 +152,17 @@ if (E2E) {
 }
 
 /**
- * The HUD window is a fixed transparent area, big enough for the widest state, so the
- * capsule morphs in CSS and the window never resizes. The capsule is 40 px tall and
- * sits 32 px above the taskbar; the rest of the height is room for its shadow and its
- * 8 px rise.
+ * The HUD window is a fixed transparent 520 x 96 area (`core/hudPlacement.ts` has the geometry),
+ * big enough for the widest state, so the bubble morphs in CSS and the window never resizes. The
+ * bubble is 30 tall; the rest is room for its shadow, halo and entrance.
  */
-const HUD_WIDTH = 520;
-const HUD_HEIGHT = 96;
-const HUD_CAPSULE_HEIGHT = 40;
-const HUD_SHADOW_ROOM = 28;
-const HUD_BOTTOM_GAP = 32;
+
+/** A caret lookup that started at the hotkey press, for the first recording frame to use. */
+const CARET_WAIT_MS = 150;
+/** The done chip looks the caret up again this long after the done frame arrives, waiting at most the same as the first lookup. */
+const CHIP_LOOKUP_DELAY_MS = 50;
+/** The picker's anchor assumes a typical recording bubble (dot, waveform, timer, esc). */
+const PICKER_BUBBLE_WIDTH = 220;
 
 /** The language picker panel is 300 by 400; its window adds 24 px all round for the pop shadow. */
 const PICKER_WIDTH = 348;
@@ -149,12 +177,32 @@ const OWN_FIELD_CHECK_MS = 200;
 /** Cap on handing focus back: a cold PowerShell with Add-Type is slow, and the picker is invisible meanwhile. */
 const PICKER_RESTORE_TIMEOUT_MS = 3000;
 
-/** Keep the HUD window's capsule inside a display's work area. */
-function clampHud(area: Electron.Rectangle, x: number, y: number): { x: number; y: number } {
-  return {
-    x: Math.min(Math.max(area.x, x), area.x + area.width - HUD_WIDTH),
-    y: Math.min(Math.max(area.y, y), area.y + area.height - HUD_SHADOW_ROOM - HUD_CAPSULE_HEIGHT),
-  };
+/** What the placement logic needs of the HUD window; under `--e2e` a recorder stands in for it. */
+interface HudSurface {
+  isVisible(): boolean;
+  isDestroyed(): boolean;
+  setBounds(bounds: Electron.Rectangle): void;
+  showInactive(): void;
+  setIgnoreMouseEvents(ignore: boolean, options?: { forward: boolean }): void;
+}
+
+/** E2E only: a HUD window that is never on screen but keeps the bounds main computed. */
+class E2eHudSurface implements HudSurface {
+  visible = false;
+  bounds: Electron.Rectangle = { x: 0, y: 0, width: HUD_WIDTH, height: HUD_HEIGHT };
+  isVisible(): boolean {
+    return this.visible;
+  }
+  isDestroyed(): boolean {
+    return false;
+  }
+  setBounds(bounds: Electron.Rectangle): void {
+    this.bounds = bounds;
+  }
+  showInactive(): void {
+    this.visible = true;
+  }
+  setIgnoreMouseEvents(): void {}
 }
 
 class UsefulVoiceApp {
@@ -172,6 +220,30 @@ class UsefulVoiceApp {
   private announcer!: Announcer;
   /** The latest view, sent to the HUD window as soon as its page has loaded. */
   private hudFrame: HudFrame | null = null;
+  /** Where the bubble sits for the current appearance; decided when it starts and kept until it ends. */
+  private hudPlacement: HudPlacement = { kind: 'bottom' };
+  /** Frames go out after this: the window is moved first, so a frame never draws at the old spot. */
+  private hudGate: Promise<void> = Promise.resolve();
+  private hudGateFailureLogged = false;
+  /** Counts appearances. A placement that finishes for an older one changes nothing. */
+  private hudAppearance = 0;
+  /** The appearance whose placement is still waiting for the caret (0 for none). */
+  private hudPlacing = 0;
+  /** The dictation (service sequence) the current appearance was started for. */
+  private hudDictation = 0;
+  /** The kind showing, not counting language confirmations, or null when nothing is. */
+  private hudBase: HudFrame['kind'] | null = null;
+  /** The caret this appearance was placed beside, to move the bubble to the other side if a wider state needs it. */
+  private hudCaret: CaretFix | null = null;
+  /** Windows' own dark mode, read from the registry; null until read or when it cannot be. */
+  private systemDark: boolean | null = null;
+  /** The caret lookup started at the latest hotkey press, for the recording frame that follows. */
+  /** E2E only: the stand-in window, and every frame main pushed to it with where it put the window. */
+  private readonly e2eHud = new E2eHudSurface();
+  private e2eHudFrames: Array<Record<string, unknown>> = [];
+  /** E2E only: a spec can widen the wait for the first caret answer to make a superseded wait reproducible. */
+  private e2eCaretWaitMs = CARET_WAIT_MS;
+  private caretLookup: { sequence: number; startedAt: number; result: Promise<CaretFix | null> } | null = null;
   private hudHideTimer: NodeJS.Timeout | null = null;
   /** Where the user left the HUD, per display, as an offset from its default spot. */
   private hudOffsets: Record<string, { dx: number; dy: number }> = {};
@@ -293,6 +365,20 @@ class UsefulVoiceApp {
         const { id, byMs } = arg as { id: string; byMs: number };
         this.fakeMedia?.scrub(id, byMs);
       },
+      // The HUD placement logic, run against a stand-in window: every frame pushed, with the origin main chose.
+      hudFrames: () => this.e2eHudFrames.slice(),
+      clearHudFrames: () => {
+        this.e2eHudFrames = [];
+      },
+      setCaretWait: (ms: unknown) => {
+        this.e2eCaretWaitMs = typeof ms === 'number' ? ms : CARET_WAIT_MS;
+      },
+      hudTelemetry: (value: unknown) => this.hudModel.telemetry(value as DictationTelemetry),
+      setCaret: (value: unknown) => {
+        const { rect, delayMs } = value as { rect: { x: number; y: number; w: number; h: number } | null; delayMs?: number };
+        const workArea = screen.getPrimaryDisplay().workArea;
+        setE2eCaret(rect ? { rect: { x: rect.x, y: rect.y, width: rect.w, height: rect.h }, workArea } : null, delayMs ?? 0);
+      },
       mainWindows: () => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().includes('view=main')).length,
     };
   }
@@ -412,6 +498,7 @@ class UsefulVoiceApp {
     // The window lookup and the paste share one long-lived PowerShell, started now so the
     // first hotkey press finds its C# already compiled. Without it they fall back to a
     // one-shot process per call.
+    startCaretHost((message) => this.diagnostics.log('powershell', message));
     void startPowerShellHost((message) => this.diagnostics.log('powershell', message)).then((ok) => {
       if (process.platform === 'win32' && !ok) this.diagnostics.log('powershell', 'host unavailable; using one process per call');
     });
@@ -443,7 +530,11 @@ class UsefulVoiceApp {
 
     // Before any window exists, so the first paint is already in the right theme.
     applyAppearance(this.settings.all.appearance);
-    nativeTheme.on('updated', () => this.syncTheme());
+    nativeTheme.on('updated', () => {
+      this.syncTheme();
+      void this.refreshSystemDark();
+    });
+    void this.refreshSystemDark();
 
     this.data = new DataStore(path.join(app.getPath('userData'), 'data.json'));
     await this.data.load();
@@ -709,7 +800,7 @@ class UsefulVoiceApp {
     void window.loadFile(path.join(__dirname, '../renderer/index.html'), {
       query: { view: 'hud', theme: resolvedTheme() },
     });
-    window.webContents.on('did-finish-load', () => this.pushHudFrame());
+    window.webContents.on('did-finish-load', () => this.scheduleHudPush());
     window.on('closed', () => {
       this.hudWindow = null;
     });
@@ -718,21 +809,20 @@ class UsefulVoiceApp {
   }
 
   /**
-   * Where the HUD window sits on a display: bottom centre, 32 px above the taskbar,
-   * plus wherever the user last dragged it on that display.
+   * Where the HUD window sits on a display for the bottom spot: bottom centre, 32 px above the
+   * taskbar, plus wherever the user last dragged it on that display.
    */
   private hudOrigin(display: Electron.Display): { x: number; y: number } {
-    const area = display.workArea;
     const offset = this.hudOffsets[String(display.id)] ?? { dx: 0, dy: 0 };
-    return clampHud(
-      area,
-      Math.round(area.x + (area.width - HUD_WIDTH) / 2) + offset.dx,
-      area.y + area.height - HUD_BOTTOM_GAP - HUD_CAPSULE_HEIGHT - HUD_SHADOW_ROOM + offset.dy,
-    );
+    return hudWindowOrigin({ kind: 'bottom' }, null, display.workArea, offset);
   }
 
-  private placeHud(window: BrowserWindow): void {
-    const origin = this.hudOrigin(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()));
+  private placeHud(window: HudSurface, placement: HudPlacement, fix: CaretFix | null): void {
+    this.hudPlacement = placement;
+    const origin =
+      placement.kind === 'caret' && fix
+        ? hudWindowOrigin(placement, fix.rect, fix.workArea)
+        : this.hudOrigin(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()));
     window.setBounds({ ...origin, width: HUD_WIDTH, height: HUD_HEIGHT });
   }
 
@@ -751,6 +841,8 @@ class UsefulVoiceApp {
     }
     if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) return;
     if (phase === 'start') {
+      // Only the bottom spot can be dragged and remembered; beside the caret the bubble stays put.
+      if (this.hudPlacement.kind !== 'bottom') return;
       this.hudDrag = { bounds: window.getBounds(), x, y, last: null };
       return;
     }
@@ -759,18 +851,16 @@ class UsefulVoiceApp {
     const nextX = drag.bounds.x + Math.round(x - drag.x);
     const nextY = drag.bounds.y + Math.round(y - drag.y);
     const display = screen.getDisplayNearestPoint({ x: nextX + HUD_WIDTH / 2, y: nextY + HUD_HEIGHT / 2 });
-    const origin = clampHud(display.workArea, nextX, nextY);
+    const base = bottomDefaultOrigin(display.workArea);
+    const origin = hudWindowOrigin({ kind: 'bottom' }, null, display.workArea, { dx: nextX - base.x, dy: nextY - base.y });
     window.setBounds({ ...origin, width: HUD_WIDTH, height: HUD_HEIGHT });
     drag.last = { display, origin };
   }
 
   /** Stored as an offset from the default spot, so a resolution or taskbar change keeps it sensible. */
   private rememberHudPosition(display: Electron.Display, origin: { x: number; y: number }): void {
-    const area = display.workArea;
-    this.hudOffsets[String(display.id)] = {
-      dx: origin.x - Math.round(area.x + (area.width - HUD_WIDTH) / 2),
-      dy: origin.y - (area.y + area.height - HUD_BOTTOM_GAP - HUD_CAPSULE_HEIGHT - HUD_SHADOW_ROOM),
-    };
+    const base = bottomDefaultOrigin(display.workArea);
+    this.hudOffsets[String(display.id)] = { dx: origin.x - base.x, dy: origin.y - base.y };
     // A forced first-run session saves nothing.
     if (this.firstRun.sandbox) return;
     // One write at a time, each taking the offsets when its turn comes, so a quick second drag
@@ -814,6 +904,9 @@ class UsefulVoiceApp {
    * never be left on screen, and a persistent one is gone when the next dictation starts.
    */
   private onHudFrame(frame: HudFrame | null): void {
+    const before = this.hudFrame;
+    // A frame that arrives while an appearance still waits for the caret replaces the frame it
+    // will show; it belongs to that appearance and does not start another.
     this.hudFrame = frame;
     if (this.hudHideTimer) {
       clearTimeout(this.hudHideTimer);
@@ -821,13 +914,34 @@ class UsefulVoiceApp {
     }
     if (frame) {
       // The suite never puts a window on the screen.
-      const window = E2E ? null : this.ensureHudWindow();
-      if (window && !window.isVisible()) {
-        this.placeHud(window);
-        // Back to click-through: a button from the last view may have left it switched off.
-        window.setIgnoreMouseEvents(true, { forward: true });
-        window.showInactive();
+      const window: HudSurface = E2E ? this.e2eHud : this.ensureHudWindow();
+      if (window) {
+        const waiting = this.hudPlacing !== 0 && this.hudPlacing === this.hudAppearance && before !== null;
+        const starts = startsNewAppearance({
+          kind: frame.kind,
+          base: this.hudBase,
+          hidden: !window.isVisible(),
+          waiting,
+          // A recording of another dictation than the one the appearance was started for.
+          newDictation: frame.kind === 'recording' && this.service.sequence !== this.hudDictation,
+        });
+        if (starts) {
+          this.hudAppearance += 1;
+          this.hudDictation = this.service.sequence;
+          this.hudGate = this.guardHudGate(this.beginHudAppearance(window, frame, this.hudAppearance));
+        } else if (waiting) {
+          // begin fits the bubble to whatever frame stands when the caret answer is in.
+        } else if (frame.kind === 'done' && before?.kind !== 'done' && this.hudPlacement.kind === 'caret') {
+          this.hudGate = this.guardHudGate(this.moveHudToChip(window, frame, this.hudAppearance));
+        } else {
+          this.fitBubbleBesideCaret(window);
+        }
       }
+    } else if (E2E) {
+      this.hudHideTimer = setTimeout(() => {
+        this.hudHideTimer = null;
+        this.e2eHud.visible = false;
+      }, HUD_EXIT_MS + 60);
     } else if (this.hudWindow && !this.hudWindow.isDestroyed()) {
       // After the exit animation has played.
       this.hudHideTimer = setTimeout(() => {
@@ -835,14 +949,140 @@ class UsefulVoiceApp {
         if (this.hudWindow && !this.hudWindow.isDestroyed()) this.hudWindow.hide();
       }, HUD_EXIT_MS + 60);
     }
-    this.pushHudFrame();
+    if (!frame) this.hudBase = null;
+    else if (frame.kind !== 'language') this.hudBase = frame.kind;
+    this.scheduleHudPush();
     this.announcer.hud(frame);
   }
 
+  /** The gate must always settle: one failed placement may not stop every later frame. */
+  private guardHudGate(placement: Promise<void>): Promise<void> {
+    return placement.catch((error: unknown) => {
+      if (this.hudGateFailureLogged) return;
+      this.hudGateFailureLogged = true;
+      this.diagnostics.log('hud', `placing the HUD failed: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }
+
+  /**
+   * Place the window for a new appearance (number `appearance`) and show it. Only an appearance
+   * that starts with recording looks for the caret (the lookup began at the press): it waits for
+   * what is left of 150 ms from the press, with the window still where it was and hidden, and any
+   * frame that arrives meanwhile just replaces the one to show. Any other appearance starts at the
+   * bottom at once. Resolves when the window is in place, which is what the frame waits for. If a
+   * newer appearance has begun by then, this one changes nothing.
+   */
+  private async beginHudAppearance(window: HudSurface, frame: HudFrame, appearance: number): Promise<void> {
+    try {
+      await this.placeHudAppearance(window, frame, appearance);
+    } finally {
+      // Whatever happened, no frame may keep joining an appearance that is over.
+      if (this.hudPlacing === appearance) this.hudPlacing = 0;
+    }
+  }
+
+  private async placeHudAppearance(window: HudSurface, frame: HudFrame, appearance: number): Promise<void> {
+    const wasHidden = !window.isVisible();
+    const lookup = frame.kind === 'recording' ? this.caretLookup : null;
+    let fix: CaretFix | null = null;
+    if (lookup && lookup.sequence === this.service.sequence) {
+      this.hudPlacing = appearance;
+      // The lookup is already running since the press, so this is only what is left of the wait.
+      const left = Math.max(0, this.e2eCaretWaitMs - (Date.now() - lookup.startedAt));
+      fix = (await waitAtMost(lookup.result, left)) ?? null;
+    }
+    if (appearance !== this.hudAppearance || window.isDestroyed()) return;
+    this.hudPlacing = 0;
+    const placement: HudPlacement = fix ? decidePlacement(fix.rect, fix.workArea) : { kind: 'bottom' };
+    this.hudCaret = fix;
+    this.placeHud(window, placement, fix);
+    if (this.hudFrame === null) return;
+    if (wasHidden) {
+      // Back to click-through: a button from the last view may have left it switched off.
+      window.setIgnoreMouseEvents(true, { forward: true });
+      window.showInactive();
+    }
+    this.fitBubbleBesideCaret(window);
+  }
+
+  /**
+   * A state wider than the room on its side of the caret moves to the other side when it fits
+   * there. Done is left to the chip, which decides its own side.
+   */
+  private fitBubbleBesideCaret(window: HudSurface): void {
+    const frame = this.hudFrame;
+    const caret = this.hudCaret;
+    const placement = this.hudPlacement;
+    if (!frame || !caret || placement.kind !== 'caret' || frame.kind === 'done' || window.isDestroyed()) return;
+    const next = fitSide(placement, caret.rect, caret.workArea, estimatedBubbleWidth(frame));
+    if (next === placement) return;
+    this.hudPlacement = next;
+    const origin = hudWindowOrigin(next, caret.rect, caret.workArea);
+    window.setBounds({ ...origin, width: HUD_WIDTH, height: HUD_HEIGHT });
+  }
+
+  /** After the paste: the done chip goes beside the new caret. If the caret cannot be found it stays where it was. */
+  private async moveHudToChip(window: HudSurface, frame: HudFrame, appearance: number): Promise<void> {
+    const placement = this.hudPlacement;
+    if (placement.kind !== 'caret') return;
+    await new Promise<void>((resolve) => setTimeout(resolve, CHIP_LOOKUP_DELAY_MS));
+    const fix = await waitAtMost(lookUpCaret(), CARET_WAIT_MS);
+    // Replaced by a newer view or appearance while it looked: leave the window alone.
+    if (!fix || window.isDestroyed() || appearance !== this.hudAppearance || this.hudFrame?.seq !== frame.seq) return;
+    const chip = chipWindowOrigin(placement, fix.rect, fix.workArea);
+    this.hudPlacement = chip.placement;
+    this.hudCaret = fix;
+    window.setBounds({ ...chip.origin, width: HUD_WIDTH, height: HUD_HEIGHT });
+  }
+
+  /** Windows' own light or dark mode, which the HUD follows because it sits over other apps. */
+  private async refreshSystemDark(): Promise<void> {
+    if (process.platform !== 'win32') return;
+    let dark: boolean | null = null;
+    try {
+      const { stdout } = await execFileAsync(
+        'reg',
+        ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize', '/v', 'AppsUseLightTheme'],
+        { timeout: 3000, windowsHide: true },
+      );
+      dark = parseAppsUseLightTheme(stdout);
+    } catch (error) {
+      this.diagnostics.log('hud', `could not read the Windows theme: ${(error as Error).message}`);
+    }
+    if (dark === this.systemDark) return;
+    this.systemDark = dark;
+    if (this.hudFrame) this.scheduleHudPush();
+  }
+
+  private hudStyle(): HudStyle {
+    const { hudColorway, hudAccent } = this.settings.all;
+    return { colorway: hudColorway, accent: hudAccent, systemDark: this.systemDark ?? nativeTheme.shouldUseDarkColors };
+  }
+
+  /** Send the latest frame once the window has been placed. A frame replaced meanwhile is not sent. */
+  private scheduleHudPush(): void {
+    const frame = this.hudFrame;
+    void this.hudGate.then(() => {
+      if (this.hudFrame === frame) this.pushHudFrame();
+    });
+  }
+
   private pushHudFrame(): void {
+    const wire: HudWireFrame | null = this.hudFrame
+      ? { ...this.hudFrame, placement: this.hudPlacement, style: this.hudStyle(), appearance: this.hudAppearance }
+      : null;
+    if (E2E) {
+      const { x, y } = this.e2eHud.bounds;
+      this.e2eHudFrames.push(
+        wire
+          ? { kind: wire.kind, seq: wire.seq, appearance: wire.appearance, placement: wire.placement, origin: { x, y }, stopsIn: wire.kind === 'recording' ? wire.stopsIn : undefined }
+          : { kind: 'hidden' },
+      );
+      return;
+    }
     const window = this.hudWindow;
     if (!window || window.isDestroyed() || window.webContents.isLoading()) return;
-    window.webContents.send('hud:view', this.hudFrame);
+    window.webContents.send('hud:view', wire);
   }
 
   /**
@@ -913,15 +1153,14 @@ class UsefulVoiceApp {
       const existing = this.pickerWindow && !this.pickerWindow.isDestroyed() ? this.pickerWindow : null;
       const window = existing ?? this.createPickerWindow();
       const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-      const origin = this.hudOrigin(display);
-      const area = display.workArea;
-      const capsuleTop = origin.y + HUD_HEIGHT - HUD_SHADOW_ROOM - HUD_CAPSULE_HEIGHT;
+      // Above the bubble wherever it is: the actual window if the HUD is showing, else the bottom spot.
+      const hud = this.hudWindow && !this.hudWindow.isDestroyed() && this.hudWindow.isVisible() ? this.hudWindow.getBounds() : null;
+      const placement: HudPlacement = hud ? this.hudPlacement : { kind: 'bottom' };
+      const hudAt = hud ?? this.hudOrigin(display);
+      const bubble = bubbleRect(placement, { x: hudAt.x, y: hudAt.y }, PICKER_BUBBLE_WIDTH);
+      const area = screen.getDisplayNearestPoint({ x: bubble.x + bubble.width / 2, y: bubble.y + bubble.height / 2 }).workArea;
       window.setBounds({
-        x: Math.min(
-          Math.max(area.x, Math.round(origin.x + HUD_WIDTH / 2 - PICKER_WIDTH / 2)),
-          area.x + area.width - PICKER_WIDTH,
-        ),
-        y: Math.max(area.y, capsuleTop - PICKER_GAP + PICKER_MARGIN - PICKER_HEIGHT),
+        ...pickerOrigin(bubble, area, { width: PICKER_WIDTH, height: PICKER_HEIGHT, margin: PICKER_MARGIN, gap: PICKER_GAP }),
         width: PICKER_WIDTH,
         height: PICKER_HEIGHT,
       });
@@ -1121,6 +1360,7 @@ class UsefulVoiceApp {
       this.parakeet?.dispose();
       globalShortcut.unregisterAll();
       stopPowerShellHost();
+      stopCaretHost();
       this.mediaEffects.dispose?.();
       this.tray?.destroy();
       // `app.exit` skips the quit events electron-updater listens for, so a downloaded
@@ -1428,7 +1668,11 @@ class UsefulVoiceApp {
     }
     const toggled = this.service.toggle({ source, startedInOwnWindow });
     // The service has counted this start by now (its first step is synchronous).
-    if (source === 'hotkey' && starts) this.lookUpTargetApp(this.service.sequence);
+    if (source === 'hotkey' && starts) {
+      this.lookUpTargetApp(this.service.sequence);
+      // The HUD sits beside the text cursor; the first recording frame uses this answer.
+      this.caretLookup = { sequence: this.service.sequence, startedAt: Date.now(), result: lookUpCaret() };
+    }
     await toggled;
     void this.data.flush();
   }
@@ -2360,6 +2604,7 @@ export async function runSelfTest(): Promise<SelfTestResult> {
     'settings:get': {
       languagePin: 'en', formattingEnabled: true, silenceTimeoutSeconds: 30,
       maxRecordingSeconds: 600, recordingsToKeep: 5, soundEffectsEnabled: true, pauseMediaWhileDictating: true,
+      hudColorway: 'ink', hudAccent: '#F2A93B',
       launchAtLogin: false, hotkey: { accelerator: 'Control+Alt+Space', pushToTalk: false },
       dictionaryBiasBudget: 100, hasApiKey: true, voiceModelId: 'deepgram:nova-3', formatterId: null,
       keys: { deepgram: true, elevenlabs: false, gemini: false, anthropic: false },

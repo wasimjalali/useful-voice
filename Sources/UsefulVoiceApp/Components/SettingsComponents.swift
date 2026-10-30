@@ -467,3 +467,63 @@ enum SettingsFormat {
     /// A download size: GB from 1 GB up, MB below.
     static func size(_ bytes: Int64) -> String { bytes >= 1_000_000_000 ? gb(bytes) : mb(bytes) }
 }
+
+/// The dictation pill's colorway: the segmented track, each choice a small pill in
+/// its own colors with its name.
+struct HUDColorwayPicker: View {
+    @Binding var selection: HUDColorway
+    let accentHex: String
+
+    private static let names: [(HUDColorway, String)] = [
+        (.ink, "Ink"), (.paper, "Paper"), (.signal, "Signal"), (.accent, "Accent"),
+    ]
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(Self.names, id: \.0) { colorway, name in
+                let selected = colorway == selection
+                Button {
+                    selection = colorway
+                } label: {
+                    HStack(spacing: 7) {
+                        swatch(HUDPalette.resolve(colorway, accentHex: accentHex, systemDark: false))
+                        Text(name)
+                            .font(.uv(.meta, selected ? .semibold : .regular))
+                            .foregroundStyle(selected ? Theme.ink : Theme.inkMuted)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(height: 26)
+                    .background(
+                        RoundedRectangle(cornerRadius: Radius.xs, style: .continuous)
+                            .fill(selected ? Theme.segmentOn : Color.clear)
+                            .themeShadow(selected ? .segment : .none)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .clickableCursor()
+                .accessibilityLabel(name)
+                .accessibilityAddTraits(selected ? [.isSelected] : [])
+            }
+        }
+        .padding(2)
+        .background(Theme.line, in: RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
+        .brandAnimation(BrandMotion.control, value: selection)
+    }
+
+    private func swatch(_ palette: HUDPalette) -> some View {
+        Capsule(style: .circular)
+            .fill(palette.surface)
+            .overlay(Capsule(style: .circular).strokeBorder(Theme.inkFaint.opacity(0.5), lineWidth: 0.5))
+            .overlay(alignment: .leading) {
+                HStack(spacing: 3) {
+                    Circle().fill(palette.rec).frame(width: 5, height: 5)
+                    RoundedRectangle(cornerRadius: 1).fill(palette.mark).frame(width: 8, height: 2)
+                }
+                .padding(.leading, 5)
+            }
+            .frame(width: 26, height: 14)
+            .accessibilityHidden(true)
+    }
+}

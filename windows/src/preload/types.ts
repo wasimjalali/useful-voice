@@ -10,7 +10,7 @@
 
 import type { DictationError } from '../core/models.js';
 
-export type { HudFrame } from '../core/hudModel.js';
+export type { HudFrame, HudWireFrame, HudPlacement, HudStyle, HudColorway } from '../core/hudModel.js';
 
 /** What a HUD button asks the main process to do. */
 export type HudAction = 'dismiss' | 'retry' | 'openMicrophoneSettings' | 'openEngineSettings';
@@ -88,6 +88,9 @@ export interface SettingsDTO {
   languageSwitchHotkey?: { accelerator: string; pushToTalk: boolean };
   dictionaryBiasBudget: number;
   appearance: 'system' | 'light' | 'dark';
+  /** The dictation pill's colorway, and the `#RRGGBB` hue the accent colorway uses. */
+  hudColorway: 'ink' | 'paper' | 'signal' | 'accent';
+  hudAccent: string;
   dailyWordGoal: number;
   /** The voice model, a catalog id. */
   voiceModelId: string;

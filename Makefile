@@ -154,7 +154,9 @@ endif
 endif
 
 # Install into /Applications and (re)launch so it appears in Finder.
-install: install-signing-check bundle
+# The check runs first and the build after it, even under `make -j`.
+install: install-signing-check
+	@$(MAKE) --no-print-directory bundle
 	@# Remove every previously-known location of the app, not just the one we are
 	@# installing to. A stale copy left in dist/ shares this bundle id and this
 	@# signature, so it also shares the Accessibility grant and installs a second

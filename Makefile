@@ -73,7 +73,7 @@ define embed_sparkle
 	fi
 endef
 
-.PHONY: build test bundle run install uninstall bundle-release notarize dmg clean
+.PHONY: build test bundle run install install-signing-check uninstall bundle-release notarize dmg clean
 
 build:
 	swift build -c release
@@ -139,8 +139,24 @@ bundle: build
 run: bundle
 	open $(APP)
 
+# An ad-hoc build installed over the app looks like a new app to macOS, which then
+# drops the Accessibility and Microphone grants while System Settings still shows
+# them on. Stop before building unless the stable identity is installed, or
+# ADHOC=1 says to go ahead and re-grant both.
+install-signing-check:
+ifeq ($(SIGN_IDENTITY),-)
+ifneq ($(ADHOC),1)
+	@echo 'make install: the "Useful Voice Release" identity is not in the login keychain, so this build would be signed ad-hoc.' >&2
+	@echo 'macOS would treat it as a new app and drop the Accessibility and Microphone grants.' >&2
+	@echo 'Import the identity (./scripts/setup-signing.sh says how), or run "make install ADHOC=1" and grant both again.' >&2
+	@exit 1
+endif
+endif
+
 # Install into /Applications and (re)launch so it appears in Finder.
-install: bundle
+# The check runs first and the build after it, even under `make -j`.
+install: install-signing-check
+	@$(MAKE) --no-print-directory bundle
 	@# Remove every previously-known location of the app, not just the one we are
 	@# installing to. A stale copy left in dist/ shares this bundle id and this
 	@# signature, so it also shares the Accessibility grant and installs a second

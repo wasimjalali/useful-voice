@@ -175,6 +175,8 @@ The app is `ai.useful.voice` (executable `UsefulVoice`, data in `~/Library/Appli
 Keychain service `ai.useful.voice`), signed by `make bundle` with the self-signed "Useful Voice Release"
 certificate. Never create a new one: a new certificate resets every user's Accessibility and Microphone grants.
 On another Mac, import the `.p12` from the password manager (`scripts/setup-signing.sh` prints how).
+Without it `make install` stops before building: an ad-hoc build drops the Accessibility and Microphone grants while
+System Settings still shows them on. `make install ADHOC=1` installs one anyway; grant both again afterwards.
 The rename itself needs one Accessibility and Microphone re-grant per user (macOS keys those grants to the bundle id).
 The migration sets `uv.firstRunRecheckGrants` when the old identity had finished setup, so the first-run flow shows again while
 a grant is missing. Its Microphone (access off) and Accessibility (not yet on) steps offer "Set up later", which finishes setup,

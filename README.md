@@ -64,6 +64,7 @@ The code is split in three:
 - `Sources/UsefulVoiceCore` is the testable core: settings, providers, audio, the dictionary, language memory, history and the dictation pipeline.
 - `Sources/UsefulVoiceApp` is the macOS app: menu bar, HUD, hotkey, text insertion and the pages.
 - `windows/` is the Electron and TypeScript app. Its `src/core` mirrors the Swift core.
+- `site/` is the landing page on [voice.usefulbuild.com](https://voice.usefulbuild.com). It lives only here.
 
 The design notes and audit reports are in [docs/audit](docs/audit), starting with [00-findings-and-fixes.md](docs/audit/00-findings-and-fixes.md). Release and source publishing are covered in [docs/distribution.md](docs/distribution.md).
 

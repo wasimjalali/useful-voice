@@ -27,11 +27,10 @@ set to `true` (`Sources/UsefulVoiceCore/ReleaseLinks.swift` on macOS,
 ## The website
 
 voice.usefulbuild.com is the static site in `site/` (`site/public/`, deployed as the `useful-voice`
-Worker by `site/wrangler.jsonc`). It replaces `workers/public-hosts/voice` in useful-brain: the Worker
-keeps the same name, so the first deploy from here takes over the domain in place. Retire the
-useful-brain copy after that deploy, in a useful-brain PR that also drops the checks for it in
-`src/lib/cf/wrangler-config.test.ts`. Until then, a `wrangler deploy` from useful-brain's copy
-would put the old page back.
+Worker by `site/wrangler.jsonc`). It is the only source of that page: the old copy in useful-brain
+(`workers/public-hosts/voice`) was removed in useful-brain #77. The live page is still that old
+copy until the first deploy from here, which takes over the domain in place because the Worker
+keeps the same name.
 
 It ships in its coming-soon state: `data-release="soon"` on `<html>` hides the install sections.
 The install commands and buttons link to these assets on

@@ -209,7 +209,7 @@ Windows keeps `%APPDATA%\Useful Voice`; `build.nsis.guid` is pinned to the old a
 
 `site/` is the only source of `voice.usefulbuild.com` (landing and privacy pages, static assets on the
 Cloudflare Worker `useful-voice`). The old copy in `useful-brain` (`workers/public-hosts/voice`) is retired; never add
-the page back to another repo. Check with `cd site && npm run check` (Playwright, coming-soon and released states).
+the page back to another repo. Check with `cd site && npm ci && npm run check` (Playwright, coming-soon and released states; not run in CI).
 Deploy only after `npx wrangler whoami` shows the Karko AI account: `npx wrangler deploy --config site/wrangler.jsonc`.
 The first deploy from here replaces the live page, which is still the older Brain-repo copy.
 
